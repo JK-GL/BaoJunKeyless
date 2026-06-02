@@ -1,4 +1,4 @@
-name: Build IPA
+name: Build Unsigned IPA
 
 on:
   push:
@@ -8,15 +8,10 @@ on:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 30
-
-    env:
-      APP_NAME: BaoJunKeyless
-      BUNDLE_ID: com.baojun.keyless
+    timeout-minutes: 25
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
@@ -27,103 +22,34 @@ jobs:
       - name: Generate Xcode Project
         run: xcodegen generate
 
-      - name: List generated files
-        run: find . -name "*.xcodeproj" -o -name "*.xcworkspace" | head -5
-
-      # ---------- Code Signing ----------
-      - name: Import Certificate
-        env:
-          CERTIFICATE_P12: ${{ secrets.CERTIFICATE_P12 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
-        run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/app.keychain-db
-          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
-
-          # Create temp keychain
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          # Import P12
-          echo "$CERTIFICATE_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
-          security import $RUNNER_TEMP/certificate.p12 \
-            -P "$CERTIFICATE_PASSWORD" \
-            -A -t cert -f pkcs12 \
-            -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: \
-            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          # Add to search list
-          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
-
-          # Cleanup
-          rm -f $RUNNER_TEMP/certificate.p12
-
-      - name: Install Provisioning Profile
-        env:
-          PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
-        run: |
-          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
-          echo "$PROVISIONING_PROFILE" | base64 --decode > "$PP_PATH"
-          UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< \
-            $(security cms -D -i "$PP_PATH"))
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$UUID".mobileprovision
-
-      # ---------- Build IPA ----------
-      - name: Build
+      - name: Build .app (No Signing)
         run: |
           xcodebuild \
-            -project "${{ env.APP_NAME }}.xcodeproj" \
-            -scheme "${{ env.APP_NAME }}" \
+            -project BaoJunKeyless.xcodeproj \
+            -scheme BaoJunKeyless \
             -sdk iphoneos \
             -configuration Release \
-            -archivePath $RUNNER_TEMP/${{ env.APP_NAME }}.xcarchive \
-            archive \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="${{ secrets.SIGNING_IDENTITY }}" \
-            PROVISIONING_PROFILE_SPECIFIER="${{ secrets.PROVISIONING_PROFILE_NAME }}" \
-            DEVELOPMENT_TEAM="${{ secrets.TEAM_ID }}" \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
             ENABLE_BITCODE=NO \
-            | xcpretty --color || true
+            | xcpretty --color
 
-      - name: Create ExportOptions.plist
+      - name: Package Unsigned IPA
         run: |
-          cat > $RUNNER_TEMP/ExportOptions.plist << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>ad-hoc</string>
-            <key>teamID</key>
-            <string>${{ secrets.TEAM_ID }}</string>
-            <key>compileBitcode</key>
-            <false/>
-            <key>stripSwiftSymbols</key>
-            <true/>
-          </dict>
-          </plist>
-          EOF
+          APP_PATH=$(find build/DerivedData -name "BaoJunKeyless.app" -type d | head -1)
+          echo "APP: $APP_PATH"
 
-      - name: Export IPA
-        run: |
-          xcodebuild \
-            -exportArchive \
-            -archivePath $RUNNER_TEMP/${{ env.APP_NAME }}.xcarchive \
-            -exportPath $RUNNER_TEMP/output \
-            -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -r -y BaoJunKeyless-unsigned.ipa Payload
+          ls -lh BaoJunKeyless-unsigned.ipa
 
-      - name: Upload IPA Artifact
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: BaoJunKeyless-IPA
-          path: ${{ runner.temp }}/output/*.ipa
-          retention-days: 30
-
-      # Cleanup keychain
-      - name: Cleanup
-        if: always()
-        run: |
-          security delete-keychain $RUNNER_TEMP/app.keychain-db 2>/dev/null || true
-          rm -f ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision
+          name: BaoJunKeyless-unsigned
+          path: BaoJunKeyless-unsigned.ipa
+          retention-days: 90
