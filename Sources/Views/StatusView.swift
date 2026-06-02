@@ -85,71 +85,82 @@ struct HeaderView: View {
     }
 }
 
+// MARK: - Signal Simulator (separate to avoid ScrollView bounce)
+class SignalSimulator: ObservableObject {
+    @Published var rssi: Double = -42
+    private var timer: Timer?
+
+    func start() {
+        timer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
+            withAnimation(.easeInOut(duration: 1.5)) {
+                self?.rssi = Double(Int.random(in: -85 ... -35))
+            }
+        }
+    }
+
+    func stop() { timer?.invalidate(); timer = nil }
+    deinit { stop() }
+}
+
 // MARK: - Radar Card
 struct RadarCardView: View {
     @ObservedObject var motion: MotionManager
-    @State private var rssi: Double = -42
+    @StateObject private var signal = SignalSimulator()
     @State private var sweepAngle: Double = 0
     private let radarSize: CGFloat = 200
 
-    /// 0.0 = strong (center), 1.0 = weak (edge)
+    // 0 = strong(center) … 1 = weak(edge)
     private var norm: Double {
-        Double((-30 - max(-110, min(-30, rssi))) / 80.0)
+        let clamped = max(-110, min(-30, signal.rssi))
+        return (-30 - clamped) / 80.0
     }
 
-    /// Car size: 40% (strong) → 12% (weak)
-    private var carDia: CGFloat {
-        radarSize * (0.40 - 0.28 * norm)
-    }
+    // Car diameter: 38% (strong) → 12% (weak)
+    private var carDia: CGFloat { radarSize * (0.38 - 0.26 * norm) }
 
-    /// Car offset from center along 45° diagonal
+    // Car offset from center along 45°
     private var carOff: CGFloat {
-        let maxR = radarSize / 2 - carDia / 2 - 10
+        let maxR = radarSize / 2 - carDia / 2 - 8
         return CGFloat(norm) * maxR
     }
 
-    private var carAlpha: Double { 1.0 - norm * 0.5 }
-
     var body: some View {
         VStack(spacing: 12) {
-            // ── Radar disc ──
+            // ── Dark radar disc (circle only) ──
             ZStack {
-                // Dark circle background
                 Circle()
                     .fill(RadialGradient(
                         colors: [
-                            Color(red: 0.03, green: 0.08, blue: 0.16),
-                            Color(red: 0.01, green: 0.03, blue: 0.07)
+                            Color(red: 0.06, green: 0.12, blue: 0.22),
+                            Color(red: 0.02, green: 0.04, blue: 0.08)
                         ],
-                        center: .center, startRadius: 0, endRadius: radarSize / 2
+                        center: .center, startRadius: 10, endRadius: radarSize / 2
                     ))
-                    .frame(width: radarSize, height: radarSize)
 
-                // Concentric rings
+                // 3 rings
                 ForEach(1...3, id: \.self) { i in
                     Circle()
-                        .stroke(Color.white.opacity(0.08 + Double(i) * 0.03), lineWidth: 0.7)
+                        .stroke(Color.white.opacity(0.06 + Double(i) * 0.03),
+                                lineWidth: 0.6)
                         .frame(width: radarSize * CGFloat(i) / 3,
                                height: radarSize * CGFloat(i) / 3)
                 }
 
-                // Cross + diagonal grid
-                Group {
-                    Rectangle().fill(Color.white.opacity(0.06)).frame(width: 0.5, height: radarSize)
-                    Rectangle().fill(Color.white.opacity(0.06)).frame(width: radarSize, height: 0.5)
-                    Rectangle().fill(Color.white.opacity(0.04)).frame(width: 0.3, height: radarSize)
-                        .rotationEffect(.degrees(45))
-                    Rectangle().fill(Color.white.opacity(0.04)).frame(width: 0.3, height: radarSize)
-                        .rotationEffect(.degrees(-45))
-                }
+                // Grid lines
+                Rectangle().fill(Color.white.opacity(0.05)).frame(width: 0.5, height: radarSize)
+                Rectangle().fill(Color.white.opacity(0.05)).frame(width: radarSize, height: 0.5)
+                Rectangle().fill(Color.white.opacity(0.03)).frame(width: 0.3, height: radarSize)
+                    .rotationEffect(.degrees(45))
+                Rectangle().fill(Color.white.opacity(0.03)).frame(width: 0.3, height: radarSize)
+                    .rotationEffect(.degrees(-45))
 
                 // Sweep fan
                 SweepFanShape()
                     .fill(AngularGradient(
                         colors: [.clear,
-                                 Color(red: 0.2, green: 0.6, blue: 1).opacity(0.03),
-                                 Color(red: 0.2, green: 0.6, blue: 1).opacity(0.12),
-                                 Color(red: 0.2, green: 0.6, blue: 1).opacity(0.22)],
+                                 Color(red: 0.2, green: 0.6, blue: 1).opacity(0.02),
+                                 Color(red: 0.2, green: 0.6, blue: 1).opacity(0.08),
+                                 Color(red: 0.2, green: 0.6, blue: 1).opacity(0.18)],
                         center: .center,
                         startAngle: .degrees(-40), endAngle: .degrees(0)
                     ))
@@ -157,45 +168,44 @@ struct RadarCardView: View {
                     .rotationEffect(.degrees(sweepAngle))
 
                 // Sweep line + glow
-                ZStack {
-                    Rectangle()
-                        .fill(Color(red: 0.2, green: 0.6, blue: 1).opacity(0.3))
-                        .frame(width: 5, height: radarSize / 2 + 8)
-                        .blur(radius: 5)
-                        .offset(y: -(radarSize / 4 + 4))
-                        .rotationEffect(.degrees(sweepAngle))
-                    Rectangle()
-                        .fill(Color(red: 0.4, green: 0.75, blue: 1))
-                        .frame(width: 1, height: radarSize / 2 + 8)
-                        .offset(y: -(radarSize / 4 + 4))
-                        .rotationEffect(.degrees(sweepAngle))
-                }
+                Rectangle()
+                    .fill(Color(red: 0.2, green: 0.6, blue: 1).opacity(0.25))
+                    .frame(width: 4, height: radarSize / 2 + 6)
+                    .blur(radius: 4)
+                    .offset(y: -(radarSize / 4 + 3))
+                    .rotationEffect(.degrees(sweepAngle))
 
-                // Car target — gyroscope parallax only on car position
+                Rectangle()
+                    .fill(Color(red: 0.4, green: 0.75, blue: 1))
+                    .frame(width: 1, height: radarSize / 2 + 6)
+                    .offset(y: -(radarSize / 4 + 3))
+                    .rotationEffect(.degrees(sweepAngle))
+
+                // Car target
                 Image(systemName: "car.fill")
                     .resizable()
                     .scaledToFit()
                     .frame(width: carDia, height: carDia)
                     .foregroundColor(.white)
-                    .shadow(color: Color(red: 0.2, green: 0.6, blue: 1).opacity(0.7), radius: 10)
-                    .opacity(carAlpha)
+                    .shadow(color: Color(red: 0.2, green: 0.6, blue: 1).opacity(0.6),
+                            radius: 8)
                     .offset(
-                        x: carOff * 0.7071 + CGFloat(motion.roll) * 5,
-                        y: carOff * 0.7071 + CGFloat(motion.pitch) * 5
+                        x: carOff * 0.7071 + CGFloat(motion.roll) * 4,
+                        y: carOff * 0.7071 + CGFloat(motion.pitch) * 4
                     )
-                    .animation(.easeInOut(duration: 0.6), value: rssi)
             }
             .frame(width: radarSize, height: radarSize)
             .clipShape(Circle())
+            .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
 
             // RSSI
             HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(String(format: "%.0f", rssi))
+                Text(String(format: "%.0f", signal.rssi))
                     .font(.system(size: 26, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
                 Text("dBm")
                     .font(.system(size: 13))
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(.secondary)
             }
 
             // Pills
@@ -212,25 +222,17 @@ struct RadarCardView: View {
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 20)
-                .fill(LinearGradient(
-                    colors: [Color(red: 0.06, green: 0.10, blue: 0.18),
-                             Color(red: 0.02, green: 0.05, blue: 0.10)],
-                    startPoint: .top, endPoint: .bottom
-                ))
-                .clipped()
+                .fill(AppTheme.cardBg)
+                .shadow(color: .black.opacity(0.05), radius: 10, y: 3)
         )
         .padding(.horizontal, 16)
         .onAppear {
+            signal.start()
             withAnimation(Animation.linear(duration: 3).repeatForever(autoreverses: false)) {
                 sweepAngle = 360
             }
-            // Simulate signal changes
-            Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { _ in
-                withAnimation(.easeInOut(duration: 1.2)) {
-                    rssi = Double(Int.random(in: -85 ... -35))
-                }
-            }
         }
+        .onDisappear { signal.stop() }
     }
 }
 
