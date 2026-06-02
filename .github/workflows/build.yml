@@ -22,98 +22,62 @@ jobs:
       - name: Generate Xcode Project
         run: xcodegen generate
 
-      # Create temporary signing certificate for ad-hoc build
       - name: Create Temp Signing Identity
         run: |
-          # Generate self-signed certificate
           openssl req -x509 -newkey rsa:2048 \
             -keyout /tmp/key.pem -out /tmp/cert.pem \
-            -days 30 -nodes \
-            -subj "/CN=AdHoc Signer"
-
-          # Convert to P12
+            -days 30 -nodes -subj "/CN=AdHoc Signer"
           openssl pkcs12 -export \
             -in /tmp/cert.pem -inkey /tmp/key.pem \
             -out /tmp/adhoc.p12 -password pass:temppass
 
-          # Create keychain
           KEYCHAIN=$RUNNER_TEMP/adhoc.keychain-db
           KC_PASS=$(openssl rand -base64 24)
           security create-keychain -p "$KC_PASS" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p "$KC_PASS" "$KEYCHAIN"
-
-          # Import certificate
-          security import /tmp/adhoc.p12 \
-            -P "temppass" -A -t cert -f pkcs12 \
-            -k "$KEYCHAIN"
-          security set-key-partition-list -S apple-tool:,apple: \
-            -k "$KC_PASS" "$KEYCHAIN"
+          security import /tmp/adhoc.p12 -P "temppass" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KC_PASS" "$KEYCHAIN"
           security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
 
-          # Find signing identity
           IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep "AdHoc" | awk -F'"' '{print $2}')
           echo "SIGN_IDENTITY=$IDENTITY" >> $GITHUB_ENV
-          echo "KEYCHAIN=$KEYCHAIN" >> $GITHUB_ENV
-          echo "KC_PASS=$KC_PASS" >> $GITHUB_ENV
-          echo "Identity: $IDENTITY"
 
-      # Archive
-      - name: Build & Archive
+      - name: Build for Device
         run: |
           xcodebuild \
             -project BaoJunKeyless.xcodeproj \
             -scheme BaoJunKeyless \
             -sdk iphoneos \
             -configuration Release \
-            -archivePath $RUNNER_TEMP/BaoJunKeyless.xcarchive \
-            archive \
+            -derivedDataPath build/DerivedData \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="$SIGN_IDENTITY" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
-            DEVELOPMENT_TEAM="" \
             ENABLE_BITCODE=NO \
-            CODE_SIGN_ENTITLEMENTS="" \
             | xcpretty --color || true
 
-      # Export
-      - name: Export IPA
+      - name: Package IPA (Manual)
         run: |
-          cat > $RUNNER_TEMP/ExportOptions.plist << EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>ad-hoc</string>
-            <key>compileBitcode</key>
-            <false/>
-            <key>stripSwiftSymbols</key>
-            <true/>
-          </dict>
-          </plist>
-          EOF
+          APP_PATH=$(find build/DerivedData -name "BaoJunKeyless.app" -type d | head -1)
+          echo "APP: $APP_PATH"
+          ls -la "$APP_PATH/"
 
-          xcodebuild \
-            -exportArchive \
-            -archivePath $RUNNER_TEMP/BaoJunKeyless.xcarchive \
-            -exportPath $RUNNER_TEMP/output \
-            -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist
+          # Re-sign with ad-hoc
+          /usr/bin/codesign --force --sign "$SIGN_IDENTITY" \
+            --entitlements /dev/null "$APP_PATH"
 
-      - name: List output
-        run: |
-          ls -lh $RUNNER_TEMP/output/
-          echo "--- IPA contents ---"
-          unzip -l $RUNNER_TEMP/output/*.ipa | tail -15
+          # Create IPA
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -r -y BaoJunKeyless.ipa Payload
+
+          ls -lh BaoJunKeyless.ipa
+          echo "--- contents ---"
+          unzip -l BaoJunKeyless.ipa | tail -15
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: BaoJunKeyless-IPA
-          path: ${{ runner.temp }}/output/*.ipa
+          path: BaoJunKeyless.ipa
           retention-days: 90
-
-      - name: Cleanup
-        if: always()
-        run: |
-          security delete-keychain $RUNNER_TEMP/adhoc.keychain-db 2>/dev/null || true
