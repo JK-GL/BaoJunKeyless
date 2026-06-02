@@ -15,7 +15,6 @@ struct SettingsView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 16) {
                         generalSection
-                        vehicleInfoSection
                         aboutSection
                         actionButtons
                         Spacer(minLength: 20)
@@ -24,7 +23,6 @@ struct SettingsView: View {
                 }
                 .background(AppTheme.pageBg.ignoresSafeArea())
 
-                // Toast overlay
                 if let text = toastText {
                     VStack {
                         Spacer()
@@ -45,7 +43,6 @@ struct SettingsView: View {
         .navigationViewStyle(.stack)
     }
 
-    // MARK: General
     private var generalSection: some View {
         CardView(title: "通用设置", icon: "gearshape.fill", iconColor: .secondary) {
             HStack {
@@ -61,20 +58,6 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Vehicle Info
-    private var vehicleInfoSection: some View {
-        CardView(title: "车辆信息", icon: "car.fill", iconColor: AppTheme.accent) {
-            InfoRow(icon: "info.circle", label: "车型",     value: "宝骏云海 140km PHEV")
-            InfoRow(icon: "info.circle", label: "VIN",      value: "LK6ADAH92RB765125", isMono: true)
-            InfoRow(icon: "bolt.fill",   label: "BLE 设备",  value: "E260-BLE", valueColor: AppTheme.accent)
-            InfoRow(icon: "wifi",        label: "MAC",       value: "CC:45:A5:DA:B5:C3", isMono: true, valueColor: AppTheme.accent)
-            InfoRow(icon: "key.fill",    label: "Key ID",    value: "1123037", isMono: true, valueColor: AppTheme.accent)
-            InfoRow(icon: "shield.fill", label: "钥匙类型",  value: "车主钥匙", valueColor: AppTheme.green)
-            InfoRow(icon: "gauge.medium",label: "提供商",    value: "德赛 (desai)")
-        }
-    }
-
-    // MARK: About
     private var aboutSection: some View {
         CardView(title: "关于", icon: "info.circle", iconColor: .secondary) {
             InfoRow(icon: "gearshape.fill", label: "插件版本", value: "v1.0.0", isMono: true)
@@ -84,7 +67,6 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Action Buttons
     private var actionButtons: some View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
@@ -98,18 +80,13 @@ struct SettingsView: View {
 
             Button(action: { showingResetAlert = true }) {
                 HStack(spacing: 6) {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 13))
-                    Text("重置全部设置")
-                        .font(.system(size: 14, weight: .medium))
+                    Image(systemName: "arrow.counterclockwise").font(.system(size: 13))
+                    Text("重置全部设置").font(.system(size: 14, weight: .medium))
                 }
                 .foregroundColor(AppTheme.red)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(AppTheme.red.opacity(0.3), lineWidth: 1)
-                )
+                .background(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.red.opacity(0.3), lineWidth: 1))
             }
             .alert("重置插件", isPresented: $showingResetAlert) {
                 Button("取消", role: .cancel) { }

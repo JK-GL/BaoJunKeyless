@@ -41,6 +41,80 @@ struct CardView<Content: View>: View {
     }
 }
 
+// MARK: - Collapsible Card
+struct CollapsibleCard<Header: View, Content: View>: View {
+    let title: String
+    let icon: String
+    let iconColor: Color
+    @Binding var isExpanded: Bool
+    let headerExtra: Header?
+    let content: () -> Content
+
+    init(title: String, icon: String, iconColor: Color = .blue,
+         isExpanded: Binding<Bool>,
+         @ViewBuilder headerExtra: @escaping () -> Header,
+         @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.icon = icon
+        self.iconColor = iconColor
+        self._isExpanded = isExpanded
+        self.headerExtra = headerExtra
+        self.content = content
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: { withAnimation(.spring(response: 0.35)) { isExpanded.toggle() } }) {
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .foregroundColor(iconColor)
+                        .font(.system(size: 15, weight: .semibold))
+                    Text(title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.primary)
+                    Spacer()
+                    headerExtra?()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                }
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 12) {
+                    Divider()
+                    content()
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(AppTheme.cardBg)
+                .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 3)
+        )
+        .padding(.horizontal, 16)
+    }
+}
+
+// Simple CollapsibleCard without headerExtra
+extension CollapsibleCard where Header == EmptyView {
+    init(title: String, icon: String, iconColor: Color = .blue,
+         isExpanded: Binding<Bool>,
+         @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.icon = icon
+        self.iconColor = iconColor
+        self._isExpanded = isExpanded
+        self.headerExtra = nil
+        self.content = content
+    }
+}
+
 // MARK: - Status Pill
 struct StatusPill: View {
     let icon: String
@@ -100,6 +174,33 @@ struct ChipButton: View {
                     Capsule()
                         .fill(isSelected ? AppTheme.accent : Color(.tertiarySystemGroupedBackground))
                 )
+        }
+    }
+}
+
+// MARK: - Slider Row
+struct SliderRow: View {
+    let icon: String
+    let label: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let format: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.system(size: 13)).foregroundColor(.secondary)
+                Text(label)
+                    .font(.system(size: 14)).foregroundColor(.secondary)
+                Spacer()
+                Text(format)
+                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+            }
+            Slider(value: $value, in: range, step: step)
+                .tint(tint)
         }
     }
 }
