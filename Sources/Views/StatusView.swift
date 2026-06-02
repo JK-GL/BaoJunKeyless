@@ -313,33 +313,44 @@ struct RadarCardView: View {
     private let radar = RadarUIView(frame: .zero)
 
     var body: some View {
-        VStack(spacing: 0) {
-            RadarRepresentable(motion: motion, radar: radar)
-                .frame(width: 280, height: 280)
-                .clipShape(Circle())
+        VStack(spacing: 12) {
+            // Radar with dBm pill overlay at bottom
+            ZStack(alignment: .bottom) {
+                RadarRepresentable(motion: motion, radar: radar)
+                    .frame(width: 280, height: 280)
+                    .clipShape(Circle())
 
-            // Pill badge for dBm
-            HStack(spacing: 4) {
-                Text(rssiText.replacingOccurrences(of: " dBm", with: ""))
-                    .font(.system(size: 20, weight: .bold, design: .monospaced))
-                Text("dBm")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Color(red: 0.40, green: 0.78, blue: 1.00))
+                // dBm pill — inside radar bottom edge
+                HStack(spacing: 3) {
+                    Text(rssiText.replacingOccurrences(of: " dBm", with: ""))
+                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    Text("dBm")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .foregroundColor(Color(red: 0.20, green: 0.60, blue: 1.00))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(Color.black.opacity(0.7))
+                        .overlay(Capsule().stroke(Color(red: 0.20, green: 0.60, blue: 1.00).opacity(0.35), lineWidth: 0.8))
+                )
+                .offset(y: -8)
             }
-            .foregroundColor(Color(red: 0.20, green: 0.60, blue: 1.00))
-            .padding(.horizontal, 20)
-            .padding(.vertical, 10)
-            .background(
-                Capsule()
-                    .fill(Color.black.opacity(0.6))
-                    .overlay(
-                        Capsule()
-                            .stroke(Color(red: 0.20, green: 0.60, blue: 1.00).opacity(0.4), lineWidth: 1)
-                    )
-            )
-            .padding(.top, 14)
+
+            // Status pills
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    StatusPill(icon: "shield.fill", text: "密钥正常", color: AppTheme.green)
+                    StatusPill(icon: "bolt.fill", text: "蓝牙已连接", color: AppTheme.green)
+                }
+                HStack(spacing: 8) {
+                    StatusPill(icon: "arrow.triangle.2.circlepath", text: "全程接管", color: AppTheme.purple)
+                    StatusPill(icon: "lock.open.fill", text: "未锁车", color: AppTheme.orange)
+                }
+            }
         }
-        .padding(.bottom, 8)
+        .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
         .background(RoundedRectangle(cornerRadius: 20).fill(AppTheme.cardBg)
             .shadow(color: .black.opacity(0.05), radius: 10, y: 3))
