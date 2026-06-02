@@ -114,8 +114,8 @@ class RadarUIView: UIView {
         let s: CGFloat = 200
         UIGraphicsBeginImageContextWithOptions(CGSize(width: s, height: s), false, 0)
         guard let ctx = UIGraphicsGetCurrentContext() else { return nil }
-        let blue = UIColor(red: 0.25, green: 0.65, blue: 1, alpha: 1)
-        ctx.setStrokeColor(blue.cgColor)
+        let carColor = UIColor(red: 0.20, green: 0.45, blue: 0.70, alpha: 1)
+        ctx.setStrokeColor(carColor.cgColor)
         ctx.setLineWidth(2.5)
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)
@@ -154,7 +154,7 @@ class RadarUIView: UIView {
         d.stroke()
 
         // Headlight glow
-        ctx.setFillColor(UIColor(red: 0.25, green: 0.65, blue: 1, alpha: 0.25).cgColor)
+        ctx.setFillColor(UIColor(red: 0.20, green: 0.45, blue: 0.70, alpha: 0.2).cgColor)
         ctx.fillEllipse(in: CGRect(x: 52, y: 98, width: 20, height: 20))
         ctx.fillEllipse(in: CGRect(x: 138, y: 98, width: 20, height: 20))
 
@@ -195,24 +195,19 @@ class RadarUIView: UIView {
         let cs = CGColorSpaceCreateDeviceRGB()
         let rad = sweep * .pi / 180
 
-        // ── 1. Dark background ──
-        if let g = CGGradient(colorsSpace: cs, colors: [
-            UIColor(red: 0.03, green: 0.06, blue: 0.12, alpha: 1).cgColor,
-            UIColor(red: 0.01, green: 0.02, blue: 0.05, alpha: 1).cgColor
-        ] as CFArray, locations: [0, 1]) {
-            ctx.drawRadialGradient(g, startCenter: .init(x:cx,y:cy), startRadius: 0,
-                                   endCenter: .init(x:cx,y:cy), endRadius: r, options: [])
-        }
+        // ── 1. Light background ──
+        UIColor.systemBackground.setFill()
+        ctx.fillEllipse(in: .init(x: cx-r, y: cy-r, width: r*2, height: r*2))
 
-        // ── 2. Tick marks ──
+        // ── 2. Tick marks (gray on white) ──
         for deg in 0..<360 {
             let a = CGFloat(deg) * .pi / 180
             let major = deg % 30 == 0
             let mid = deg % 10 == 0
             let inner: CGFloat = major ? r - 18 : (mid ? r - 11 : r - 7)
-            let alpha: Double = major ? 0.7 : (mid ? 0.4 : 0.15)
-            let w: CGFloat = major ? 1.8 : (mid ? 0.9 : 0.4)
-            ctx.setStrokeColor(blue2.withAlphaComponent(alpha).cgColor)
+            let alpha: Double = major ? 0.5 : (mid ? 0.25 : 0.1)
+            let w: CGFloat = major ? 1.5 : (mid ? 0.8 : 0.3)
+            ctx.setStrokeColor(UIColor.darkGray.withAlphaComponent(alpha).cgColor)
             ctx.setLineWidth(w)
             ctx.move(to: .init(x: cx + inner * cos(a), y: cy + inner * sin(a)))
             ctx.addLine(to: .init(x: cx + (r - 1) * cos(a), y: cy + (r - 1) * sin(a)))
@@ -220,20 +215,20 @@ class RadarUIView: UIView {
         }
 
         // ── 3. Outer ring ──
-        ctx.setStrokeColor(blue2.withAlphaComponent(0.3).cgColor)
-        ctx.setLineWidth(1.5)
+        ctx.setStrokeColor(UIColor.darkGray.withAlphaComponent(0.2).cgColor)
+        ctx.setLineWidth(1)
         ctx.strokeEllipse(in: .init(x: cx-r+1, y: cy-r+1, width: (r-1)*2, height: (r-1)*2))
 
         // ── 4. Inner rings ──
         for i in 1...3 {
             let rr = r * CGFloat(i) / 3.5
-            ctx.setStrokeColor(blue2.withAlphaComponent(0.08 + Double(i)*0.03).cgColor)
+            ctx.setStrokeColor(UIColor.darkGray.withAlphaComponent(0.06 + Double(i)*0.02).cgColor)
             ctx.setLineWidth(0.5)
             ctx.strokeEllipse(in: .init(x: cx-rr, y: cy-rr, width: rr*2, height: rr*2))
         }
 
         // ── 5. Cross-hair ──
-        ctx.setStrokeColor(blue2.withAlphaComponent(0.08).cgColor)
+        ctx.setStrokeColor(UIColor.darkGray.withAlphaComponent(0.08).cgColor)
         ctx.setLineWidth(0.5)
         ctx.move(to: .init(x:cx,y:cy-r+14)); ctx.addLine(to: .init(x:cx,y:cy+r-14))
         ctx.move(to: .init(x:cx-r+14,y:cy)); ctx.addLine(to: .init(x:cx+r-14,y:cy))
@@ -246,7 +241,7 @@ class RadarUIView: UIView {
 
         // Center glow
         if let g = CGGradient(colorsSpace: cs, colors: [
-            blue1.withAlphaComponent(0.08).cgColor, UIColor.clear.cgColor
+            UIColor.systemBlue.withAlphaComponent(0.06).cgColor, UIColor.clear.cgColor
         ] as CFArray, locations: [0, 1]) {
             ctx.drawRadialGradient(g, startCenter: .init(x:cx,y:cy), startRadius: 0,
                                    endCenter: .init(x:cx,y:cy), endRadius: r*0.5, options: [])
@@ -258,7 +253,7 @@ class RadarUIView: UIView {
             let frac = CGFloat(i) / 30
             let a1 = rad - fan * (1 - frac)
             let a2 = rad - fan * (1 - frac - 1.0/30)
-            ctx.setFillColor(blue2.withAlphaComponent(Double(1 - frac) * 0.22).cgColor)
+            ctx.setFillColor(UIColor.systemBlue.withAlphaComponent(Double(1 - frac) * 0.12).cgColor)
             ctx.move(to: .init(x: cx, y: cy))
             ctx.addArc(center: .init(x:cx,y:cy), radius: r, startAngle: a1, endAngle: a2, clockwise: false)
             ctx.closePath(); ctx.fillPath()
@@ -266,14 +261,14 @@ class RadarUIView: UIView {
 
         // Sweep line
         let end = CGPoint(x: cx + r * 1.05 * cos(rad), y: cy + r * 1.05 * sin(rad))
-        ctx.setStrokeColor(blue3.withAlphaComponent(0.12).cgColor)
-        ctx.setLineWidth(8); ctx.setLineCap(.round)
+        ctx.setStrokeColor(UIColor.systemBlue.withAlphaComponent(0.15).cgColor)
+        ctx.setLineWidth(6); ctx.setLineCap(.round)
         ctx.move(to: .init(x:cx,y:cy)); ctx.addLine(to: end); ctx.strokePath()
-        ctx.setStrokeColor(blue3.withAlphaComponent(0.8).cgColor)
-        ctx.setLineWidth(1.5)
+        ctx.setStrokeColor(UIColor.systemBlue.withAlphaComponent(0.7).cgColor)
+        ctx.setLineWidth(1.2)
         ctx.move(to: .init(x:cx,y:cy)); ctx.addLine(to: end); ctx.strokePath()
 
-        ctx.setFillColor(blue3.withAlphaComponent(0.7).cgColor)
+        ctx.setFillColor(UIColor.systemBlue.withAlphaComponent(0.6).cgColor)
         ctx.fillEllipse(in: .init(x: cx-2, y: cy-2, width: 4, height: 4))
         ctx.restoreGState()
 
@@ -290,8 +285,8 @@ class RadarUIView: UIView {
         // Glow halo
         let glowR = carSz * 0.7
         if let g = CGGradient(colorsSpace: cs, colors: [
-            blue2.withAlphaComponent(0.12).cgColor,
-            blue2.withAlphaComponent(0.02).cgColor,
+            UIColor.systemBlue.withAlphaComponent(0.08).cgColor,
+            UIColor.systemBlue.withAlphaComponent(0.02).cgColor,
             UIColor.clear.cgColor
         ] as CFArray, locations: [0, 0.5, 1]) {
             ctx.drawRadialGradient(g, startCenter: .init(x:carX,y:carY), startRadius: 0,
@@ -314,28 +309,20 @@ struct RadarCardView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            // Radar with dBm pill overlay at bottom
-            ZStack(alignment: .bottom) {
+            // Radar with dBm pill overlay in center
+            ZStack {
                 RadarRepresentable(motion: motion, radar: radar)
                     .frame(width: 280, height: 280)
                     .clipShape(Circle())
 
-                // dBm pill — inside radar bottom edge
+                // dBm text — center, transparent bg
                 HStack(spacing: 3) {
                     Text(rssiText.replacingOccurrences(of: " dBm", with: ""))
-                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .font(.system(size: 18, weight: .bold, design: .monospaced))
                     Text("dBm")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 12, weight: .medium))
                 }
-                .foregroundColor(Color(red: 0.20, green: 0.60, blue: 1.00))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
-                .background(
-                    Capsule()
-                        .fill(Color.black.opacity(0.7))
-                        .overlay(Capsule().stroke(Color(red: 0.20, green: 0.60, blue: 1.00).opacity(0.35), lineWidth: 0.8))
-                )
-                .offset(y: 2)
+                .foregroundColor(.secondary)
             }
 
             // Status pills
