@@ -82,7 +82,7 @@ enum AppThemeStorage {
         guard !data.isEmpty, let p = try? JSONDecoder().decode(PersistedColor.self, from: data) else { return AppThemeDefaults.customAccent }
         return p.color
     }
-    static func customAccentData(from color: Color) -> Data { (try? JSONEncoder().encode(PersistedColor(color))) ?? Data() }
+    static func customAccentData(from color: Color) -> Data { (try? JSONEncoder().encode(PersistedColor(color: color))) ?? Data() }
 
     static func backgroundImageData() -> Data? {
         guard let u = backgroundImageURL(), FileManager.default.fileExists(atPath: u.path) else { return nil }
