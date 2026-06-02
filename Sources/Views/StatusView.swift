@@ -85,210 +85,199 @@ struct HeaderView: View {
     }
 }
 
-// MARK: - UIKit Radar View (beautiful, no bounce)
+// MARK: - Radar UIView (redesigned, car fixed, dynamic RSSI)
 class RadarUIView: UIView {
-    private let radarSize: CGFloat = 200
-    private var sweepAngle: CGFloat = 0
+    private let sz: CGFloat = 200
+    private var sweep: CGFloat = 0
     private var rssi: Double = -42
+    private var targetRssi: Double = -42
     private var pitch: Double = 0
     private var roll: Double = 0
-    private var displayLink: CADisplayLink?
-    private var startTime: CFTimeInterval = 0
-    private var signalTimer: Timer?
-    private var targetRssi: Double = -42
-    private let colorSpace = CGColorSpaceCreateDeviceRGB()
+    private var link: CADisplayLink?
+    private var t0: CFTimeInterval = 0
+    private var sigTimer: Timer?
+    var onRssiChange: ((Double) -> Void)?
 
-    // Smoothed values
-    private var curCarSize: CGFloat = 80
-    private var curCarOff: CGFloat = 0
+    // Smoothed car
+    private var carSz: CGFloat = 70
+    private var carX: CGFloat = 0
+    private var carY: CGFloat = 0
 
-    private var norm: Double {
-        (-30 - max(-110, min(-30, rssi))) / 80.0
-    }
-
-    // Pre-rendered white car image with glow
-    private var carImage: CGImage? = {
-        let sz: CGFloat = 120
-        UIGraphicsBeginImageContextWithOptions(CGSize(width: sz, height: sz), false, 0)
+    // Pre-rendered car (UIImage, not CGImage — avoids flip)
+    private var carImg: UIImage? = {
+        let s: CGFloat = 140
+        UIGraphicsBeginImageContextWithOptions(CGSize(width: s, height: s), false, 0)
         guard let ctx = UIGraphicsGetCurrentContext() else { return nil }
-
-        // 1. Blue glow halo behind car
-        let glowColors = [
-            UIColor(red: 0.3, green: 0.7, blue: 1, alpha: 0.4).cgColor,
+        // Blue glow halo
+        let cs = CGColorSpaceCreateDeviceRGB()
+        if let g = CGGradient(colorsSpace: cs, colors: [
+            UIColor(red: 0.3, green: 0.7, blue: 1, alpha: 0.5).cgColor,
             UIColor(red: 0.3, green: 0.7, blue: 1, alpha: 0.0).cgColor
-        ] as CFArray
-        if let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                              colors: glowColors, locations: [0, 1]) {
-            ctx.drawRadialGradient(g,
-                startCenter: CGPoint(x: sz/2, y: sz/2), startRadius: 0,
-                endCenter: CGPoint(x: sz/2, y: sz/2), endRadius: sz * 0.42, options: [])
+        ] as CFArray, locations: [0, 1]) {
+            ctx.drawRadialGradient(g, startCenter: .init(x: s/2, y: s/2), startRadius: 0,
+                                   endCenter: .init(x: s/2, y: s/2), endRadius: s*0.45, options: [])
         }
-
-        // 2. Draw car icon in WHITE
-        let config = UIImage.SymbolConfiguration(pointSize: 48, weight: .medium)
-        if let car = UIImage(systemName: "car.fill", withConfiguration: config) {
-            let w = car.size.width, h = car.size.height
-            let rect = CGRect(x: (sz - w) / 2, y: (sz - h) / 2, width: w, height: h)
-            ctx.setFillColor(UIColor.white.cgColor)
-            car.withRenderingMode(.alwaysTemplate).draw(in: rect)
+        // White car
+        let cfg = UIImage.SymbolConfiguration(pointSize: 44, weight: .semibold)
+        if let raw = UIImage(systemName: "car.fill", withConfiguration: cfg) {
+            let w = raw.size.width, h = raw.size.height
+            raw.withRenderingMode(.alwaysTemplate).draw(in: CGRect(x: (s-w)/2, y: (s-h)/2, width: w, height: h))
+            // Overdraw with white fill
+            UIColor.white.setFill()
+            raw.withRenderingMode(.alwaysTemplate).draw(in: CGRect(x: (s-w)/2, y: (s-h)/2, width: w, height: h))
         }
-
-        let img = UIGraphicsGetImageFromCurrentImageContext()?.cgImage
+        let result = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
-        return img
+        return result
     }()
 
     override init(frame: CGRect) {
-        super.init(frame: frame)
-        setup()
+        super.init(frame: frame); setup()
     }
     required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        setup()
+        super.init(coder: coder); setup()
     }
 
     private func setup() {
-        isOpaque = false
-        backgroundColor = .clear
-        startTime = CACurrentMediaTime()
-        let dl = CADisplayLink(target: self, selector: #selector(tick))
-        dl.add(to: .main, forMode: .common)
-        displayLink = dl
-        signalTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
+        isOpaque = false; backgroundColor = .clear
+        t0 = CACurrentMediaTime()
+        link = CADisplayLink(target: self, selector: #selector(tick))
+        link?.add(to: .main, forMode: .common)
+        sigTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
             self?.targetRssi = Double(Int.random(in: -85 ... -35))
         }
     }
 
     @objc private func tick() {
-        let t = CACurrentMediaTime() - startTime
-        sweepAngle = CGFloat(fmod(t / 3.0, 1.0)) * 360.0
-        rssi += (targetRssi - rssi) * 0.05
+        sweep = CGFloat(fmod((CACurrentMediaTime() - t0) / 3.0, 1.0)) * 360.0
+        let old = rssi
+        rssi += (targetRssi - rssi) * 0.06
+        if abs(rssi - old) > 0.3 {
+            DispatchQueue.main.async { self.onRssiChange?(self.rssi) }
+        }
         setNeedsDisplay()
     }
 
-    func updateGyro(pitch: Double, roll: Double) {
-        self.pitch = pitch; self.roll = roll
-    }
-
-    deinit { displayLink?.invalidate(); signalTimer?.invalidate() }
+    func updateGyro(pitch: Double, roll: Double) { self.pitch = pitch; self.roll = roll }
+    deinit { link?.invalidate(); sigTimer?.invalidate() }
 
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
-        let cx = rect.midX, cy = rect.midY, r = radarSize / 2
-        let sweepRad = sweepAngle * .pi / 180
+        let cx = rect.midX, cy = rect.midY, r = sz / 2
+        let cs = CGColorSpaceCreateDeviceRGB()
+        let rad = sweep * .pi / 180
 
-        // ── 1. Dark disc ──
-        if let g = CGGradient(colorsSpace: colorSpace, colors: [
-            UIColor(red: 0.05, green: 0.10, blue: 0.20, alpha: 1).cgColor,
-            UIColor(red: 0.01, green: 0.03, blue: 0.06, alpha: 1).cgColor
+        // Clip
+        ctx.saveGState()
+        ctx.addEllipse(in: .init(x: cx-r, y: cy-r, width: r*2, height: r*2))
+        ctx.clip()
+
+        // BG gradient
+        if let g = CGGradient(colorsSpace: cs, colors: [
+            UIColor(red: 0.04, green: 0.09, blue: 0.18, alpha: 1).cgColor,
+            UIColor(red: 0.01, green: 0.03, blue: 0.07, alpha: 1).cgColor
         ] as CFArray, locations: [0, 1]) {
-            ctx.drawRadialGradient(g,
-                startCenter: .init(x: cx, y: cy), startRadius: 0,
-                endCenter: .init(x: cx, y: cy), endRadius: r, options: [])
+            ctx.drawRadialGradient(g, startCenter: .init(x:cx,y:cy), startRadius: 0,
+                                   endCenter: .init(x:cx,y:cy), endRadius: r, options: [])
         }
 
-        // ── 2. Center glow ──
-        ctx.saveGState()
-        ctx.addEllipse(in: .init(x: cx - r, y: cy - r, width: r*2, height: r*2))
-        ctx.clip()
-        if let g = CGGradient(colorsSpace: colorSpace, colors: [
-            UIColor(red: 0.15, green: 0.4, blue: 0.8, alpha: 0.12).cgColor,
+        // Center glow
+        if let g = CGGradient(colorsSpace: cs, colors: [
+            UIColor(red: 0.12, green: 0.35, blue: 0.7, alpha: 0.1).cgColor,
             UIColor.clear.cgColor
         ] as CFArray, locations: [0, 1]) {
-            ctx.drawRadialGradient(g,
-                startCenter: .init(x: cx, y: cy), startRadius: 0,
-                endCenter: .init(x: cx, y: cy), endRadius: r * 0.5, options: [])
+            ctx.drawRadialGradient(g, startCenter: .init(x:cx,y:cy), startRadius: 0,
+                                   endCenter: .init(x:cx,y:cy), endRadius: r*0.45, options: [])
         }
 
-        // ── 3. Sweep trail ──
-        let fanAngle: CGFloat = 50 * .pi / 180
-        let segments = 12
-        for i in 0..<segments {
-            let frac = CGFloat(i) / CGFloat(segments)
-            let a1 = sweepRad - fanAngle * (1 - frac)
-            let a2 = sweepRad - fanAngle * (1 - frac - 1.0/CGFloat(segments))
-            let alpha = Double(1 - frac) * 0.25
-            ctx.setFillColor(UIColor(red: 0.25, green: 0.65, blue: 1, alpha: alpha).cgColor)
+        // ── Sweep trail (smooth gradient) ──
+        let fan: CGFloat = 55 * .pi / 180
+        let steps = 20
+        for i in 0..<steps {
+            let frac = CGFloat(i) / CGFloat(steps)
+            let a1 = rad - fan * (1 - frac)
+            let a2 = rad - fan * (1 - frac - 1.0/CGFloat(steps))
+            let alpha = Double(1 - frac) * 0.3
+            ctx.setFillColor(UIColor(red: 0.2, green: 0.55, blue: 1, alpha: alpha).cgColor)
             ctx.move(to: .init(x: cx, y: cy))
-            ctx.addArc(center: .init(x: cx, y: cy), radius: r,
-                       startAngle: a1, endAngle: a2, clockwise: false)
-            ctx.closePath()
-            ctx.fillPath()
+            ctx.addArc(center: .init(x: cx, y: cy), radius: r, startAngle: a1, endAngle: a2, clockwise: false)
+            ctx.closePath(); ctx.fillPath()
         }
 
-        // ── 4. Sweep line + glow ──
-        let end = CGPoint(x: cx + r * cos(sweepRad), y: cy + r * sin(sweepRad))
-        // Glow
-        ctx.setStrokeColor(UIColor(red: 0.3, green: 0.7, blue: 1, alpha: 0.2).cgColor)
+        // Sweep line glow + sharp
+        let end = CGPoint(x: cx + r * 1.02 * cos(rad), y: cy + r * 1.02 * sin(rad))
+        ctx.setStrokeColor(UIColor(red: 0.3, green: 0.7, blue: 1, alpha: 0.18).cgColor)
         ctx.setLineWidth(6); ctx.setLineCap(.round)
-        ctx.move(to: .init(x: cx, y: cy)); ctx.addLine(to: end); ctx.strokePath()
-        // Sharp
-        ctx.setStrokeColor(UIColor(red: 0.5, green: 0.82, blue: 1, alpha: 0.9).cgColor)
-        ctx.setLineWidth(1.2)
-        ctx.move(to: .init(x: cx, y: cy)); ctx.addLine(to: end); ctx.strokePath()
+        ctx.move(to: .init(x:cx,y:cy)); ctx.addLine(to: end); ctx.strokePath()
 
-        // ── 5. Rings (gradient opacity) ──
-        ctx.restoreGState()
+        ctx.setStrokeColor(UIColor(red: 0.5, green: 0.82, blue: 1, alpha: 0.95).cgColor)
+        ctx.setLineWidth(1.2)
+        ctx.move(to: .init(x:cx,y:cy)); ctx.addLine(to: end); ctx.strokePath()
+
+        // Center dot
+        ctx.setFillColor(UIColor(red: 0.4, green: 0.78, blue: 1, alpha: 0.9).cgColor)
+        ctx.fillEllipse(in: .init(x: cx-2.5, y: cy-2.5, width: 5, height: 5))
+
+        ctx.restoreGState() // unclip
+
+        // ── Rings ──
         for i in 1...3 {
-            let ringR = r * CGFloat(i) / 3.0
-            ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.04 + Double(i) * 0.04).cgColor)
+            let rr = r * CGFloat(i) / 3
+            ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.06 + Double(i)*0.04).cgColor)
             ctx.setLineWidth(0.7)
-            ctx.strokeEllipse(in: .init(x: cx - ringR, y: cy - ringR,
-                                        width: ringR * 2, height: ringR * 2))
+            ctx.strokeEllipse(in: .init(x: cx-rr, y: cy-rr, width: rr*2, height: rr*2))
         }
 
-        // ── 6. Grid ──
+        // ── Grid ──
         ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.06).cgColor)
         ctx.setLineWidth(0.5)
-        ctx.move(to: .init(x: cx, y: cy - r)); ctx.addLine(to: .init(x: cx, y: cy + r))
-        ctx.move(to: .init(x: cx - r, y: cy)); ctx.addLine(to: .init(x: cx + r, y: cy))
+        ctx.move(to: .init(x:cx,y:cy-r)); ctx.addLine(to: .init(x:cx,y:cy+r))
+        ctx.move(to: .init(x:cx-r,y:cy)); ctx.addLine(to: .init(x:cx+r,y:cy))
         ctx.strokePath()
-
-        let d = r * 0.7071
         ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.03).cgColor)
         ctx.setLineWidth(0.3)
-        ctx.move(to: .init(x: cx - d, y: cy - d)); ctx.addLine(to: .init(x: cx + d, y: cy + d))
-        ctx.move(to: .init(x: cx + d, y: cy - d)); ctx.addLine(to: .init(x: cx - d, y: cy + d))
+        let d = r * 0.7071
+        ctx.move(to: .init(x:cx-d,y:cy-d)); ctx.addLine(to: .init(x:cx+d,y:cy+d))
+        ctx.move(to: .init(x:cx+d,y:cy-d)); ctx.addLine(to: .init(x:cx-d,y:cy+d))
         ctx.strokePath()
 
-        // ── 7. Car target ──
-        let n = norm
-        let targetSz = radarSize * (0.35 - 0.22 * CGFloat(n))
-        let targetOff = CGFloat(n) * (r - targetSz / 2 - 10)
-        curCarSize += (targetSz - curCarSize) * 0.06
-        curCarOff += (targetOff - curCarOff) * 0.06
+        // ── Car target ──
+        let n = (-30 - max(-110, min(-30, rssi))) / 80.0
+        let tSz: CGFloat = sz * (0.36 - 0.24 * CGFloat(n))
+        let maxOff = r - tSz/2 - 10
+        let tOff = CGFloat(n) * maxOff
 
-        let px = cx + curCarOff * 0.7071 + CGFloat(roll) * 4
-        let py = cy + curCarOff * 0.7071 + CGFloat(pitch) * 4
-        let half = curCarSize / 2
+        carSz += (tSz - carSz) * 0.06
+        let targetX = cx + tOff * 0.7071 + CGFloat(roll) * 3
+        let targetY = cy + tOff * 0.7071 + CGFloat(pitch) * 3
+        carX += (targetX - carX) * 0.06
+        carY += (targetY - carY) * 0.06
 
-        if let car = carImage {
-            ctx.draw(car, in: .init(x: px - half, y: py - half,
-                                     width: curCarSize, height: curCarSize))
-        }
+        let half = carSz / 2
+        let carRect = CGRect(x: carX - half, y: carY - half, width: carSz, height: carSz)
+
+        // Use UIImage.draw — handles coordinate flip automatically
+        carImg?.draw(in: carRect)
     }
 
-    override var intrinsicContentSize: CGSize {
-        CGSize(width: radarSize, height: radarSize)
-    }
+    override var intrinsicContentSize: CGSize { CGSize(width: sz, height: sz) }
 }
 
 // MARK: - SwiftUI Wrapper
 struct RadarCardView: View {
     @ObservedObject var motion: MotionManager
+    @State private var rssiText = "-42 dBm"
+    private let radar = RadarUIView(frame: .zero)
 
     var body: some View {
         VStack(spacing: 12) {
-            // UIKit radar (no SwiftUI state = no bounce)
-            RadarContainer(motion: motion)
+            RadarRepresentable(motion: motion, radar: radar)
                 .frame(width: 200, height: 200)
                 .clipShape(Circle())
-                .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
+                .shadow(color: .black.opacity(0.1), radius: 10, y: 3)
 
-            // RSSI (static text, updated by UIKit)
-            Text("-42 dBm")
+            Text(rssiText)
                 .font(.system(size: 26, weight: .bold, design: .monospaced))
-                .foregroundColor(.primary)
 
             HStack(spacing: 8) {
                 StatusPill(icon: "shield.fill", text: "密钥正常", color: AppTheme.green)
@@ -303,23 +292,26 @@ struct RadarCardView: View {
         .frame(maxWidth: .infinity)
         .frame(height: 340)
         .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(AppTheme.cardBg)
+            RoundedRectangle(cornerRadius: 20).fill(AppTheme.cardBg)
                 .shadow(color: .black.opacity(0.05), radius: 10, y: 3)
         )
         .padding(.horizontal, 16)
+        .onAppear {
+            radar.onRssiChange = { val in
+                DispatchQueue.main.async {
+                    rssiText = String(format: "%.0f dBm", val)
+                }
+            }
+        }
     }
 }
 
-// UIViewRepresentable wrapper with gyro updates
-struct RadarContainer: UIViewRepresentable {
+struct RadarRepresentable: UIViewRepresentable {
     @ObservedObject var motion: MotionManager
-    private let radar = RadarUIView(frame: .zero)
-
+    let radar: RadarUIView
     func makeUIView(context: Context) -> RadarUIView { radar }
-
-    func updateUIView(_ uiView: RadarUIView, context: Context) {
-        uiView.updateGyro(pitch: motion.pitch, roll: motion.roll)
+    func updateUIView(_ v: RadarUIView, context: Context) {
+        v.updateGyro(pitch: motion.pitch, roll: motion.roll)
     }
 }
 
