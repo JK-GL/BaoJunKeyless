@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Settings View (Tab 4)
 struct SettingsView: View {
-    @Binding var isDarkMode: Bool
+    @AppStorage("isDarkMode") private var isDarkMode = true
     @AppStorage(AppThemePreset.storageKey) private var themeRaw = AppThemePreset.midnight.rawValue
     @AppStorage(AppThemeStorage.customAccentDataKey) private var accentData = Data()
     @AppStorage(AppThemeStorage.customBackgroundRevisionKey) private var bgRevision = 0
