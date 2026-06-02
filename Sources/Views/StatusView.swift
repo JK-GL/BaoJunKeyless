@@ -209,13 +209,13 @@ class RadarUIView: UIView {
             let a = CGFloat(deg) * .pi / 180
             let major = deg % 30 == 0
             let mid = deg % 10 == 0
-            let inner: CGFloat = major ? r - 14 : (mid ? r - 9 : r - 6)
-            let alpha: Double = major ? 0.5 : (mid ? 0.25 : 0.1)
-            let w: CGFloat = major ? 1.2 : 0.5
+            let inner: CGFloat = major ? r - 18 : (mid ? r - 11 : r - 7)
+            let alpha: Double = major ? 0.7 : (mid ? 0.4 : 0.15)
+            let w: CGFloat = major ? 1.8 : (mid ? 0.9 : 0.4)
             ctx.setStrokeColor(blue2.withAlphaComponent(alpha).cgColor)
             ctx.setLineWidth(w)
             ctx.move(to: .init(x: cx + inner * cos(a), y: cy + inner * sin(a)))
-            ctx.addLine(to: .init(x: cx + (r-1) * cos(a), y: cy + (r-1) * sin(a)))
+            ctx.addLine(to: .init(x: cx + (r - 1) * cos(a), y: cy + (r - 1) * sin(a)))
             ctx.strokePath()
         }
 
@@ -317,10 +317,27 @@ struct RadarCardView: View {
             RadarRepresentable(motion: motion, radar: radar)
                 .frame(width: 280, height: 280)
                 .clipShape(Circle())
-            Text(rssiText)
-                .font(.system(size: 22, weight: .bold, design: .monospaced))
-                .foregroundColor(Color(red: 0.40, green: 0.78, blue: 1.00))
-                .padding(.top, 12)
+
+            // Pill badge for dBm
+            HStack(spacing: 4) {
+                Text(rssiText.replacingOccurrences(of: " dBm", with: ""))
+                    .font(.system(size: 20, weight: .bold, design: .monospaced))
+                Text("dBm")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(blue3)
+            }
+            .foregroundColor(blue2)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
+            .background(
+                Capsule()
+                    .fill(Color.black.opacity(0.6))
+                    .overlay(
+                        Capsule()
+                            .stroke(blue2.opacity(0.4), lineWidth: 1)
+                    )
+            )
+            .padding(.top, 14)
         }
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity)
