@@ -1,0 +1,46 @@
+name: Build Simulator
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-simulator:
+    runs-on: macos-15
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode Project
+        run: xcodegen generate
+
+      - name: Build for Simulator
+        run: |
+          xcodebuild \
+            -project BaoJunKeyless.xcodeproj \
+            -scheme BaoJunKeyless \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -configuration Debug \
+            build \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcpretty --color
+
+      - name: Find .app
+        run: |
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "BaoJunKeyless.app" -type d | head -1)
+          echo "APP_PATH=$APP_PATH" >> $GITHUB_ENV
+          ls -la "$APP_PATH"
+
+      - name: Upload .app
+        uses: actions/upload-artifact@v4
+        with:
+          name: BaoJunKeyless-Simulator
+          path: ${{ env.APP_PATH }}
+          retention-days: 7
