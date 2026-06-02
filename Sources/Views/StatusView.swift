@@ -85,107 +85,138 @@ struct HeaderView: View {
     }
 }
 
-// MARK: - Radar Card (Real Radar + Gyroscope)
+// MARK: - Radar Card (Military Radar Style)
 struct RadarCardView: View {
     @ObservedObject var motion: MotionManager
     @State private var rssi: Int = -42
     @State private var sweepAngle: Double = 0
-    @State private var radarSize: CGFloat = 220
+    private let radarSize: CGFloat = 260
 
-    // RSSI → normalized 0(center)…1(edge)
+    /// RSSI → 0.0 (strong, center) … 1.0 (weak, edge)
     private var signalNorm: Double {
         let clamped = max(-110, min(-30, rssi))
         return Double(-30 - clamped) / 80.0
     }
 
-    // Car size: strong signal → big, weak → small
-    private var carSize: CGFloat {
-        CGFloat(70 - signalNorm * 40) // 70 → 30
+    /// Car diameter: 60% (strong) → 15% (weak)
+    private var carDiameter: CGFloat {
+        radarSize * (0.60 - 0.45 * signalNorm)
     }
 
-    // Car offset from center: strong → near center, weak → far
+    /// Car offset from center (along 45° diagonal)
     private var carOffset: CGFloat {
-        let maxR = radarSize / 2 - 40
-        return CGFloat(signalNorm) * maxR * 0.6
+        let maxR = radarSize / 2 - carDiameter / 2 - 8
+        return maxR * signalNorm
+    }
+
+    private var carOpacity: Double {
+        1.0 - signalNorm * 0.45
     }
 
     var body: some View {
         VStack(spacing: 16) {
-            // Radar circle
+            // ── Radar disc (fixed frame, 3D tilt inside) ──
             ZStack {
-                // Background circle
+                // Dark radar background
                 Circle()
-                    .fill(Color(.systemGray6).opacity(0.5))
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color(red: 0.04, green: 0.10, blue: 0.18),
+                                Color(red: 0.02, green: 0.05, blue: 0.10)
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: radarSize / 2
+                        )
+                    )
                     .frame(width: radarSize, height: radarSize)
 
-                // 3 concentric rings
+                // 3 concentric rings (white on dark)
                 ForEach(1...3, id: \.self) { i in
                     Circle()
-                        .stroke(AppTheme.accent.opacity(0.08 + Double(i) * 0.03), lineWidth: 1)
+                        .stroke(Color.white.opacity(0.10 + Double(i) * 0.04), lineWidth: 0.8)
                         .frame(width: radarSize * CGFloat(i) / 3.0,
                                height: radarSize * CGFloat(i) / 3.0)
                 }
 
-                // Cross lines
-                ForEach(0..<4, id: \.self) { i in
-                    Rectangle()
-                        .fill(AppTheme.accent.opacity(0.06))
-                        .frame(width: 1, height: radarSize)
-                        .rotationEffect(.degrees(Double(i) * 45))
-                }
+                // Cross-hair lines
+                Rectangle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: 0.8, height: radarSize)
+                Rectangle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: radarSize, height: 0.8)
 
-                // Radar sweep fan (gradient tail)
-                RadarSweepShape()
+                // Diagonal lines
+                Rectangle()
+                    .fill(Color.white.opacity(0.05))
+                    .frame(width: 0.5, height: radarSize)
+                    .rotationEffect(.degrees(45))
+                Rectangle()
+                    .fill(Color.white.opacity(0.05))
+                    .frame(width: 0.5, height: radarSize)
+                    .rotationEffect(.degrees(-45))
+
+                // ── Sweep fan (gradient trail) ──
+                SweepFanShape()
                     .fill(
                         AngularGradient(
                             colors: [
-                                AppTheme.accent.opacity(0),
-                                AppTheme.accent.opacity(0.02),
-                                AppTheme.accent.opacity(0.08),
-                                AppTheme.accent.opacity(0.18)
+                                Color.clear,
+                                Color(red: 0.10, green: 0.55, blue: 1.0).opacity(0.02),
+                                Color(red: 0.10, green: 0.55, blue: 1.0).opacity(0.10),
+                                Color(red: 0.10, green: 0.55, blue: 1.0).opacity(0.25)
                             ],
                             center: .center,
-                            startAngle: .degrees(-50),
+                            startAngle: .degrees(-45),
                             endAngle: .degrees(0)
                         )
                     )
                     .frame(width: radarSize, height: radarSize)
                     .rotationEffect(.degrees(sweepAngle))
 
-                // Sweep line
-                Rectangle()
-                    .fill(AppTheme.accent.opacity(0.6))
-                    .frame(width: 1.5, height: radarSize / 2)
-                    .offset(y: -radarSize / 4)
-                    .rotationEffect(.degrees(sweepAngle))
+                // ── Sweep line with glow ──
+                ZStack {
+                    // Glow layer (blurred)
+                    Rectangle()
+                        .fill(Color(red: 0.10, green: 0.55, blue: 1.0).opacity(0.35))
+                        .frame(width: 6, height: radarSize / 2 + 10)
+                        .blur(radius: 6)
+                        .offset(y: -(radarSize / 4 + 5))
+                        .rotationEffect(.degrees(sweepAngle))
 
-                // Car icon — position based on signal
-                VStack(spacing: 2) {
-                    ZStack {
-                        Circle()
-                            .fill(AppTheme.accent.opacity(0.15))
-                            .frame(width: carSize, height: carSize)
-                        // 可替换为 Image("car") 使用 PNG 车图
-                        Image(systemName: "car.fill")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: carSize * 0.5, height: carSize * 0.5)
-                            .foregroundColor(AppTheme.accent)
-                    }
-                    .shadow(color: AppTheme.accent.opacity(0.3), radius: 8)
+                    // Sharp line
+                    Rectangle()
+                        .fill(Color(red: 0.30, green: 0.70, blue: 1.0))
+                        .frame(width: 1.2, height: radarSize / 2 + 10)
+                        .offset(y: -(radarSize / 4 + 5))
+                        .rotationEffect(.degrees(sweepAngle))
                 }
-                .offset(x: carOffset * 0.7, y: carOffset * 0.7) // move diagonally
-                .animation(.easeInOut(duration: 1.5), value: rssi)
+
+                // ── Car target (position + size driven by RSSI) ──
+                Image(systemName: "car.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: carDiameter, height: carDiameter)
+                    .foregroundColor(.white)
+                    .shadow(color: Color(red: 0.10, green: 0.55, blue: 1.0).opacity(0.8),
+                            radius: 12)
+                    .opacity(carOpacity)
+                    .offset(x: carOffset * 0.7071,   // cos(45°)
+                            y: carOffset * 0.7071)   // sin(45°)
+                    .animation(.easeInOut(duration: 0.8), value: rssi)
             }
-            .frame(width: radarSize, height: radarSize)
-            // Gyroscope 3D tilt effect
+            .fixedSize()            // ← lock frame, prevent layout bounce
             .rotation3DEffect(
-                .degrees(motion.pitch * 8),
-                axis: (x: 1, y: 0, z: 0)
+                .degrees(motion.pitch * 3),   // ±3° max
+                axis: (x: 1, y: 0, z: 0),
+                perspective: 500
             )
             .rotation3DEffect(
-                .degrees(motion.roll * 8),
-                axis: (x: 0, y: 1, z: 0)
+                .degrees(motion.roll * 3),
+                axis: (x: 0, y: 1, z: 0),
+                perspective: 500
             )
             .onAppear {
                 withAnimation(Animation.linear(duration: 3).repeatForever(autoreverses: false)) {
@@ -193,14 +224,14 @@ struct RadarCardView: View {
                 }
             }
 
-            // RSSI value
+            // RSSI display
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text("\(rssi)")
                     .font(.system(size: 28, weight: .bold, design: .monospaced))
-                    .foregroundColor(AppTheme.accent)
+                    .foregroundColor(.white)
                 Text("dBm")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.white.opacity(0.6))
             }
 
             // Status pills
@@ -216,22 +247,31 @@ struct RadarCardView: View {
         .padding(20)
         .background(
             RoundedRectangle(cornerRadius: 20)
-                .fill(AppTheme.cardBg)
-                .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 4)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.05, green: 0.08, blue: 0.15),
+                            Color(red: 0.02, green: 0.04, blue: 0.08)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .shadow(color: .black.opacity(0.3), radius: 16, x: 0, y: 6)
         )
         .padding(.horizontal, 16)
     }
 }
 
-// MARK: - Radar Sweep Fan Shape
-struct RadarSweepShape: Shape {
+// MARK: - Sweep Fan Shape (45° trail)
+struct SweepFanShape: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
         let center = CGPoint(x: rect.midX, y: rect.midY)
         let radius = max(rect.width, rect.height) / 2
         path.move(to: center)
         path.addArc(center: center, radius: radius,
-                    startAngle: .degrees(-50), endAngle: .degrees(0),
+                    startAngle: .degrees(-45), endAngle: .degrees(0),
                     clockwise: false)
         path.closeSubpath()
         return path
