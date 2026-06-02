@@ -22,33 +22,7 @@ jobs:
       - name: Generate Xcode Project
         run: xcodegen generate
 
-      - name: Create Temp Signing Identity
-        run: |
-          # Generate self-signed cert
-          openssl req -x509 -newkey rsa:2048 \
-            -keyout /tmp/key.pem -out /tmp/cert.pem \
-            -days 30 -nodes -subj "/CN=TempSigner"
-          openssl pkcs12 -export \
-            -in /tmp/cert.pem -inkey /tmp/key.pem \
-            -out /tmp/adhoc.p12 -password pass:t
-
-          # Create keychain
-          KC=$RUNNER_TEMP/build.keychain-db
-          KP=$(openssl rand -base64 24)
-          security create-keychain -p "$KP" "$KC"
-          security set-keychain-settings -lut 21600 "$KC"
-          security unlock-keychain -p "$KP" "$KC"
-          security import /tmp/adhoc.p12 -P "t" -A -t cert -f pkcs12 -k "$KC"
-          security set-key-partition-list -S apple-tool:,apple: -k "$KP" "$KC"
-          security list-keychains -d user -s "$KC" login.keychain-db
-
-          # Verify identity exists
-          security find-identity -v -p codesigning "$KC"
-          ID=$(security find-identity -v -p codesigning "$KC" | head -1 | awk -F'"' '{print $2}')
-          echo "SIGN_IDENTITY=$ID" >> $GITHUB_ENV
-          echo "==> Using identity: $ID"
-
-      - name: Build for Device
+      - name: Build for Device (Unsigned)
         run: |
           set -o pipefail
           xcodebuild \
@@ -56,28 +30,39 @@ jobs:
             -scheme BaoJunKeyless \
             -sdk iphoneos \
             -configuration Release \
-            -derivedDataPath build/DerivedData \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="$SIGN_IDENTITY" \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
             ENABLE_BITCODE=NO \
+            COPY_PHASE_STRIP=NO \
             2>&1 | xcpretty --color
 
-      - name: Package IPA
+      - name: Inspect .app
         run: |
           set -ex
-          APP=build/DerivedData/Build/Products/Release-iphoneos/BaoJunKeyless.app
-          echo "=== .app contents ==="
-          ls -la "$APP/"
+          APP=build/Build/Products/Release-iphoneos/BaoJunKeyless.app
+          echo "=== .app structure ==="
+          find "$APP" -maxdepth 1 -ls
+          echo "=== binary check ==="
+          file "$APP/BaoJunKeyless" || echo "NO BINARY FOUND"
+          echo "=== size ==="
+          du -sh "$APP"
 
-          # Ensure binary exists
-          test -f "$APP/BaoJunKeyless"
+      - name: Ad-hoc sign & Package IPA
+        run: |
+          set -ex
+          APP=build/Build/Products/Release-iphoneos/BaoJunKeyless.app
+
+          # Ad-hoc sign the binary directly
+          codesign --force --deep --sign - "$APP" || true
 
           mkdir -p Payload
           cp -R "$APP" Payload/
           zip -r -y BaoJunKeyless.ipa Payload
+
           ls -lh BaoJunKeyless.ipa
-          echo "=== IPA contents ==="
-          unzip -l BaoJunKeyless.ipa | grep "BaoJunKeyless$"
+          echo "=== binary in IPA ==="
+          unzip -l BaoJunKeyless.ipa | grep "BaoJunKeyless.app/BaoJunKeyless"
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
