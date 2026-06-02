@@ -70,7 +70,7 @@ struct LogView: View {
                 }
                 .padding(.vertical, 16)
             }
-            .background(AppTheme.pageBg.ignoresSafeArea())
+            .background(AppBackgroundView().ignoresSafeArea())
             .navigationTitle("日志")
             .navigationBarTitleDisplayMode(.large)
         }
