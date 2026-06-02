@@ -47,7 +47,7 @@ struct CollapsibleCard<Header: View, Content: View>: View {
     let icon: String
     let iconColor: Color
     @Binding var isExpanded: Bool
-    let headerExtra: Header?
+    let headerExtra: (() -> Header)?
     let content: () -> Content
 
     init(title: String, icon: String, iconColor: Color = .blue,
