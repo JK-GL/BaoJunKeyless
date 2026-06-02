@@ -5,30 +5,34 @@ struct ContentView: View {
     @AppStorage("isDarkMode") private var isDarkMode = false
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            StatusView()
-                .tabItem {
-                    Label("状态", systemImage: "car.fill")
-                }
-                .tag(0)
+        ZStack {
+            AppBackgroundView()
 
-            KeylessView()
-                .tabItem {
-                    Label("无感", systemImage: "dot.radiowaves.left.and.right")
-                }
-                .tag(1)
+            TabView(selection: $selectedTab) {
+                StatusView()
+                    .tabItem {
+                        Label("状态", systemImage: "car.fill")
+                    }
+                    .tag(0)
 
-            LogView()
-                .tabItem {
-                    Label("日志", systemImage: "list.bullet.rectangle")
-                }
-                .tag(2)
+                KeylessView()
+                    .tabItem {
+                        Label("无感", systemImage: "dot.radiowaves.left.and.right")
+                    }
+                    .tag(1)
 
-            SettingsView(isDarkMode: $isDarkMode)
-                .tabItem {
-                    Label("设置", systemImage: "gearshape.fill")
-                }
-                .tag(3)
+                LogView()
+                    .tabItem {
+                        Label("日志", systemImage: "list.bullet.rectangle")
+                    }
+                    .tag(2)
+
+                SettingsView(isDarkMode: $isDarkMode)
+                    .tabItem {
+                        Label("设置", systemImage: "gearshape.fill")
+                    }
+                    .tag(3)
+            }
         }
     }
 }
