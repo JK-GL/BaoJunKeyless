@@ -177,12 +177,14 @@ struct RadarCardView: View {
             }
         }
         .padding(16)
-        .frame(maxWidth:.infinity)       // fixed width
-        .fixedHeight(340)                // ← LOCKED HEIGHT, no bounce
+        .frame(maxWidth: .infinity)
+        .fixedHeight(340)
         .background(
-            RoundedRectangle(cornerRadius:20).fill(AppTheme.cardBg)
-                .shadow(color:.black.opacity(0.05),radius:10,y:3))
-        .padding(.horizontal,16)
+            RoundedRectangle(cornerRadius: 20)
+                .fill(AppTheme.cardBg)
+                .shadow(color: .black.opacity(0.05), radius: 10, y: 3)
+        )
+        .padding(.horizontal, 16)
         .onAppear {
             signal.start()
             withAnimation(Animation.linear(duration:3).repeatForever(autoreverses:false)){
