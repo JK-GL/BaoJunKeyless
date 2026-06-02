@@ -110,7 +110,7 @@ class RadarUIView: UIView {
     private let blue3 = UIColor(red: 0.40, green: 0.78, blue: 1.00, alpha: 1)
 
     // Pre-rendered wireframe car
-    private var carOutline: UIImage? = {
+    private var carOutline: UIImage? = { () -> UIImage? in
         let s: CGFloat = 200
         UIGraphicsBeginImageContextWithOptions(CGSize(width: s, height: s), false, 0)
         guard let ctx = UIGraphicsGetCurrentContext() else { return nil }
