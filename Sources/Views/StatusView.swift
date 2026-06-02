@@ -106,29 +106,33 @@ class RadarUIView: UIView {
         (-30 - max(-110, min(-30, rssi))) / 80.0
     }
 
-    // Pre-rendered car image
+    // Pre-rendered white car image with glow
     private var carImage: CGImage? = {
-        let size = CGSize(width: 120, height: 120)
-        UIGraphicsBeginImageContextWithOptions(size, false, 0)
-        let ctx = UIGraphicsGetCurrentContext()!
-        // Glow halo
-        let colors = [
-            UIColor(red: 0.3, green: 0.7, blue: 1, alpha: 0.35).cgColor,
-            UIColor(red: 0.3, green: 0.7, blue: 1, alpha: 0).cgColor
+        let sz: CGFloat = 120
+        UIGraphicsBeginImageContextWithOptions(CGSize(width: sz, height: sz), false, 0)
+        guard let ctx = UIGraphicsGetCurrentContext() else { return nil }
+
+        // 1. Blue glow halo behind car
+        let glowColors = [
+            UIColor(red: 0.3, green: 0.7, blue: 1, alpha: 0.4).cgColor,
+            UIColor(red: 0.3, green: 0.7, blue: 1, alpha: 0.0).cgColor
         ] as CFArray
-        if let grad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                                  colors: colors, locations: [0, 1]) {
-            ctx.drawRadialGradient(grad,
-                startCenter: CGPoint(x: 60, y: 60), startRadius: 0,
-                endCenter: CGPoint(x: 60, y: 60), endRadius: 50, options: [])
+        if let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                              colors: glowColors, locations: [0, 1]) {
+            ctx.drawRadialGradient(g,
+                startCenter: CGPoint(x: sz/2, y: sz/2), startRadius: 0,
+                endCenter: CGPoint(x: sz/2, y: sz/2), endRadius: sz * 0.42, options: [])
         }
-        // Car icon
-        let config = UIImage.SymbolConfiguration(pointSize: 52, weight: .bold)
-        if let car = UIImage(systemName: "car.fill", withConfiguration: config)?
-            .withTintColor(.white, renderingMode: .alwaysOriginal) {
+
+        // 2. Draw car icon in WHITE
+        let config = UIImage.SymbolConfiguration(pointSize: 48, weight: .medium)
+        if let car = UIImage(systemName: "car.fill", withConfiguration: config) {
             let w = car.size.width, h = car.size.height
-            car.draw(at: CGPoint(x: (60 - w/2), y: (60 - h/2)))
+            let rect = CGRect(x: (sz - w) / 2, y: (sz - h) / 2, width: w, height: h)
+            ctx.setFillColor(UIColor.white.cgColor)
+            car.withRenderingMode(.alwaysTemplate).draw(in: rect)
         }
+
         let img = UIGraphicsGetImageFromCurrentImageContext()?.cgImage
         UIGraphicsEndImageContext()
         return img
