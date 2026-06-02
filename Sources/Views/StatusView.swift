@@ -41,29 +41,31 @@ struct StatusView: View {
                 }
                 .padding(.bottom, 10)
             }
-            .background(AppTheme.pageBg.ignoresSafeArea())
+            .background(AppBackgroundView().ignoresSafeArea())
             .navigationBarHidden(true)
         }
         .navigationViewStyle(.stack)
     }
 }
 
-// MARK: - Header
+// MARK: - Header (XMusic style)
 struct HeaderView: View {
     @Binding var isRefreshing: Bool
 
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(Date(), format: .dateTime.month(.abbreviated).day())
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(ThemeColors.textTertiary)
                 Text("宝骏云海")
-                    .font(.title2.bold())
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .foregroundStyle(ThemeColors.textPrimary)
                 HStack(spacing: 6) {
-                    Circle()
-                        .fill(AppTheme.green)
-                        .frame(width: 8, height: 8)
+                    Circle().fill(AppTheme.green).frame(width: 8, height: 8)
                     Text("BLE 已连接")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(ThemeColors.textSecondary)
                 }
             }
             Spacer()
@@ -75,7 +77,7 @@ struct HeaderView: View {
             }) {
                 Image(systemName: "arrow.clockwise")
                     .font(.title3)
-                    .foregroundColor(.primary)
+                    .foregroundStyle(ThemeColors.textPrimary)
                     .rotationEffect(.degrees(isRefreshing ? 360 : 0))
             }
         }
@@ -339,8 +341,14 @@ struct RadarCardView: View {
         }
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
-        .background(RoundedRectangle(cornerRadius: 20).fill(AppTheme.cardBg)
-            .shadow(color: .black.opacity(0.05), radius: 10, y: 3))
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(ThemeColors.cardBg)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(ThemeColors.cardStroke, lineWidth: 1)
+        )
         .padding(.horizontal, 16)
         .onAppear {
             radar.onRssiChange = { val in
