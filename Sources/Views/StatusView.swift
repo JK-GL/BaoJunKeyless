@@ -324,9 +324,9 @@ struct RadarCardView: View {
                     .font(.system(size: 20, weight: .bold, design: .monospaced))
                 Text("dBm")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(blue3)
+                    .foregroundColor(Color(red: 0.40, green: 0.78, blue: 1.00))
             }
-            .foregroundColor(blue2)
+            .foregroundColor(Color(red: 0.20, green: 0.60, blue: 1.00))
             .padding(.horizontal, 20)
             .padding(.vertical, 10)
             .background(
@@ -334,7 +334,7 @@ struct RadarCardView: View {
                     .fill(Color.black.opacity(0.6))
                     .overlay(
                         Capsule()
-                            .stroke(blue2.opacity(0.4), lineWidth: 1)
+                            .stroke(Color(red: 0.20, green: 0.60, blue: 1.00).opacity(0.4), lineWidth: 1)
                     )
             )
             .padding(.top, 14)
