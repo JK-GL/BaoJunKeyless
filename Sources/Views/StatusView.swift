@@ -177,7 +177,8 @@ struct RadarCardView: View {
             }
         }
         .padding(16)
-        .frame(maxWidth: .infinity, height: 340)
+        .frame(maxWidth: .infinity)
+        .frame(height: 340)
         .background(
             RoundedRectangle(cornerRadius: 20)
                 .fill(AppTheme.cardBg)
