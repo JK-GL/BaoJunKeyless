@@ -173,6 +173,7 @@ struct AppThemeConfiguration {
     var gradientColors: [Color] { preset.presetGradientColors }
     var primaryGlow: Color { preset == .custom ? customAccent.opacity(0.28) : preset.presetPrimaryGlow }
     var secondaryGlow: Color { preset.presetSecondaryGlow }
+    var hasCustomBackgroundImage: Bool { !(customBackgroundImageData?.isEmpty ?? true) }
 
     init(selectedThemeRawValue: String, customAccentData: Data,
          customBackgroundRevision: Int, customBackgroundBlur: Double = 0) {
