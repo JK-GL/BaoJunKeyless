@@ -37,7 +37,7 @@ struct KeylessView: View {
                 }
                 .padding(.vertical, 16)
             }
-            .background(AppTheme.pageBg.ignoresSafeArea())
+            .background(AppBackgroundView().ignoresSafeArea())
             .navigationTitle("无感车控")
             .navigationBarTitleDisplayMode(.large)
         }
