@@ -335,7 +335,7 @@ struct RadarCardView: View {
                         .fill(Color.black.opacity(0.7))
                         .overlay(Capsule().stroke(Color(red: 0.20, green: 0.60, blue: 1.00).opacity(0.35), lineWidth: 0.8))
                 )
-                .offset(y: -8)
+                .offset(y: -22)
             }
 
             // Status pills
