@@ -85,7 +85,7 @@ struct HeaderView: View {
     }
 }
 
-// MARK: - UIKit Radar View (no SwiftUI layout = no bounce)
+// MARK: - UIKit Radar View (beautiful, no bounce)
 class RadarUIView: UIView {
     private let radarSize: CGFloat = 200
     private var sweepAngle: CGFloat = 0
@@ -96,16 +96,43 @@ class RadarUIView: UIView {
     private var startTime: CFTimeInterval = 0
     private var signalTimer: Timer?
     private var targetRssi: Double = -42
+    private let colorSpace = CGColorSpaceCreateDeviceRGB()
 
-    // Car layer
-    private let carLayer = CALayer()
-    private var currentCarSize: CGFloat = 80
-    private var currentCarOffset: CGFloat = 0
+    // Smoothed values
+    private var curCarSize: CGFloat = 80
+    private var curCarOff: CGFloat = 0
 
     private var norm: Double {
-        let c = max(-110.0, min(-30.0, rssi))
-        return (-30 - c) / 80.0
+        (-30 - max(-110, min(-30, rssi))) / 80.0
     }
+
+    // Pre-rendered car image
+    private var carImage: CGImage? = {
+        let size = CGSize(width: 120, height: 120)
+        UIGraphicsBeginImageContextWithOptions(size, false, 0)
+        let ctx = UIGraphicsGetCurrentContext()!
+        // Glow halo
+        let colors = [
+            UIColor(red: 0.3, green: 0.7, blue: 1, alpha: 0.35).cgColor,
+            UIColor(red: 0.3, green: 0.7, blue: 1, alpha: 0).cgColor
+        ] as CFArray
+        if let grad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                  colors: colors, locations: [0, 1]) {
+            ctx.drawRadialGradient(grad,
+                startCenter: CGPoint(x: 60, y: 60), startRadius: 0,
+                endCenter: CGPoint(x: 60, y: 60), endRadius: 50, options: [])
+        }
+        // Car icon
+        let config = UIImage.SymbolConfiguration(pointSize: 52, weight: .bold)
+        if let car = UIImage(systemName: "car.fill", withConfiguration: config)?
+            .withTintColor(.white, renderingMode: .alwaysOriginal) {
+            let w = car.size.width, h = car.size.height
+            car.draw(at: CGPoint(x: (60 - w/2), y: (60 - h/2)))
+        }
+        let img = UIGraphicsGetImageFromCurrentImageContext()?.cgImage
+        UIGraphicsEndImageContext()
+        return img
+    }()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -119,161 +146,122 @@ class RadarUIView: UIView {
     private func setup() {
         isOpaque = false
         backgroundColor = .clear
-
-        // Car image
-        let config = UIImage.SymbolConfiguration(pointSize: 60, weight: .semibold)
-        let img = UIImage(systemName: "car.fill", withConfiguration: config)?
-            .withTintColor(.white, renderingMode: .alwaysOriginal)
-        carLayer.contents = img?.cgImage
-        carLayer.contentsGravity = .resizeAspect
-        carLayer.shadowColor = UIColor(red: 0.2, green: 0.6, blue: 1, alpha: 0.6).cgColor
-        carLayer.shadowRadius = 10
-        carLayer.shadowOpacity = 1
-        carLayer.shadowOffset = .zero
-        layer.addSublayer(carLayer)
-
-        // Display link for sweep animation
         startTime = CACurrentMediaTime()
         let dl = CADisplayLink(target: self, selector: #selector(tick))
         dl.add(to: .main, forMode: .common)
         displayLink = dl
-
-        // Signal simulation
         signalTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
             self?.targetRssi = Double(Int.random(in: -85 ... -35))
         }
     }
 
     @objc private func tick() {
-        // Sweep: 1 revolution per 3 seconds
-        let elapsed = CACurrentMediaTime() - startTime
-        sweepAngle = CGFloat(fmod(elapsed / 3.0, 1.0)) * 360.0
-
-        // Smooth RSSI
+        let t = CACurrentMediaTime() - startTime
+        sweepAngle = CGFloat(fmod(t / 3.0, 1.0)) * 360.0
         rssi += (targetRssi - rssi) * 0.05
-
         setNeedsDisplay()
     }
 
     func updateGyro(pitch: Double, roll: Double) {
-        self.pitch = pitch
-        self.roll = roll
+        self.pitch = pitch; self.roll = roll
     }
 
-    deinit {
-        displayLink?.invalidate()
-        signalTimer?.invalidate()
-    }
+    deinit { displayLink?.invalidate(); signalTimer?.invalidate() }
 
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
+        let cx = rect.midX, cy = rect.midY, r = radarSize / 2
+        let sweepRad = sweepAngle * .pi / 180
 
-        let cx = rect.midX
-        let cy = rect.midY
-        let r = radarSize / 2
-
-        // ── Dark circle background ──
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        if let grad = CGGradient(colorsSpace: colorSpace,
-                                  colors: [
-                                    UIColor(red: 0.06, green: 0.12, blue: 0.22, alpha: 1).cgColor,
-                                    UIColor(red: 0.02, green: 0.04, blue: 0.08, alpha: 1).cgColor
-                                  ] as CFArray,
-                                  locations: [0, 1]) {
-            ctx.drawRadialGradient(grad,
-                                   startCenter: CGPoint(x: cx, y: cy), startRadius: 0,
-                                   endCenter: CGPoint(x: cx, y: cy), endRadius: r,
-                                   options: [])
+        // ── 1. Dark disc ──
+        if let g = CGGradient(colorsSpace: colorSpace, colors: [
+            UIColor(red: 0.05, green: 0.10, blue: 0.20, alpha: 1).cgColor,
+            UIColor(red: 0.01, green: 0.03, blue: 0.06, alpha: 1).cgColor
+        ] as CFArray, locations: [0, 1]) {
+            ctx.drawRadialGradient(g,
+                startCenter: .init(x: cx, y: cy), startRadius: 0,
+                endCenter: .init(x: cx, y: cy), endRadius: r, options: [])
         }
 
-        // ── Concentric rings ──
+        // ── 2. Center glow ──
+        ctx.saveGState()
+        ctx.addEllipse(in: .init(x: cx - r, y: cy - r, width: r*2, height: r*2))
+        ctx.clip()
+        if let g = CGGradient(colorsSpace: colorSpace, colors: [
+            UIColor(red: 0.15, green: 0.4, blue: 0.8, alpha: 0.12).cgColor,
+            UIColor.clear.cgColor
+        ] as CFArray, locations: [0, 1]) {
+            ctx.drawRadialGradient(g,
+                startCenter: .init(x: cx, y: cy), startRadius: 0,
+                endCenter: .init(x: cx, y: cy), endRadius: r * 0.5, options: [])
+        }
+
+        // ── 3. Sweep trail ──
+        let fanAngle: CGFloat = 50 * .pi / 180
+        let segments = 12
+        for i in 0..<segments {
+            let frac = CGFloat(i) / CGFloat(segments)
+            let a1 = sweepRad - fanAngle * (1 - frac)
+            let a2 = sweepRad - fanAngle * (1 - frac - 1.0/CGFloat(segments))
+            let alpha = Double(1 - frac) * 0.25
+            ctx.setFillColor(UIColor(red: 0.25, green: 0.65, blue: 1, alpha: alpha).cgColor)
+            ctx.move(to: .init(x: cx, y: cy))
+            ctx.addArc(center: .init(x: cx, y: cy), radius: r,
+                       startAngle: a1, endAngle: a2, clockwise: false)
+            ctx.closePath()
+            ctx.fillPath()
+        }
+
+        // ── 4. Sweep line + glow ──
+        let end = CGPoint(x: cx + r * cos(sweepRad), y: cy + r * sin(sweepRad))
+        // Glow
+        ctx.setStrokeColor(UIColor(red: 0.3, green: 0.7, blue: 1, alpha: 0.2).cgColor)
+        ctx.setLineWidth(6); ctx.setLineCap(.round)
+        ctx.move(to: .init(x: cx, y: cy)); ctx.addLine(to: end); ctx.strokePath()
+        // Sharp
+        ctx.setStrokeColor(UIColor(red: 0.5, green: 0.82, blue: 1, alpha: 0.9).cgColor)
+        ctx.setLineWidth(1.2)
+        ctx.move(to: .init(x: cx, y: cy)); ctx.addLine(to: end); ctx.strokePath()
+
+        // ── 5. Rings (gradient opacity) ──
+        ctx.restoreGState()
         for i in 1...3 {
             let ringR = r * CGFloat(i) / 3.0
-            ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.06 + Double(i) * 0.03).cgColor)
-            ctx.setLineWidth(0.6)
-            ctx.strokeEllipse(in: CGRect(x: cx - ringR, y: cy - ringR,
-                                         width: ringR * 2, height: ringR * 2))
+            ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.04 + Double(i) * 0.04).cgColor)
+            ctx.setLineWidth(0.7)
+            ctx.strokeEllipse(in: .init(x: cx - ringR, y: cy - ringR,
+                                        width: ringR * 2, height: ringR * 2))
         }
 
-        // ── Grid lines ──
-        ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.05).cgColor)
+        // ── 6. Grid ──
+        ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.06).cgColor)
         ctx.setLineWidth(0.5)
-        // Cross
-        ctx.move(to: CGPoint(x: cx, y: cy - r))
-        ctx.addLine(to: CGPoint(x: cx, y: cy + r))
-        ctx.move(to: CGPoint(x: cx - r, y: cy))
-        ctx.addLine(to: CGPoint(x: cx + r, y: cy))
+        ctx.move(to: .init(x: cx, y: cy - r)); ctx.addLine(to: .init(x: cx, y: cy + r))
+        ctx.move(to: .init(x: cx - r, y: cy)); ctx.addLine(to: .init(x: cx + r, y: cy))
         ctx.strokePath()
 
-        // Diagonals
+        let d = r * 0.7071
         ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.03).cgColor)
         ctx.setLineWidth(0.3)
-        let d = r * 0.7071
-        ctx.move(to: CGPoint(x: cx - d, y: cy - d))
-        ctx.addLine(to: CGPoint(x: cx + d, y: cy + d))
-        ctx.move(to: CGPoint(x: cx + d, y: cy - d))
-        ctx.addLine(to: CGPoint(x: cx - d, y: cy + d))
+        ctx.move(to: .init(x: cx - d, y: cy - d)); ctx.addLine(to: .init(x: cx + d, y: cy + d))
+        ctx.move(to: .init(x: cx + d, y: cy - d)); ctx.addLine(to: .init(x: cx - d, y: cy + d))
         ctx.strokePath()
 
-        // ── Sweep fan ──
-        let sweepRad = sweepAngle * .pi / 180
-        let fanAngle: CGFloat = 40 * .pi / 180
-        let startA = sweepRad - fanAngle
-        let endA = sweepRad
-
-        ctx.saveGState()
-        // Clip to circle
-        ctx.addEllipse(in: CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2))
-        ctx.clip()
-
-        // Fan gradient
-        if let fanGrad = CGGradient(colorsSpace: colorSpace,
-                                     colors: [
-                                        UIColor(red: 0.2, green: 0.6, blue: 1, alpha: 0).cgColor,
-                                        UIColor(red: 0.2, green: 0.6, blue: 1, alpha: 0.08).cgColor,
-                                        UIColor(red: 0.2, green: 0.6, blue: 1, alpha: 0.22).cgColor
-                                     ] as CFArray,
-                                     locations: [0, 0.5, 1]) {
-            ctx.move(to: CGPoint(x: cx, y: cy))
-            ctx.addArc(center: CGPoint(x: cx, y: cy), radius: r,
-                       startAngle: startA, endAngle: endA, clockwise: false)
-            ctx.closePath()
-            ctx.drawPath(using: .fill)
-        }
-
-        // Sweep line glow
-        let lineAngle = sweepRad
-        let lineEnd = CGPoint(x: cx + r * cos(lineAngle), y: cy + r * sin(lineAngle))
-        ctx.setStrokeColor(UIColor(red: 0.2, green: 0.6, blue: 1, alpha: 0.3).cgColor)
-        ctx.setLineWidth(4)
-        ctx.setLineCap(.round)
-        ctx.move(to: CGPoint(x: cx, y: cy))
-        ctx.addLine(to: lineEnd)
-        ctx.strokePath()
-
-        // Sweep line sharp
-        ctx.setStrokeColor(UIColor(red: 0.4, green: 0.75, blue: 1, alpha: 1).cgColor)
-        ctx.setLineWidth(1)
-        ctx.move(to: CGPoint(x: cx, y: cy))
-        ctx.addLine(to: lineEnd)
-        ctx.strokePath()
-
-        ctx.restoreGState()
-
-        // ── Car target ──
+        // ── 7. Car target ──
         let n = norm
-        let targetSize: CGFloat = radarSize * (0.38 - 0.26 * CGFloat(n))
-        let targetOffset: CGFloat = CGFloat(n) * (r - targetSize / 2 - 8)
+        let targetSz = radarSize * (0.35 - 0.22 * CGFloat(n))
+        let targetOff = CGFloat(n) * (r - targetSz / 2 - 10)
+        curCarSize += (targetSz - curCarSize) * 0.06
+        curCarOff += (targetOff - curCarOff) * 0.06
 
-        currentCarSize += (targetSize - currentCarSize) * 0.08
-        currentCarOffset += (targetOffset - currentCarOffset) * 0.08
+        let px = cx + curCarOff * 0.7071 + CGFloat(roll) * 4
+        let py = cy + curCarOff * 0.7071 + CGFloat(pitch) * 4
+        let half = curCarSize / 2
 
-        let carX = cx + currentCarOffset * 0.7071 + CGFloat(roll) * 4
-        let carY = cy + currentCarOffset * 0.7071 + CGFloat(pitch) * 4
-        let half = currentCarSize / 2
-
-        carLayer.frame = CGRect(x: carX - half, y: carY - half,
-                                width: currentCarSize, height: currentCarSize)
+        if let car = carImage {
+            ctx.draw(car, in: .init(x: px - half, y: py - half,
+                                     width: curCarSize, height: curCarSize))
+        }
     }
 
     override var intrinsicContentSize: CGSize {
