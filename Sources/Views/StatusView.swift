@@ -85,20 +85,16 @@ struct HeaderView: View {
     }
 }
 
-// MARK: - Signal Simulator (separate to avoid ScrollView bounce)
+// MARK: - Signal Simulator
 class SignalSimulator: ObservableObject {
     @Published var rssi: Double = -42
     private var timer: Timer?
-
     func start() {
         timer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
-            withAnimation(.easeInOut(duration: 1.5)) {
-                self?.rssi = Double(Int.random(in: -85 ... -35))
-            }
+            self?.rssi = Double(Int.random(in: -85 ... -35))
         }
     }
-
-    func stop() { timer?.invalidate(); timer = nil }
+    func stop() { timer?.invalidate() }
     deinit { stop() }
 }
 
@@ -109,126 +105,87 @@ struct RadarCardView: View {
     @State private var sweepAngle: Double = 0
     private let radarSize: CGFloat = 200
 
-    // 0 = strong(center) … 1 = weak(edge)
     private var norm: Double {
-        let clamped = max(-110, min(-30, signal.rssi))
-        return (-30 - clamped) / 80.0
+        let c = max(-110.0, min(-30.0, signal.rssi))
+        return (-30 - c) / 80.0
     }
-
-    // Car diameter: 38% (strong) → 12% (weak)
     private var carDia: CGFloat { radarSize * (0.38 - 0.26 * norm) }
-
-    // Car offset from center along 45°
-    private var carOff: CGFloat {
-        let maxR = radarSize / 2 - carDia / 2 - 8
-        return CGFloat(norm) * maxR
-    }
+    private var carOff: CGFloat { CGFloat(norm) * (radarSize / 2 - carDia / 2 - 8) }
 
     var body: some View {
         VStack(spacing: 12) {
-            // ── Dark radar disc (circle only) ──
+            // Dark radar disc
             ZStack {
                 Circle()
                     .fill(RadialGradient(
-                        colors: [
-                            Color(red: 0.06, green: 0.12, blue: 0.22),
-                            Color(red: 0.02, green: 0.04, blue: 0.08)
-                        ],
-                        center: .center, startRadius: 10, endRadius: radarSize / 2
-                    ))
+                        colors: [Color(red:0.06,green:0.12,blue:0.22),
+                                 Color(red:0.02,green:0.04,blue:0.08)],
+                        center: .center, startRadius: 10, endRadius: radarSize/2))
 
-                // 3 rings
                 ForEach(1...3, id: \.self) { i in
                     Circle()
-                        .stroke(Color.white.opacity(0.06 + Double(i) * 0.03),
-                                lineWidth: 0.6)
-                        .frame(width: radarSize * CGFloat(i) / 3,
-                               height: radarSize * CGFloat(i) / 3)
+                        .stroke(Color.white.opacity(0.06 + Double(i)*0.03), lineWidth: 0.6)
+                        .frame(width: radarSize*CGFloat(i)/3, height: radarSize*CGFloat(i)/3)
                 }
-
-                // Grid lines
-                Rectangle().fill(Color.white.opacity(0.05)).frame(width: 0.5, height: radarSize)
-                Rectangle().fill(Color.white.opacity(0.05)).frame(width: radarSize, height: 0.5)
-                Rectangle().fill(Color.white.opacity(0.03)).frame(width: 0.3, height: radarSize)
+                Rectangle().fill(Color.white.opacity(0.05)).frame(width:0.5,height:radarSize)
+                Rectangle().fill(Color.white.opacity(0.05)).frame(width:radarSize,height:0.5)
+                Rectangle().fill(Color.white.opacity(0.03)).frame(width:0.3,height:radarSize)
                     .rotationEffect(.degrees(45))
-                Rectangle().fill(Color.white.opacity(0.03)).frame(width: 0.3, height: radarSize)
+                Rectangle().fill(Color.white.opacity(0.03)).frame(width:0.3,height:radarSize)
                     .rotationEffect(.degrees(-45))
 
-                // Sweep fan
                 SweepFanShape()
-                    .fill(AngularGradient(
-                        colors: [.clear,
-                                 Color(red: 0.2, green: 0.6, blue: 1).opacity(0.02),
-                                 Color(red: 0.2, green: 0.6, blue: 1).opacity(0.08),
-                                 Color(red: 0.2, green: 0.6, blue: 1).opacity(0.18)],
-                        center: .center,
-                        startAngle: .degrees(-40), endAngle: .degrees(0)
-                    ))
-                    .frame(width: radarSize, height: radarSize)
-                    .rotationEffect(.degrees(sweepAngle))
-
-                // Sweep line + glow
-                Rectangle()
-                    .fill(Color(red: 0.2, green: 0.6, blue: 1).opacity(0.25))
-                    .frame(width: 4, height: radarSize / 2 + 6)
-                    .blur(radius: 4)
-                    .offset(y: -(radarSize / 4 + 3))
+                    .fill(AngularGradient(colors:[.clear,
+                        Color(red:0.2,green:0.6,blue:1).opacity(0.02),
+                        Color(red:0.2,green:0.6,blue:1).opacity(0.08),
+                        Color(red:0.2,green:0.6,blue:1).opacity(0.18)],
+                        center:.center, startAngle:.degrees(-40), endAngle:.degrees(0)))
+                    .frame(width:radarSize,height:radarSize)
                     .rotationEffect(.degrees(sweepAngle))
 
                 Rectangle()
-                    .fill(Color(red: 0.4, green: 0.75, blue: 1))
-                    .frame(width: 1, height: radarSize / 2 + 6)
-                    .offset(y: -(radarSize / 4 + 3))
-                    .rotationEffect(.degrees(sweepAngle))
+                    .fill(Color(red:0.2,green:0.6,blue:1).opacity(0.25))
+                    .frame(width:4,height:radarSize/2+6).blur(radius:4)
+                    .offset(y:-(radarSize/4+3)).rotationEffect(.degrees(sweepAngle))
+                Rectangle()
+                    .fill(Color(red:0.4,green:0.75,blue:1))
+                    .frame(width:1,height:radarSize/2+6)
+                    .offset(y:-(radarSize/4+3)).rotationEffect(.degrees(sweepAngle))
 
-                // Car target
-                Image(systemName: "car.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: carDia, height: carDia)
+                Image(systemName:"car.fill").resizable().scaledToFit()
+                    .frame(width:carDia,height:carDia)
                     .foregroundColor(.white)
-                    .shadow(color: Color(red: 0.2, green: 0.6, blue: 1).opacity(0.6),
-                            radius: 8)
-                    .offset(
-                        x: carOff * 0.7071 + CGFloat(motion.roll) * 4,
-                        y: carOff * 0.7071 + CGFloat(motion.pitch) * 4
-                    )
+                    .shadow(color:Color(red:0.2,green:0.6,blue:1).opacity(0.6),radius:8)
+                    .offset(x:carOff*0.7071 + CGFloat(motion.roll)*4,
+                            y:carOff*0.7071 + CGFloat(motion.pitch)*4)
             }
-            .frame(width: radarSize, height: radarSize)
+            .frame(width:radarSize,height:radarSize)
             .clipShape(Circle())
-            .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
 
-            // RSSI
-            HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(String(format: "%.0f", signal.rssi))
-                    .font(.system(size: 26, weight: .bold, design: .monospaced))
-                    .foregroundColor(.primary)
-                Text("dBm")
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary)
+            HStack(alignment:.firstTextBaseline,spacing:3) {
+                Text(String(format:"%.0f",signal.rssi))
+                    .font(.system(size:26,weight:.bold,design:.monospaced))
+                Text("dBm").font(.system(size:13)).foregroundColor(.secondary)
             }
-
-            // Pills
-            HStack(spacing: 8) {
-                StatusPill(icon: "shield.fill", text: "密钥正常", color: AppTheme.green)
-                StatusPill(icon: "bolt.fill", text: "蓝牙已连接", color: AppTheme.green)
+            HStack(spacing:8) {
+                StatusPill(icon:"shield.fill",text:"密钥正常",color:AppTheme.green)
+                StatusPill(icon:"bolt.fill",text:"蓝牙已连接",color:AppTheme.green)
             }
-            HStack(spacing: 8) {
-                StatusPill(icon: "arrow.triangle.2.circlepath", text: "全程接管", color: AppTheme.purple)
-                StatusPill(icon: "lock.open.fill", text: "未锁车", color: AppTheme.orange)
+            HStack(spacing:8) {
+                StatusPill(icon:"arrow.triangle.2.circlepath",text:"全程接管",color:AppTheme.purple)
+                StatusPill(icon:"lock.open.fill",text:"未锁车",color:AppTheme.orange)
             }
         }
         .padding(16)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth:.infinity)       // fixed width
+        .fixedHeight(340)                // ← LOCKED HEIGHT, no bounce
         .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(AppTheme.cardBg)
-                .shadow(color: .black.opacity(0.05), radius: 10, y: 3)
-        )
-        .padding(.horizontal, 16)
+            RoundedRectangle(cornerRadius:20).fill(AppTheme.cardBg)
+                .shadow(color:.black.opacity(0.05),radius:10,y:3))
+        .padding(.horizontal,16)
         .onAppear {
             signal.start()
-            withAnimation(Animation.linear(duration: 3).repeatForever(autoreverses: false)) {
+            withAnimation(Animation.linear(duration:3).repeatForever(autoreverses:false)){
                 sweepAngle = 360
             }
         }
@@ -239,11 +196,10 @@ struct RadarCardView: View {
 struct SweepFanShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
-        let c = CGPoint(x: rect.midX, y: rect.midY)
-        let r = max(rect.width, rect.height) / 2
-        p.move(to: c)
-        p.addArc(center: c, radius: r,
-                 startAngle: .degrees(-40), endAngle: .degrees(0), clockwise: false)
+        let c = CGPoint(x:rect.midX,y:rect.midY)
+        p.move(to:c)
+        p.addArc(center:c, radius:max(rect.width,rect.height)/2,
+                 startAngle:.degrees(-40), endAngle:.degrees(0), clockwise:false)
         p.closeSubpath()
         return p
     }
