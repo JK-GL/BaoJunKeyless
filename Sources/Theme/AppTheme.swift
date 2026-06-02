@@ -105,7 +105,6 @@ enum AppThemeDefaults {
 private struct PersistedThemeColor: Codable {
     let red: Double; let green: Double; let blue: Double; let alpha: Double
 
-    @MainActor
     init(color: Color) {
         let uiColor = UIColor(color)
         var r: CGFloat = 1, g: CGFloat = 1, b: CGFloat = 1, a: CGFloat = 1
@@ -130,7 +129,6 @@ enum AppThemeStorage {
         return p.swiftUIColor
     }
 
-    @MainActor
     static func customAccentData(from color: Color) -> Data {
         (try? JSONEncoder().encode(PersistedThemeColor(color: color))) ?? Data()
     }
