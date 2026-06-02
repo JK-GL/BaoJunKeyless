@@ -11,16 +11,11 @@ class MotionManager: ObservableObject {
         guard manager.isDeviceMotionAvailable else { return }
         manager.deviceMotionUpdateInterval = 1.0 / 60.0
         manager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
-            guard let m = motion else { return }
-            // Smooth the values
+            guard let self = self, let m = motion else { return }
             let smooth = 0.15
-            self?.pitch = self.map(m.attitude.pitch, smooth: smooth, old: self?.pitch ?? 0)
-            self?.roll  = self.map(m.attitude.roll,  smooth: smooth, old: self?.roll  ?? 0)
+            self.pitch += smooth * (m.attitude.pitch - self.pitch)
+            self.roll  += smooth * (m.attitude.roll  - self.roll)
         }
-    }
-
-    private func map(_ new: Double, smooth: Double, old: Double) -> Double {
-        return old + smooth * (new - old)
     }
 
     deinit { manager.stopDeviceMotionUpdates() }

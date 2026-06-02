@@ -24,27 +24,33 @@ jobs:
 
       - name: Create Temp Signing Identity
         run: |
+          # Generate self-signed cert
           openssl req -x509 -newkey rsa:2048 \
             -keyout /tmp/key.pem -out /tmp/cert.pem \
-            -days 30 -nodes -subj "/CN=AdHoc Signer"
+            -days 30 -nodes -subj "/CN=TempSigner"
           openssl pkcs12 -export \
             -in /tmp/cert.pem -inkey /tmp/key.pem \
-            -out /tmp/adhoc.p12 -password pass:temppass
+            -out /tmp/adhoc.p12 -password pass:t
 
-          KEYCHAIN=$RUNNER_TEMP/adhoc.keychain-db
-          KC_PASS=$(openssl rand -base64 24)
-          security create-keychain -p "$KC_PASS" "$KEYCHAIN"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN"
-          security unlock-keychain -p "$KC_PASS" "$KEYCHAIN"
-          security import /tmp/adhoc.p12 -P "temppass" -A -t cert -f pkcs12 -k "$KEYCHAIN"
-          security set-key-partition-list -S apple-tool:,apple: -k "$KC_PASS" "$KEYCHAIN"
-          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          # Create keychain
+          KC=$RUNNER_TEMP/build.keychain-db
+          KP=$(openssl rand -base64 24)
+          security create-keychain -p "$KP" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KP" "$KC"
+          security import /tmp/adhoc.p12 -P "t" -A -t cert -f pkcs12 -k "$KC"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KP" "$KC"
+          security list-keychains -d user -s "$KC" login.keychain-db
 
-          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep "AdHoc" | awk -F'"' '{print $2}')
-          echo "SIGN_IDENTITY=$IDENTITY" >> $GITHUB_ENV
+          # Verify identity exists
+          security find-identity -v -p codesigning "$KC"
+          ID=$(security find-identity -v -p codesigning "$KC" | head -1 | awk -F'"' '{print $2}')
+          echo "SIGN_IDENTITY=$ID" >> $GITHUB_ENV
+          echo "==> Using identity: $ID"
 
       - name: Build for Device
         run: |
+          set -o pipefail
           xcodebuild \
             -project BaoJunKeyless.xcodeproj \
             -scheme BaoJunKeyless \
@@ -54,26 +60,24 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="$SIGN_IDENTITY" \
             ENABLE_BITCODE=NO \
-            | xcpretty --color || true
+            2>&1 | xcpretty --color
 
-      - name: Package IPA (Manual)
+      - name: Package IPA
         run: |
-          APP_PATH=$(find build/DerivedData -name "BaoJunKeyless.app" -type d | head -1)
-          echo "APP: $APP_PATH"
-          ls -la "$APP_PATH/"
+          set -ex
+          APP=build/DerivedData/Build/Products/Release-iphoneos/BaoJunKeyless.app
+          echo "=== .app contents ==="
+          ls -la "$APP/"
 
-          # Re-sign with ad-hoc
-          /usr/bin/codesign --force --sign "$SIGN_IDENTITY" \
-            --entitlements /dev/null "$APP_PATH"
+          # Ensure binary exists
+          test -f "$APP/BaoJunKeyless"
 
-          # Create IPA
           mkdir -p Payload
-          cp -R "$APP_PATH" Payload/
+          cp -R "$APP" Payload/
           zip -r -y BaoJunKeyless.ipa Payload
-
           ls -lh BaoJunKeyless.ipa
-          echo "--- contents ---"
-          unzip -l BaoJunKeyless.ipa | tail -15
+          echo "=== IPA contents ==="
+          unzip -l BaoJunKeyless.ipa | grep "BaoJunKeyless$"
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
