@@ -137,8 +137,8 @@ class RadarUIView: UIView {
         p.stroke()
 
         // Headlights
-        let ll = UIBezierPath(arcCenter: CGPoint(x: 62, y: 108), radius: 8, startAngle: 0, endAngle: .pi*2)
-        let rl = UIBezierPath(arcCenter: CGPoint(x: 148, y: 108), radius: 8, startAngle: 0, endAngle: .pi*2)
+        let ll = UIBezierPath(arcCenter: CGPoint(x: 62, y: 108), radius: 8, startAngle: 0, endAngle: .pi*2, clockwise: true)
+        let rl = UIBezierPath(arcCenter: CGPoint(x: 148, y: 108), radius: 8, startAngle: 0, endAngle: .pi*2, clockwise: true)
         ll.stroke(); rl.stroke()
 
         // Grille lines
