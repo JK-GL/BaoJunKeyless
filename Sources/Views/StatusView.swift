@@ -85,95 +85,226 @@ struct HeaderView: View {
     }
 }
 
-// MARK: - Signal Simulator
-class SignalSimulator: ObservableObject {
-    @Published var rssi: Double = -42
-    private var timer: Timer?
-    func start() {
-        timer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
-            self?.rssi = Double(Int.random(in: -85 ... -35))
-        }
-    }
-    func stop() { timer?.invalidate() }
-    deinit { stop() }
-}
-
-// MARK: - Radar Card
-struct RadarCardView: View {
-    @ObservedObject var motion: MotionManager
-    @StateObject private var signal = SignalSimulator()
-    @State private var sweepAngle: Double = 0
+// MARK: - UIKit Radar View (no SwiftUI layout = no bounce)
+class RadarUIView: UIView {
     private let radarSize: CGFloat = 200
+    private var sweepAngle: CGFloat = 0
+    private var rssi: Double = -42
+    private var pitch: Double = 0
+    private var roll: Double = 0
+    private var displayLink: CADisplayLink?
+    private var startTime: CFTimeInterval = 0
+    private var signalTimer: Timer?
+    private var targetRssi: Double = -42
+
+    // Car layer
+    private let carLayer = CALayer()
+    private var currentCarSize: CGFloat = 80
+    private var currentCarOffset: CGFloat = 0
 
     private var norm: Double {
-        let c = max(-110.0, min(-30.0, signal.rssi))
+        let c = max(-110.0, min(-30.0, rssi))
         return (-30 - c) / 80.0
     }
-    private var carDia: CGFloat { radarSize * (0.38 - 0.26 * norm) }
-    private var carOff: CGFloat { CGFloat(norm) * (radarSize / 2 - carDia / 2 - 8) }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setup()
+    }
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setup()
+    }
+
+    private func setup() {
+        isOpaque = false
+        backgroundColor = .clear
+
+        // Car image
+        let config = UIImage.SymbolConfiguration(pointSize: 60, weight: .semibold)
+        let img = UIImage(systemName: "car.fill", withConfiguration: config)?
+            .withTintColor(.white, renderingMode: .alwaysOriginal)
+        carLayer.contents = img?.cgImage
+        carLayer.contentsGravity = .resizeAspect
+        carLayer.shadowColor = UIColor(red: 0.2, green: 0.6, blue: 1, alpha: 0.6).cgColor
+        carLayer.shadowRadius = 10
+        carLayer.shadowOpacity = 1
+        carLayer.shadowOffset = .zero
+        layer.addSublayer(carLayer)
+
+        // Display link for sweep animation
+        startTime = CACurrentMediaTime()
+        let dl = CADisplayLink(target: self, selector: #selector(tick))
+        dl.add(to: .main, forMode: .common)
+        displayLink = dl
+
+        // Signal simulation
+        signalTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
+            self?.targetRssi = Double(Int.random(in: -85 ... -35))
+        }
+    }
+
+    @objc private func tick() {
+        // Sweep: 1 revolution per 3 seconds
+        let elapsed = CACurrentMediaTime() - startTime
+        sweepAngle = CGFloat(fmod(elapsed / 3.0, 1.0)) * 360.0
+
+        // Smooth RSSI
+        rssi += (targetRssi - rssi) * 0.05
+
+        setNeedsDisplay()
+    }
+
+    func updateGyro(pitch: Double, roll: Double) {
+        self.pitch = pitch
+        self.roll = roll
+    }
+
+    deinit {
+        displayLink?.invalidate()
+        signalTimer?.invalidate()
+    }
+
+    override func draw(_ rect: CGRect) {
+        guard let ctx = UIGraphicsGetCurrentContext() else { return }
+
+        let cx = rect.midX
+        let cy = rect.midY
+        let r = radarSize / 2
+
+        // ── Dark circle background ──
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        if let grad = CGGradient(colorsSpace: colorSpace,
+                                  colors: [
+                                    UIColor(red: 0.06, green: 0.12, blue: 0.22, alpha: 1).cgColor,
+                                    UIColor(red: 0.02, green: 0.04, blue: 0.08, alpha: 1).cgColor
+                                  ] as CFArray,
+                                  locations: [0, 1]) {
+            ctx.drawRadialGradient(grad,
+                                   startCenter: CGPoint(x: cx, y: cy), startRadius: 0,
+                                   endCenter: CGPoint(x: cx, y: cy), endRadius: r,
+                                   options: [])
+        }
+
+        // ── Concentric rings ──
+        for i in 1...3 {
+            let ringR = r * CGFloat(i) / 3.0
+            ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.06 + Double(i) * 0.03).cgColor)
+            ctx.setLineWidth(0.6)
+            ctx.strokeEllipse(in: CGRect(x: cx - ringR, y: cy - ringR,
+                                         width: ringR * 2, height: ringR * 2))
+        }
+
+        // ── Grid lines ──
+        ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.05).cgColor)
+        ctx.setLineWidth(0.5)
+        // Cross
+        ctx.move(to: CGPoint(x: cx, y: cy - r))
+        ctx.addLine(to: CGPoint(x: cx, y: cy + r))
+        ctx.move(to: CGPoint(x: cx - r, y: cy))
+        ctx.addLine(to: CGPoint(x: cx + r, y: cy))
+        ctx.strokePath()
+
+        // Diagonals
+        ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.03).cgColor)
+        ctx.setLineWidth(0.3)
+        let d = r * 0.7071
+        ctx.move(to: CGPoint(x: cx - d, y: cy - d))
+        ctx.addLine(to: CGPoint(x: cx + d, y: cy + d))
+        ctx.move(to: CGPoint(x: cx + d, y: cy - d))
+        ctx.addLine(to: CGPoint(x: cx - d, y: cy + d))
+        ctx.strokePath()
+
+        // ── Sweep fan ──
+        let sweepRad = sweepAngle * .pi / 180
+        let fanAngle: CGFloat = 40 * .pi / 180
+        let startA = sweepRad - fanAngle
+        let endA = sweepRad
+
+        ctx.saveGState()
+        // Clip to circle
+        ctx.addEllipse(in: CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2))
+        ctx.clip()
+
+        // Fan gradient
+        if let fanGrad = CGGradient(colorsSpace: colorSpace,
+                                     colors: [
+                                        UIColor(red: 0.2, green: 0.6, blue: 1, alpha: 0).cgColor,
+                                        UIColor(red: 0.2, green: 0.6, blue: 1, alpha: 0.08).cgColor,
+                                        UIColor(red: 0.2, green: 0.6, blue: 1, alpha: 0.22).cgColor
+                                     ] as CFArray,
+                                     locations: [0, 0.5, 1]) {
+            ctx.move(to: CGPoint(x: cx, y: cy))
+            ctx.addArc(center: CGPoint(x: cx, y: cy), radius: r,
+                       startAngle: startA, endAngle: endA, clockwise: false)
+            ctx.closePath()
+            ctx.drawPath(using: .fill)
+        }
+
+        // Sweep line glow
+        let lineAngle = sweepRad
+        let lineEnd = CGPoint(x: cx + r * cos(lineAngle), y: cy + r * sin(lineAngle))
+        ctx.setStrokeColor(UIColor(red: 0.2, green: 0.6, blue: 1, alpha: 0.3).cgColor)
+        ctx.setLineWidth(4)
+        ctx.setLineCap(.round)
+        ctx.move(to: CGPoint(x: cx, y: cy))
+        ctx.addLine(to: lineEnd)
+        ctx.strokePath()
+
+        // Sweep line sharp
+        ctx.setStrokeColor(UIColor(red: 0.4, green: 0.75, blue: 1, alpha: 1).cgColor)
+        ctx.setLineWidth(1)
+        ctx.move(to: CGPoint(x: cx, y: cy))
+        ctx.addLine(to: lineEnd)
+        ctx.strokePath()
+
+        ctx.restoreGState()
+
+        // ── Car target ──
+        let n = norm
+        let targetSize: CGFloat = radarSize * (0.38 - 0.26 * CGFloat(n))
+        let targetOffset: CGFloat = CGFloat(n) * (r - targetSize / 2 - 8)
+
+        currentCarSize += (targetSize - currentCarSize) * 0.08
+        currentCarOffset += (targetOffset - currentCarOffset) * 0.08
+
+        let carX = cx + currentCarOffset * 0.7071 + CGFloat(roll) * 4
+        let carY = cy + currentCarOffset * 0.7071 + CGFloat(pitch) * 4
+        let half = currentCarSize / 2
+
+        carLayer.frame = CGRect(x: carX - half, y: carY - half,
+                                width: currentCarSize, height: currentCarSize)
+    }
+
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: radarSize, height: radarSize)
+    }
+}
+
+// MARK: - SwiftUI Wrapper
+struct RadarCardView: View {
+    @ObservedObject var motion: MotionManager
 
     var body: some View {
         VStack(spacing: 12) {
-            // Dark radar disc
-            ZStack {
-                Circle()
-                    .fill(RadialGradient(
-                        colors: [Color(red:0.06,green:0.12,blue:0.22),
-                                 Color(red:0.02,green:0.04,blue:0.08)],
-                        center: .center, startRadius: 10, endRadius: radarSize/2))
+            // UIKit radar (no SwiftUI state = no bounce)
+            RadarContainer(motion: motion)
+                .frame(width: 200, height: 200)
+                .clipShape(Circle())
+                .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
 
-                ForEach(1...3, id: \.self) { i in
-                    Circle()
-                        .stroke(Color.white.opacity(0.06 + Double(i)*0.03), lineWidth: 0.6)
-                        .frame(width: radarSize*CGFloat(i)/3, height: radarSize*CGFloat(i)/3)
-                }
-                Rectangle().fill(Color.white.opacity(0.05)).frame(width:0.5,height:radarSize)
-                Rectangle().fill(Color.white.opacity(0.05)).frame(width:radarSize,height:0.5)
-                Rectangle().fill(Color.white.opacity(0.03)).frame(width:0.3,height:radarSize)
-                    .rotationEffect(.degrees(45))
-                Rectangle().fill(Color.white.opacity(0.03)).frame(width:0.3,height:radarSize)
-                    .rotationEffect(.degrees(-45))
+            // RSSI (static text, updated by UIKit)
+            Text("-42 dBm")
+                .font(.system(size: 26, weight: .bold, design: .monospaced))
+                .foregroundColor(.primary)
 
-                SweepFanShape()
-                    .fill(AngularGradient(colors:[.clear,
-                        Color(red:0.2,green:0.6,blue:1).opacity(0.02),
-                        Color(red:0.2,green:0.6,blue:1).opacity(0.08),
-                        Color(red:0.2,green:0.6,blue:1).opacity(0.18)],
-                        center:.center, startAngle:.degrees(-40), endAngle:.degrees(0)))
-                    .frame(width:radarSize,height:radarSize)
-                    .rotationEffect(.degrees(sweepAngle))
-
-                Rectangle()
-                    .fill(Color(red:0.2,green:0.6,blue:1).opacity(0.25))
-                    .frame(width:4,height:radarSize/2+6).blur(radius:4)
-                    .offset(y:-(radarSize/4+3)).rotationEffect(.degrees(sweepAngle))
-                Rectangle()
-                    .fill(Color(red:0.4,green:0.75,blue:1))
-                    .frame(width:1,height:radarSize/2+6)
-                    .offset(y:-(radarSize/4+3)).rotationEffect(.degrees(sweepAngle))
-
-                Image(systemName:"car.fill").resizable().scaledToFit()
-                    .frame(width:carDia,height:carDia)
-                    .foregroundColor(.white)
-                    .shadow(color:Color(red:0.2,green:0.6,blue:1).opacity(0.6),radius:8)
-                    .offset(x:carOff*0.7071 + CGFloat(motion.roll)*4,
-                            y:carOff*0.7071 + CGFloat(motion.pitch)*4)
+            HStack(spacing: 8) {
+                StatusPill(icon: "shield.fill", text: "密钥正常", color: AppTheme.green)
+                StatusPill(icon: "bolt.fill", text: "蓝牙已连接", color: AppTheme.green)
             }
-            .frame(width:radarSize,height:radarSize)
-            .clipShape(Circle())
-
-            HStack(alignment:.firstTextBaseline,spacing:3) {
-                Text(String(format:"%.0f",signal.rssi))
-                    .font(.system(size:26,weight:.bold,design:.monospaced))
-                Text("dBm").font(.system(size:13)).foregroundColor(.secondary)
-            }
-            HStack(spacing:8) {
-                StatusPill(icon:"shield.fill",text:"密钥正常",color:AppTheme.green)
-                StatusPill(icon:"bolt.fill",text:"蓝牙已连接",color:AppTheme.green)
-            }
-            HStack(spacing:8) {
-                StatusPill(icon:"arrow.triangle.2.circlepath",text:"全程接管",color:AppTheme.purple)
-                StatusPill(icon:"lock.open.fill",text:"未锁车",color:AppTheme.orange)
+            HStack(spacing: 8) {
+                StatusPill(icon: "arrow.triangle.2.circlepath", text: "全程接管", color: AppTheme.purple)
+                StatusPill(icon: "lock.open.fill", text: "未锁车", color: AppTheme.orange)
             }
         }
         .padding(16)
@@ -185,25 +316,18 @@ struct RadarCardView: View {
                 .shadow(color: .black.opacity(0.05), radius: 10, y: 3)
         )
         .padding(.horizontal, 16)
-        .onAppear {
-            signal.start()
-            withAnimation(Animation.linear(duration:3).repeatForever(autoreverses:false)){
-                sweepAngle = 360
-            }
-        }
-        .onDisappear { signal.stop() }
     }
 }
 
-struct SweepFanShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        let c = CGPoint(x:rect.midX,y:rect.midY)
-        p.move(to:c)
-        p.addArc(center:c, radius:max(rect.width,rect.height)/2,
-                 startAngle:.degrees(-40), endAngle:.degrees(0), clockwise:false)
-        p.closeSubpath()
-        return p
+// UIViewRepresentable wrapper with gyro updates
+struct RadarContainer: UIViewRepresentable {
+    @ObservedObject var motion: MotionManager
+    private let radar = RadarUIView(frame: .zero)
+
+    func makeUIView(context: Context) -> RadarUIView { radar }
+
+    func updateUIView(_ uiView: RadarUIView, context: Context) {
+        uiView.updateGyro(pitch: motion.pitch, roll: motion.roll)
     }
 }
 
