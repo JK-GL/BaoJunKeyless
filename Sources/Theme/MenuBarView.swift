@@ -19,18 +19,22 @@ struct MenuBarView: View {
     }
 
     var body: some View {
-        HStack(spacing: isCompactLayout ? 4 : 6) {
-            ForEach(AppTab.mainNavigationTabs) { tab in
-                tabButton(for: tab)
+        HStack(spacing: isCompactLayout ? 10 : 12) {
+            HStack(spacing: isCompactLayout ? 4 : 6) {
+                ForEach(AppTab.mainNavigationTabs) { tab in
+                    tabButton(for: tab)
+                }
             }
+            .padding(.horizontal, isCompactLayout ? 3 : 4)
+            .frame(maxWidth: .infinity)
+            .frame(height: menuBarHeight)
+            .background(tabClusterBackground())
+            .contentShape(Capsule())
+            .onTapGesture {}
+            .shadow(color: tabClusterShadowColor, radius: 24, x: 0, y: 12)
         }
-        .padding(.horizontal, isCompactLayout ? 3 : 4)
-        .frame(maxWidth: .infinity)
-        .frame(height: menuBarHeight)
-        .background(tabClusterBackground())
-        .contentShape(Capsule())
-        .onTapGesture {}
-        .shadow(color: tabClusterShadowColor, radius: 24, x: 0, y: 12)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
         .animation(Self.tabSelectionAnimation, value: selectedTab)
     }
 
