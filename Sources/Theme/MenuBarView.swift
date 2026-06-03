@@ -88,7 +88,7 @@ struct MenuBarView: View {
         shape
             .fill(.regularMaterial)
             .overlay(shape.fill(LinearGradient(colors: [Color.white.opacity(0.15), .clear, Color.white.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing)))
-            .overlay(shape.stroke(Color.white.opacity(0.08), lineWidth: 0.5))
+            .overlay(shape.stroke(Color.white.opacity(0.08), lineWidth: 1))
             .overlay(shape.fill(Color.primary).opacity(0.02))
     }
 
