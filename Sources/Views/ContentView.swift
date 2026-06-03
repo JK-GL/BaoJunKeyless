@@ -33,7 +33,7 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Custom Tab Bar (XMusic style)
+// MARK: - Custom Tab Bar (XMusic floating capsule style)
 struct CustomTabBar: View {
     @Binding var selectedTab: Int
     @ObservedObject var theme: ThemeManager
@@ -48,31 +48,34 @@ struct CustomTabBar: View {
     var body: some View {
         HStack(spacing: 0) {
             ForEach(0..<tabs.count, id: \.self) { i in
-                Button(action: { withAnimation(.spring(response: 0.3)) { selectedTab = i } }) {
+                Button(action: {
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) { selectedTab = i }
+                }) {
                     VStack(spacing: 4) {
                         Image(systemName: tabs[i].icon)
-                            .font(.system(size: 20, weight: selectedTab == i ? .semibold : .regular))
+                            .font(.system(size: 18, weight: selectedTab == i ? .semibold : .regular))
                             .symbolVariant(selectedTab == i ? .fill : .none)
                         Text(tabs[i].label)
                             .font(.system(size: 10, weight: selectedTab == i ? .semibold : .medium))
                     }
                     .foregroundStyle(selectedTab == i ? theme.accent : theme.textSecondary)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 10)
                     .background(
                         selectedTab == i ?
-                        Capsule().fill(theme.accent.opacity(0.12)) : nil
+                        Capsule().fill(theme.accent.opacity(0.15)) : nil
                     )
                 }
             }
         }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .background(
+            Capsule()
+                .fill(.ultraThinMaterial)
+                .shadow(color: .black.opacity(0.2), radius: 16, y: 6)
+        )
         .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial.opacity(0.3))
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(LinearGradient(colors: [.clear, theme.cardStroke], startPoint: .top, endPoint: .bottom))
-                .frame(height: 1)
-        }
+        .padding(.bottom, 8)
     }
 }
