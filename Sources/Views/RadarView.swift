@@ -317,27 +317,16 @@ class RadarUIView: UIView {
 
         // 绘制 SF Symbol car.fill（白色，清晰可见）
         let half = carSz / 2
-        let carRect = CGRect(x: carX - half, y: carY - half, width: carSz, height: carSz)
-        if let carImage = UIImage(systemName: "car.fill") {
-            // 白色着色
-            let config = UIImage.SymbolConfiguration(pointSize: carSz * 0.7, weight: .medium)
-            if let symbolImage = UIImage(systemName: "car.fill", withConfiguration: config) {
-                let renderer = UIGraphicsImageRenderer(size: symbolImage.size)
-                let tinted = renderer.image { ctx in
-                    UIColor.white.withAlphaComponent(0.85).setFill()
-                    symbolImage.draw(in: CGRect(origin: .zero, size: symbolImage.size))
-                    ctx.fillBlendMode = .sourceAtop
-                    UIColor.white.withAlphaComponent(0.85).setFill()
-                    ctx.fill(CGRect(origin: .zero, size: symbolImage.size))
-                }
-                let drawRect = CGRect(
-                    x: carX - tinted.size.width / 2,
-                    y: carY - tinted.size.height / 2,
-                    width: tinted.size.width,
-                    height: tinted.size.height
-                )
-                tinted.draw(in: drawRect)
-            }
+        let config = UIImage.SymbolConfiguration(pointSize: carSz * 0.6, weight: .medium)
+        if let symbolImage = UIImage(systemName: "car.fill", withConfiguration: config) {
+            let tinted = symbolImage.withTintColor(UIColor.white.withAlphaComponent(0.85), renderingMode: .alwaysOriginal)
+            let drawRect = CGRect(
+                x: carX - tinted.size.width / 2,
+                y: carY - tinted.size.height / 2,
+                width: tinted.size.width,
+                height: tinted.size.height
+            )
+            tinted.draw(in: drawRect)
         }
     }
 
