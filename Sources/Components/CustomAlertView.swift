@@ -13,8 +13,10 @@ struct DarkAlertModifier: ViewModifier {
         content
             .overlay {
                 if isPresented {
-                    Color.black.opacity(0.5)
+                    // 点击空白区域关闭
+                    Color.clear
                         .ignoresSafeArea()
+                        .contentShape(Rectangle())
                         .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { isPresented = false } }
 
                     CustomAlertView(
