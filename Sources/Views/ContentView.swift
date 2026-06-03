@@ -1,12 +1,13 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var theme = ThemeManager()
     @State private var selectedTab = 0
-    @AppStorage("isDarkMode") private var isDarkMode = true
 
     var body: some View {
         ZStack {
             AppBackgroundView()
+                .environmentObject(theme)
 
             TabView(selection: $selectedTab) {
                 StatusView()
@@ -25,8 +26,9 @@ struct ContentView: View {
                     .tabItem { Label("设置", systemImage: "gearshape.fill") }
                     .tag(3)
             }
-            .tint(ThemeColors.accent)
+            .tint(theme.accent)
         }
-        .preferredColorScheme(isDarkMode ? .dark : .light)
+        .environmentObject(theme)
+        .preferredColorScheme(theme.isDark ? .dark : .light)
     }
 }
