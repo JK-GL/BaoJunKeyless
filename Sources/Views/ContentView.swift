@@ -97,13 +97,17 @@ struct CustomTabBar: View {
             .matchedGeometryEffect(id: "tab-selection", in: tabAnimation)
     }
 
-    // MARK: - Tab bar background
+    // MARK: - Tab bar background (4 layers like XMusic)
     private var tabBarBackground: some View {
         Capsule()
             .fill(.regularMaterial)
             .overlay(Capsule().fill(LinearGradient(
                 colors: [Color.white.opacity(0.15), .clear, Color.white.opacity(0.05)],
                 startPoint: .topLeading, endPoint: .bottomTrailing)))
+            .overlay(Capsule().stroke(LinearGradient(
+                colors: [Color.white.opacity(0.35), .clear, Color.white.opacity(0.15)],
+                startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 0.5))
+            .overlay(Capsule().fill(Color.primary).opacity(0.02))
     }
 
 
