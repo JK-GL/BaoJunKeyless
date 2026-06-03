@@ -111,7 +111,7 @@ class RadarUIView: UIView {
         let s: CGFloat = 200
         UIGraphicsBeginImageContextWithOptions(CGSize(width: s, height: s), false, 0)
         guard let ctx = UIGraphicsGetCurrentContext() else { return nil }
-        let carColor = UIColor(red: 0.20, green: 0.45, blue: 0.70, alpha: 1)
+        let carColor = UIColor.label.withAlphaComponent(0.6)
         ctx.setStrokeColor(carColor.cgColor)
         ctx.setLineWidth(2.5)
         ctx.setLineCap(.round)
@@ -195,15 +195,16 @@ class RadarUIView: UIView {
         // ── 1. Transparent background (no fill) ──
         // Radar is transparent — only lines and sweep are drawn
 
-        // ── 2. Tick marks (gray on white) ──
+        // ── 2. Tick marks ──
+        let tickColor = UIColor.label.withAlphaComponent(1)
         for deg in 0..<360 {
             let a = CGFloat(deg) * .pi / 180
             let major = deg % 30 == 0
             let mid = deg % 10 == 0
             let inner: CGFloat = major ? r - 18 : (mid ? r - 11 : r - 7)
-            let alpha: Double = major ? 0.5 : (mid ? 0.25 : 0.1)
+            let alpha: Double = major ? 0.45 : (mid ? 0.2 : 0.08)
             let w: CGFloat = major ? 1.5 : (mid ? 0.8 : 0.3)
-            ctx.setStrokeColor(UIColor.darkGray.withAlphaComponent(alpha).cgColor)
+            ctx.setStrokeColor(tickColor.withAlphaComponent(alpha).cgColor)
             ctx.setLineWidth(w)
             ctx.move(to: .init(x: cx + inner * cos(a), y: cy + inner * sin(a)))
             ctx.addLine(to: .init(x: cx + (r - 1) * cos(a), y: cy + (r - 1) * sin(a)))
@@ -211,20 +212,20 @@ class RadarUIView: UIView {
         }
 
         // ── 3. Outer ring ──
-        ctx.setStrokeColor(UIColor.darkGray.withAlphaComponent(0.2).cgColor)
+        ctx.setStrokeColor(tickColor.withAlphaComponent(0.15).cgColor)
         ctx.setLineWidth(1)
         ctx.strokeEllipse(in: .init(x: cx-r+1, y: cy-r+1, width: (r-1)*2, height: (r-1)*2))
 
         // ── 4. Inner rings ──
         for i in 1...3 {
             let rr = r * CGFloat(i) / 3.5
-            ctx.setStrokeColor(UIColor.darkGray.withAlphaComponent(0.06 + Double(i)*0.02).cgColor)
+            ctx.setStrokeColor(tickColor.withAlphaComponent(0.04 + Double(i)*0.02).cgColor)
             ctx.setLineWidth(0.5)
             ctx.strokeEllipse(in: .init(x: cx-rr, y: cy-rr, width: rr*2, height: rr*2))
         }
 
         // ── 5. Cross-hair ──
-        ctx.setStrokeColor(UIColor.darkGray.withAlphaComponent(0.08).cgColor)
+        ctx.setStrokeColor(tickColor.withAlphaComponent(0.06).cgColor)
         ctx.setLineWidth(0.5)
         ctx.move(to: .init(x:cx,y:cy-r+14)); ctx.addLine(to: .init(x:cx,y:cy+r-14))
         ctx.move(to: .init(x:cx-r+14,y:cy)); ctx.addLine(to: .init(x:cx+r-14,y:cy))
@@ -318,7 +319,7 @@ struct RadarCardView: View {
                     Text("dBm")
                         .font(.system(size: 12, weight: .medium))
                 }
-                .foregroundColor(.secondary)
+                .foregroundStyle(ThemeColors.textSecondary)
             }
 
             // Status pills
