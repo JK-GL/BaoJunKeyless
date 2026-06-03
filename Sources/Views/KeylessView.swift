@@ -40,14 +40,43 @@ struct KeylessView: View {
     // MARK: 无感功能
     private var keylessSection: some View {
         CardView(title: "无感功能", icon: "dot.radiowaves.left.and.right", iconColor: AppTheme.purple) {
-            ToggleRow(icon: "power",                           label: "无感开关",    isOn: $store.settings.keylessEnabled)
-            ToggleRow(icon: "shield.fill",                     label: "插件托管",    isOn: $store.settings.pluginTakeover)
-            ToggleRow(icon: "arrow.triangle.2.circlepath",     label: "智能切换",    isOn: $store.settings.smartSwitch)
-            ToggleRow(icon: "exclamationmark.triangle.fill",   label: "D/R 挡禁止", isOn: $store.settings.drBlock)
-            SliderRow(icon: "gauge.medium", label: "重复指令间隔",
-                      value: $store.settings.cmdInterval, range: 1...15, step: 1,
-                      format: "\(Int(store.settings.cmdInterval))s", tint: AppTheme.purple)
+            // 主开关
+            ToggleRow(icon: "power", label: "无感开关", isOn: $store.settings.keylessEnabled)
+
+            // 折叠区域
+            if store.settings.keylessEnabled {
+                VStack(spacing: 12) {
+                    // 三选一互斥
+                    ToggleRow(icon: "shield.fill", label: "插件托管", isOn: Binding(
+                        get: { store.settings.pluginTakeover },
+                        set: { if $0 { setMode(.plugin) } else { store.settings.pluginTakeover = false } }
+                    ))
+                    ToggleRow(icon: "arrow.triangle.2.circlepath", label: "智能切换", isOn: Binding(
+                        get: { store.settings.smartSwitch },
+                        set: { if $0 { setMode(.smart) } else { store.settings.smartSwitch = false } }
+                    ))
+                    ToggleRow(icon: "iphone", label: "App 手动", isOn: Binding(
+                        get: { store.settings.appManual },
+                        set: { if $0 { setMode(.manual) } else { store.settings.appManual = false } }
+                    ))
+
+                    ToggleRow(icon: "exclamationmark.triangle.fill", label: "D/R 挡禁止", isOn: $store.settings.drBlock)
+                    SliderRow(icon: "gauge.medium", label: "重复指令间隔",
+                              value: $store.settings.cmdInterval, range: 1...15, step: 1,
+                              format: "\(Int(store.settings.cmdInterval))s", tint: AppTheme.purple)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
+    }
+
+    // MARK: 模式切换（互斥）
+    private enum ControlMode { case plugin, smart, manual }
+
+    private func setMode(_ mode: ControlMode) {
+        store.settings.pluginTakeover = (mode == .plugin)
+        store.settings.smartSwitch = (mode == .smart)
+        store.settings.appManual = (mode == .manual)
     }
 
     // MARK: 解锁设置

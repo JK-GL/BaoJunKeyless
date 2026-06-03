@@ -7,6 +7,7 @@ struct KeylessSettings: Codable {
     var keylessEnabled: Bool = true
     var pluginTakeover: Bool = true
     var smartSwitch: Bool = false
+    var appManual: Bool = false
     var drBlock: Bool = false
     var cmdInterval: Double = 5
 
