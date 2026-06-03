@@ -87,9 +87,7 @@ struct MenuBarView: View {
 
         shape
             .fill(.regularMaterial)
-            .overlay(shape.fill(LinearGradient(colors: [Color.white.opacity(0.15), .clear, Color.white.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing)))
             .overlay(shape.stroke(Color.white.opacity(0.08), lineWidth: 1))
-            .overlay(shape.fill(Color.primary).opacity(0.02))
     }
 
     @ViewBuilder
@@ -102,9 +100,8 @@ struct MenuBarView: View {
         let shape = RoundedRectangle(cornerRadius: menuBarCornerRadius, style: .continuous)
 
         shape
-            .fill(theme.accent).opacity(0.15)
-            .overlay(shape.fill(LinearGradient(colors: [Color.white.opacity(0.2), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)))
-            .overlay(shape.stroke(Color.white.opacity(0.2), lineWidth: 0.5))
+            .fill(LinearGradient(colors: [theme.accent.opacity(0.22), theme.accent.opacity(0.08)], startPoint: .top, endPoint: .bottom))
+            .overlay(shape.stroke(Color.white.opacity(0.15), lineWidth: 0.5))
             .padding(.horizontal, 1)
             .matchedGeometryEffect(id: "tab-selection", in: navigationAnimation)
     }
