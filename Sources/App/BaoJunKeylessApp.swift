@@ -2,12 +2,13 @@ import SwiftUI
 
 @main
 struct BaoJunKeylessApp: App {
-    @AppStorage("isDarkMode") private var isDarkMode = false
+    @StateObject private var theme = ThemeManager()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .preferredColorScheme(isDarkMode ? .dark : .light)
+                .environmentObject(theme)
+                .preferredColorScheme(theme.isDark ? .dark : .light)
         }
     }
 }
