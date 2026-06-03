@@ -316,10 +316,10 @@ struct RadarCardView: View {
                     .frame(width: 280, height: 280)
                     .clipShape(Circle())
 
-                // ⭐ dBm 小胶囊 — 在雷达中心，车图下方
+                // ⭐ dBm 小胶囊 — 雷达中心
                 HStack(alignment: .firstTextBaseline, spacing: 1) {
                     Text("\(Int(displayValue))")
-                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                        .font(.system(size: 14, weight: .bold, design: .monospaced))
                         .foregroundStyle(
                             LinearGradient(
                                 colors: gradientColors,
@@ -329,8 +329,8 @@ struct RadarCardView: View {
                         )
 
                     Text("dBm")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.5))
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.45))
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
@@ -339,10 +339,10 @@ struct RadarCardView: View {
                         .fill(.ultraThinMaterial)
                         .overlay(
                             Capsule()
-                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
                         )
                 )
-                .offset(y: 80)
+                .offset(y: 75)
             }
 
             // 状态胶囊
