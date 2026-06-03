@@ -23,6 +23,7 @@ class MotionManager: ObservableObject {
 
 // MARK: - Status View (Tab 1)
 struct StatusView: View {
+    @EnvironmentObject var theme: ThemeManager
     @State private var isRefreshing = false
     @StateObject private var motion = MotionManager()
 
@@ -45,6 +46,7 @@ struct StatusView: View {
 
 // MARK: - Header (XMusic style)
 struct HeaderView: View {
+    @EnvironmentObject var theme: ThemeManager
     @Binding var isRefreshing: Bool
 
     var body: some View {
@@ -52,15 +54,15 @@ struct HeaderView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(Date(), format: .dateTime.month(.abbreviated).day())
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(ThemeColors.textTertiary)
+                    .foregroundStyle(theme.textTertiary)
                 Text("宝骏云海")
                     .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .foregroundStyle(ThemeColors.textPrimary)
+                    .foregroundStyle(theme.textPrimary)
                 HStack(spacing: 6) {
                     Circle().fill(AppTheme.green).frame(width: 8, height: 8)
                     Text("BLE 已连接")
                         .font(.caption)
-                        .foregroundStyle(ThemeColors.textSecondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
             }
             Spacer()
@@ -72,7 +74,7 @@ struct HeaderView: View {
             }) {
                 Image(systemName: "arrow.clockwise")
                     .font(.title3)
-                    .foregroundStyle(ThemeColors.textPrimary)
+                    .foregroundStyle(theme.textPrimary)
                     .rotationEffect(.degrees(isRefreshing ? 360 : 0))
             }
         }
@@ -300,6 +302,7 @@ class RadarUIView: UIView {
 
 // MARK: - SwiftUI Wrapper
 struct RadarCardView: View {
+    @EnvironmentObject var theme: ThemeManager
     @ObservedObject var motion: MotionManager
     @State private var rssiText = "-42 dBm"
     private let radar = RadarUIView(frame: .zero)
@@ -319,7 +322,7 @@ struct RadarCardView: View {
                     Text("dBm")
                         .font(.system(size: 12, weight: .medium))
                 }
-                .foregroundStyle(ThemeColors.textSecondary)
+                .foregroundStyle(theme.textSecondary)
             }
 
             // Status pills
@@ -486,6 +489,7 @@ struct BatteryGaugesView: View {
 }
 
 struct GaugeCard: View {
+    @EnvironmentObject var theme: ThemeManager
     let item: GaugeItem
 
     var body: some View {
@@ -509,7 +513,7 @@ struct GaugeCard: View {
             }
         }
         .padding(12)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(ThemeColors.cardBg))
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(theme.cardBg))
     }
 }
 
@@ -532,6 +536,7 @@ struct TemperatureView: View {
 }
 
 struct TempCard: View {
+    @EnvironmentObject var theme: ThemeManager
     let item: TempItem
 
     var body: some View {
@@ -550,7 +555,7 @@ struct TempCard: View {
             Spacer()
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(ThemeColors.cardBg))
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(theme.cardBg))
     }
 }
 
