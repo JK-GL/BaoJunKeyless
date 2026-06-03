@@ -31,10 +31,10 @@ struct MenuBarView: View {
             .background(tabClusterBackground())
             .contentShape(Capsule())
             .onTapGesture {}
-            .shadow(color: tabClusterShadowColor, radius: 24, x: 0, y: 12)
+            .shadow(color: tabClusterShadowColor.opacity(0.7), radius: 20, x: 0, y: 10)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
         .animation(Self.tabSelectionAnimation, value: selectedTab)
     }
 
@@ -74,7 +74,7 @@ struct MenuBarView: View {
             .overlay(
                 Capsule()
                     .fill(LinearGradient(
-                        colors: [Color.white.opacity(0.15), .clear, Color.white.opacity(0.05)],
+                        colors: [Color.white.opacity(0.10), .clear, Color.white.opacity(0.04)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ))
