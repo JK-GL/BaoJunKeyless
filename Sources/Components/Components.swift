@@ -1,18 +1,16 @@
 import SwiftUI
 
-// MARK: - Card (XMusic style: cornerRadius 24, white opacity)
+// MARK: - CardView (cornerRadius 24)
 struct CardView<Content: View>: View {
     @EnvironmentObject var theme: ThemeManager
     let title: String?
     let icon: String?
     let iconColor: Color
     @ViewBuilder let content: () -> Content
-
     init(title: String? = nil, icon: String? = nil, iconColor: Color = .white,
          @ViewBuilder content: @escaping () -> Content) {
         self.title = title; self.icon = icon; self.iconColor = iconColor; self.content = content
     }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let title = title {
@@ -35,22 +33,19 @@ struct CardView<Content: View>: View {
     }
 }
 
-// MARK: - Collapsible Card
+// MARK: - CollapsibleCard
 struct CollapsibleCard<Header: View, Content: View>: View {
     @EnvironmentObject var theme: ThemeManager
     let title: String; let icon: String; let iconColor: Color
     @Binding var isExpanded: Bool
     let headerExtra: (() -> Header)?
     let content: () -> Content
-
     init(title: String, icon: String, iconColor: Color = .white,
-         isExpanded: Binding<Bool>,
-         @ViewBuilder headerExtra: @escaping () -> Header,
+         isExpanded: Binding<Bool>, @ViewBuilder headerExtra: @escaping () -> Header,
          @ViewBuilder content: @escaping () -> Content) {
         self.title=title; self.icon=icon; self.iconColor=iconColor
         self._isExpanded=isExpanded; self.headerExtra=headerExtra; self.content=content
     }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: { withAnimation(.spring(response: 0.35)) { isExpanded.toggle() } }) {
@@ -63,14 +58,12 @@ struct CollapsibleCard<Header: View, Content: View>: View {
                         .foregroundStyle(theme.textSecondary)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 }
-            }
-            .buttonStyle(.plain)
+            }.buttonStyle(.plain)
             if isExpanded {
                 VStack(alignment: .leading, spacing: 12) {
                     Divider().background(theme.cardStroke)
                     content()
-                }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                }.transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(16)
@@ -80,7 +73,6 @@ struct CollapsibleCard<Header: View, Content: View>: View {
         .padding(.horizontal, 16)
     }
 }
-
 extension CollapsibleCard where Header == EmptyView {
     init(title: String, icon: String, iconColor: Color = .white,
          isExpanded: Binding<Bool>, @ViewBuilder content: @escaping () -> Content) {
@@ -89,29 +81,25 @@ extension CollapsibleCard where Header == EmptyView {
     }
 }
 
-// MARK: - Status Pill
+// MARK: - StatusPill
 struct StatusPill: View {
     @EnvironmentObject var theme: ThemeManager
     let icon: String; let text: String; let color: Color
-
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: icon).font(.system(size: 10, weight: .semibold))
             Text(text).font(.system(size: 12, weight: .medium))
         }
         .foregroundStyle(theme.textPrimary)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 10).padding(.vertical, 5)
         .background(Capsule().fill(color.opacity(0.18)))
     }
 }
 
-// MARK: - Toggle Row
+// MARK: - ToggleRow
 struct ToggleRow: View {
     @EnvironmentObject var theme: ThemeManager
-    let icon: String; let label: String
-    @Binding var isOn: Bool
-
+    let icon: String; let label: String; @Binding var isOn: Bool
     var body: some View {
         HStack {
             Image(systemName: icon).font(.system(size: 14))
@@ -123,13 +111,12 @@ struct ToggleRow: View {
     }
 }
 
-// MARK: - Slider Row
+// MARK: - SliderRow
 struct SliderRow: View {
     @EnvironmentObject var theme: ThemeManager
     let icon: String; let label: String
     @Binding var value: Double; let range: ClosedRange<Double>; let step: Double
     let format: String; let tint: Color
-
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -144,11 +131,10 @@ struct SliderRow: View {
     }
 }
 
-// MARK: - Chip Button
+// MARK: - ChipButton
 struct ChipButton: View {
     @EnvironmentObject var theme: ThemeManager
     let text: String; let isSelected: Bool; let action: () -> Void
-
     var body: some View {
         Button(action: action) {
             Text(text).font(.system(size: 13, weight: isSelected ? .semibold : .regular))
@@ -159,12 +145,11 @@ struct ChipButton: View {
     }
 }
 
-// MARK: - Info Row
+// MARK: - InfoRow
 struct InfoRow: View {
     @EnvironmentObject var theme: ThemeManager
     let icon: String; let label: String; let value: String
     var isMono: Bool = false; var valueColor: Color = .white
-
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: icon).font(.system(size: 14))
@@ -179,67 +164,51 @@ struct InfoRow: View {
     }
 }
 
-// MARK: - Settings Status Row (XMusic: cornerRadius 18, stroke)
+// MARK: - SettingsRowView (XMusic: cornerRadius 18)
 struct SettingsRowView: View {
     @EnvironmentObject var theme: ThemeManager
     let icon: String; let label: String; let value: String
-
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .medium))
+            Image(systemName: icon).font(.system(size: 14, weight: .medium))
                 .foregroundStyle(theme.textSecondary)
-            Text(label)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(theme.textSecondary)
+            Text(label).font(.subheadline.weight(.medium)).foregroundStyle(theme.textSecondary)
             Spacer(minLength: 0)
-            Text(value)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(theme.textPrimary)
+            Text(value).font(.subheadline.weight(.semibold)).foregroundStyle(theme.textPrimary)
                 .multilineTextAlignment(.trailing)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 14).padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(theme.cardBg.opacity(0.6), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(theme.cardStroke, lineWidth: 1))
     }
 }
 
-// MARK: - Section Title (XMusic: .title2 .bold, white)
+// MARK: - SectionTitleView (XMusic: .title2 .bold)
 struct SectionTitleView: View {
     @EnvironmentObject var theme: ThemeManager
-    let title: String
-    var subtitle: String = ""
-
+    let title: String; var subtitle: String = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.title2.weight(.bold))
-                .foregroundStyle(theme.textPrimary)
+            Text(title).font(.title2.weight(.bold)).foregroundStyle(theme.textPrimary)
             if !subtitle.isEmpty {
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(theme.textSecondary)
+                Text(subtitle).font(.subheadline).foregroundStyle(theme.textSecondary)
             }
         }
     }
 }
 
-// MARK: - Row Divider (XMusic: .leading 52, white 0.08)
+// MARK: - DividerRow (XMusic: .leading 52)
 struct DividerRow: View {
     @EnvironmentObject var theme: ThemeManager
     var body: some View {
-        Divider()
-            .background(theme.cardStroke)
-            .padding(.leading, 52)
+        Divider().background(theme.cardStroke).padding(.leading, 52)
     }
 }
 
-// MARK: - Settings Action Button
+// MARK: - SettingsActionButton
 struct SettingsActionButton: View {
     let icon: String; let label: String; let color: Color; let action: () -> Void
-
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
@@ -253,7 +222,7 @@ struct SettingsActionButton: View {
     }
 }
 
-// MARK: - Toast
+// MARK: - ToastView
 struct ToastView: View {
     let text: String
     var body: some View {
