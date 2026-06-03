@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 
 // MARK: - App Theme Color Constants
 struct AppTheme {
@@ -8,8 +7,8 @@ struct AppTheme {
     static let red     = Color(red: 1.00, green: 0.23, blue: 0.19)
     static let orange  = Color(red: 1.00, green: 0.58, blue: 0.00)
     static let purple  = Color(red: 0.69, green: 0.32, blue: 0.87)
-    static let cardBg  = Color(.systemBackground)
-    static let pageBg  = Color(.systemGroupedBackground)
+    static let cardBg  = Color.white.opacity(0.06)
+    static let pageBg  = Color.clear
 }
 
 // MARK: - Theme Manager (bridges AppThemeConfiguration to EnvironmentObject)
@@ -18,7 +17,6 @@ class ThemeManager: ObservableObject {
     @AppStorage(AppThemeStorage.customAccentDataKey) var customAccentData = Data()
     @AppStorage(AppThemeStorage.customBackgroundRevisionKey) var customBackgroundRevision = 0
     @AppStorage(AppThemeStorage.customBackgroundBlurKey) var customBackgroundBlur: Double = 0
-    @AppStorage("isDarkMode") var isDark = true
 
     init() {}
 
@@ -31,34 +29,37 @@ class ThemeManager: ObservableObject {
         )
     }
 
-    // Dynamic colors for views
+    // Dynamic accent from theme system
     var accent: Color { current.accent }
 
+    // MARK: - XMusic Color Tokens (always dark, white-based)
+    // Matches XMusic's direct Color.white.opacity() usage
+
     var cardBg: Color {
-        Color.white.opacity(isDark ? 0.06 : 0.04)
+        Color.white.opacity(0.06)
     }
 
     var cardStroke: Color {
-        Color.white.opacity(isDark ? 0.08 : 0.06)
+        Color.white.opacity(0.08)
     }
 
     var textPrimary: Color {
-        isDark ? .white : .black
+        .white
     }
 
     var textSecondary: Color {
-        isDark ? Color.white.opacity(0.62) : Color.black.opacity(0.55)
+        Color.white.opacity(0.62)
     }
 
     var textTertiary: Color {
-        isDark ? Color.white.opacity(0.45) : Color.black.opacity(0.4)
+        Color.white.opacity(0.45)
     }
 
     var pillBg: Color {
-        Color.white.opacity(isDark ? 0.10 : 0.06)
+        Color.white.opacity(0.10)
     }
 
     var pillStroke: Color {
-        Color.white.opacity(isDark ? 0.12 : 0.08)
+        Color.white.opacity(0.12)
     }
 }

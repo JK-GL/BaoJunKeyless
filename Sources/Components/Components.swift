@@ -19,16 +19,22 @@ struct CardView<Content: View>: View {
                         Image(systemName: icon).foregroundColor(iconColor)
                             .font(.system(size: 15, weight: .semibold))
                     }
-                    Text(title).font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.textPrimary)
+                    Text(title).font(.title3.weight(.bold))
+                        .foregroundStyle(.white)
                 }
             }
             content()
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(theme.cardBg))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(theme.cardStroke, lineWidth: 1))
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color.white.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
         .padding(.horizontal, 16)
     }
 }
@@ -68,8 +74,14 @@ struct CollapsibleCard<Header: View, Content: View>: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(theme.cardBg))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(theme.cardStroke, lineWidth: 1))
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color.white.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
         .padding(.horizontal, 16)
     }
 }
@@ -90,7 +102,7 @@ struct StatusPill: View {
             Image(systemName: icon).font(.system(size: 10, weight: .semibold))
             Text(text).font(.system(size: 12, weight: .medium))
         }
-        .foregroundStyle(theme.textPrimary)
+        .foregroundStyle(.white)
         .padding(.horizontal, 10).padding(.vertical, 5)
         .background(Capsule().fill(color.opacity(0.18)))
     }
@@ -103,8 +115,8 @@ struct ToggleRow: View {
     var body: some View {
         HStack {
             Image(systemName: icon).font(.system(size: 14))
-                .foregroundStyle(theme.textSecondary).frame(width: 22)
-            Text(label).font(.system(size: 15)).foregroundStyle(theme.textPrimary)
+                .foregroundStyle(Color.white.opacity(0.62)).frame(width: 22)
+            Text(label).font(.system(size: 15)).foregroundStyle(.white)
             Spacer()
             Toggle("", isOn: $isOn).labelsHidden().tint(theme.accent)
         }
@@ -120,11 +132,11 @@ struct SliderRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Image(systemName: icon).font(.system(size: 13)).foregroundStyle(theme.textSecondary)
-                Text(label).font(.system(size: 14)).foregroundStyle(theme.textSecondary)
+                Image(systemName: icon).font(.system(size: 13)).foregroundStyle(Color.white.opacity(0.62))
+                Text(label).font(.system(size: 14)).foregroundStyle(Color.white.opacity(0.62))
                 Spacer()
                 Text(format).font(.system(size: 14, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(theme.textSecondary)
+                    .foregroundStyle(Color.white.opacity(0.62))
             }
             Slider(value: $value, in: range, step: step).tint(tint)
         }
@@ -138,9 +150,9 @@ struct ChipButton: View {
     var body: some View {
         Button(action: action) {
             Text(text).font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                .foregroundStyle(isSelected ? .black : theme.textPrimary)
+                .foregroundStyle(isSelected ? .black : .white)
                 .padding(.horizontal, 14).padding(.vertical, 7)
-                .background(Capsule().fill(isSelected ? theme.accent : theme.pillBg))
+                .background(Capsule().fill(isSelected ? theme.accent : Color.white.opacity(0.10)))
         }
     }
 }
@@ -153,14 +165,14 @@ struct InfoRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: icon).font(.system(size: 14))
-                .foregroundStyle(theme.textSecondary).frame(width: 20)
-            Text(label).font(.system(size: 14)).foregroundStyle(theme.textSecondary)
+                .foregroundStyle(Color.white.opacity(0.62)).frame(width: 20)
+            Text(label).font(.system(size: 14)).foregroundStyle(Color.white.opacity(0.62))
             Spacer()
             Text(value).font(.system(size: isMono ? 12 : 13, weight: .medium, design: isMono ? .monospaced : .default))
                 .foregroundColor(valueColor).lineLimit(1).minimumScaleFactor(0.8)
         }
         .padding(.vertical, 2)
-        Divider().background(theme.cardStroke).padding(.leading, 30)
+        Divider().background(Color.white.opacity(0.08)).padding(.leading, 30)
     }
 }
 
@@ -171,16 +183,16 @@ struct SettingsRowView: View {
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             Image(systemName: icon).font(.system(size: 14, weight: .medium))
-                .foregroundStyle(theme.textSecondary)
-            Text(label).font(.subheadline.weight(.medium)).foregroundStyle(theme.textSecondary)
+                .foregroundStyle(Color.white.opacity(0.62))
+            Text(label).font(.subheadline.weight(.medium)).foregroundStyle(Color.white.opacity(0.62))
             Spacer(minLength: 0)
-            Text(value).font(.subheadline.weight(.semibold)).foregroundStyle(theme.textPrimary)
+            Text(value).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
                 .multilineTextAlignment(.trailing)
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.cardBg.opacity(0.6), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(theme.cardStroke, lineWidth: 1))
+        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 1))
     }
 }
 
@@ -190,9 +202,9 @@ struct SectionTitleView: View {
     let title: String; var subtitle: String = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.title2.weight(.bold)).foregroundStyle(theme.textPrimary)
+            Text(title).font(.title2.weight(.bold)).foregroundStyle(.white)
             if !subtitle.isEmpty {
-                Text(subtitle).font(.subheadline).foregroundStyle(theme.textSecondary)
+                Text(subtitle).font(.subheadline).foregroundStyle(Color.white.opacity(0.62))
             }
         }
     }
@@ -202,7 +214,7 @@ struct SectionTitleView: View {
 struct DividerRow: View {
     @EnvironmentObject var theme: ThemeManager
     var body: some View {
-        Divider().background(theme.cardStroke).padding(.leading, 52)
+        Divider().background(Color.white.opacity(0.08)).padding(.leading, 52)
     }
 }
 

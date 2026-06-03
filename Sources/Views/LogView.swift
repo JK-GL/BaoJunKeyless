@@ -24,19 +24,10 @@ struct LogView: View {
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 16) {
-                // Page Header (XMusic style)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(Date(), format: .dateTime.month(.abbreviated).day())
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(theme.textTertiary)
-                    Text("日志")
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .foregroundStyle(theme.textPrimary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
+            VStack(alignment: .leading, spacing: 16) {
+                PageHeaderView(title: "日志")
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
 
                 CardView(title: "今日日志", icon: "list.bullet.rectangle", iconColor: theme.accent) {
                     HStack {
@@ -61,10 +52,10 @@ struct LogView: View {
                         Text("清除今日日志")
                             .font(.system(size: 14, weight: .medium))
                     }
-                    .foregroundStyle(theme.textPrimary)
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(RoundedRectangle(cornerRadius: 12).stroke(theme.cardStroke, lineWidth: 1))
+                    .background(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.08), lineWidth: 1))
                 }
                 .padding(.horizontal, 16)
                 .alert("清除日志", isPresented: $showingClearAlert) {
@@ -76,9 +67,8 @@ struct LogView: View {
                     Text("确定要清除今日所有日志吗？此操作不可撤销。")
                 }
 
-                Spacer(minLength: 20)
+                Spacer(minLength: 100)
             }
-            .padding(.bottom, 10)
         }
     }
 }

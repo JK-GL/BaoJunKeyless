@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Menu Bar View (Simplified - No Search)
+// MARK: - Menu Bar View (Exact XMusic Copy — No Search)
 struct MenuBarView: View {
     private static let tabSelectionAnimation = Animation.spring(response: 0.34, dampingFraction: 0.86)
 
@@ -19,21 +19,19 @@ struct MenuBarView: View {
     }
 
     var body: some View {
-        HStack(spacing: isCompactLayout ? 10 : 12) {
-            HStack(spacing: isCompactLayout ? 4 : 6) {
-                ForEach(AppTab.mainNavigationTabs) { tab in
-                    tabButton(for: tab)
-                }
+        HStack(spacing: isCompactLayout ? 4 : 6) {
+            ForEach(AppTab.mainNavigationTabs) { tab in
+                tabButton(for: tab)
             }
-            .padding(.horizontal, isCompactLayout ? 3 : 4)
-            .frame(maxWidth: .infinity)
-            .frame(height: menuBarHeight)
-            .background(tabClusterBackground())
-            .contentShape(Capsule())
-            .onTapGesture {}
-            .shadow(color: tabClusterShadowColor.opacity(0.7), radius: 20, x: 0, y: 10)
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, isCompactLayout ? 3 : 4)
+        .frame(maxWidth: .infinity)
+        .frame(height: menuBarHeight)
+        .background(tabClusterBackground())
+        .contentShape(Capsule())
+        .onTapGesture {}
+        .overlay(tabClusterOutline())
+        .shadow(color: tabClusterShadowColor, radius: 24, x: 0, y: 12)
         .animation(Self.tabSelectionAnimation, value: selectedTab)
     }
 
@@ -47,7 +45,6 @@ struct MenuBarView: View {
             VStack(spacing: 3) {
                 Image(systemName: tab.symbol)
                     .font(.system(size: isSelected ? 20 : 18, weight: .semibold))
-                    .symbolVariant(isSelected ? .fill : .none)
 
                 Text(tab.title)
                     .font(.system(size: isCompactLayout ? 10 : 11, weight: .semibold, design: .rounded))
@@ -66,39 +63,8 @@ struct MenuBarView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Backgrounds
-    private func tabClusterBackground() -> some View {
-        Capsule()
-            .fill(.regularMaterial)
-            .overlay(
-                Capsule()
-                    .fill(LinearGradient(
-                        colors: [Color.white.opacity(0.10), .clear, Color.white.opacity(0.04)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ))
-            )
-    }
+    // MARK: - Layout Metrics
 
-    private func selectedTabBackground() -> some View {
-        Capsule()
-            .fill(theme.accent.opacity(0.15))
-            .overlay(
-                Capsule()
-                    .fill(LinearGradient(
-                        colors: [Color.white.opacity(0.2), .clear],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ))
-            )
-            .overlay(
-                Capsule()
-                    .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
-            )
-            .matchedGeometryEffect(id: "tab-selection", in: navigationAnimation)
-    }
-
-    // MARK: - Helpers
     private var isCompactLayout: Bool {
         horizontalSizeClass == .compact
     }
@@ -109,6 +75,47 @@ struct MenuBarView: View {
 
     private var menuBarHeight: CGFloat {
         ChromeBarMetrics.menuBarHeight(for: horizontalSizeClass)
+    }
+
+    // MARK: - Backgrounds (Exact XMusic Tokens)
+
+    @ViewBuilder
+    private func tabClusterBackground() -> some View {
+        Group {
+            if #available(iOS 26.0, *) {
+                Color.clear
+                    .glassEffect(.regular, in: Capsule())
+                    .overlay { Capsule().fill(Color.primary).opacity(0.04) }
+            } else {
+                Capsule()
+                    .fill(.regularMaterial)
+                    .overlay(Capsule().fill(LinearGradient(colors: [Color.white.opacity(0.15), .clear, Color.white.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing)))
+                    .overlay(Capsule().stroke(LinearGradient(colors: [Color.white.opacity(0.35), .clear, Color.white.opacity(0.15)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 0.5))
+                    .overlay(Capsule().fill(Color.primary).opacity(0.02))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func tabClusterOutline() -> some View {
+        EmptyView()
+    }
+
+    @ViewBuilder
+    private func selectedTabBackground() -> some View {
+        Group {
+            if #available(iOS 26.0, *) {
+                Color.clear
+                    .glassEffect(.regular, in: Capsule())
+                    .overlay(Capsule().fill(theme.accent).opacity(0.15))
+            } else {
+                Capsule()
+                    .fill(theme.accent).opacity(0.15)
+                    .overlay(Capsule().fill(LinearGradient(colors: [Color.white.opacity(0.2), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)))
+                    .overlay(Capsule().stroke(Color.white.opacity(0.2), lineWidth: 0.5))
+            }
+        }
+        .matchedGeometryEffect(id: "tab-selection", in: navigationAnimation)
     }
 
     private var tabClusterShadowColor: Color {

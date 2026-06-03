@@ -8,7 +8,7 @@ struct BaoJunKeylessApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(theme)
-                .preferredColorScheme(theme.isDark ? .dark : .light)
+                .preferredColorScheme(.dark)
         }
     }
 }

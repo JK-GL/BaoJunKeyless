@@ -24,63 +24,25 @@ class MotionManager: ObservableObject {
 // MARK: - Status View (Tab 1)
 struct StatusView: View {
     @EnvironmentObject var theme: ThemeManager
-    @State private var isRefreshing = false
     @StateObject private var motion = MotionManager()
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 16) {
-                HeaderView(isRefreshing: $isRefreshing)
+            VStack(alignment: .leading, spacing: 16) {
+                PageHeaderView(title: "宝骏云海")
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+
                 RadarCardView(motion: motion)
                 QuickActionsView()
                 RangeCardView()
                 BatteryGaugesView()
                 TemperatureView()
                 VehicleInfoMergedCard()
-                Spacer(minLength: 20)
-            }
-            .padding(.bottom, 10)
-        }
-    }
-}
 
-// MARK: - Header (XMusic style)
-struct HeaderView: View {
-    @EnvironmentObject var theme: ThemeManager
-    @Binding var isRefreshing: Bool
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(Date(), format: .dateTime.month(.abbreviated).day())
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(theme.textTertiary)
-                Text("宝骏云海")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .foregroundStyle(theme.textPrimary)
-                HStack(spacing: 6) {
-                    Circle().fill(AppTheme.green).frame(width: 8, height: 8)
-                    Text("BLE 已连接")
-                        .font(.caption)
-                        .foregroundStyle(theme.textSecondary)
-                }
-            }
-            Spacer()
-            Button(action: {
-                withAnimation(.easeInOut(duration: 0.5)) { isRefreshing = true }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    withAnimation { isRefreshing = false }
-                }
-            }) {
-                Image(systemName: "arrow.clockwise")
-                    .font(.title3)
-                    .foregroundStyle(theme.textPrimary)
-                    .rotationEffect(.degrees(isRefreshing ? 360 : 0))
+                Spacer(minLength: 100)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
     }
 }
 
