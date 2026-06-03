@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var selectedTab = 0
+    @AppStorage("isDarkMode") private var isDarkMode = true
 
     var body: some View {
         ZStack {
@@ -26,5 +27,6 @@ struct ContentView: View {
             }
             .tint(ThemeColors.accent)
         }
+        .preferredColorScheme(isDarkMode ? .dark : .light)
     }
 }
