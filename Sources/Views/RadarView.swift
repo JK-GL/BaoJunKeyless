@@ -292,18 +292,24 @@ struct RadarRepresentable: UIViewRepresentable {
 struct RadarCardView: View {
     @EnvironmentObject var theme: ThemeManager
     @ObservedObject var motion: MotionManager
-    @State private var rssiText = "-42 dBm"
+    @State private var rssiText = "-42"
     @State private var rssiValue: Double = -42
+    @State private var displayValue: Double = -42
     private let radar = RadarUIView(frame: .zero)
 
-    private var rssiColor: Color {
-        let strength = max(0, min(1, (rssiValue + 110) / 80))
+    // 信号强度 0~1
+    private var strength: Double {
+        max(0, min(1, (rssiValue + 110) / 80))
+    }
+
+    // ⭐ 渐变色：强→蓝青，弱→橙红
+    private var gradientColors: [Color] {
         if strength > 0.6 {
-            return Color(red: 0.2, green: 0.6, blue: 1.0)
+            return [Color(red: 0.2, green: 0.6, blue: 1.0), Color(red: 0.3, green: 0.9, blue: 1.0)]
         } else if strength > 0.3 {
-            return Color(red: 1.0, green: 0.7, blue: 0.2)
+            return [Color(red: 1.0, green: 0.7, blue: 0.2), Color(red: 1.0, green: 0.5, blue: 0.3)]
         } else {
-            return Color(red: 1.0, green: 0.3, blue: 0.2)
+            return [Color(red: 1.0, green: 0.3, blue: 0.2), Color(red: 1.0, green: 0.5, blue: 0.3)]
         }
     }
 
@@ -314,13 +320,36 @@ struct RadarCardView: View {
                     .frame(width: 280, height: 280)
                     .clipShape(Circle())
 
-                HStack(spacing: 3) {
-                    Text(rssiText.replacingOccurrences(of: " dBm", with: ""))
-                        .font(.system(size: 18, weight: .bold, design: .monospaced))
-                    Text("dBm")
-                        .font(.system(size: 12, weight: .medium))
+                // ⭐ dBm 数字 + 毛玻璃底板
+                VStack(spacing: 2) {
+                    // 大数字 + 渐变文字
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("\(Int(displayValue))")
+                            .font(.system(size: 32, weight: .bold, design: .monospaced))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: gradientColors,
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: displayValue)
+
+                        Text("dBm")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.5))
+                    }
                 }
-                .foregroundStyle(rssiColor)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                )
             }
 
             VStack(spacing: 8) {
@@ -340,8 +369,11 @@ struct RadarCardView: View {
         .onAppear {
             radar.onRssiChange = { val in
                 DispatchQueue.main.async {
-                    rssiText = String(format: "%.0f dBm", val)
                     rssiValue = val
+                    // ⭐ 弹簧动画过渡
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        displayValue = val
+                    }
                 }
             }
         }
