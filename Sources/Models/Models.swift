@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreHaptics
 
 // MARK: - Data Models
 
