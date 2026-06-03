@@ -1,5 +1,9 @@
 import SwiftUI
 
+#if canImport(UIKit)
+import UIKit
+#endif
+
 struct ThemeOptionCardView: View {
     let theme: AppThemeConfiguration
     let isSelected: Bool
@@ -9,22 +13,38 @@ struct ThemeOptionCardView: View {
             ZStack(alignment: .topTrailing) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(LinearGradient(colors: theme.gradientColors,
-                                             startPoint: .topLeading, endPoint: .bottomTrailing))
-                    if let img = previewImage {
-                        img.resizable().scaledToFill()
+                        .fill(
+                            LinearGradient(
+                                colors: theme.gradientColors,
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+
+                    if let previewImage {
+                        previewImage
+                            .resizable()
+                            .scaledToFill()
                     }
-                    Circle().fill(theme.primaryGlow)
-                        .frame(width: 30, height: 30).blur(radius: 12)
+
+                    Circle()
+                        .fill(theme.primaryGlow)
+                        .frame(width: 30, height: 30)
+                        .blur(radius: 12)
                         .offset(x: -16, y: -5)
-                    Circle().fill(theme.secondaryGlow)
-                        .frame(width: 24, height: 24).blur(radius: 10)
+
+                    Circle()
+                        .fill(theme.secondaryGlow)
+                        .frame(width: 24, height: 24)
+                        .blur(radius: 10)
                         .offset(x: 16, y: 7)
                 }
                 .frame(height: 48)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.white.opacity(0.10), lineWidth: 1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                )
 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.caption2.weight(.bold))
@@ -36,7 +56,10 @@ struct ThemeOptionCardView: View {
                 Text(theme.preset.title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white)
-                Circle().fill(theme.accent).frame(width: 6, height: 6)
+
+                Circle()
+                    .fill(theme.accent)
+                    .frame(width: 6, height: 6)
             }
         }
         .padding(6)
@@ -51,9 +74,16 @@ struct ThemeOptionCardView: View {
         )
     }
 
+    #if canImport(UIKit)
     private var previewImage: Image? {
         guard let data = theme.customBackgroundImageData,
-              let ui = UIImage(data: data) else { return nil }
-        return Image(uiImage: ui)
+              let uiImage = UIImage(data: data)
+        else {
+            return nil
+        }
+        return Image(uiImage: uiImage)
     }
+    #else
+    private var previewImage: Image? { nil }
+    #endif
 }
