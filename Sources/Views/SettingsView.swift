@@ -169,7 +169,7 @@ struct SettingsView: View {
                             Text("确定要重置全部插件数据吗？此操作不可撤销。")
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 4)
 
                     Spacer(minLength: 100)
                 }

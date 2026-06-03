@@ -32,7 +32,7 @@ struct KeylessView: View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
                 PageHeaderView(title: "无感车控")
-                    .padding(.horizontal, 20)
+                    .padding(.leading, 20)
                     .padding(.top, 8)
 
                 keylessSection

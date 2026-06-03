@@ -32,6 +32,7 @@ struct StatusView: View {
             VStack(alignment: .leading, spacing: 16) {
                 PageHeaderView(title: "宝骏云海")
                     .padding(.horizontal, 20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 8)
 
                 RadarCardView(motion: motion)
