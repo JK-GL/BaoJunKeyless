@@ -22,41 +22,43 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 16) {
-                        // ── Theme Section ──
-                        themeSection
-                        // ── General ──
-                        generalSection
-                        // ── About ──
-                        aboutSection
-                        // ── Actions ──
-                        actionButtons
-                        Spacer(minLength: 20)
+        ZStack {
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Page Header (XMusic style)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(Date(), format: .dateTime.month(.abbreviated).day())
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(ThemeColors.textTertiary)
+                        Text("设置")
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .foregroundStyle(ThemeColors.textPrimary)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 16)
-                }
-                .background(AppBackgroundView())
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
 
-                if let text = toastText {
-                    VStack { Spacer(); ToastView(text: text) }
-                        .padding(.bottom, 80)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                                withAnimation { toastText = nil }
-                            }
-                        }
+                    themeSection
+                    generalSection
+                    aboutSection
+                    actionButtons
+                    Spacer(minLength: 20)
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
             }
-            .navigationTitle("设置")
-            .navigationBarTitleDisplayMode(.large)
             .preferredColorScheme(isDarkMode ? .dark : .light)
+
+            if let text = toastText {
+                VStack { Spacer(); ToastView(text: text) }
+                    .padding(.bottom, 80)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            withAnimation { toastText = nil }
+                        }
+                    }
+            }
         }
-        .navigationViewStyle(.stack)
     }
 
     // MARK: - Theme Section
