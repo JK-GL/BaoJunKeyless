@@ -279,7 +279,7 @@ class HapticRecorderManager: ObservableObject {
     var recordedEvents: [CustomVibrationPattern.VibrationEvent] = []
 
     private var engine: CHHapticEngine?
-    private var tapCount = 0
+    private var tapTimestamps: [TimeInterval] = []
 
     init() {
         setupEngine()
@@ -299,32 +299,51 @@ class HapticRecorderManager: ObservableObject {
         isRecording = true
         hasRecording = false
         recordedEvents = []
-        tapCount = 0
+        tapTimestamps = []
         totalDuration = 0
     }
 
     func stopRecording() {
         isRecording = false
+        buildEventsFromTimestamps()
         hasRecording = !recordedEvents.isEmpty
     }
 
     func tap() {
         guard isRecording else { return }
-        tapCount += 1
 
-        // 每次点击记录一个震动事件（短震 + 间隔）
-        recordedEvents.append(.init(duration: 0.12, intensity: 1.0))
-        // 间隔：根据点击节奏动态调整
-        let interval = tapCount > 1 ? 0.08 : 0.0
-        if interval > 0 {
-            recordedEvents.append(.init(duration: interval, intensity: 0))
+        // 记录真实时间戳
+        let now = CACurrentMediaTime()
+        tapTimestamps.append(now)
+
+        // 实时震动反馈
+        let g = UIImpactFeedbackGenerator(style: .rigid)
+        g.impactOccurred(intensity: 1.0)
+    }
+
+    // 根据真实点击时间戳生成震动事件序列
+    private func buildEventsFromTimestamps() {
+        recordedEvents = []
+        guard tapTimestamps.count >= 1 else { return }
+
+        let baseTime = tapTimestamps[0]
+        var lastTapTime = baseTime
+
+        for (index, tapTime) in tapTimestamps.enumerated() {
+            // 第一次点击之前没有间隔
+            if index > 0 {
+                let gap = tapTime - lastTapTime
+                // 在两次震动之间添加静音间隙（间隔时长 = 两次点击的时间差减去一次震动的时长）
+                let pauseDuration = max(gap - 0.12, 0.02)
+                recordedEvents.append(.init(duration: pauseDuration, intensity: 0))
+            }
+
+            // 每次点击触发一个震动
+            recordedEvents.append(.init(duration: 0.12, intensity: 1.0))
+            lastTapTime = tapTime
         }
 
         totalDuration = recordedEvents.reduce(0) { $0 + $1.duration }
-
-        // 每次点击时实际震动反馈
-        let g = UIImpactFeedbackGenerator(style: .rigid)
-        g.impactOccurred(intensity: 1.0)
     }
 
     func playRecording() {
