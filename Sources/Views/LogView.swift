@@ -22,59 +22,63 @@ struct LogView: View {
     @State private var showingClearAlert = false
 
     var body: some View {
-        NavigationView {
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 16) {
-                    CardView(title: "今日日志", icon: "list.bullet.rectangle", iconColor: .blue) {
-                        HStack {
-                            Spacer()
-                            Text(DateFormatter.localizedString(from: Date(),
-                                                               dateStyle: .medium, timeStyle: .none))
-                                .font(.caption).foregroundColor(.secondary)
-                        }
-                        .padding(.bottom, 4)
-
-                        VStack(spacing: 0) {
-                            ForEach(Array(logs.enumerated()), id: \.element.id) { index, log in
-                                LogRow(log: log, isLast: index == logs.count - 1)
-                            }
-                        }
-                    }
-
-                    Button(action: { showingClearAlert = true }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 13))
-                            Text("清除今日日志")
-                                .font(.system(size: 14, weight: .medium))
-                        }
-                        .foregroundColor(AppTheme.red)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(AppTheme.red.opacity(0.3), lineWidth: 1)
-                        )
-                    }
-                    .padding(.horizontal, 16)
-                    .alert("清除日志", isPresented: $showingClearAlert) {
-                        Button("取消", role: .cancel) { }
-                        Button("确认清除", role: .destructive) {
-                            withAnimation { logs.removeAll() }
-                        }
-                    } message: {
-                        Text("确定要清除今日所有日志吗？此操作不可撤销。")
-                    }
-
-                    Spacer(minLength: 20)
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 16) {
+                // Page Header (XMusic style)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(Date(), format: .dateTime.month(.abbreviated).day())
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(ThemeColors.textTertiary)
+                    Text("日志")
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .foregroundStyle(ThemeColors.textPrimary)
                 }
-                .padding(.vertical, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+
+                CardView(title: "今日日志", icon: "list.bullet.rectangle", iconColor: ThemeColors.accent) {
+                    HStack {
+                        Spacer()
+                        Text(DateFormatter.localizedString(from: Date(),
+                                                           dateStyle: .medium, timeStyle: .none))
+                            .font(.caption).foregroundStyle(ThemeColors.textSecondary)
+                    }
+                    .padding(.bottom, 4)
+
+                    VStack(spacing: 0) {
+                        ForEach(Array(logs.enumerated()), id: \.element.id) { index, log in
+                            LogRow(log: log, isLast: index == logs.count - 1)
+                        }
+                    }
+                }
+
+                Button(action: { showingClearAlert = true }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 13))
+                        Text("清除今日日志")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .foregroundStyle(ThemeColors.textPrimary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(RoundedRectangle(cornerRadius: 12).stroke(ThemeColors.cardStroke, lineWidth: 1))
+                }
+                .padding(.horizontal, 16)
+                .alert("清除日志", isPresented: $showingClearAlert) {
+                    Button("取消", role: .cancel) { }
+                    Button("确认清除", role: .destructive) {
+                        withAnimation { logs.removeAll() }
+                    }
+                } message: {
+                    Text("确定要清除今日所有日志吗？此操作不可撤销。")
+                }
+
+                Spacer(minLength: 20)
             }
-            .background(AppBackgroundView().ignoresSafeArea())
-            .navigationTitle("日志")
-            .navigationBarTitleDisplayMode(.large)
+            .padding(.bottom, 10)
         }
-        .navigationViewStyle(.stack)
     }
 }
 
