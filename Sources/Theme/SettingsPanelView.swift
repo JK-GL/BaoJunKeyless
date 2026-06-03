@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsPanelView<Content: View>: View {
+    @EnvironmentObject var theme: ThemeManager
     let title: String
     var subtitle: String = ""
     let content: Content
@@ -13,11 +14,11 @@ struct SettingsPanelView<Content: View>: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
                 .font(.title3.weight(.bold))
-                .foregroundStyle(ThemeColors.textPrimary)
+                .foregroundStyle(theme.textPrimary)
             if !subtitle.isEmpty {
                 Text(subtitle)
                     .font(.subheadline)
-                    .foregroundStyle(ThemeColors.textSecondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             content
         }
@@ -25,11 +26,11 @@ struct SettingsPanelView<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(ThemeColors.cardBg)
+                .fill(theme.cardBg)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(ThemeColors.cardStroke, lineWidth: 1)
+                .stroke(theme.cardStroke, lineWidth: 1)
         )
     }
 }
