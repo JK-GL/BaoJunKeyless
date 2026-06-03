@@ -4,19 +4,16 @@ struct ContentView: View {
     private static let tabSwitchAnimation = Animation.spring(response: 0.34, dampingFraction: 0.86)
 
     @State private var selectedTab: AppTab = .status
-    @State private var showSettingsSheet = false
     @Namespace private var tabAnimation
 
     var body: some View {
-        ZStack(alignment: .top) {
-            // Background layer
+        ZStack {
             AppBackgroundView()
 
-            // Page content
             tabContent(for: selectedTab)
                 .id(selectedTab)
                 .transition(.opacity)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .animation(Self.tabSwitchAnimation, value: selectedTab)
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -24,8 +21,7 @@ struct ContentView: View {
                 selectedTab: $selectedTab,
                 navigationAnimation: tabAnimation
             )
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
+            .padding(.horizontal, 4)
         }
     }
 
@@ -35,21 +31,16 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 PageHeaderView(
                     title: tabTitle(for: tab),
-                    showsSettingsButton: true
+                    showsSettingsButton: tab == .status
                 )
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
 
                 tabBody(for: tab)
                     .padding(.top, 12)
-                    .padding(.bottom, 100)
+
+                Spacer(minLength: 100)
             }
-        }
-        .sheet(isPresented: $showSettingsSheet) {
-            AppNavigationContainerView {
-                SettingsView()
-            }
-            .preferredColorScheme(.dark)
         }
     }
 
@@ -65,14 +56,10 @@ struct ContentView: View {
     @ViewBuilder
     private func tabBody(for tab: AppTab) -> some View {
         switch tab {
-        case .status:
-            StatusView()
-        case .keyless:
-            KeylessView()
-        case .logs:
-            LogView()
-        case .settings:
-            SettingsView()
+        case .status:   StatusView()
+        case .keyless:  KeylessView()
+        case .logs:     LogView()
+        case .settings: SettingsView()
         }
     }
 }
