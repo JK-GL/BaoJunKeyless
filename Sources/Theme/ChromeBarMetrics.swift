@@ -35,7 +35,7 @@ enum AppTab: String, CaseIterable, Identifiable {
 // MARK: - Chrome Bar Metrics
 enum ChromeBarMetrics {
     static func menuBarHeight(for sizeClass: UserInterfaceSizeClass?) -> CGFloat {
-        sizeClass == .compact ? 44 : 46
+        sizeClass == .compact ? 52 : 55
     }
 
     static func tabItemHeight(for sizeClass: UserInterfaceSizeClass?) -> CGFloat {
@@ -43,6 +43,6 @@ enum ChromeBarMetrics {
     }
 
     static func compactChromeHeight(for sizeClass: UserInterfaceSizeClass?) -> CGFloat {
-        sizeClass == .compact ? 36 : 38
+        sizeClass == .compact ? 44 : 47
     }
 }
