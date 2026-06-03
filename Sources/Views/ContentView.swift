@@ -51,20 +51,28 @@ struct CustomTabBar: View {
                 Button(action: { withAnimation(.spring(response: 0.3)) { selectedTab = i } }) {
                     VStack(spacing: 4) {
                         Image(systemName: tabs[i].icon)
-                            .font(.system(size: 20))
+                            .font(.system(size: 20, weight: selectedTab == i ? .semibold : .regular))
                             .symbolVariant(selectedTab == i ? .fill : .none)
                         Text(tabs[i].label)
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.system(size: 10, weight: selectedTab == i ? .semibold : .medium))
                     }
                     .foregroundStyle(selectedTab == i ? theme.accent : theme.textSecondary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
+                    .background(
+                        selectedTab == i ?
+                        Capsule().fill(theme.accent.opacity(0.12)) : nil
+                    )
                 }
             }
         }
-        .background(.ultraThinMaterial)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .background(.ultraThinMaterial.opacity(0.3))
         .overlay(alignment: .top) {
-            Divider().background(theme.cardStroke)
+            Rectangle()
+                .fill(LinearGradient(colors: [.clear, theme.cardStroke], startPoint: .top, endPoint: .bottom))
+                .frame(height: 1)
         }
     }
 }
