@@ -33,7 +33,6 @@ struct MenuBarView: View {
             .onTapGesture {}
             .shadow(color: tabClusterShadowColor.opacity(0.7), radius: 20, x: 0, y: 10)
         }
-        .padding(.horizontal, 12)
         .padding(.vertical, 4)
         .animation(Self.tabSelectionAnimation, value: selectedTab)
     }
