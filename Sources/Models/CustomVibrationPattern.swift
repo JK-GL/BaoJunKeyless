@@ -36,19 +36,26 @@ extension CustomVibrationPattern {
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
 
         var hapticEvents: [CHHapticEvent] = []
+
+        // 每个事件都是 transient 脉冲，通过 relativeTime 控制节奏
         var time: TimeInterval = 0
 
         for evt in events {
-            let intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: Float(evt.intensity))
-            let sharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.8)
-            let hapticEvent = CHHapticEvent(
-                eventType: .hapticContinuous,
-                parameters: [intensity, sharpness],
-                relativeTime: time,
-                duration: evt.duration
-            )
-            hapticEvents.append(hapticEvent)
-            time += evt.duration
+            guard evt.duration > 0.01 else { continue }
+
+            if evt.intensity > 0 {
+                // 震动脉冲
+                let params = [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: Float(evt.intensity)),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.9)
+                ]
+                let event = CHHapticEvent(eventType: .hapticTransient, parameters: params, relativeTime: time)
+                hapticEvents.append(event)
+                time += evt.duration
+            } else {
+                // 静音间隙 — 直接跳过时间
+                time += evt.duration
+            }
         }
 
         guard !hapticEvents.isEmpty else { return }
@@ -59,11 +66,11 @@ extension CustomVibrationPattern {
             let pattern = try CHHapticPattern(events: hapticEvents, parameters: [])
             let player = try engine.makePlayer(with: pattern)
             try player.start(atTime: 0)
-            DispatchQueue.main.asyncAfter(deadline: .now() + totalDuration + 0.5) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + time + 0.5) {
                 engine.stop(completionHandler: nil)
             }
         } catch {
-            print("Core Haptics playback failed: \(error.localizedDescription)")
+            print("Core Haptics playback failed: \(error)")
         }
     }
 }

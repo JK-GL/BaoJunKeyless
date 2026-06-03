@@ -321,26 +321,24 @@ class HapticRecorderManager: ObservableObject {
         g.impactOccurred(intensity: 1.0)
     }
 
-    // 根据真实点击时间戳生成震动事件序列
+    // 根据真实点击时间戳生成震动事件序列（和系统录音器一致）
     private func buildEventsFromTimestamps() {
         recordedEvents = []
         guard tapTimestamps.count >= 1 else { return }
 
         let baseTime = tapTimestamps[0]
-        var lastTapTime = baseTime
 
         for (index, tapTime) in tapTimestamps.enumerated() {
-            // 第一次点击之前没有间隔
-            if index > 0 {
-                let gap = tapTime - lastTapTime
-                // 在两次震动之间添加静音间隙（间隔时长 = 两次点击的时间差减去一次震动的时长）
-                let pauseDuration = max(gap - 0.12, 0.02)
-                recordedEvents.append(.init(duration: pauseDuration, intensity: 0))
+            if index == 0 {
+                // 第一次点击：直接记录脉冲
+                recordedEvents.append(.init(duration: 0.05, intensity: 1.0))
+            } else {
+                // 计算与上次点击的时间差作为间隔
+                let gap = tapTime - tapTimestamps[index - 1]
+                // 先添加静音间隙，再添加脉冲
+                recordedEvents.append(.init(duration: gap, intensity: 0))
+                recordedEvents.append(.init(duration: 0.05, intensity: 1.0))
             }
-
-            // 每次点击触发一个震动
-            recordedEvents.append(.init(duration: 0.12, intensity: 1.0))
-            lastTapTime = tapTime
         }
 
         totalDuration = recordedEvents.reduce(0) { $0 + $1.duration }
