@@ -1,15 +1,7 @@
 import SwiftUI
 
 struct AppBackgroundView: View {
-    @AppStorage(AppThemePreset.storageKey) private var themeRaw = AppThemePreset.midnight.rawValue
-    @AppStorage(AppThemeStorage.customAccentDataKey) private var accentData = Data()
-    @AppStorage(AppThemeStorage.customBackgroundRevisionKey) private var bgRevision = 0
-    @AppStorage(AppThemeStorage.customBackgroundBlurKey) private var bgBlur = 0.0
-
-    private var theme: AppThemeConfiguration {
-        AppThemeConfiguration(selectedThemeRawValue: themeRaw, customAccentData: accentData,
-                              customBackgroundRevision: bgRevision, customBackgroundBlur: bgBlur)
-    }
+    @EnvironmentObject var theme: ThemeManager
 
     var body: some View {
         GeometryReader { geo in
@@ -18,23 +10,23 @@ struct AppBackgroundView: View {
                 if let img = customImage {
                     img.resizable().scaledToFill()
                         .frame(width: geo.size.width, height: geo.size.height)
-                        .blur(radius: theme.customBackgroundBlur).clipped()
+                        .blur(radius: theme.config.customBackgroundBlur).clipped()
                     LinearGradient(colors: [.black.opacity(0.34), .black.opacity(0.48), .black.opacity(0.68)],
                                    startPoint: .topLeading, endPoint: .bottomTrailing)
                 }
 
                 // Gradient base
-                LinearGradient(colors: theme.gradientColors,
+                LinearGradient(colors: theme.config.gradientColors,
                                startPoint: .topLeading, endPoint: .bottomTrailing)
-                    .opacity(customImage == nil ? 1 : 0.56)
+                    .opacity(theme.config.hasCustomBackgroundImage ? 0.56 : 1)
 
                 // Primary glow
-                Circle().fill(theme.primaryGlow)
+                Circle().fill(theme.config.primaryGlow)
                     .frame(width: 320, height: 320).blur(radius: 80)
                     .offset(x: -120, y: -260)
 
                 // Secondary glow
-                Circle().fill(theme.secondaryGlow)
+                Circle().fill(theme.config.secondaryGlow)
                     .frame(width: 300, height: 300).blur(radius: 86)
                     .offset(x: 140, y: 120)
             }
@@ -45,7 +37,7 @@ struct AppBackgroundView: View {
     }
 
     private var customImage: Image? {
-        guard let data = theme.customBackgroundImageData,
+        guard let data = theme.config.customBackgroundImageData,
               let ui = UIImage(data: data) else { return nil }
         return Image(uiImage: ui)
     }
