@@ -34,12 +34,8 @@ struct ContentView: View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 0) {
                 PageHeaderView(
-                    dateString: Date().formatted(.dateTime.month(.abbreviated).day()),
                     title: tabTitle(for: tab),
-                    subtitle: nil,
-                    settingsAction: {
-                        showSettingsSheet = true
-                    }
+                    showsSettingsButton: true
                 )
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
