@@ -197,25 +197,35 @@ class RadarUIView: UIView {
                                    endCenter: .init(x:cx,y:cy), endRadius: r*0.4, options: [])
         }
 
-        // ⭐ 绘制波纹
+        // ⭐ 绘制渐变波纹
         for wave in waves {
-            let alpha = CGFloat(1 - wave.life) * 0.6  // 越远越淡
-            let lineWidth = max(wave.lineWidth, 0.5)
+            let progress = wave.life  // 0→1
+            let waveR = wave.maxRadius * CGFloat(progress)
+            let alpha = CGFloat(pow(1 - progress, 1.5)) * 0.7  // 非线性衰减
 
-            // 外层光晕
-            ctx.setStrokeColor(UIColor.systemBlue.withAlphaComponent(Double(alpha * 0.3)).cgColor)
-            ctx.setLineWidth(lineWidth + 4)
-            ctx.strokeEllipse(in: .init(
-                x: cx - wave.radius, y: cy - wave.radius,
-                width: wave.radius * 2, height: wave.radius * 2
-            ))
+            // 外层渐变光晕（宽的柔和带）
+            let outerR = waveR + 12
+            let innerR = max(waveR - 8, 0)
+            if outerR > 0, let g = CGGradient(colorsSpace: cs, colors: [
+                UIColor.clear.cgColor,
+                UIColor.systemBlue.withAlphaComponent(Double(alpha * 0.4)).cgColor,
+                UIColor.systemBlue.withAlphaComponent(Double(alpha * 0.7)).cgColor,
+                UIColor.systemBlue.withAlphaComponent(Double(alpha * 0.4)).cgColor,
+                UIColor.clear.cgColor
+            ] as CFArray, locations: [0, 0.2, 0.5, 0.8, 1]) {
+                ctx.drawRadialGradient(g,
+                    startCenter: .init(x: cx, y: cy), startRadius: innerR,
+                    endCenter: .init(x: cx, y: cy), endRadius: outerR,
+                    options: [])
+            }
 
-            // 内层亮线
-            ctx.setStrokeColor(UIColor.systemBlue.withAlphaComponent(Double(alpha)).cgColor)
-            ctx.setLineWidth(lineWidth)
+            // 内层亮环（细的高光线）
+            let ringAlpha = alpha * 0.8
+            ctx.setStrokeColor(UIColor(red: 0.5, green: 0.85, blue: 1.0, alpha: Double(ringAlpha)).cgColor)
+            ctx.setLineWidth(max(1.0 * (1 - progress), 0.3))
             ctx.strokeEllipse(in: .init(
-                x: cx - wave.radius, y: cy - wave.radius,
-                width: wave.radius * 2, height: wave.radius * 2
+                x: cx - waveR, y: cy - waveR,
+                width: waveR * 2, height: waveR * 2
             ))
         }
 
