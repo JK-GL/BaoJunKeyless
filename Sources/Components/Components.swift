@@ -35,6 +35,7 @@ struct CardView<Content: View>: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
+        .padding(.horizontal, 18)
     }
 }
 
@@ -81,6 +82,7 @@ struct CollapsibleCard<Header: View, Content: View>: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
+        .padding(.horizontal, 18)
     }
 }
 extension CollapsibleCard where Header == EmptyView {
