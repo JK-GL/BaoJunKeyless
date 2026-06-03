@@ -369,7 +369,7 @@ struct QuickActionsView: View {
             title: cmdTitle,
             message: "确定要\(cmdTitle)吗？",
             confirmTitle: "确认执行",
-            confirmColor: theme.accent
+            confirmColor: AppTheme.accent
         ) { }
     }
 }
