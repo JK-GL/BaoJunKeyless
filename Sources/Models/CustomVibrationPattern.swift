@@ -30,56 +30,29 @@ struct CustomVibrationPattern: Identifiable, Codable, Hashable {
     }
 }
 
-// MARK: - 自定义震动播放（Core Haptics — 增强强度）
+// MARK: - 自定义震动播放（UIImpactFeedbackGenerator — 体感更强）
 extension CustomVibrationPattern {
     func play() {
-        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
-
-        var hapticEvents: [CHHapticEvent] = []
-        var time: TimeInterval = 0
-
-        for evt in events {
+        for (index, evt) in events.enumerated() {
             guard evt.duration > 0.01 else { continue }
 
             if evt.intensity > 0 {
-                let i = Float(evt.intensity)
-                // 叠加多层 transient 脉冲增强体感
-                let layers: [(Float, Float)] = [
-                    (i, 1.0),           // 主脉冲：最高强度+尖锐度
-                    (i * 0.8, 0.6),     // 第二层：略弱，略钝
-                    (i * 0.5, 0.3),     // 第三层：低强度低尖锐度
-                ]
-                for (intensity, sharpness) in layers {
-                    let params = [
-                        CHHapticEventParameter(parameterID: .hapticIntensity, value: intensity),
-                        CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
-                    ]
-                    hapticEvents.append(CHHapticEvent(
-                        eventType: .hapticTransient,
-                        parameters: params,
-                        relativeTime: time
-                    ))
+                let delay = computedDelay(for: index)
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    let g = UIImpactFeedbackGenerator(style: .rigid)
+                    g.impactOccurred(intensity: evt.intensity)
                 }
-                time += evt.duration
-            } else {
-                time += evt.duration
             }
         }
+    }
 
-        guard !hapticEvents.isEmpty else { return }
-
-        do {
-            let engine = try CHHapticEngine()
-            try engine.start()
-            let pattern = try CHHapticPattern(events: hapticEvents, parameters: [])
-            let player = try engine.makePlayer(with: pattern)
-            try player.start(atTime: 0)
-            DispatchQueue.main.asyncAfter(deadline: .now() + time + 0.5) {
-                engine.stop(completionHandler: nil)
-            }
-        } catch {
-            print("Core Haptics playback failed: \(error)")
+    // 计算每个事件的延迟（累加前面的时长）
+    private func computedDelay(for index: Int) -> TimeInterval {
+        var delay: TimeInterval = 0
+        for i in 0..<index {
+            delay += events[i].duration
         }
+        return delay
     }
 }
 
