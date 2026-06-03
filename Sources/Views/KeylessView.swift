@@ -2,6 +2,7 @@ import SwiftUI
 
 // MARK: - Keyless View (Tab 2)
 struct KeylessView: View {
+    @EnvironmentObject var theme: ThemeManager
     // 无感功能
     @State private var keylessEnabled = true
     @State private var pluginTakeover = true
@@ -33,10 +34,10 @@ struct KeylessView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(Date(), format: .dateTime.month(.abbreviated).day())
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(ThemeColors.textTertiary)
+                        .foregroundStyle(theme.textTertiary)
                     Text("无感车控")
                         .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .foregroundStyle(ThemeColors.textPrimary)
+                        .foregroundStyle(theme.textPrimary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
@@ -178,10 +179,10 @@ struct KeylessView: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(ThemeColors.cardBg)
+                .fill(theme.cardBg)
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(ThemeColors.cardStroke, lineWidth: 1)
+                        .stroke(theme.cardStroke, lineWidth: 1)
                 )
         )
     }
