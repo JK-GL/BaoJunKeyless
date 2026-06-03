@@ -269,15 +269,19 @@ class RadarUIView: UIView {
             ctx.closePath(); ctx.fillPath()
         }
 
-        // 扫描线（双层发光）
+        // ⭐ 霓虹管扫描线
         let end = CGPoint(x: cx + r * 1.05 * cos(rad), y: cy + r * 1.05 * sin(rad))
-        // 外层发光
-        ctx.setStrokeColor(UIColor.systemBlue.withAlphaComponent(0.2).cgColor)
-        ctx.setLineWidth(8); ctx.setLineCap(.round)
+        // 外层光晕（最宽，最淡）
+        ctx.setStrokeColor(UIColor.systemBlue.withAlphaComponent(0.08).cgColor)
+        ctx.setLineWidth(16); ctx.setLineCap(.round)
         ctx.move(to: .init(x:cx,y:cy)); ctx.addLine(to: end); ctx.strokePath()
-        // 内层亮线
-        ctx.setStrokeColor(UIColor.systemBlue.withAlphaComponent(0.8).cgColor)
-        ctx.setLineWidth(1.5)
+        // 中层发光（半透明管）
+        ctx.setStrokeColor(UIColor.systemBlue.withAlphaComponent(0.25).cgColor)
+        ctx.setLineWidth(6); ctx.setLineCap(.round)
+        ctx.move(to: .init(x:cx,y:cy)); ctx.addLine(to: end); ctx.strokePath()
+        // 内层亮芯（极细亮线）
+        ctx.setStrokeColor(UIColor(red: 0.5, green: 0.85, blue: 1.0, alpha: 0.9).cgColor)
+        ctx.setLineWidth(1.2); ctx.setLineCap(.round)
         ctx.move(to: .init(x:cx,y:cy)); ctx.addLine(to: end); ctx.strokePath()
 
         // 中心点
