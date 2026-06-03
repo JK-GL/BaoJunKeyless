@@ -26,7 +26,7 @@ struct MenuBarView: View {
                 tabButton(for: tab)
             }
         }
-        .padding(.horizontal, isCompactLayout ? 3 : 4)
+        .padding(.horizontal, 1)
         .frame(maxWidth: .infinity)
         .frame(height: menuBarHeight)
         .background(tabClusterBackground())
@@ -105,7 +105,7 @@ struct MenuBarView: View {
             .fill(theme.accent).opacity(0.15)
             .overlay(shape.fill(LinearGradient(colors: [Color.white.opacity(0.2), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)))
             .overlay(shape.stroke(Color.white.opacity(0.2), lineWidth: 0.5))
-            .padding(.horizontal, isCompactLayout ? 3 : 4)
+            .padding(.horizontal, 1)
             .matchedGeometryEffect(id: "tab-selection", in: navigationAnimation)
     }
 
