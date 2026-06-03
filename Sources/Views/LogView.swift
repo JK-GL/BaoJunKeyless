@@ -2,6 +2,7 @@ import SwiftUI
 
 // MARK: - Log View (Tab 3)
 struct LogView: View {
+    @EnvironmentObject var theme: ThemeManager
     @State private var logs: [LogEntry] = [
         LogEntry(time: "14:52", icon: "lock.open.fill", color: .green,
                  title: "无感解锁", detail: "信号强度: -48 dBm → 阈值: -48 dBm"),
@@ -28,21 +29,21 @@ struct LogView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(Date(), format: .dateTime.month(.abbreviated).day())
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(ThemeColors.textTertiary)
+                        .foregroundStyle(theme.textTertiary)
                     Text("日志")
                         .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .foregroundStyle(ThemeColors.textPrimary)
+                        .foregroundStyle(theme.textPrimary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
 
-                CardView(title: "今日日志", icon: "list.bullet.rectangle", iconColor: ThemeColors.accent) {
+                CardView(title: "今日日志", icon: "list.bullet.rectangle", iconColor: theme.accent) {
                     HStack {
                         Spacer()
                         Text(DateFormatter.localizedString(from: Date(),
                                                            dateStyle: .medium, timeStyle: .none))
-                            .font(.caption).foregroundStyle(ThemeColors.textSecondary)
+                            .font(.caption).foregroundStyle(theme.textSecondary)
                     }
                     .padding(.bottom, 4)
 
@@ -60,10 +61,10 @@ struct LogView: View {
                         Text("清除今日日志")
                             .font(.system(size: 14, weight: .medium))
                     }
-                    .foregroundStyle(ThemeColors.textPrimary)
+                    .foregroundStyle(theme.textPrimary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(RoundedRectangle(cornerRadius: 12).stroke(ThemeColors.cardStroke, lineWidth: 1))
+                    .background(RoundedRectangle(cornerRadius: 12).stroke(theme.cardStroke, lineWidth: 1))
                 }
                 .padding(.horizontal, 16)
                 .alert("清除日志", isPresented: $showingClearAlert) {
