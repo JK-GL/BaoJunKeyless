@@ -30,7 +30,7 @@ struct CustomVibrationPattern: Identifiable, Codable, Hashable {
     }
 }
 
-// MARK: - 自定义震动播放（Core Haptics — 支持强度调节）
+// MARK: - 自定义震动播放（Core Haptics — 支持脉冲+持续震动）
 extension CustomVibrationPattern {
     func play(intensity: Double = 1.0) {
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
@@ -43,22 +43,37 @@ extension CustomVibrationPattern {
 
             if evt.intensity > 0 {
                 let i = Float(evt.intensity * intensity)
-                // 叠加多层 transient 脉冲增强体感
-                let layers: [(Float, Float)] = [
-                    (i, 1.0),
-                    (i * 0.8, 0.6),
-                    (i * 0.5, 0.3),
-                ]
-                for (intensityVal, sharpness) in layers {
+
+                if evt.duration > 0.15 {
+                    // 长时震动 → 用 continuous 事件
                     let params = [
-                        CHHapticEventParameter(parameterID: .hapticIntensity, value: intensityVal),
-                        CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
+                        CHHapticEventParameter(parameterID: .hapticIntensity, value: i),
+                        CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.8)
                     ]
                     hapticEvents.append(CHHapticEvent(
-                        eventType: .hapticTransient,
+                        eventType: .hapticContinuous,
                         parameters: params,
-                        relativeTime: time
+                        relativeTime: time,
+                        duration: evt.duration
                     ))
+                } else {
+                    // 短脉冲 → 用 transient 叠加
+                    let layers: [(Float, Float)] = [
+                        (i, 1.0),
+                        (i * 0.8, 0.6),
+                        (i * 0.5, 0.3),
+                    ]
+                    for (intensityVal, sharpness) in layers {
+                        let params = [
+                            CHHapticEventParameter(parameterID: .hapticIntensity, value: intensityVal),
+                            CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
+                        ]
+                        hapticEvents.append(CHHapticEvent(
+                            eventType: .hapticTransient,
+                            parameters: params,
+                            relativeTime: time
+                        ))
+                    }
                 }
                 time += evt.duration
             } else {

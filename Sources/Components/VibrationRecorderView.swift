@@ -49,45 +49,70 @@ struct VibrationRecorderView: View {
                         Circle()
                             .stroke(
                                 hapticManager.isRecording
-                                    ? AppTheme.accent.opacity(0.4)
+                                    ? (hapticManager.isPressing ? AppTheme.accent : Color.white.opacity(0.15))
                                     : Color.white.opacity(0.1),
                                 lineWidth: 2
                             )
                             .frame(width: 200, height: 200)
 
-                        // 内圈 — 点击时脉冲
+                        // 内圈 — 按住时扩大变亮
                         Circle()
                             .fill(
-                                hapticManager.isRecording
-                                    ? AppTheme.accent.opacity(0.3)
-                                    : Color.white.opacity(0.06)
+                                hapticManager.isPressing
+                                    ? AppTheme.accent.opacity(0.5)
+                                    : (hapticManager.isRecording ? AppTheme.accent.opacity(0.2) : Color.white.opacity(0.06))
                             )
-                            .frame(width: 140, height: 140)
+                            .frame(width: hapticManager.isPressing ? 180 : 120,
+                                   height: hapticManager.isPressing ? 180 : 120)
 
                         // 中心图标
                         Image(systemName: hapticManager.isRecording ? "hand.tap" : "record.circle")
                             .font(.system(size: 36, weight: .medium))
-                            .foregroundStyle(hapticManager.isRecording ? AppTheme.accent : Color.white.opacity(0.62))
+                            .foregroundStyle(hapticManager.isPressing ? .white : (hapticManager.isRecording ? AppTheme.accent : Color.white.opacity(0.62)))
                     }
+                    .animation(.spring(response: 0.2), value: hapticManager.isPressing)
+                    .animation(.spring(response: 0.2), value: hapticManager.isRecording)
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { _ in
+                                if hapticManager.isRecording && !hapticManager.isPressing {
+                                    hapticManager.pressStart()
+                                }
+                            }
+                            .onEnded { _ in
+                                if hapticManager.isPressing {
+                                    hapticManager.pressEnd()
+                                }
+                            }
+                    )
+                    .simultaneousGesture(
+                        TapGesture()
+                            .onEnded {
+                                if hapticManager.isRecording && !hapticManager.isPressing {
+                                    hapticManager.tap()
+                                }
+                            }
+                    )
 
                     // 提示文字
                     if hapticManager.isRecording {
-                        Text("点击屏幕录制震动节奏")
-                            .font(.system(size: 15))
-                            .foregroundStyle(Color.white.opacity(0.62))
+                        if hapticManager.isPressing {
+                            Text("松开停止，继续点击或按住录制")
+                                .font(.system(size: 15))
+                                .foregroundStyle(AppTheme.accent)
+                        } else {
+                            Text("点击录制脉冲，按住录制持续震动")
+                                .font(.system(size: 15))
+                                .foregroundStyle(Color.white.opacity(0.62))
+                        }
                     } else if hapticManager.hasRecording {
                         Text("点击「开始录制」重新录制")
                             .font(.system(size: 15))
                             .foregroundStyle(Color.white.opacity(0.62))
                     } else {
-                        Text("点击「开始录制」，然后点击屏幕录制节奏")
+                        Text("点击「开始录制」，点击或按住屏幕录制")
                             .font(.system(size: 15))
                             .foregroundStyle(Color.white.opacity(0.62))
-                    }
-                }
-                .onTapGesture {
-                    if hapticManager.isRecording {
-                        hapticManager.tap()
                     }
                 }
 
@@ -270,16 +295,22 @@ struct VibrationRecorderView: View {
     }
 }
 
-// MARK: - Core Haptics 录制管理器
+// MARK: - Core Haptics 录制管理器（点击 + 按住混合）
 class HapticRecorderManager: ObservableObject {
     @Published var isRecording = false
+    @Published var isPressing = false
     @Published var hasRecording = false
     @Published var totalDuration: Double = 0
 
     var recordedEvents: [CustomVibrationPattern.VibrationEvent] = []
 
     private var engine: CHHapticEngine?
-    private var tapTimestamps: [TimeInterval] = []
+    private var recordingStartTime: TimeInterval = 0
+    private var lastEventEndTime: TimeInterval = 0
+    private var pressStartTime: TimeInterval = 0
+    private var continuousPlayer: CHHapticAdvancedPatternPlayer?
+    // 记录每个事件的原始时长（用于按住模式）
+    private var eventTimestamps: [(start: TimeInterval, end: TimeInterval, isContinuous: Bool)] = []
 
     init() {
         setupEngine()
@@ -299,48 +330,91 @@ class HapticRecorderManager: ObservableObject {
         isRecording = true
         hasRecording = false
         recordedEvents = []
-        tapTimestamps = []
+        eventTimestamps = []
         totalDuration = 0
+        recordingStartTime = CACurrentMediaTime()
+        lastEventEndTime = 0
     }
 
     func stopRecording() {
         isRecording = false
+        isPressing = false
+        try? continuousPlayer?.stop(atTime: 0)
+        continuousPlayer = nil
         buildEventsFromTimestamps()
         hasRecording = !recordedEvents.isEmpty
     }
 
+    // 按下 — 开始持续震动
+    func pressStart() {
+        guard isRecording else { return }
+        let now = CACurrentMediaTime() - recordingStartTime
+
+        // 如果距上次事件有间隔，先记录静音
+        if now - lastEventEndTime > 0.01 {
+            let gap = now - lastEventEndTime
+            eventTimestamps.append((start: lastEventEndTime, end: now, isContinuous: false))
+            recordedEvents.append(.init(duration: gap, intensity: 0))
+        }
+
+        pressStartTime = now
+        isPressing = true
+
+        // 开始持续震动反馈
+        guard let engine = engine else { return }
+        do {
+            let intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0)
+            let sharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: 1.0)
+            let event = CHHapticEvent(eventType: .hapticContinuous, parameters: [intensity, sharpness], relativeTime: 0, duration: 60)
+            let pattern = try CHHapticPattern(events: [event], parameters: [])
+            continuousPlayer = try engine.makeAdvancedPlayer(with: pattern)
+            try continuousPlayer?.start(atTime: 0)
+        } catch {
+            print("Start continuous haptic failed: \(error)")
+        }
+    }
+
+    // 松开 — 停止持续震动，记录时长
+    func pressEnd() {
+        guard isRecording, isPressing else { return }
+        let now = CACurrentMediaTime() - recordingStartTime
+
+        // 停止持续震动
+        try? continuousPlayer?.stop(atTime: 0)
+        continuousPlayer = nil
+        isPressing = false
+
+        // 记录持续震动事件
+        let duration = max(now - pressStartTime, 0.05)
+        eventTimestamps.append((start: pressStartTime, end: now, isContinuous: true))
+        recordedEvents.append(.init(duration: duration, intensity: 1.0))
+        lastEventEndTime = now
+    }
+
+    // 点击 — 短脉冲
     func tap() {
         guard isRecording else { return }
+        let now = CACurrentMediaTime() - recordingStartTime
 
-        // 记录真实时间戳
-        let now = CACurrentMediaTime()
-        tapTimestamps.append(now)
+        // 如果距上次事件有间隔，先记录静音
+        if now - lastEventEndTime > 0.01 {
+            let gap = now - lastEventEndTime
+            eventTimestamps.append((start: lastEventEndTime, end: now, isContinuous: false))
+            recordedEvents.append(.init(duration: gap, intensity: 0))
+        }
+
+        // 记录点击脉冲
+        let duration = 0.05
+        eventTimestamps.append((start: now, end: now + duration, isContinuous: false))
+        recordedEvents.append(.init(duration: duration, intensity: 1.0))
+        lastEventEndTime = now + duration
 
         // 实时震动反馈
         let g = UIImpactFeedbackGenerator(style: .rigid)
         g.impactOccurred(intensity: 1.0)
     }
 
-    // 根据真实点击时间戳生成震动事件序列（和系统录音器一致）
     private func buildEventsFromTimestamps() {
-        recordedEvents = []
-        guard tapTimestamps.count >= 1 else { return }
-
-        let baseTime = tapTimestamps[0]
-
-        for (index, tapTime) in tapTimestamps.enumerated() {
-            if index == 0 {
-                // 第一次点击：直接记录脉冲
-                recordedEvents.append(.init(duration: 0.05, intensity: 1.0))
-            } else {
-                // 计算与上次点击的时间差作为间隔
-                let gap = tapTime - tapTimestamps[index - 1]
-                // 先添加静音间隙，再添加脉冲
-                recordedEvents.append(.init(duration: gap, intensity: 0))
-                recordedEvents.append(.init(duration: 0.05, intensity: 1.0))
-            }
-        }
-
         totalDuration = recordedEvents.reduce(0) { $0 + $1.duration }
     }
 
