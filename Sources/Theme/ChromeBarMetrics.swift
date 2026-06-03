@@ -32,10 +32,10 @@ enum AppTab: String, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Chrome Bar Metrics (1:1 XMusic values)
+// MARK: - Chrome Bar Metrics
 enum ChromeBarMetrics {
     static func menuBarHeight(for sizeClass: UserInterfaceSizeClass?) -> CGFloat {
-        sizeClass == .compact ? 64 : 68
+        sizeClass == .compact ? 44 : 46
     }
 
     static func tabItemHeight(for sizeClass: UserInterfaceSizeClass?) -> CGFloat {
@@ -43,6 +43,6 @@ enum ChromeBarMetrics {
     }
 
     static func compactChromeHeight(for sizeClass: UserInterfaceSizeClass?) -> CGFloat {
-        sizeClass == .compact ? 54 : 58
+        sizeClass == .compact ? 36 : 38
     }
 }

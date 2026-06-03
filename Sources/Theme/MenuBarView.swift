@@ -1,7 +1,7 @@
 import SwiftUI
 
 // MARK: - Menu Bar View (卡片统一圆角 24)
-private let menuBarCornerRadius: CGFloat = 24
+private let menuBarCornerRadius: CGFloat = 16
 
 struct MenuBarView: View {
     private static let tabSelectionAnimation = Animation.spring(response: 0.34, dampingFraction: 0.86)
