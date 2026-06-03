@@ -7,8 +7,67 @@ struct AppTheme {
     static let red     = Color(red: 1.00, green: 0.23, blue: 0.19)
     static let orange  = Color(red: 1.00, green: 0.58, blue: 0.00)
     static let purple  = Color(red: 0.69, green: 0.32, blue: 0.87)
-    static let cardBg  = Color(.systemBackground)
-    static let pageBg  = Color(.systemGroupedBackground)
+}
+
+// MARK: - Theme Manager (ObservableObject, reads UserDefaults)
+class ThemeManager: ObservableObject {
+    @Published var themeRaw: String
+    @Published var accentData: Data
+    @Published var bgRevision: Int
+    @Published var bgBlur: Double
+    @Published var isDark: Bool
+
+    init() {
+        let def = UserDefaults.standard
+        self.themeRaw = def.string(forKey: AppThemePreset.storageKey) ?? AppThemePreset.midnight.rawValue
+        self.accentData = def.data(forKey: AppThemeStorage.customAccentDataKey) ?? Data()
+        self.bgRevision = def.integer(forKey: AppThemeStorage.customBackgroundRevisionKey)
+        self.bgBlur = def.double(forKey: AppThemeStorage.customBackgroundBlurKey)
+        self.isDark = def.bool(forKey: "isDarkMode")
+        setupObservers()
+    }
+
+    private func setupObservers() {
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.reload()
+        }
+    }
+
+    private func reload() {
+        let def = UserDefaults.standard
+        themeRaw = def.string(forKey: AppThemePreset.storageKey) ?? AppThemePreset.midnight.rawValue
+        accentData = def.data(forKey: AppThemeStorage.customAccentDataKey) ?? Data()
+        bgRevision = def.integer(forKey: AppThemeStorage.customBackgroundRevisionKey)
+        bgBlur = def.double(forKey: AppThemeStorage.customBackgroundBlurKey)
+        isDark = def.bool(forKey: "isDarkMode")
+    }
+
+    var config: AppThemeConfiguration {
+        AppThemeConfiguration(selectedThemeRawValue: themeRaw, customAccentData: accentData,
+                              customBackgroundRevision: bgRevision, customBackgroundBlur: bgBlur)
+    }
+
+    // Convenience colors
+    var accent: Color { config.accent }
+
+    var cardBg: Color {
+        isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04)
+    }
+    var cardStroke: Color {
+        isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.08)
+    }
+    var textPrimary: Color {
+        isDark ? .white : .black
+    }
+    var textSecondary: Color {
+        isDark ? Color.white.opacity(0.62) : Color.black.opacity(0.55)
+    }
+    var textTertiary: Color {
+        isDark ? Color.white.opacity(0.45) : Color.black.opacity(0.4)
+    }
+    var pillBg: Color {
+        isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.06)
+    }
 }
 
 // MARK: - Theme Presets
@@ -134,51 +193,5 @@ struct AppThemeConfiguration {
         let bgData = customBackgroundRevision >= 0 ? AppThemeStorage.backgroundImageData() : nil
         customBackgroundImageData = preset == .custom ? bgData : nil
         self.customBackgroundBlur = CGFloat(min(max(customBackgroundBlur, 0), 36))
-    }
-}
-
-// MARK: - Theme-Aware Dynamic Colors (adapts to light/dark)
-struct ThemeColors {
-    @Environment(\.colorScheme) static var colorScheme
-
-    static var isDark: Bool { colorScheme == .dark }
-
-    static var accent: Color { current.accent }
-
-    // Backgrounds
-    static var cardBg: Color {
-        isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04)
-    }
-    static var cardStroke: Color {
-        isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.08)
-    }
-
-    // Text
-    static var textPrimary: Color {
-        isDark ? .white : .black
-    }
-    static var textSecondary: Color {
-        isDark ? Color.white.opacity(0.62) : Color.black.opacity(0.55)
-    }
-    static var textTertiary: Color {
-        isDark ? Color.white.opacity(0.45) : Color.black.opacity(0.4)
-    }
-
-    // Pills
-    static var pillBg: Color {
-        isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.06)
-    }
-    static var pillStroke: Color {
-        isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.08)
-    }
-    static var tabBarBg: Color { .clear }
-
-    private static var current: AppThemeConfiguration {
-        let r = UserDefaults.standard.string(forKey: AppThemePreset.storageKey) ?? "midnight"
-        let a = UserDefaults.standard.data(forKey: AppThemeStorage.customAccentDataKey) ?? Data()
-        let rev = UserDefaults.standard.integer(forKey: AppThemeStorage.customBackgroundRevisionKey)
-        let blur = UserDefaults.standard.double(forKey: AppThemeStorage.customBackgroundBlurKey)
-        return AppThemeConfiguration(selectedThemeRawValue: r, customAccentData: a,
-                                     customBackgroundRevision: rev, customBackgroundBlur: blur)
     }
 }
