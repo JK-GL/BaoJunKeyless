@@ -17,6 +17,7 @@ struct ContentView: View {
                 CustomTabBar(selectedTab: $selectedTab, theme: theme, tabAnimation: tabAnimation)
             }
         }
+        .edgesIgnoringSafeArea(.all)
         .environmentObject(theme)
         .preferredColorScheme(theme.isDark ? .dark : .light)
     }
