@@ -243,7 +243,7 @@ struct KeylessView: View {
                     p.play(intensity: strength.wrappedValue / 100.0)
                 case .custom(let id):
                     if let cp = customStore.patterns.first(where: { $0.id == id }) {
-                        cp.play()
+                        cp.play(intensity: strength.wrappedValue / 100.0)
                     }
                 }
             }) {
