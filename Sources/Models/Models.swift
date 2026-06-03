@@ -53,34 +53,35 @@ enum VibrationPattern: String, CaseIterable {
     case heavyStrong    = "厚重强震"
     case rhythmic       = "间歇节奏"
 
-    func play() {
+    func play(intensity: Double = 1.0) {
+        let level = UIImpactFeedbackGenerator.FeedbackStyle(rawValue: min(max(Int(intensity * 3), 0), 3)) ?? .medium
         switch self {
         case .shortSingle:
-            let g = UIImpactFeedbackGenerator(style: .heavy)
-            g.impactOccurred()
+            let g = UIImpactFeedbackGenerator(style: level)
+            g.impactOccurred(intensity: intensity)
         case .longShortDouble:
-            let g = UIImpactFeedbackGenerator(style: .heavy)
-            g.impactOccurred()
+            let g = UIImpactFeedbackGenerator(style: level)
+            g.impactOccurred(intensity: intensity)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: intensity * 0.6)
             }
         case .continuousLight:
             let g = UIImpactFeedbackGenerator(style: .light)
             g.prepare()
             for i in 0..<5 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.07) {
-                    g.impactOccurred()
+                    g.impactOccurred(intensity: intensity)
                 }
             }
         case .heavyStrong:
             let g = UIImpactFeedbackGenerator(style: .rigid)
-            g.impactOccurred(intensity: 1.0)
+            g.impactOccurred(intensity: intensity)
         case .rhythmic:
-            let g = UIImpactFeedbackGenerator(style: .medium)
+            let g = UIImpactFeedbackGenerator(style: level)
             g.prepare()
             [0.0, 0.15, 0.4, 0.55, 0.8].forEach { delay in
                 DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                    g.impactOccurred()
+                    g.impactOccurred(intensity: intensity)
                 }
             }
         }

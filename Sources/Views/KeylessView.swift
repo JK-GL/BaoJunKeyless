@@ -74,10 +74,7 @@ struct KeylessView: View {
                               value: $unlockThreshold, range: -110...(-30), step: 1,
                               format: "\(Int(unlockThreshold)) dBm", tint: AppTheme.green)
 
-                    // 弹窗在上
-                    ToggleRow(icon: "bell.fill", label: "解锁弹窗", isOn: $unlockPopup)
-
-                    // 震动在下
+                    // 震动在上
                     ToggleRow(icon: "flame.fill", label: "震动反馈", isOn: $unlockVibrate)
 
                     // 震动详情折叠
@@ -89,6 +86,9 @@ struct KeylessView: View {
                             testLabel: "模拟解锁震动"
                         )
                     }
+
+                    // 弹窗在最后
+                    ToggleRow(icon: "bell.fill", label: "解锁弹窗", isOn: $unlockPopup)
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -110,10 +110,7 @@ struct KeylessView: View {
                               value: $lockDelay, range: 0...60, step: 1,
                               format: "\(Int(lockDelay))s", tint: AppTheme.red)
 
-                    // 弹窗在上
-                    ToggleRow(icon: "bell.fill", label: "上锁弹窗", isOn: $lockPopup)
-
-                    // 震动在下
+                    // 震动在上
                     ToggleRow(icon: "flame.fill", label: "震动反馈", isOn: $lockVibrate)
 
                     if lockVibrate {
@@ -124,6 +121,9 @@ struct KeylessView: View {
                             testLabel: "模拟上锁震动"
                         )
                     }
+
+                    // 弹窗在最后
+                    ToggleRow(icon: "bell.fill", label: "上锁弹窗", isOn: $lockPopup)
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -154,8 +154,7 @@ struct KeylessView: View {
                       format: "\(Int(strength.wrappedValue))%", tint: tint)
 
             Button(action: {
-                // 真实震动
-                pattern.wrappedValue.play()
+                pattern.wrappedValue.play(intensity: strength.wrappedValue / 100.0)
             }) {
                 HStack(spacing: 6) {
                     Image(systemName: "speaker.wave.2.fill")
