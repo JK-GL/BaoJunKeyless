@@ -27,7 +27,7 @@ struct SettingsEntryButtonView: View {
         .buttonStyle(.plain)
         .sheet(isPresented: $isPresented) {
             AppNavigationContainerView {
-                AppSettingsView()
+                SettingsView()
             }
             .preferredColorScheme(.dark)
         }
