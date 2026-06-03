@@ -28,7 +28,15 @@
 		<false/>
 	</dict>
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIColor</key>
+		<dict>
+			<key>Red</key><real>0</real>
+			<key>Green</key><real>0</real>
+			<key>Blue</key><real>0</real>
+			<key>Alpha</key><real>1</real>
+		</dict>
+	</dict>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>armv7</string>

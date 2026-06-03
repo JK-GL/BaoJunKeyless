@@ -9,9 +9,6 @@ struct SettingsView: View {
     @AppStorage(AppThemeStorage.customBackgroundRevisionKey) private var bgRevision = 0
     @AppStorage(AppThemeStorage.customBackgroundBlurKey) private var bgBlur = 0.0
 
-    @State private var notifications = true
-    @State private var globalVibrate = true
-    @State private var autoStart = true
     @State private var showingResetAlert = false
     @State private var toastText: String?
     @State private var isCustomEditorExpanded = false
@@ -59,50 +56,6 @@ struct SettingsView: View {
                         }
                     }
 
-                    // General Section
-                    SettingsPanelView(title: "通用设置") {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Toggle(isOn: $notifications) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "bell.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundStyle(Color.white.opacity(0.62))
-                                        .frame(width: 22)
-                                    Text("通知推送")
-                                        .font(.headline)
-                                        .foregroundStyle(.white)
-                                }
-                            }
-                            .tint(theme.accent)
-
-                            Toggle(isOn: $globalVibrate) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "flame.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundStyle(Color.white.opacity(0.62))
-                                        .frame(width: 22)
-                                    Text("全局震动")
-                                        .font(.headline)
-                                        .foregroundStyle(.white)
-                                }
-                            }
-                            .tint(theme.accent)
-
-                            Toggle(isOn: $autoStart) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "bolt.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundStyle(Color.white.opacity(0.62))
-                                        .frame(width: 22)
-                                    Text("开机自启")
-                                        .font(.headline)
-                                        .foregroundStyle(.white)
-                                }
-                            }
-                            .tint(theme.accent)
-                        }
-                    }
-
                     // About Section
                     SettingsPanelView(title: "关于") {
                         VStack(alignment: .leading, spacing: 10) {
@@ -125,28 +78,8 @@ struct SettingsView: View {
                         }
                     }
 
-                    // Action Buttons
+                    // Reset Button
                     VStack(spacing: 12) {
-                        HStack(spacing: 12) {
-                            SettingsInlineActionRowView(
-                                title: "导出配置",
-                                value: "",
-                                actionTitle: "导出",
-                                symbol: "square.and.arrow.up"
-                            ) {
-                                withAnimation { toastText = "配置已导出" }
-                            }
-
-                            SettingsInlineActionRowView(
-                                title: "导入配置",
-                                value: "",
-                                actionTitle: "导入",
-                                symbol: "square.and.arrow.down"
-                            ) {
-                                withAnimation { toastText = "配置已导入" }
-                            }
-                        }
-
                         Button(action: { showingResetAlert = true }) {
                             HStack(spacing: 6) {
                                 Image(systemName: "arrow.counterclockwise")
