@@ -137,16 +137,40 @@ struct AppThemeConfiguration {
     }
 }
 
-// MARK: - Theme-Aware Dynamic Colors (reads UserDefaults)
+// MARK: - Theme-Aware Dynamic Colors (adapts to light/dark)
 struct ThemeColors {
+    @Environment(\.colorScheme) static var colorScheme
+
+    static var isDark: Bool { colorScheme == .dark }
+
     static var accent: Color { current.accent }
-    static var cardBg: Color { Color.white.opacity(0.06) }
-    static var cardStroke: Color { Color.white.opacity(0.08) }
-    static var textPrimary: Color { .white }
-    static var textSecondary: Color { Color.white.opacity(0.62) }
-    static var textTertiary: Color { Color.white.opacity(0.45) }
-    static var pillBg: Color { Color.white.opacity(0.10) }
-    static var pillStroke: Color { Color.white.opacity(0.12) }
+
+    // Backgrounds
+    static var cardBg: Color {
+        isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04)
+    }
+    static var cardStroke: Color {
+        isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.08)
+    }
+
+    // Text
+    static var textPrimary: Color {
+        isDark ? .white : .black
+    }
+    static var textSecondary: Color {
+        isDark ? Color.white.opacity(0.62) : Color.black.opacity(0.55)
+    }
+    static var textTertiary: Color {
+        isDark ? Color.white.opacity(0.45) : Color.black.opacity(0.4)
+    }
+
+    // Pills
+    static var pillBg: Color {
+        isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.06)
+    }
+    static var pillStroke: Color {
+        isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.08)
+    }
     static var tabBarBg: Color { .clear }
 
     private static var current: AppThemeConfiguration {
