@@ -170,8 +170,12 @@ struct KeylessView: View {
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(.secondarySystemGroupedBackground))
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(ThemeColors.cardBg)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(ThemeColors.cardStroke, lineWidth: 1)
+                )
         )
     }
 }
