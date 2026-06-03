@@ -95,12 +95,13 @@ struct SettingsView: View {
                                     .stroke(Color.red.opacity(0.3), lineWidth: 1)
                             )
                         }
-                        .alert("重置插件", isPresented: $showingResetAlert) {
-                            Button("取消", role: .cancel) { }
-                            Button("确认重置", role: .destructive) { }
-                        } message: {
-                            Text("确定要重置全部插件数据吗？此操作不可撤销。")
-                        }
+                        .darkAlert(
+                            isPresented: $showingResetAlert,
+                            title: "重置插件",
+                            message: "确定要重置全部插件数据吗？此操作不可撤销。",
+                            confirmTitle: "确认重置",
+                            confirmColor: .red
+                        ) { }
                     }
                     .padding(.horizontal, 16)
 

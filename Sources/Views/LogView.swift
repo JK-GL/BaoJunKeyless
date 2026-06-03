@@ -59,13 +59,14 @@ struct LogView: View {
                     .background(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.08), lineWidth: 1))
                 }
                 .padding(.horizontal, 16)
-                .alert("清除日志", isPresented: $showingClearAlert) {
-                    Button("取消", role: .cancel) { }
-                    Button("确认清除", role: .destructive) {
-                        withAnimation { logs.removeAll() }
-                    }
-                } message: {
-                    Text("确定要清除今日所有日志吗？此操作不可撤销。")
+                .darkAlert(
+                    isPresented: $showingClearAlert,
+                    title: "清除日志",
+                    message: "确定要清除今日所有日志吗？此操作不可撤销。",
+                    confirmTitle: "确认清除",
+                    confirmColor: .red
+                ) {
+                    withAnimation { logs.removeAll() }
                 }
 
                 Spacer(minLength: 100)

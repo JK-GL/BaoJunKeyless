@@ -364,12 +364,13 @@ struct QuickActionsView: View {
             }
         }
         .padding(.horizontal, 16)
-        .alert(cmdTitle, isPresented: $showingCmdAlert) {
-            Button("取消", role: .cancel) { }
-            Button("确认执行") { }
-        } message: {
-            Text("确定要\(cmdTitle)吗？")
-        }
+        .darkAlert(
+            isPresented: $showingCmdAlert,
+            title: cmdTitle,
+            message: "确定要\(cmdTitle)吗？",
+            confirmTitle: "确认执行",
+            confirmColor: theme.accent
+        ) { }
     }
 }
 
