@@ -523,7 +523,7 @@ struct GaugeCard: View {
             }
         }
         .padding(12)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemGroupedBackground)))
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(ThemeColors.cardBg))
     }
 }
 
@@ -564,7 +564,7 @@ struct TempCard: View {
             Spacer()
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemGroupedBackground)))
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(ThemeColors.cardBg))
     }
 }
 
