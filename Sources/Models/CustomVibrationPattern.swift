@@ -35,31 +35,30 @@ extension CustomVibrationPattern {
     func play() {
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
 
-        var events: [CHHapticEvent] = []
+        var hapticEvents: [CHHapticEvent] = []
         var time: TimeInterval = 0
 
-        for event in events {
-            let intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: Float(event.intensity))
+        for evt in events {
+            let intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: Float(evt.intensity))
             let sharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.8)
             let hapticEvent = CHHapticEvent(
                 eventType: .hapticContinuous,
                 parameters: [intensity, sharpness],
                 relativeTime: time,
-                duration: event.duration
+                duration: evt.duration
             )
-            events.append(hapticEvent)
-            time += event.duration
+            hapticEvents.append(hapticEvent)
+            time += evt.duration
         }
 
-        guard !events.isEmpty else { return }
+        guard !hapticEvents.isEmpty else { return }
 
         do {
             let engine = try CHHapticEngine()
             try engine.start()
-            let pattern = try CHHapticPattern(events: events, parameters: [])
+            let pattern = try CHHapticPattern(events: hapticEvents, parameters: [])
             let player = try engine.makePlayer(with: pattern)
             try player.start(atTime: 0)
-            // 引擎在播放完后自动释放
             DispatchQueue.main.asyncAfter(deadline: .now() + totalDuration + 0.5) {
                 engine.stop(completionHandler: nil)
             }
