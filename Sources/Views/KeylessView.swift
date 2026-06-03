@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - Keyless View (Tab 2)
 struct KeylessView: View {
     @EnvironmentObject var theme: ThemeManager
+    @EnvironmentObject var scrollState: AppScrollState
     // 无感功能
     @State private var keylessEnabled = true
     @State private var pluginTakeover = true
@@ -40,6 +41,10 @@ struct KeylessView: View {
 
                 Spacer(minLength: 100)
             }
+        }
+        .modifier(ChromeScrollTrackingModifier(scrollState: scrollState))
+        .onDisappear {
+            scrollState.reset()
         }
     }
 

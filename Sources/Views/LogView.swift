@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - Log View (Tab 3)
 struct LogView: View {
     @EnvironmentObject var theme: ThemeManager
+    @EnvironmentObject var scrollState: AppScrollState
     @State private var logs: [LogEntry] = [
         LogEntry(time: "14:52", icon: "lock.open.fill", color: .green,
                  title: "无感解锁", detail: "信号强度: -48 dBm → 阈值: -48 dBm"),
@@ -69,6 +70,10 @@ struct LogView: View {
 
                 Spacer(minLength: 100)
             }
+        }
+        .modifier(ChromeScrollTrackingModifier(scrollState: scrollState))
+        .onDisappear {
+            scrollState.reset()
         }
     }
 }

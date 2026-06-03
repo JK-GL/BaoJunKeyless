@@ -24,6 +24,7 @@ class MotionManager: ObservableObject {
 // MARK: - Status View (Tab 1)
 struct StatusView: View {
     @EnvironmentObject var theme: ThemeManager
+    @EnvironmentObject var scrollState: AppScrollState
     @StateObject private var motion = MotionManager()
 
     var body: some View {
@@ -42,6 +43,10 @@ struct StatusView: View {
 
                 Spacer(minLength: 100)
             }
+        }
+        .modifier(ChromeScrollTrackingModifier(scrollState: scrollState))
+        .onDisappear {
+            scrollState.reset()
         }
     }
 }

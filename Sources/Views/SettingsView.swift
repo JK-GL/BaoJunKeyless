@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - Settings View (Tab 4 — XMusic SettingsPanelView style)
 struct SettingsView: View {
     @EnvironmentObject var theme: ThemeManager
+    @EnvironmentObject var scrollState: AppScrollState
     @AppStorage(AppThemePreset.storageKey) private var themeRaw = AppThemePreset.midnight.rawValue
     @AppStorage(AppThemeStorage.customAccentDataKey) private var accentData = Data()
     @AppStorage(AppThemeStorage.customBackgroundRevisionKey) private var bgRevision = 0
@@ -23,6 +24,8 @@ struct SettingsView: View {
 
     var body: some View {
         ZStack {
+            AppBackgroundView()
+
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 16) {
                     PageHeaderView(title: "设置")
@@ -170,6 +173,10 @@ struct SettingsView: View {
 
                     Spacer(minLength: 100)
                 }
+            }
+            .modifier(ChromeScrollTrackingModifier(scrollState: scrollState))
+            .onDisappear {
+                scrollState.reset()
             }
 
             if let text = toastText {
