@@ -304,37 +304,41 @@ class RadarUIView: UIView {
         carX += (tx - carX) * 0.05
         carY += (ty - carY) * 0.05
 
-        // ⭐ #13: 车辆颜色随信号强度渐变
-        let signalStrength = CGFloat(max(0, min(1, (rssi + 110) / 80))) // -110→0, -30→1
-        let carColor = UIColor(
-            red: 1.0 - signalStrength * 0.7,    // 强→0.3, 弱→1.0
-            green: 0.3 + signalStrength * 0.3,   // 强→0.6, 弱→0.3
-            blue: 0.2 + signalStrength * 0.8,    // 强→1.0, 弱→0.2
-            alpha: 1
-        )
-
-        // 车辆发光光晕（颜色跟随信号）
+        // 车辆发光光晕
         let glowR = carSz * 0.7
         if let g = CGGradient(colorsSpace: cs, colors: [
-            carColor.withAlphaComponent(0.15).cgColor,
-            carColor.withAlphaComponent(0.05).cgColor,
+            UIColor.systemBlue.withAlphaComponent(0.12).cgColor,
+            UIColor.systemBlue.withAlphaComponent(0.04).cgColor,
             UIColor.clear.cgColor
         ] as CFArray, locations: [0, 0.5, 1]) {
             ctx.drawRadialGradient(g, startCenter: .init(x:carX,y:carY), startRadius: 0,
                                    endCenter: .init(x:carX,y:carY), endRadius: glowR, options: [])
         }
 
-        // 绘制车辆（着色）
+        // 绘制 SF Symbol car.fill（白色，清晰可见）
         let half = carSz / 2
         let carRect = CGRect(x: carX - half, y: carY - half, width: carSz, height: carSz)
-        ctx.saveGState()
-        ctx.setBlendMode(.normal)
-        carOutline?.draw(in: carRect)
-        // 叠加颜色
-        ctx.setBlendMode(.sourceAtop)
-        ctx.setFillColor(carColor.withAlphaComponent(0.3).cgColor)
-        ctx.fill(carRect)
-        ctx.restoreGState()
+        if let carImage = UIImage(systemName: "car.fill") {
+            // 白色着色
+            let config = UIImage.SymbolConfiguration(pointSize: carSz * 0.7, weight: .medium)
+            if let symbolImage = UIImage(systemName: "car.fill", withConfiguration: config) {
+                let renderer = UIGraphicsImageRenderer(size: symbolImage.size)
+                let tinted = renderer.image { ctx in
+                    UIColor.white.withAlphaComponent(0.85).setFill()
+                    symbolImage.draw(in: CGRect(origin: .zero, size: symbolImage.size))
+                    ctx.fillBlendMode = .sourceAtop
+                    UIColor.white.withAlphaComponent(0.85).setFill()
+                    ctx.fill(CGRect(origin: .zero, size: symbolImage.size))
+                }
+                let drawRect = CGRect(
+                    x: carX - tinted.size.width / 2,
+                    y: carY - tinted.size.height / 2,
+                    width: tinted.size.width,
+                    height: tinted.size.height
+                )
+                tinted.draw(in: drawRect)
+            }
+        }
     }
 
     override var intrinsicContentSize: CGSize { CGSize(width: sz, height: sz) }
@@ -355,7 +359,20 @@ struct RadarCardView: View {
     @EnvironmentObject var theme: ThemeManager
     @ObservedObject var motion: MotionManager
     @State private var rssiText = "-42 dBm"
+    @State private var rssiValue: Double = -42
     private let radar = RadarUIView(frame: .zero)
+
+    // dBm 颜色：强→蓝，弱→红
+    private var rssiColor: Color {
+        let strength = max(0, min(1, (rssiValue + 110) / 80)) // -110→0, -30→1
+        if strength > 0.6 {
+            return Color(red: 0.2, green: 0.6, blue: 1.0)    // 强：蓝
+        } else if strength > 0.3 {
+            return Color(red: 1.0, green: 0.7, blue: 0.2)    // 中：橙
+        } else {
+            return Color(red: 1.0, green: 0.3, blue: 0.2)    // 弱：红
+        }
+    }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -365,14 +382,14 @@ struct RadarCardView: View {
                     .frame(width: 280, height: 280)
                     .clipShape(Circle())
 
-                // dBm 信号值
+                // dBm 信号值 — 根据强度变色
                 HStack(spacing: 3) {
                     Text(rssiText.replacingOccurrences(of: " dBm", with: ""))
                         .font(.system(size: 18, weight: .bold, design: .monospaced))
                     Text("dBm")
                         .font(.system(size: 12, weight: .medium))
                 }
-                .foregroundStyle(theme.textSecondary)
+                .foregroundStyle(rssiColor)
             }
 
             // 状态胶囊
@@ -392,7 +409,10 @@ struct RadarCardView: View {
         .padding(.horizontal, 16)
         .onAppear {
             radar.onRssiChange = { val in
-                DispatchQueue.main.async { rssiText = String(format: "%.0f dBm", val) }
+                DispatchQueue.main.async {
+                    rssiText = String(format: "%.0f dBm", val)
+                    rssiValue = val
+                }
             }
         }
     }
