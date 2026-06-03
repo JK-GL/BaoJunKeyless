@@ -114,7 +114,7 @@ class RadarUIView: UIView {
     func updateGyro(pitch: Double, roll: Double) { self.pitch = pitch; self.roll = roll }
     deinit { link?.invalidate(); sigTimer?.invalidate() }
 
-    // 静态元素缓存
+    // 静态元素缓存（只在尺寸变化时重建一次）
     private func buildStaticCache(_ size: CGSize) {
         UIGraphicsBeginImageContextWithOptions(size, false, 0)
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
@@ -156,14 +156,11 @@ class RadarUIView: UIView {
         ctx.move(to: .init(x:cx-r+14,y:cy)); ctx.addLine(to: .init(x:cx+r-14,y:cy))
         ctx.strokePath()
 
-        // 星空粒子
-        let now = CACurrentMediaTime()
+        // ⭐ 星空粒子（静态，不闪烁，只画一次）
         for star in stars {
             let sx = CGFloat(star.x) * size.width
             let sy = CGFloat(star.y) * size.height
-            let twinkle = (sin(now * star.speed + star.phase) + 1) / 2
-            let alpha = star.alpha * (0.3 + 0.7 * twinkle)
-            ctx.setFillColor(UIColor.white.withAlphaComponent(alpha).cgColor)
+            ctx.setFillColor(UIColor.white.withAlphaComponent(star.alpha).cgColor)
             ctx.fillEllipse(in: CGRect(x: sx - star.size/2, y: sy - star.size/2, width: star.size, height: star.size))
         }
 
@@ -313,37 +310,40 @@ struct RadarCardView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            // 雷达
-            RadarRepresentable(motion: motion, radar: radar)
-                .frame(width: 280, height: 280)
-                .clipShape(Circle())
+            // 雷达 + dBm 胶囊叠加
+            ZStack {
+                RadarRepresentable(motion: motion, radar: radar)
+                    .frame(width: 280, height: 280)
+                    .clipShape(Circle())
 
-            // ⭐ dBm 小胶囊 — 在雷达下方
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text("\(Int(displayValue))")
-                    .font(.system(size: 16, weight: .bold, design: .monospaced))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: gradientColors,
-                            startPoint: .leading,
-                            endPoint: .trailing
+                // ⭐ dBm 小胶囊 — 在雷达中心，车图下方
+                HStack(alignment: .firstTextBaseline, spacing: 1) {
+                    Text("\(Int(displayValue))")
+                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: gradientColors,
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
                         )
-                    )
 
-                Text("dBm")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.5))
+                    Text("dBm")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.5))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                )
+                .offset(y: 80)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .background(
-                Capsule()
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                    )
-            )
 
             // 状态胶囊
             VStack(spacing: 8) {
