@@ -103,6 +103,7 @@ struct MenuBarView: View {
             .fill(LinearGradient(colors: [theme.accent.opacity(0.22), theme.accent.opacity(0.08)], startPoint: .top, endPoint: .bottom))
             .overlay(shape.stroke(Color.white.opacity(0.15), lineWidth: 0.5))
             .padding(.horizontal, 2)
+            .padding(.vertical, 1)
             .matchedGeometryEffect(id: "tab-selection", in: navigationAnimation)
     }
 
