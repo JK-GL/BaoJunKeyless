@@ -1,7 +1,8 @@
 import SwiftUI
 
-// MARK: - Card (XMusic style)
+// MARK: - Card
 struct CardView<Content: View>: View {
+    @EnvironmentObject var theme: ThemeManager
     let title: String?
     let icon: String?
     let iconColor: Color
@@ -21,7 +22,7 @@ struct CardView<Content: View>: View {
                             .font(.system(size: 15, weight: .semibold))
                     }
                     Text(title).font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(ThemeColors.textPrimary)
+                        .foregroundStyle(theme.textPrimary)
                 }
             }
             content()
@@ -30,11 +31,11 @@ struct CardView<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(ThemeColors.cardBg)
+                .fill(theme.cardBg)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(ThemeColors.cardStroke, lineWidth: 1)
+                .stroke(theme.cardStroke, lineWidth: 1)
         )
         .padding(.horizontal, 16)
     }
@@ -42,6 +43,7 @@ struct CardView<Content: View>: View {
 
 // MARK: - Collapsible Card
 struct CollapsibleCard<Header: View, Content: View>: View {
+    @EnvironmentObject var theme: ThemeManager
     let title: String; let icon: String; let iconColor: Color
     @Binding var isExpanded: Bool
     let headerExtra: (() -> Header)?
@@ -62,18 +64,18 @@ struct CollapsibleCard<Header: View, Content: View>: View {
                     Image(systemName: icon).foregroundColor(iconColor)
                         .font(.system(size: 15, weight: .semibold))
                     Text(title).font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(ThemeColors.textPrimary)
+                        .foregroundStyle(theme.textPrimary)
                     Spacer()
                     headerExtra?()
                     Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(ThemeColors.textSecondary)
+                        .foregroundStyle(theme.textSecondary)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 }
             }
             .buttonStyle(.plain)
             if isExpanded {
                 VStack(alignment: .leading, spacing: 12) {
-                    Divider().background(ThemeColors.cardStroke)
+                    Divider().background(theme.cardStroke)
                     content()
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -81,8 +83,8 @@ struct CollapsibleCard<Header: View, Content: View>: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(ThemeColors.cardBg))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(ThemeColors.cardStroke, lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(theme.cardBg))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(theme.cardStroke, lineWidth: 1))
         .padding(.horizontal, 16)
     }
 }
@@ -97,6 +99,7 @@ extension CollapsibleCard where Header == EmptyView {
 
 // MARK: - Status Pill
 struct StatusPill: View {
+    @EnvironmentObject var theme: ThemeManager
     let icon: String; let text: String; let color: Color
 
     var body: some View {
@@ -104,7 +107,7 @@ struct StatusPill: View {
             Image(systemName: icon).font(.system(size: 10, weight: .semibold))
             Text(text).font(.system(size: 12, weight: .medium))
         }
-        .foregroundStyle(ThemeColors.textPrimary)
+        .foregroundStyle(theme.textPrimary)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .background(Capsule().fill(color.opacity(0.18)))
@@ -113,23 +116,25 @@ struct StatusPill: View {
 
 // MARK: - Toggle Row
 struct ToggleRow: View {
+    @EnvironmentObject var theme: ThemeManager
     let icon: String; let label: String
     @Binding var isOn: Bool
 
     var body: some View {
         HStack {
             Image(systemName: icon).font(.system(size: 14))
-                .foregroundStyle(ThemeColors.textSecondary).frame(width: 22)
-            Text(label).font(.system(size: 15)).foregroundStyle(ThemeColors.textPrimary)
+                .foregroundStyle(theme.textSecondary).frame(width: 22)
+            Text(label).font(.system(size: 15)).foregroundStyle(theme.textPrimary)
             Spacer()
             Toggle("", isOn: $isOn).labelsHidden()
-                .tint(ThemeColors.accent)
+                .tint(theme.accent)
         }
     }
 }
 
 // MARK: - Slider Row
 struct SliderRow: View {
+    @EnvironmentObject var theme: ThemeManager
     let icon: String; let label: String
     @Binding var value: Double; let range: ClosedRange<Double>; let step: Double
     let format: String; let tint: Color
@@ -137,11 +142,11 @@ struct SliderRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Image(systemName: icon).font(.system(size: 13)).foregroundStyle(ThemeColors.textSecondary)
-                Text(label).font(.system(size: 14)).foregroundStyle(ThemeColors.textSecondary)
+                Image(systemName: icon).font(.system(size: 13)).foregroundStyle(theme.textSecondary)
+                Text(label).font(.system(size: 14)).foregroundStyle(theme.textSecondary)
                 Spacer()
                 Text(format).font(.system(size: 14, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(ThemeColors.textSecondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             Slider(value: $value, in: range, step: step).tint(tint)
         }
@@ -150,34 +155,36 @@ struct SliderRow: View {
 
 // MARK: - Chip Button
 struct ChipButton: View {
+    @EnvironmentObject var theme: ThemeManager
     let text: String; let isSelected: Bool; let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Text(text).font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                .foregroundStyle(isSelected ? .black : ThemeColors.textPrimary)
+                .foregroundStyle(isSelected ? .black : theme.textPrimary)
                 .padding(.horizontal, 14).padding(.vertical, 7)
-                .background(Capsule().fill(isSelected ? ThemeColors.accent : ThemeColors.pillBg))
+                .background(Capsule().fill(isSelected ? theme.accent : theme.pillBg))
         }
     }
 }
 
 // MARK: - Info Row
 struct InfoRow: View {
+    @EnvironmentObject var theme: ThemeManager
     let icon: String; let label: String; let value: String
     var isMono: Bool = false; var valueColor: Color = .white
 
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: icon).font(.system(size: 14))
-                .foregroundStyle(ThemeColors.textSecondary).frame(width: 20)
-            Text(label).font(.system(size: 14)).foregroundStyle(ThemeColors.textSecondary)
+                .foregroundStyle(theme.textSecondary).frame(width: 20)
+            Text(label).font(.system(size: 14)).foregroundStyle(theme.textSecondary)
             Spacer()
             Text(value).font(.system(size: isMono ? 12 : 13, weight: .medium, design: isMono ? .monospaced : .default))
                 .foregroundColor(valueColor).lineLimit(1).minimumScaleFactor(0.8)
         }
         .padding(.vertical, 2)
-        Divider().background(ThemeColors.cardStroke).padding(.leading, 30)
+        Divider().background(theme.cardStroke).padding(.leading, 30)
     }
 }
 
@@ -203,9 +210,9 @@ struct ToastView: View {
     let text: String
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill").foregroundColor(ThemeColors.accent)
+            Image(systemName: "checkmark.circle.fill").foregroundColor(.accentColor)
             Text(text).font(.system(size: 14, weight: .medium))
-                .foregroundStyle(ThemeColors.textPrimary)
+                .foregroundStyle(.primary)
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(Capsule().fill(.ultraThinMaterial).shadow(color: .black.opacity(0.1), radius: 10, y: 5))
