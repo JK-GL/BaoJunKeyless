@@ -27,7 +27,7 @@ struct ContentView: View {
                 navigationAnimation: tabAnimation
             )
             .padding(.horizontal, 18)
-            .padding(.top, 8)
+            .padding(.top, 16)
             .padding(.bottom, -8.0)
         }
     }
