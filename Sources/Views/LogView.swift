@@ -56,7 +56,7 @@ struct LogView: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.08), lineWidth: 1))
+                    .background(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.08), lineWidth: 1))
                 }
                 .padding(.horizontal, 16)
                 .alert("清除日志", isPresented: $showingClearAlert) {

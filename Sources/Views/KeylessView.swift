@@ -167,17 +167,17 @@ struct KeylessView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .background(
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: 18)
                         .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
                 )
             }
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(theme.cardBg)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
                         .stroke(theme.cardStroke, lineWidth: 1)
                 )
         )

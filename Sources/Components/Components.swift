@@ -229,7 +229,7 @@ struct SettingsActionButton: View {
             }
             .foregroundStyle(color)
             .frame(maxWidth: .infinity).padding(.vertical, 12)
-            .background(RoundedRectangle(cornerRadius: 12).stroke(color.opacity(0.3), lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 18).stroke(color.opacity(0.3), lineWidth: 1))
         }
     }
 }

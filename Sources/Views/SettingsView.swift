@@ -158,7 +158,7 @@ struct SettingsView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
                             .background(
-                                RoundedRectangle(cornerRadius: 12)
+                                RoundedRectangle(cornerRadius: 18)
                                     .stroke(Color.red.opacity(0.3), lineWidth: 1)
                             )
                         }

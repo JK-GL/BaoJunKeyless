@@ -384,7 +384,7 @@ struct RangeCardView: View {
                 Text("3.2 kW").font(.caption.bold()).foregroundColor(AppTheme.orange)
             }
             .padding(.horizontal, 12).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.orange.opacity(0.1)))
+            .background(RoundedRectangle(cornerRadius: 12).fill(AppTheme.orange.opacity(0.1)))
 
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Image(systemName: "gauge.medium").foregroundColor(.secondary)
@@ -415,7 +415,7 @@ struct RangeRow: View {
         VStack(spacing: 6) {
             HStack(spacing: 8) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 6).fill(iconBg).frame(width: 28, height: 28)
+                    RoundedRectangle(cornerRadius: 12).fill(iconBg).frame(width: 28, height: 28)
                     Image(systemName: icon).font(.system(size: 13, weight: .semibold)).foregroundColor(iconColor)
                 }
                 Text(label).font(.system(size: 14, weight: .medium)).foregroundColor(.secondary)
@@ -425,8 +425,8 @@ struct RangeRow: View {
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4).fill(Color(.systemGray5)).frame(height: 8)
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: 8).fill(Color(.systemGray5)).frame(height: 8)
+                    RoundedRectangle(cornerRadius: 8)
                         .fill(LinearGradient(colors: [barColor.opacity(0.8), barColor],
                                              startPoint: .leading, endPoint: .trailing))
                         .frame(width: geo.size.width * barPercent, height: 8)
@@ -480,7 +480,7 @@ struct GaugeCard: View {
             }
         }
         .padding(12)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(theme.cardBg))
+        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(theme.cardBg))
     }
 }
 
@@ -509,7 +509,7 @@ struct TempCard: View {
     var body: some View {
         HStack(spacing: 10) {
             ZStack {
-                RoundedRectangle(cornerRadius: 8).fill(item.color.opacity(0.1)).frame(width: 36, height: 36)
+                RoundedRectangle(cornerRadius: 12).fill(item.color.opacity(0.1)).frame(width: 36, height: 36)
                 Image(systemName: item.icon).font(.system(size: 14, weight: .medium)).foregroundColor(item.color)
             }
             VStack(alignment: .leading, spacing: 2) {
@@ -522,7 +522,7 @@ struct TempCard: View {
             Spacer()
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(theme.cardBg))
+        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(theme.cardBg))
     }
 }
 
