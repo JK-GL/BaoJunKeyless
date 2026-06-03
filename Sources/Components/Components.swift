@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Card
+// MARK: - Card (XMusic style: cornerRadius 24, white opacity)
 struct CardView<Content: View>: View {
     @EnvironmentObject var theme: ThemeManager
     let title: String?
@@ -29,14 +29,8 @@ struct CardView<Content: View>: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(theme.cardBg)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(theme.cardStroke, lineWidth: 1)
-        )
+        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(theme.cardBg))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(theme.cardStroke, lineWidth: 1))
         .padding(.horizontal, 16)
     }
 }
@@ -61,10 +55,8 @@ struct CollapsibleCard<Header: View, Content: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: { withAnimation(.spring(response: 0.35)) { isExpanded.toggle() } }) {
                 HStack(spacing: 6) {
-                    Image(systemName: icon).foregroundColor(iconColor)
-                        .font(.system(size: 15, weight: .semibold))
-                    Text(title).font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.textPrimary)
+                    Image(systemName: icon).foregroundColor(iconColor).font(.system(size: 15, weight: .semibold))
+                    Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.textPrimary)
                     Spacer()
                     headerExtra?()
                     Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold))
@@ -126,8 +118,7 @@ struct ToggleRow: View {
                 .foregroundStyle(theme.textSecondary).frame(width: 22)
             Text(label).font(.system(size: 15)).foregroundStyle(theme.textPrimary)
             Spacer()
-            Toggle("", isOn: $isOn).labelsHidden()
-                .tint(theme.accent)
+            Toggle("", isOn: $isOn).labelsHidden().tint(theme.accent)
         }
     }
 }
@@ -188,6 +179,63 @@ struct InfoRow: View {
     }
 }
 
+// MARK: - Settings Status Row (XMusic: cornerRadius 18, stroke)
+struct SettingsRowView: View {
+    @EnvironmentObject var theme: ThemeManager
+    let icon: String; let label: String; let value: String
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(theme.textSecondary)
+            Text(label)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(theme.textSecondary)
+            Spacer(minLength: 0)
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.textPrimary)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.cardBg.opacity(0.6), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(theme.cardStroke, lineWidth: 1))
+    }
+}
+
+// MARK: - Section Title (XMusic: .title2 .bold, white)
+struct SectionTitleView: View {
+    @EnvironmentObject var theme: ThemeManager
+    let title: String
+    var subtitle: String = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(theme.textPrimary)
+            if !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(theme.textSecondary)
+            }
+        }
+    }
+}
+
+// MARK: - Row Divider (XMusic: .leading 52, white 0.08)
+struct DividerRow: View {
+    @EnvironmentObject var theme: ThemeManager
+    var body: some View {
+        Divider()
+            .background(theme.cardStroke)
+            .padding(.leading, 52)
+    }
+}
+
 // MARK: - Settings Action Button
 struct SettingsActionButton: View {
     let icon: String; let label: String; let color: Color; let action: () -> Void
@@ -211,8 +259,7 @@ struct ToastView: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill").foregroundColor(.accentColor)
-            Text(text).font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.primary)
+            Text(text).font(.system(size: 14, weight: .medium)).foregroundStyle(.primary)
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(Capsule().fill(.ultraThinMaterial).shadow(color: .black.opacity(0.1), radius: 10, y: 5))
