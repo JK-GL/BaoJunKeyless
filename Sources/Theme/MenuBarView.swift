@@ -1,6 +1,8 @@
 import SwiftUI
 
-// MARK: - Menu Bar View (Exact XMusic Copy — No Search)
+// MARK: - Menu Bar View (卡片统一圆角 24)
+private let menuBarCornerRadius: CGFloat = 24
+
 struct MenuBarView: View {
     private static let tabSelectionAnimation = Animation.spring(response: 0.34, dampingFraction: 0.86)
 
@@ -28,7 +30,7 @@ struct MenuBarView: View {
         .frame(maxWidth: .infinity)
         .frame(height: menuBarHeight)
         .background(tabClusterBackground())
-        .contentShape(Capsule())
+        .contentShape(RoundedRectangle(cornerRadius: menuBarCornerRadius, style: .continuous))
         .onTapGesture {}
         .overlay(tabClusterOutline())
         .shadow(color: tabClusterShadowColor, radius: 24, x: 0, y: 12)
@@ -77,15 +79,25 @@ struct MenuBarView: View {
         ChromeBarMetrics.menuBarHeight(for: horizontalSizeClass)
     }
 
-    // MARK: - Backgrounds (Exact XMusic Tokens)
+    // MARK: - Backgrounds (与卡片 cornerRadius 24 + 描边统一)
 
     @ViewBuilder
     private func tabClusterBackground() -> some View {
-        Capsule()
-            .fill(.regularMaterial)
-            .overlay(Capsule().fill(LinearGradient(colors: [Color.white.opacity(0.15), .clear, Color.white.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing)))
-            .overlay(Capsule().stroke(LinearGradient(colors: [Color.white.opacity(0.35), .clear, Color.white.opacity(0.15)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 0.5))
-            .overlay(Capsule().fill(Color.primary).opacity(0.02))
+        let shape = RoundedRectangle(cornerRadius: menuBarCornerRadius, style: .continuous)
+
+        Group {
+            if #available(iOS 26.0, *) {
+                Color.clear
+                    .glassEffect(.regular, in: shape)
+                    .overlay { shape.fill(Color.primary).opacity(0.04) }
+            } else {
+                shape
+                    .fill(.regularMaterial)
+                    .overlay(shape.fill(LinearGradient(colors: [Color.white.opacity(0.15), .clear, Color.white.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing)))
+                    .overlay(shape.stroke(Color.white.opacity(0.08), lineWidth: 0.5))
+                    .overlay(shape.fill(Color.primary).opacity(0.02))
+            }
+        }
     }
 
     @ViewBuilder
@@ -95,11 +107,21 @@ struct MenuBarView: View {
 
     @ViewBuilder
     private func selectedTabBackground() -> some View {
-        Capsule()
-            .fill(theme.accent).opacity(0.15)
-            .overlay(Capsule().fill(LinearGradient(colors: [Color.white.opacity(0.2), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)))
-            .overlay(Capsule().stroke(Color.white.opacity(0.2), lineWidth: 0.5))
-            .matchedGeometryEffect(id: "tab-selection", in: navigationAnimation)
+        let shape = RoundedRectangle(cornerRadius: menuBarCornerRadius, style: .continuous)
+
+        Group {
+            if #available(iOS 26.0, *) {
+                Color.clear
+                    .glassEffect(.regular, in: shape)
+                    .overlay(shape.fill(theme.accent).opacity(0.15))
+            } else {
+                shape
+                    .fill(theme.accent).opacity(0.15)
+                    .overlay(shape.fill(LinearGradient(colors: [Color.white.opacity(0.2), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)))
+                    .overlay(shape.stroke(Color.white.opacity(0.2), lineWidth: 0.5))
+            }
+        }
+        .matchedGeometryEffect(id: "tab-selection", in: navigationAnimation)
     }
 
     private var tabClusterShadowColor: Color {
