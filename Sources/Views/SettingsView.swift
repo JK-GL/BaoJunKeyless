@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Settings View (Tab 4)
 struct SettingsView: View {
-    @AppStorage("isDarkMode") private var isDarkMode = true
+    @EnvironmentObject var theme: ThemeManager
     @AppStorage(AppThemePreset.storageKey) private var themeRaw = AppThemePreset.midnight.rawValue
     @AppStorage(AppThemeStorage.customAccentDataKey) private var accentData = Data()
     @AppStorage(AppThemeStorage.customBackgroundRevisionKey) private var bgRevision = 0
@@ -29,10 +29,10 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(Date(), format: .dateTime.month(.abbreviated).day())
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(ThemeColors.textTertiary)
+                            .foregroundStyle(theme.textTertiary)
                         Text("设置")
                             .font(.system(size: 34, weight: .bold, design: .rounded))
-                            .foregroundStyle(ThemeColors.textPrimary)
+                            .foregroundStyle(theme.textPrimary)
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
@@ -46,7 +46,7 @@ struct SettingsView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 16)
             }
-            .preferredColorScheme(isDarkMode ? .dark : .light)
+            .preferredColorScheme(theme.isDark ? .dark : .light)
 
             if let text = toastText {
                 VStack { Spacer(); ToastView(text: text) }
@@ -168,11 +168,11 @@ struct SettingsView: View {
                 Text("通用设置").font(.system(size: 15, weight: .semibold)).foregroundColor(.white)
             }
             HStack {
-                Image(systemName: isDarkMode ? "moon.fill" : "moon")
+                Image(systemName: theme.isDark ? "moon.fill" : "moon")
                     .font(.system(size: 14)).foregroundColor(.white.opacity(0.5)).frame(width: 22)
                 Text("深色模式").font(.system(size: 15)).foregroundColor(.white)
                 Spacer()
-                Toggle("", isOn: $isDarkMode).labelsHidden().tint(AppTheme.purple)
+                Toggle("", isOn: Binding(get: { theme.isDark }, set: { UserDefaults.standard.set($0, forKey: "isDarkMode") })).labelsHidden().tint(AppTheme.purple)
             }
             ToggleRow(icon: "bell.fill", label: "通知推送", isOn: $notifications)
             ToggleRow(icon: "flame.fill", label: "全局震动", isOn: $globalVibrate)
