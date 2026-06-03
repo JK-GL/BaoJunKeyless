@@ -30,30 +30,38 @@ struct CustomVibrationPattern: Identifiable, Codable, Hashable {
     }
 }
 
-// MARK: - 自定义震动播放（Core Haptics）
+// MARK: - 自定义震动播放（Core Haptics — 增强强度）
 extension CustomVibrationPattern {
     func play() {
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
 
         var hapticEvents: [CHHapticEvent] = []
-
-        // 每个事件都是 transient 脉冲，通过 relativeTime 控制节奏
         var time: TimeInterval = 0
 
         for evt in events {
             guard evt.duration > 0.01 else { continue }
 
             if evt.intensity > 0 {
-                // 震动脉冲
-                let params = [
-                    CHHapticEventParameter(parameterID: .hapticIntensity, value: Float(evt.intensity)),
-                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.9)
+                let i = Float(evt.intensity)
+                // 叠加多层 transient 脉冲增强体感
+                let layers: [(Float, Float)] = [
+                    (i, 1.0),           // 主脉冲：最高强度+尖锐度
+                    (i * 0.8, 0.6),     // 第二层：略弱，略钝
+                    (i * 0.5, 0.3),     // 第三层：低强度低尖锐度
                 ]
-                let event = CHHapticEvent(eventType: .hapticTransient, parameters: params, relativeTime: time)
-                hapticEvents.append(event)
+                for (intensity, sharpness) in layers {
+                    let params = [
+                        CHHapticEventParameter(parameterID: .hapticIntensity, value: intensity),
+                        CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
+                    ]
+                    hapticEvents.append(CHHapticEvent(
+                        eventType: .hapticTransient,
+                        parameters: params,
+                        relativeTime: time
+                    ))
+                }
                 time += evt.duration
             } else {
-                // 静音间隙 — 直接跳过时间
                 time += evt.duration
             }
         }

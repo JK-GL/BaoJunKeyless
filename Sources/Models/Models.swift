@@ -66,12 +66,20 @@ enum VibrationPattern: String, CaseIterable {
         var time: TimeInterval = 0
         let i = Float(max(min(intensity, 1.0), 0.0))
 
-        func addEvent(_ type: CHHapticEvent.EventType, duration: Double, sharpness: Float = 0.8) {
+        func addEvent(_ type: CHHapticEvent.EventType, duration: Double, sharpness: Float = 1.0) {
             let params = [
                 CHHapticEventParameter(parameterID: .hapticIntensity, value: i),
                 CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
             ]
             hapticEvents.append(CHHapticEvent(eventType: type, parameters: params, relativeTime: time, duration: duration))
+            // 叠加第二层增强
+            if type == .hapticTransient {
+                let extra = [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: i * 0.7),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.5)
+                ]
+                hapticEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: extra, relativeTime: time))
+            }
             time += duration
         }
 
