@@ -26,7 +26,7 @@ struct ContentView: View {
                 selectedTab: $selectedTab,
                 navigationAnimation: tabAnimation
             )
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, -8.0)
         }
