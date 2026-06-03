@@ -85,19 +85,11 @@ struct MenuBarView: View {
     private func tabClusterBackground() -> some View {
         let shape = RoundedRectangle(cornerRadius: menuBarCornerRadius, style: .continuous)
 
-        Group {
-            if #available(iOS 26.0, *) {
-                Color.clear
-                    .glassEffect(.regular, in: shape)
-                    .overlay { shape.fill(Color.primary).opacity(0.04) }
-            } else {
-                shape
-                    .fill(.regularMaterial)
-                    .overlay(shape.fill(LinearGradient(colors: [Color.white.opacity(0.15), .clear, Color.white.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing)))
-                    .overlay(shape.stroke(Color.white.opacity(0.08), lineWidth: 0.5))
-                    .overlay(shape.fill(Color.primary).opacity(0.02))
-            }
-        }
+        shape
+            .fill(.regularMaterial)
+            .overlay(shape.fill(LinearGradient(colors: [Color.white.opacity(0.15), .clear, Color.white.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing)))
+            .overlay(shape.stroke(Color.white.opacity(0.08), lineWidth: 0.5))
+            .overlay(shape.fill(Color.primary).opacity(0.02))
     }
 
     @ViewBuilder
@@ -109,19 +101,11 @@ struct MenuBarView: View {
     private func selectedTabBackground() -> some View {
         let shape = RoundedRectangle(cornerRadius: menuBarCornerRadius, style: .continuous)
 
-        Group {
-            if #available(iOS 26.0, *) {
-                Color.clear
-                    .glassEffect(.regular, in: shape)
-                    .overlay(shape.fill(theme.accent).opacity(0.15))
-            } else {
-                shape
-                    .fill(theme.accent).opacity(0.15)
-                    .overlay(shape.fill(LinearGradient(colors: [Color.white.opacity(0.2), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)))
-                    .overlay(shape.stroke(Color.white.opacity(0.2), lineWidth: 0.5))
-            }
-        }
-        .matchedGeometryEffect(id: "tab-selection", in: navigationAnimation)
+        shape
+            .fill(theme.accent).opacity(0.15)
+            .overlay(shape.fill(LinearGradient(colors: [Color.white.opacity(0.2), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)))
+            .overlay(shape.stroke(Color.white.opacity(0.2), lineWidth: 0.5))
+            .matchedGeometryEffect(id: "tab-selection", in: navigationAnimation)
     }
 
     private var tabClusterShadowColor: Color {
