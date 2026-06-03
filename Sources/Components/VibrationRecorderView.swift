@@ -55,40 +55,40 @@ struct VibrationRecorderView: View {
                             )
                             .frame(width: 200, height: 200)
 
-                        // 内圈 — 按住时扩大
+                        // 内圈 — 点击时脉冲
                         Circle()
                             .fill(
                                 hapticManager.isRecording
                                     ? AppTheme.accent.opacity(0.3)
                                     : Color.white.opacity(0.06)
                             )
-                            .frame(width: hapticManager.isRecording ? 180 : 120,
-                                   height: hapticManager.isRecording ? 180 : 120)
+                            .frame(width: 140, height: 140)
 
                         // 中心图标
-                        Image(systemName: hapticManager.isRecording ? "stop.fill" : "hand.tap")
+                        Image(systemName: hapticManager.isRecording ? "hand.tap" : "record.circle")
                             .font(.system(size: 36, weight: .medium))
-                            .foregroundStyle(hapticManager.isRecording ? .white : Color.white.opacity(0.62))
+                            .foregroundStyle(hapticManager.isRecording ? AppTheme.accent : Color.white.opacity(0.62))
                     }
-                    .animation(.spring(response: 0.3), value: hapticManager.isRecording)
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { _ in
-                                if !hapticManager.isRecording {
-                                    hapticManager.startRecording()
-                                }
-                            }
-                            .onEnded { _ in
-                                if hapticManager.isRecording {
-                                    hapticManager.stopRecording()
-                                }
-                            }
-                    )
 
                     // 提示文字
-                    Text(hapticManager.isRecording ? "松开手指停止录制" : "按住屏幕开始录制")
-                        .font(.system(size: 15))
-                        .foregroundStyle(Color.white.opacity(0.62))
+                    if hapticManager.isRecording {
+                        Text("点击屏幕录制震动节奏")
+                            .font(.system(size: 15))
+                            .foregroundStyle(Color.white.opacity(0.62))
+                    } else if hapticManager.hasRecording {
+                        Text("点击「开始录制」重新录制")
+                            .font(.system(size: 15))
+                            .foregroundStyle(Color.white.opacity(0.62))
+                    } else {
+                        Text("点击「开始录制」，然后点击屏幕录制节奏")
+                            .font(.system(size: 15))
+                            .foregroundStyle(Color.white.opacity(0.62))
+                    }
+                }
+                .onTapGesture {
+                    if hapticManager.isRecording {
+                        hapticManager.tap()
+                    }
                 }
 
                 // 录制时间
@@ -102,6 +102,33 @@ struct VibrationRecorderView: View {
 
                 // 底部按钮
                 VStack(spacing: 12) {
+                    // 开始/停止录制
+                    Button(action: {
+                        if hapticManager.isRecording {
+                            hapticManager.stopRecording()
+                        } else {
+                            hapticManager.startRecording()
+                        }
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: hapticManager.isRecording ? "stop.fill" : "record.circle")
+                            Text(hapticManager.isRecording ? "停止录制" : "开始录制")
+                        }
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(hapticManager.isRecording ? .white : AppTheme.accent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(hapticManager.isRecording ? AppTheme.accent : Color.clear)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .stroke(hapticManager.isRecording ? AppTheme.accent : AppTheme.accent.opacity(0.3), lineWidth: 1)
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+
                     // 播放预览
                     if hapticManager.hasRecording {
                         Button(action: { hapticManager.playRecording() }) {
@@ -149,20 +176,96 @@ struct VibrationRecorderView: View {
             }
         }
         .interactiveDismissDisabled()
-        .alert("保存震动模式", isPresented: $showSaveDialog) {
-            TextField("输入名称", text: $patternName)
-            Button("保存") {
-                guard !patternName.isEmpty else { return }
-                let pattern = CustomVibrationPattern(
-                    name: patternName,
-                    events: hapticManager.recordedEvents
+        .overlay {
+            if showSaveDialog {
+                Color.black.opacity(0.5)
+                    .ignoresSafeArea()
+                    .onTapGesture { showSaveDialog = false }
+
+                VStack(spacing: 0) {
+                    // 标题
+                    Text("保存震动模式")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .padding(.top, 24)
+
+                    // 输入框
+                    TextField("输入名称", text: $patternName)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 16))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.white.opacity(0.08))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
+                        .padding(.horizontal, 20)
+                        .padding(.top, 16)
+
+                    // 提示
+                    Text("为你的自定义震动模式命名")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.white.opacity(0.45))
+                        .padding(.top, 8)
+
+                    Divider()
+                        .background(Color.white.opacity(0.08))
+                        .padding(.top, 16)
+
+                    // 按钮
+                    HStack(spacing: 0) {
+                        Button(action: { showSaveDialog = false }) {
+                            Text("取消")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.62))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                        }
+
+                        Divider()
+                            .background(Color.white.opacity(0.08))
+                            .frame(height: 28)
+
+                        Button(action: {
+                            guard !patternName.isEmpty else { return }
+                            let pattern = CustomVibrationPattern(
+                                name: patternName,
+                                events: hapticManager.recordedEvents
+                            )
+                            onSave(pattern)
+                            dismiss()
+                        }) {
+                            Text("保存")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(patternName.isEmpty ? Color.white.opacity(0.3) : AppTheme.accent)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                        }
+                        .disabled(patternName.isEmpty)
+                    }
+                }
+                .frame(width: 280)
+                .background(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                .fill(Color.white.opacity(0.06))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        )
                 )
-                onSave(pattern)
-                dismiss()
+                .shadow(color: Color.black.opacity(0.4), radius: 40, x: 0, y: 20)
+                .transition(.scale(scale: 0.92).combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.2), value: showSaveDialog)
             }
-            Button("取消", role: .cancel) { }
-        } message: {
-            Text("为你的自定义震动模式命名")
         }
     }
 }
@@ -176,10 +279,7 @@ class HapticRecorderManager: ObservableObject {
     var recordedEvents: [CustomVibrationPattern.VibrationEvent] = []
 
     private var engine: CHHapticEngine?
-    private var continuousPlayer: CHHapticAdvancedPatternPlayer?
-    private var recordingStartTime: TimeInterval = 0
-    private var segments: [(start: TimeInterval, end: TimeInterval)] = []
-    private var currentSegmentStart: TimeInterval = 0
+    private var tapCount = 0
 
     init() {
         setupEngine()
@@ -199,63 +299,32 @@ class HapticRecorderManager: ObservableObject {
         isRecording = true
         hasRecording = false
         recordedEvents = []
-        segments = []
+        tapCount = 0
         totalDuration = 0
-        recordingStartTime = CACurrentMediaTime()
-        currentSegmentStart = 0
-
-        // 开始持续震动反馈
-        guard let engine = engine else { return }
-        do {
-            let intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0)
-            let sharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: 1.0)
-            let event = CHHapticEvent(eventType: .hapticContinuous, parameters: [intensity, sharpness], relativeTime: 0, duration: 60)
-            let pattern = try CHHapticPattern(events: [event], parameters: [])
-            continuousPlayer = try engine.makeAdvancedPlayer(with: pattern)
-            try continuousPlayer?.start(atTime: 0)
-        } catch {
-            print("Start recording haptic failed: \(error)")
-        }
     }
 
     func stopRecording() {
         isRecording = false
-        let now = CACurrentMediaTime() - recordingStartTime
-
-        // 停止持续震动
-        try? continuousPlayer?.stop(atTime: 0)
-        continuousPlayer = nil
-
-        // 记录最后一段
-        let segEnd = now
-        segments.append((start: currentSegmentStart, end: segEnd))
-
-        // 合并连续段，生成事件
-        buildEvents()
-        totalDuration = now
         hasRecording = !recordedEvents.isEmpty
     }
 
-    func tapStart() {
-        currentSegmentStart = CACurrentMediaTime() - recordingStartTime
-    }
+    func tap() {
+        guard isRecording else { return }
+        tapCount += 1
 
-    func tapEnd() {
-        let now = CACurrentMediaTime() - recordingStartTime
-        segments.append((start: currentSegmentStart, end: now))
-    }
-
-    private func buildEvents() {
-        recordedEvents = []
-        for seg in segments {
-            let duration = seg.end - seg.start
-            guard duration > 0.02 else { continue }
-            // 在同一段内添加静音间隙
-            if !recordedEvents.isEmpty {
-                recordedEvents.append(.init(duration: 0.05, intensity: 0))
-            }
-            recordedEvents.append(.init(duration: duration, intensity: 1.0))
+        // 每次点击记录一个震动事件（短震 + 间隔）
+        recordedEvents.append(.init(duration: 0.12, intensity: 1.0))
+        // 间隔：根据点击节奏动态调整
+        let interval = tapCount > 1 ? 0.08 : 0.0
+        if interval > 0 {
+            recordedEvents.append(.init(duration: interval, intensity: 0))
         }
+
+        totalDuration = recordedEvents.reduce(0) { $0 + $1.duration }
+
+        // 每次点击时实际震动反馈
+        let g = UIImpactFeedbackGenerator(style: .rigid)
+        g.impactOccurred(intensity: 1.0)
     }
 
     func playRecording() {
@@ -269,27 +338,4 @@ class HapticRecorderManager: ObservableObject {
     }
 }
 
-// MARK: - 按住手势
-struct PressGestureView: View {
-    @Binding var isPressed: Bool
-    let onPress: () -> Void
-    let onRelease: () -> Void
 
-    var body: some View {
-        Color.clear
-            .contentShape(Circle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        if !isPressed {
-                            isPressed = true
-                            onPress()
-                        }
-                    }
-                    .onEnded { _ in
-                        isPressed = false
-                        onRelease()
-                    }
-            )
-    }
-}
