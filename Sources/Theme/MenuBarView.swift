@@ -81,19 +81,11 @@ struct MenuBarView: View {
 
     @ViewBuilder
     private func tabClusterBackground() -> some View {
-        Group {
-            if #available(iOS 26.0, *) {
-                Color.clear
-                    .glassEffect(.regular, in: Capsule())
-                    .overlay { Capsule().fill(Color.primary).opacity(0.04) }
-            } else {
-                Capsule()
-                    .fill(.regularMaterial)
-                    .overlay(Capsule().fill(LinearGradient(colors: [Color.white.opacity(0.15), .clear, Color.white.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing)))
-                    .overlay(Capsule().stroke(LinearGradient(colors: [Color.white.opacity(0.35), .clear, Color.white.opacity(0.15)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 0.5))
-                    .overlay(Capsule().fill(Color.primary).opacity(0.02))
-            }
-        }
+        Capsule()
+            .fill(.regularMaterial)
+            .overlay(Capsule().fill(LinearGradient(colors: [Color.white.opacity(0.15), .clear, Color.white.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing)))
+            .overlay(Capsule().stroke(LinearGradient(colors: [Color.white.opacity(0.35), .clear, Color.white.opacity(0.15)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 0.5))
+            .overlay(Capsule().fill(Color.primary).opacity(0.02))
     }
 
     @ViewBuilder
@@ -103,19 +95,11 @@ struct MenuBarView: View {
 
     @ViewBuilder
     private func selectedTabBackground() -> some View {
-        Group {
-            if #available(iOS 26.0, *) {
-                Color.clear
-                    .glassEffect(.regular, in: Capsule())
-                    .overlay(Capsule().fill(theme.accent).opacity(0.15))
-            } else {
-                Capsule()
-                    .fill(theme.accent).opacity(0.15)
-                    .overlay(Capsule().fill(LinearGradient(colors: [Color.white.opacity(0.2), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)))
-                    .overlay(Capsule().stroke(Color.white.opacity(0.2), lineWidth: 0.5))
-            }
-        }
-        .matchedGeometryEffect(id: "tab-selection", in: navigationAnimation)
+        Capsule()
+            .fill(theme.accent).opacity(0.15)
+            .overlay(Capsule().fill(LinearGradient(colors: [Color.white.opacity(0.2), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)))
+            .overlay(Capsule().stroke(Color.white.opacity(0.2), lineWidth: 0.5))
+            .matchedGeometryEffect(id: "tab-selection", in: navigationAnimation)
     }
 
     private var tabClusterShadowColor: Color {
