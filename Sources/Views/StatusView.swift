@@ -304,6 +304,7 @@ struct RadarCardView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
         .onAppear {
