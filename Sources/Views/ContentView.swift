@@ -76,9 +76,11 @@ struct CustomTabBar: View {
             }
         }
         .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity)
         .frame(height: 56)
         .background(tabBarBackground)
-        .overlay(tabBarOutline)
+        .contentShape(Capsule())
+        .onTapGesture {}
         .shadow(color: .black.opacity(0.08), radius: 24, y: 12)
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
@@ -104,13 +106,5 @@ struct CustomTabBar: View {
                 startPoint: .topLeading, endPoint: .bottomTrailing)))
     }
 
-    // MARK: - Tab bar outline
-    private var tabBarOutline: some View {
-        Capsule()
-            .stroke(LinearGradient(
-                colors: [Color.white.opacity(0.35), .clear, Color.white.opacity(0.15)],
-                startPoint: .topLeading, endPoint: .bottomTrailing),
-                lineWidth: 0.5)
-            .overlay(Capsule().fill(Color.primary).opacity(0.02))
-    }
+
 }
