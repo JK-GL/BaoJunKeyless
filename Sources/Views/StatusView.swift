@@ -27,24 +27,19 @@ struct StatusView: View {
     @StateObject private var motion = MotionManager()
 
     var body: some View {
-        NavigationView {
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 16) {
-                    HeaderView(isRefreshing: $isRefreshing)
-                    RadarCardView(motion: motion)
-                    QuickActionsView()
-                    RangeCardView()
-                    BatteryGaugesView()
-                    TemperatureView()
-                    VehicleInfoMergedCard()
-                    Spacer(minLength: 20)
-                }
-                .padding(.bottom, 10)
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 16) {
+                HeaderView(isRefreshing: $isRefreshing)
+                RadarCardView(motion: motion)
+                QuickActionsView()
+                RangeCardView()
+                BatteryGaugesView()
+                TemperatureView()
+                VehicleInfoMergedCard()
+                Spacer(minLength: 20)
             }
-            .background(AppBackgroundView().ignoresSafeArea())
-            .navigationBarHidden(true)
+            .padding(.bottom, 10)
         }
-        .navigationViewStyle(.stack)
     }
 }
 
@@ -197,9 +192,8 @@ class RadarUIView: UIView {
         let cs = CGColorSpaceCreateDeviceRGB()
         let rad = sweep * .pi / 180
 
-        // ── 1. Light background ──
-        UIColor.systemBackground.setFill()
-        ctx.fillEllipse(in: .init(x: cx-r, y: cy-r, width: r*2, height: r*2))
+        // ── 1. Transparent background (no fill) ──
+        // Radar is transparent — only lines and sweep are drawn
 
         // ── 2. Tick marks (gray on white) ──
         for deg in 0..<360 {
@@ -340,15 +334,6 @@ struct RadarCardView: View {
             }
         }
         .padding(.vertical, 16)
-        .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(ThemeColors.cardBg)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(ThemeColors.cardStroke, lineWidth: 1)
-        )
         .padding(.horizontal, 16)
         .onAppear {
             radar.onRssiChange = { val in
