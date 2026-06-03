@@ -297,12 +297,10 @@ struct RadarCardView: View {
     @State private var displayValue: Double = -42
     private let radar = RadarUIView(frame: .zero)
 
-    // 信号强度 0~1
     private var strength: Double {
         max(0, min(1, (rssiValue + 110) / 80))
     }
 
-    // ⭐ 渐变色：强→蓝青，弱→橙红
     private var gradientColors: [Color] {
         if strength > 0.6 {
             return [Color(red: 0.2, green: 0.6, blue: 1.0), Color(red: 0.3, green: 0.9, blue: 1.0)]
@@ -315,43 +313,39 @@ struct RadarCardView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            ZStack {
-                RadarRepresentable(motion: motion, radar: radar)
-                    .frame(width: 280, height: 280)
-                    .clipShape(Circle())
+            // 雷达
+            RadarRepresentable(motion: motion, radar: radar)
+                .frame(width: 280, height: 280)
+                .clipShape(Circle())
 
-                // ⭐ dBm 数字 + 毛玻璃底板
-                VStack(spacing: 2) {
-                    // 大数字 + 渐变文字
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text("\(Int(displayValue))")
-                            .font(.system(size: 32, weight: .bold, design: .monospaced))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: gradientColors,
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: displayValue)
-
-                        Text("dBm")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color.white.opacity(0.5))
-                    }
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            // ⭐ dBm 小胶囊 — 在雷达下方
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text("\(Int(displayValue))")
+                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: gradientColors,
+                            startPoint: .leading,
+                            endPoint: .trailing
                         )
-                )
-            }
+                    )
 
+                Text("dBm")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.5))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+            )
+
+            // 状态胶囊
             VStack(spacing: 8) {
                 HStack(spacing: 8) {
                     StatusPill(icon: "shield.fill", text: "密钥正常", color: AppTheme.green)
@@ -370,7 +364,6 @@ struct RadarCardView: View {
             radar.onRssiChange = { val in
                 DispatchQueue.main.async {
                     rssiValue = val
-                    // ⭐ 弹簧动画过渡
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                         displayValue = val
                     }
