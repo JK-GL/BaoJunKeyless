@@ -27,21 +27,28 @@ struct KeylessView: View {
     @State private var lockVibStrength: Double = 60
 
     var body: some View {
-        NavigationView {
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 16) {
-                    keylessSection    // 无感功能 — 最上面
-                    unlockSection     // 解锁设置
-                    lockSection       // 上锁设置
-                    Spacer(minLength: 20)
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 16) {
+                // Page Header (XMusic style)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(Date(), format: .dateTime.month(.abbreviated).day())
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(ThemeColors.textTertiary)
+                    Text("无感车控")
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .foregroundStyle(ThemeColors.textPrimary)
                 }
-                .padding(.vertical, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+
+                keylessSection
+                unlockSection
+                lockSection
+                Spacer(minLength: 20)
             }
-            .background(AppBackgroundView().ignoresSafeArea())
-            .navigationTitle("无感车控")
-            .navigationBarTitleDisplayMode(.large)
+            .padding(.bottom, 10)
         }
-        .navigationViewStyle(.stack)
     }
 
     // MARK: 无感功能
