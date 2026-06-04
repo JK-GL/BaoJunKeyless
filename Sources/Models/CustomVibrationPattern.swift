@@ -73,7 +73,7 @@ extension CustomVibrationPattern {
                     ]
                     hapticEvents.append(CHHapticEvent(eventType: .hapticContinuous, parameters: params, relativeTime: time, duration: evt.duration))
                 } else {
-                    for (iv, is_) in [(i, 1.0), (i * 0.8, 0.6), (i * 0.5, 0.3)] {
+                    for (iv, is_) in [(i, Float(1.0)), (i * 0.8, Float(0.6)), (i * 0.5, Float(0.3))] {
                         let params = [
                             CHHapticEventParameter(parameterID: .hapticIntensity, value: iv),
                             CHHapticEventParameter(parameterID: .hapticSharpness, value: is_)
