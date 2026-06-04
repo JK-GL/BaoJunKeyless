@@ -21,6 +21,8 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.distanceFilter = 10      // ⭐ 移动 10 米以上才更新 GPS
+        manager.headingFilter = 5        // ⭐ 方向变化 5° 以上才更新
         manager.requestWhenInUseAuthorization()
         manager.startUpdatingLocation()
         manager.startUpdatingHeading()

@@ -35,6 +35,13 @@ class RadarUIView: UIView {
         isOpaque = false; backgroundColor = .clear
         stars = (0..<50).map { _ in StarParticle(x: Double.random(in:0...1), y: Double.random(in:0...1), size: Double.random(in:0.5...2.0), alpha: Double.random(in:0.03...0.12)) }
         loadCarImage()
+
+        // ⭐ 内存警告时清理缓存
+        NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.staticCache = nil
+            self?.carCacheImage = nil
+            self?.carOnlineImage = nil
+        }
     }
 
     // ⭐ 由 SwiftUI onChange 调用，自动适配设备刷新率
@@ -55,13 +62,20 @@ class RadarUIView: UIView {
 
     private func loadCarImage() {
         guard let url = URL(string: carImageURL) else { return }
-        let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 30)
+        let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
         if let cached = URLCache.shared.cachedResponse(for: request), let img = UIImage(data: cached.data) {
             DispatchQueue.main.async { self.carOnlineImage = img }; return
         }
         URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
-            guard let data = data, let img = UIImage(data: data) else { return }
-            DispatchQueue.main.async { self?.carOnlineImage = img }
+            guard let self = self else { return }
+            if let data = data, let img = UIImage(data: data) {
+                DispatchQueue.main.async { self.carOnlineImage = img }
+            } else {
+                // 加载失败用 SF Symbol 兜底
+                DispatchQueue.main.async {
+                    self.carOnlineImage = UIImage(systemName: "car.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
+                }
+            }
         }.resume()
     }
 
