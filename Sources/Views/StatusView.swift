@@ -94,6 +94,14 @@ struct StatusView: View {
                 // ⭐ 蓝牙状态指示
                 BLEStatusView()
 
+                // ⭐ 状态胶囊 — 一行排列
+                HStack(spacing: 8) {
+                    StatusPill(icon: "shield.fill", text: "密钥正常", color: AppTheme.green)
+                    StatusPill(icon: "arrow.triangle.2.circlepath", text: "全程接管", color: AppTheme.purple)
+                    StatusPill(icon: "lock.open.fill", text: "未锁车", color: AppTheme.orange)
+                }
+                .padding(.horizontal, 20)
+
                 RadarCardView(motion: motion, locationManager: locationManager)
                 QuickActionsView()
                 RangeCardView()

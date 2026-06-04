@@ -52,6 +52,11 @@ class RadarUIView: UIView {
     // ⭐ 车辆图标缓存
     private var carCacheSize: CGFloat = 0
     private var carCacheImage: UIImage?
+    private var carOnlineImage: UIImage?
+    private var carImageLoaded = false
+
+    // 车辆图片 URL
+    private let carImageURL = "https://cdn-df.00bang.cn/images/T1Dw_TBTEv1RCvBVdK.png"
 
     // 星空粒子
     private var stars: [StarParticle] = []
@@ -69,6 +74,19 @@ class RadarUIView: UIView {
         link = CADisplayLink(target: self, selector: #selector(tick))
         link?.add(to: .main, forMode: .common)
         generateStars()
+        loadCarImage()
+    }
+
+    // ⭐ 在线加载车辆图片
+    private func loadCarImage() {
+        guard let url = URL(string: carImageURL) else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data = data, let img = UIImage(data: data) else { return }
+            DispatchQueue.main.async {
+                self?.carOnlineImage = img
+                self?.carImageLoaded = true
+            }
+        }.resume()
     }
 
     private func generateStars() {
@@ -200,9 +218,19 @@ class RadarUIView: UIView {
     private func buildCarCache() {
         guard abs(carSz - carCacheSize) > 1.0 else { return }
         carCacheSize = carSz
-        let config = UIImage.SymbolConfiguration(pointSize: carSz * 0.6, weight: .medium)
-        carCacheImage = UIImage(systemName: "car.fill", withConfiguration: config)?
-            .withTintColor(UIColor.white.withAlphaComponent(0.85), renderingMode: .alwaysOriginal)
+        if let online = carOnlineImage {
+            // 在线图片：裁剪到正方形 + 缩放
+            let sz = CGSize(width: carSz * 0.8, height: carSz * 0.8)
+            let renderer = UIGraphicsImageRenderer(size: sz)
+            carCacheImage = renderer.image { _ in
+                online.draw(in: CGRect(origin: .zero, size: sz))
+            }
+        } else {
+            // 降级为 SF Symbol
+            let config = UIImage.SymbolConfiguration(pointSize: carSz * 0.6, weight: .medium)
+            carCacheImage = UIImage(systemName: "car.fill", withConfiguration: config)?
+                .withTintColor(UIColor.white.withAlphaComponent(0.85), renderingMode: .alwaysOriginal)
+        }
     }
 
     override func draw(_ rect: CGRect) {
@@ -387,17 +415,7 @@ struct RadarCardView: View {
                     .foregroundStyle(Color.white.opacity(0.5))
             }
 
-            // 状态胶囊
-            VStack(spacing: 8) {
-                HStack(spacing: 8) {
-                    StatusPill(icon: "shield.fill", text: "密钥正常", color: AppTheme.green)
-                    StatusPill(icon: "bolt.fill", text: "蓝牙已连接", color: AppTheme.green)
-                }
-                HStack(spacing: 8) {
-                    StatusPill(icon: "arrow.triangle.2.circlepath", text: "全程接管", color: AppTheme.purple)
-                    StatusPill(icon: "lock.open.fill", text: "未锁车", color: AppTheme.orange)
-                }
-            }
+            // 状态胶囊 — 已移到 StatusView
         }
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 16)
