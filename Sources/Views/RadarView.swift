@@ -227,51 +227,51 @@ class RadarUIView: UIView {
     override var intrinsicContentSize: CGSize { CGSize(width: sz, height: sz) }
 }
 
-// MARK: - SwiftUI 波纹动画（替代 Core Graphics 波纹）
-struct WaveRippleView: View {
-    @State private var waveID = 0
-    let radarSize: CGFloat
+// MARK: - 中心脉冲动画
+struct CenterPulseView: View {
+    @State private var pulse1 = false
+    @State private var pulse2 = false
+    @State private var pulse3 = false
+    let size: CGFloat
 
     var body: some View {
         ZStack {
-            ForEach(0..<4, id: \.self) { i in
-                WaveCircle(index: i, radarSize: radarSize)
-            }
+            // 脉冲圈 1
+            Circle()
+                .stroke(Color.blue.opacity(0.3), lineWidth: 1.5)
+                .frame(width: size * 0.3, height: size * 0.3)
+                .scaleEffect(pulse1 ? 1.2 : 0.4)
+                .opacity(pulse1 ? 0 : 0.6)
+                .animation(.easeOut(duration: 2.0).repeatForever(autoreverses: false), value: pulse1)
+
+            // 脉冲圈 2
+            Circle()
+                .stroke(Color.blue.opacity(0.25), lineWidth: 1)
+                .frame(width: size * 0.3, height: size * 0.3)
+                .scaleEffect(pulse2 ? 1.0 : 0.3)
+                .opacity(pulse2 ? 0 : 0.5)
+                .animation(.easeOut(duration: 2.0).repeatForever(autoreverses: false).delay(0.7), value: pulse2)
+
+            // 脉冲圈 3
+            Circle()
+                .stroke(Color.blue.opacity(0.2), lineWidth: 0.8)
+                .frame(width: size * 0.3, height: size * 0.3)
+                .scaleEffect(pulse3 ? 0.8 : 0.2)
+                .opacity(pulse3 ? 0 : 0.4)
+                .animation(.easeOut(duration: 2.0).repeatForever(autoreverses: false).delay(1.4), value: pulse3)
+
+            // 中心亮点
+            Circle()
+                .fill(Color.blue.opacity(0.6))
+                .frame(width: 6, height: 6)
         }
-        .frame(width: radarSize, height: radarSize)
-        .clipShape(Circle())
+        .frame(width: size, height: size)
         .allowsHitTesting(false)
-    }
-}
-
-struct WaveCircle: View {
-    let index: Int
-    let radarSize: CGFloat
-    @State private var animate = false
-
-    var body: some View {
-        Circle()
-            .stroke(
-                Color.blue.opacity(0.4),
-                lineWidth: 1.5
-            )
-            .frame(width: radarSize * 0.3, height: radarSize * 0.3)
-            .scaleEffect(animate ? 1.0 : 0.05)
-            .opacity(animate ? 0.0 : 0.8)
-            .onAppear {
-                // 错开每个波纹的起始时间
-                DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 1.0) {
-                    animate = true
-                }
-            }
-            .onChange(of: animate) { val in
-                if val {
-                    // 动画完成后重置，形成循环
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        animate = false
-                    }
-                }
-            }
+        .onAppear {
+            pulse1 = true
+            pulse2 = true
+            pulse3 = true
+        }
     }
 }
 
@@ -311,8 +311,8 @@ struct RadarCardView: View {
                     .frame(width: 280, height: 280)
                     .clipShape(Circle())
 
-                // ⭐ SwiftUI 波纹动画（叠加在雷达上）
-                WaveRippleView(radarSize: 280)
+                // ⭐ 中心脉冲动画
+                CenterPulseView(size: 280)
             }
 
             if locationManager.distance > 0 {
