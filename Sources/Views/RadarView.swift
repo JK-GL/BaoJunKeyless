@@ -39,6 +39,7 @@ class RadarUIView: UIView {
     // ⭐ GPS 真实定位
     var relativeAngle: Double = 0    // 车辆相对角度（0=正前方）
     var distance: Double = 0          // 车辆距离（米）
+    var bleConnected: Bool = false    // BLE 连接状态
 
     // 静态缓存
     private var staticCache: UIImage?
@@ -259,10 +260,35 @@ class RadarUIView: UIView {
 
         ctx.restoreGState()
 
-        // ── dBm 文字（缓存绘制）──
-        buildDbmCache()
-        if let img = dbmCacheImage {
-            img.draw(at: CGPoint(x: cx - img.size.width/2, y: cy - img.size.height/2))
+        // ── 信号文字（BLE 连接显示 dBm，未连接显示 GPS）──
+        if bleConnected {
+            // dBm 文字（缓存绘制）
+            buildDbmCache()
+            if let img = dbmCacheImage {
+                img.draw(at: CGPoint(x: cx - img.size.width/2, y: cy - img.size.height/2))
+            }
+        } else {
+            // GPS 标识小胶囊
+            let gpsAttrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 12, weight: .bold),
+                .foregroundColor: UIColor.systemGreen.withAlphaComponent(0.9)
+            ]
+            let gpsText = NSAttributedString(string: "GPS", attributes: gpsAttrs)
+            let textSize = gpsText.size()
+            let capsuleW = textSize.width + 16
+            let capsuleH = textSize.height + 8
+            let capsuleRect = CGRect(x: cx - capsuleW/2, y: cy - capsuleH/2, width: capsuleW, height: capsuleH)
+
+            // 胶囊底板
+            let capsulePath = UIBezierPath(roundedRect: capsuleRect, cornerRadius: capsuleH / 2)
+            UIColor.systemGreen.withAlphaComponent(0.12).setFill()
+            capsulePath.fill()
+            UIColor.systemGreen.withAlphaComponent(0.25).setStroke()
+            capsulePath.lineWidth = 0.5
+            capsulePath.stroke()
+
+            // 文字
+            gpsText.draw(at: CGPoint(x: cx - textSize.width/2, y: cy - textSize.height/2))
         }
 
         // ── 车辆图标（GPS 真实定位）──
@@ -308,11 +334,13 @@ struct RadarRepresentable: UIViewRepresentable {
     @ObservedObject var motion: MotionManager
     @ObservedObject var locationManager: LocationManager
     let radar: RadarUIView
+    var bleConnected: Bool = false
     func makeUIView(context: Context) -> RadarUIView { radar }
     func updateUIView(_ v: RadarUIView, context: Context) {
         v.updateGyro(pitch: motion.pitch, roll: motion.roll)
         v.relativeAngle = locationManager.relativeAngle
         v.distance = locationManager.distance
+        v.bleConnected = bleConnected
     }
 }
 
@@ -324,6 +352,7 @@ struct RadarCardView: View {
     @State private var rssiText = "-42"
     @State private var rssiValue: Double = -42
     @State private var displayValue: Double = -42
+    @State private var bleConnected = false  // ⭐ BLE 连接状态（模拟未连接）
     private let radar = RadarUIView(frame: .zero)
 
     // 车辆 GPS 坐标（从 MQTT 获取）
@@ -347,7 +376,7 @@ struct RadarCardView: View {
     var body: some View {
         VStack(spacing: 12) {
             // 雷达（dBm 在 Canvas 内部绘制）
-            RadarRepresentable(motion: motion, locationManager: locationManager, radar: radar)
+            RadarRepresentable(motion: motion, locationManager: locationManager, radar: radar, bleConnected: bleConnected)
                 .frame(width: 280, height: 280)
                 .clipShape(Circle())
 
