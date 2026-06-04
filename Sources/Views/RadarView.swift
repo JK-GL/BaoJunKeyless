@@ -377,10 +377,10 @@ struct RadarCardView: View {
                 }
             }
         }
-        .onChange(of: locationManager.relativeAngle) { _, val in
+        .onChange(of: locationManager.relativeAngle) { val in
             radar.relativeAngle = val
         }
-        .onChange(of: locationManager.distance) { _, val in
+        .onChange(of: locationManager.distance) { val in
             radar.distance = val
         }
     }
