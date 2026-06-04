@@ -84,6 +84,7 @@ struct StatusView: View {
     @StateObject private var motion = MotionManager()
     @StateObject private var locationManager = LocationManager()
     @StateObject private var store = KeylessSettingsStore()
+    @State private var isRefreshing = false
 
     // 控制模式文字
     private var modeText: String {
@@ -114,20 +115,17 @@ struct StatusView: View {
                     Spacer()
                     // ⭐ 刷新按钮
                     Button(action: {
-                        // 以后接入真实刷新逻辑
+                        isRefreshing = true
+                        // 以后接入真实刷新逻辑，完成后 isRefreshing = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            isRefreshing = false
+                        }
                     }) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 16, weight: .medium))
+                        Image(systemName: isRefreshing ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
+                            .font(.system(size: 18, weight: .medium))
                             .foregroundStyle(Color.white.opacity(0.62))
-                            .frame(width: 36, height: 36)
-                            .background(
-                                Circle()
-                                    .fill(.ultraThinMaterial)
-                                    .overlay(
-                                        Circle()
-                                            .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
-                                    )
-                            )
+                            .rotationEffect(.degrees(isRefreshing ? 360 : 0))
+                            .animation(isRefreshing ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: isRefreshing)
                     }
                     .buttonStyle(.plain)
                 }
