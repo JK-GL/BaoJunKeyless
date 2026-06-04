@@ -302,8 +302,6 @@ struct TrailedRing: View {
         }
     }
 }
-    }
-}
 
 // MARK: - SwiftUI 封装
 struct RadarRepresentable: UIViewRepresentable {
