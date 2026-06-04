@@ -135,6 +135,8 @@ struct StatusView: View {
                         Image(systemName: isRefreshing ? "hourglass" : "arrow.triangle.2.circlepath")
                             .font(.system(size: 18, weight: .medium))
                             .foregroundStyle(Color.white.opacity(0.62))
+                            .frame(width: 24, height: 24)
+                            .contentTransition(.symbolEffect(.replace))
                             .scaleEffect(refreshScale)
                     }
                     .buttonStyle(.plain)
