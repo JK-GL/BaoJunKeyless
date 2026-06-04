@@ -214,19 +214,22 @@ class RadarUIView: UIView {
         }
     }
 
-    // ⭐ 缓存车辆图标图片
+    // ⭐ 缓存车辆图标图片（保持比例）
     private func buildCarCache() {
         guard abs(carSz - carCacheSize) > 1.0 else { return }
         carCacheSize = carSz
         if let online = carOnlineImage {
-            // 在线图片：裁剪到正方形 + 缩放
-            let sz = CGSize(width: carSz * 0.8, height: carSz * 0.8)
-            let renderer = UIGraphicsImageRenderer(size: sz)
+            let maxSide = carSz * 0.8
+            let imgW = online.size.width
+            let imgH = online.size.height
+            let scale = min(maxSide / imgW, maxSide / imgH)
+            let drawW = imgW * scale
+            let drawH = imgH * scale
+            let renderer = UIGraphicsImageRenderer(size: CGSize(width: drawW, height: drawH))
             carCacheImage = renderer.image { _ in
-                online.draw(in: CGRect(origin: .zero, size: sz))
+                online.draw(in: CGRect(x: 0, y: 0, width: drawW, height: drawH))
             }
         } else {
-            // 降级为 SF Symbol
             let config = UIImage.SymbolConfiguration(pointSize: carSz * 0.6, weight: .medium)
             carCacheImage = UIImage(systemName: "car.fill", withConfiguration: config)?
                 .withTintColor(UIColor.white.withAlphaComponent(0.85), renderingMode: .alwaysOriginal)
