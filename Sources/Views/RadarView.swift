@@ -87,6 +87,7 @@ class RadarUIView: UIView {
         carSz += (tSz - carSz) * 0.05
     }
 
+    func updateGyro(pitch: Double, roll: Double) { self.pitch = pitch; self.roll = roll }
     deinit { updateTimer?.invalidate() }
 
     // 静态元素缓存
