@@ -227,49 +227,52 @@ class RadarUIView: UIView {
     override var intrinsicContentSize: CGSize { CGSize(width: sz, height: sz) }
 }
 
-// MARK: - 雷达声波脉冲动画
-struct SonarPulseView: View {
+// MARK: - 动漫念力扫描波
+struct PsychicScanView: View {
     let size: CGFloat
-    @State private var phase = false
 
     var body: some View {
         ZStack {
-            // 3 层声波环，从中心扩散到边缘
             ForEach(0..<3, id: \.self) { i in
-                SonarRing(index: i, size: size, phase: phase)
+                ScanRing(index: i, size: size)
             }
         }
         .frame(width: size, height: size)
         .allowsHitTesting(false)
-        .onAppear { phase = true }
     }
 }
 
-struct SonarRing: View {
+struct ScanRing: View {
     let index: Int
     let size: CGFloat
-    let phase: Bool
-    @State private var ringPhase = false
+    @State private var expand = false
 
-    private var delay: Double { Double(index) * 0.8 }
-    private var duration: Double { 2.4 }
+    private var delay: Double { Double(index) * 0.9 }
 
     var body: some View {
+        // 用 Arc 表示扫描环（360° 弧形，带渐变尾迹）
         Circle()
+            .trim(from: 0, to: expand ? 1.0 : 0.0)
             .stroke(
-                Color.blue.opacity(0.35),
-                lineWidth: 1.2
+                AngularGradient(
+                    gradient: Gradient(stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .clear, location: 0.3),
+                        .init(color: Color.cyan.opacity(0.7), location: 0.7),
+                        .init(color: Color.white.opacity(0.9), location: 0.95),
+                        .init(color: .clear, location: 1.0)
+                    ]),
+                    center: .center
+                ),
+                style: StrokeStyle(lineWidth: 2, lineCap: .round)
             )
-            .frame(width: size * 0.08, height: size * 0.08)
-            .scaleEffect(ringPhase ? 3.5 : 0.2)
-            .opacity(ringPhase ? 0.0 : 0.7)
+            .frame(width: size * 0.15, height: size * 0.15)
+            .scaleEffect(expand ? 4.5 : 0.3)
+            .opacity(expand ? 0.0 : 0.9)
             .onAppear {
                 DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                    withAnimation(
-                        .easeOut(duration: duration)
-                        .repeatForever(autoreverses: false)
-                    ) {
-                        ringPhase = true
+                    withAnimation(.easeOut(duration: 2.2).repeatForever(autoreverses: false)) {
+                        expand = true
                     }
                 }
             }
@@ -312,8 +315,8 @@ struct RadarCardView: View {
                     .frame(width: 280, height: 280)
                     .clipShape(Circle())
 
-                // ⭐ 声波脉冲动画
-                SonarPulseView(size: 280)
+                // ⭐ 动漫念力扫描波
+                PsychicScanView(size: 280)
             }
 
             if locationManager.distance > 0 {
