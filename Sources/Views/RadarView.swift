@@ -21,8 +21,7 @@ class RadarUIView: UIView {
     private var carCacheImage: UIImage?
     private var carOnlineImage: UIImage?
     private var stars: [StarParticle] = []
-    private var displayLink: CADisplayLink?
-
+    // ⭐ 不再用 CADisplayLink，全部由 SwiftUI 驱动（自动适配 60/120Hz）
     private var carSz: CGFloat = 70
     private var carX: CGFloat = 0
     private var carY: CGFloat = 0
@@ -36,8 +35,22 @@ class RadarUIView: UIView {
         isOpaque = false; backgroundColor = .clear
         stars = (0..<50).map { _ in StarParticle(x: Double.random(in:0...1), y: Double.random(in:0...1), size: Double.random(in:0.5...2.0), alpha: Double.random(in:0.03...0.12)) }
         loadCarImage()
-        displayLink = CADisplayLink(target: self, selector: #selector(updateFrame))
-        displayLink?.add(to: .main, forMode: .common)
+    }
+
+    // ⭐ 由 SwiftUI onChange 调用，自动适配设备刷新率
+    func updatePosition() {
+        guard bounds.width > 0 else { return }
+        let cx = bounds.midX, cy = bounds.midY, r = sz / 2
+        let norm = min(distance / 200.0, 1.0)
+        let carR = r * 0.15 + CGFloat(norm) * (r * 0.7)
+        let angle = relativeAngle * .pi / 180 - .pi / 2
+        let tx = cx + carR * cos(angle), ty = cy + carR * sin(angle)
+        let dx = tx - carX, dy = ty - carY
+        if abs(dx) > 0.5 || abs(dy) > 0.5 {
+            carX += dx * 0.08; carY += dy * 0.08
+            carSz += (sz * (0.28 - 0.15 * CGFloat(norm)) - carSz) * 0.05
+            setNeedsDisplay()
+        }
     }
 
     private func loadCarImage() {
@@ -53,24 +66,6 @@ class RadarUIView: UIView {
     }
 
     func updateGyro(pitch: Double, roll: Double) { self.pitch = pitch; self.roll = roll }
-
-    @objc private func updateFrame() {
-        guard bounds.width > 0 else { return }
-        let cx = bounds.midX, cy = bounds.midY, r = sz / 2
-        let norm = min(distance / 200.0, 1.0)
-        let carR = r * 0.15 + CGFloat(norm) * (r * 0.7)
-        let angle = relativeAngle * .pi / 180 - .pi / 2
-        let tx = cx + carR * cos(angle), ty = cy + carR * sin(angle)
-        let dx = tx - carX, dy = ty - carY
-        // 只在车辆移动超过 0.5pt 时才重绘
-        if abs(dx) > 0.5 || abs(dy) > 0.5 {
-            carX += dx * 0.08; carY += dy * 0.08
-            carSz += (sz * (0.28 - 0.15 * CGFloat(norm)) - carSz) * 0.05
-            setNeedsDisplay()
-        }
-    }
-
-    deinit { displayLink?.invalidate() }
 
     private func buildStaticCache(_ size: CGSize) {
         UIGraphicsBeginImageContextWithOptions(size, false, 0)
@@ -182,6 +177,7 @@ struct RadarRepresentable: UIViewRepresentable {
         v.relativeAngle = locationManager.relativeAngle
         v.distance = locationManager.distance
         v.bleConnected = bleConnected
+        v.updatePosition()  // ⭐ SwiftUI 驱动更新，自动适配刷新率
     }
 }
 
