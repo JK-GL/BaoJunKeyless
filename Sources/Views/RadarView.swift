@@ -228,7 +228,7 @@ class RadarUIView: UIView {
 
         ctx.restoreGState()
 
-        // ── dBm 胶囊（画在 Canvas 里，车辆图标的底层）──
+        // ── dBm 文字（画在 Canvas 里，车辆图标的底层）──
         let dbmText = String(format: "%.0f", rssi)
         let attrs: [NSAttributedString.Key: Any] = [
             .font: UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .bold),
@@ -244,18 +244,6 @@ class RadarUIView: UIView {
         full.append(numStr)
         full.append(unitStr)
         let textSize = full.size()
-        let textRect = CGRect(x: cx - textSize.width/2 - 10, y: cy - textSize.height/2 - 5,
-                              width: textSize.width + 20, height: textSize.height + 10)
-
-        // 毛玻璃底板
-        let capsulePath = UIBezierPath(roundedRect: textRect, cornerRadius: textRect.height / 2)
-        UIColor.white.withAlphaComponent(0.04).setFill()
-        capsulePath.fill()
-        UIColor.white.withAlphaComponent(0.1).setStroke()
-        capsulePath.lineWidth = 0.5
-        capsulePath.stroke()
-
-        // 文字
         full.draw(at: CGPoint(x: cx - textSize.width/2, y: cy - textSize.height/2))
 
         // ── 车辆图标 ──
