@@ -247,31 +247,30 @@ struct ScanRing: View {
     let size: CGFloat
     @State private var expand = false
 
-    private var delay: Double { Double(index) * 0.9 }
+    private var delay: Double { Double(index) * 1.2 }
 
     var body: some View {
-        // 用 Arc 表示扫描环（360° 弧形，带渐变尾迹）
         Circle()
             .trim(from: 0, to: expand ? 1.0 : 0.0)
             .stroke(
                 AngularGradient(
                     gradient: Gradient(stops: [
                         .init(color: .clear, location: 0),
-                        .init(color: .clear, location: 0.3),
-                        .init(color: Color.cyan.opacity(0.7), location: 0.7),
-                        .init(color: Color.white.opacity(0.9), location: 0.95),
+                        .init(color: .clear, location: 0.25),
+                        .init(color: Color.cyan.opacity(0.6), location: 0.65),
+                        .init(color: Color.white.opacity(0.85), location: 0.92),
                         .init(color: .clear, location: 1.0)
                     ]),
                     center: .center
                 ),
-                style: StrokeStyle(lineWidth: 2, lineCap: .round)
+                style: StrokeStyle(lineWidth: 1.8, lineCap: .round)
             )
-            .frame(width: size * 0.15, height: size * 0.15)
-            .scaleEffect(expand ? 4.5 : 0.3)
-            .opacity(expand ? 0.0 : 0.9)
+            .frame(width: size * 0.1, height: size * 0.1)
+            .scaleEffect(expand ? 10.0 : 0.2)
+            .opacity(expand ? 0.0 : 0.85)
             .onAppear {
                 DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                    withAnimation(.easeOut(duration: 2.2).repeatForever(autoreverses: false)) {
+                    withAnimation(.easeOut(duration: 3.5).repeatForever(autoreverses: false)) {
                         expand = true
                     }
                 }
