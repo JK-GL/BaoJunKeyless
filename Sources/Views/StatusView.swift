@@ -121,11 +121,9 @@ struct StatusView: View {
                             isRefreshing = false
                         }
                     }) {
-                        Image(systemName: isRefreshing ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
+                        Image(systemName: isRefreshing ? "hourglass" : "arrow.clockwise")
                             .font(.system(size: 18, weight: .medium))
                             .foregroundStyle(Color.white.opacity(0.62))
-                            .rotationEffect(.degrees(isRefreshing ? 360 : 0))
-                            .animation(isRefreshing ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: isRefreshing)
                     }
                     .buttonStyle(.plain)
                 }
