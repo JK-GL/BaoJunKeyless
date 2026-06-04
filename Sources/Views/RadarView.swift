@@ -245,42 +245,22 @@ struct PsychicScanView: View {
 struct WaveWithTrail: View {
     let index: Int
     let size: CGFloat
-    @State private var lead = false
-    @State private var trail = false
+    @State private var expand = false
 
     var body: some View {
-        ZStack {
-            // ⭐ 拖尾环（暗）
-            Circle()
-                .stroke(Color.cyan.opacity(0.25), lineWidth: 1.5)
-                .frame(width: 24, height: 24)
-                .scaleEffect(trail ? 12.0 : 0.1)
-                .opacity(trail ? 0.0 : 0.5)
-                .blur(radius: 2)
-
-            // ⭐ 前端亮环（亮）
-            Circle()
-                .stroke(Color.white.opacity(0.9), lineWidth: 1.5)
-                .frame(width: 24, height: 24)
-                .scaleEffect(lead ? 12.0 : 0.1)
-                .opacity(lead ? 0.0 : 0.9)
-                .blur(radius: 0.5)
-        }
-        .onAppear {
-            let d = Double(index) * 1.4
-            DispatchQueue.main.asyncAfter(deadline: .now() + d) {
-                // 拖尾先出发（稍慢）
-                withAnimation(.easeOut(duration: 4.5).repeatForever(autoreverses: false)) {
-                    trail = true
-                }
-                // 前端紧跟着出发（快一点）
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    withAnimation(.easeOut(duration: 4.0).repeatForever(autoreverses: false)) {
-                        lead = true
+        Circle()
+            .stroke(Color.cyan.opacity(0.4), lineWidth: 1.5)
+            .frame(width: 24, height: 24)
+            .scaleEffect(expand ? 12.0 : 0.1)
+            .opacity(expand ? 0.0 : 0.6)
+            .blur(radius: 1.5)
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 1.4) {
+                    withAnimation(.easeOut(duration: 4.5).repeatForever(autoreverses: false)) {
+                        expand = true
                     }
                 }
             }
-        }
     }
 }
 
