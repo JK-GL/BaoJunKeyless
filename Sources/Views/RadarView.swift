@@ -26,12 +26,10 @@ struct WaveRing {
 class RadarUIView: UIView {
     private let sz: CGFloat = 280
     private var rssi: Double = -42
-    private var targetRssi: Double = -42
     private var pitch: Double = 0
     private var roll: Double = 0
     private var link: CADisplayLink?
     private var lastWaveTime: CFTimeInterval = 0
-    private var sigTimer: Timer?
     var onRssiChange: ((Double) -> Void)?
 
     private var carSz: CGFloat = 70
@@ -45,6 +43,14 @@ class RadarUIView: UIView {
     // 静态缓存
     private var staticCache: UIImage?
     private var lastCacheSize: CGSize = .zero
+
+    // ⭐ dBm 文字缓存
+    private var dbmCacheText: String = ""
+    private var dbmCacheImage: UIImage?
+
+    // ⭐ 车辆图标缓存
+    private var carCacheSize: CGFloat = 0
+    private var carCacheImage: UIImage?
 
     // 星空粒子
     private var stars: [StarParticle] = []
@@ -61,9 +67,6 @@ class RadarUIView: UIView {
         isOpaque = false; backgroundColor = .clear
         link = CADisplayLink(target: self, selector: #selector(tick))
         link?.add(to: .main, forMode: .common)
-        sigTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
-            self?.targetRssi = Double(Int.random(in: -85 ... -35))
-        }
         generateStars()
     }
 
@@ -82,13 +85,6 @@ class RadarUIView: UIView {
 
     @objc private func tick() {
         let now = CACurrentMediaTime()
-
-        // 更新 RSSI
-        let old = rssi
-        rssi += (targetRssi - rssi) * 0.06
-        if abs(rssi - old) > 0.3 {
-            DispatchQueue.main.async { self.onRssiChange?(self.rssi) }
-        }
 
         // ⭐ 定期产生新波纹
         if now - lastWaveTime >= waveInterval {
@@ -116,7 +112,7 @@ class RadarUIView: UIView {
     }
 
     func updateGyro(pitch: Double, roll: Double) { self.pitch = pitch; self.roll = roll }
-    deinit { link?.invalidate(); sigTimer?.invalidate() }
+    deinit { link?.invalidate() }
 
     // 静态元素缓存（只在尺寸变化时重建一次）
     private func buildStaticCache(_ size: CGSize) {
@@ -174,6 +170,40 @@ class RadarUIView: UIView {
         lastCacheSize = size
     }
 
+    // ⭐ 缓存 dBm 文字图片
+    private func buildDbmCache() {
+        let text = String(format: "%.0f", rssi)
+        guard text != dbmCacheText else { return }
+        dbmCacheText = text
+
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .bold),
+            .foregroundColor: UIColor(red: 0.5, green: 0.85, blue: 1.0, alpha: 0.9)
+        ]
+        let unitAttrs: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: 9, weight: .medium),
+            .foregroundColor: UIColor.white.withAlphaComponent(0.45)
+        ]
+        let full = NSMutableAttributedString()
+        full.append(NSAttributedString(string: text, attributes: attrs))
+        full.append(NSAttributedString(string: " dBm", attributes: unitAttrs))
+        let size = full.size()
+
+        let renderer = UIGraphicsImageRenderer(size: size)
+        dbmCacheImage = renderer.image { ctx in
+            full.draw(at: .zero)
+        }
+    }
+
+    // ⭐ 缓存车辆图标图片
+    private func buildCarCache() {
+        guard abs(carSz - carCacheSize) > 1.0 else { return }
+        carCacheSize = carSz
+        let config = UIImage.SymbolConfiguration(pointSize: carSz * 0.6, weight: .medium)
+        carCacheImage = UIImage(systemName: "car.fill", withConfiguration: config)?
+            .withTintColor(UIColor.white.withAlphaComponent(0.85), renderingMode: .alwaysOriginal)
+    }
+
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
         let cx = rect.midX, cy = rect.midY, r = sz / 2
@@ -204,25 +234,22 @@ class RadarUIView: UIView {
             let waveR = wave.maxRadius * CGFloat(progress)
             let alpha = CGFloat(pow(1 - progress, 1.5)) * 0.7  // 非线性衰减
 
-            // 外层渐变光晕（宽的柔和带）
-            let outerR = waveR + 12
-            let innerR = max(waveR - 8, 0)
+            // 波纹光晕（简化为 3 色渐变）
+            let outerR = waveR + 10
+            let innerR = max(waveR - 6, 0)
             if outerR > 0, let g = CGGradient(colorsSpace: cs, colors: [
                 UIColor.clear.cgColor,
-                UIColor.systemBlue.withAlphaComponent(Double(alpha * 0.4)).cgColor,
-                UIColor.systemBlue.withAlphaComponent(Double(alpha * 0.7)).cgColor,
-                UIColor.systemBlue.withAlphaComponent(Double(alpha * 0.4)).cgColor,
+                UIColor.systemBlue.withAlphaComponent(Double(alpha * 0.6)).cgColor,
                 UIColor.clear.cgColor
-            ] as CFArray, locations: [0, 0.2, 0.5, 0.8, 1]) {
+            ] as CFArray, locations: [0, 0.5, 1]) {
                 ctx.drawRadialGradient(g,
                     startCenter: .init(x: cx, y: cy), startRadius: innerR,
                     endCenter: .init(x: cx, y: cy), endRadius: outerR,
                     options: [])
             }
 
-            // 内层亮环（细的高光线）
-            let ringAlpha = alpha * 0.8
-            ctx.setStrokeColor(UIColor(red: 0.5, green: 0.85, blue: 1.0, alpha: Double(ringAlpha)).cgColor)
+            // 内层亮环
+            ctx.setStrokeColor(UIColor(red: 0.5, green: 0.85, blue: 1.0, alpha: Double(alpha * 0.7)).cgColor)
             ctx.setLineWidth(max(1.0 * (1 - progress), 0.3))
             ctx.strokeEllipse(in: .init(
                 x: cx - waveR, y: cy - waveR,
@@ -232,23 +259,11 @@ class RadarUIView: UIView {
 
         ctx.restoreGState()
 
-        // ── dBm 文字（画在 Canvas 里，车辆图标的底层）──
-        let dbmText = String(format: "%.0f", rssi)
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .bold),
-            .foregroundColor: UIColor(red: 0.5, green: 0.85, blue: 1.0, alpha: 0.9)
-        ]
-        let unitAttrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: 9, weight: .medium),
-            .foregroundColor: UIColor.white.withAlphaComponent(0.45)
-        ]
-        let numStr = NSAttributedString(string: dbmText, attributes: attrs)
-        let unitStr = NSAttributedString(string: " dBm", attributes: unitAttrs)
-        let full = NSMutableAttributedString()
-        full.append(numStr)
-        full.append(unitStr)
-        let textSize = full.size()
-        full.draw(at: CGPoint(x: cx - textSize.width/2, y: cy - textSize.height/2))
+        // ── dBm 文字（缓存绘制）──
+        buildDbmCache()
+        if let img = dbmCacheImage {
+            img.draw(at: CGPoint(x: cx - img.size.width/2, y: cy - img.size.height/2))
+        }
 
         // ── 车辆图标（GPS 真实定位）──
         // relativeAngle: 0=正上方(12点), 90=右(3点), 180=下(6点), 270=左(9点)
@@ -277,17 +292,11 @@ class RadarUIView: UIView {
                                    endCenter: .init(x:carX,y:carY), endRadius: glowR, options: [])
         }
 
-        // SF Symbol car.fill
-        let config = UIImage.SymbolConfiguration(pointSize: carSz * 0.6, weight: .medium)
-        if let symbolImage = UIImage(systemName: "car.fill", withConfiguration: config) {
-            let tinted = symbolImage.withTintColor(UIColor.white.withAlphaComponent(0.85), renderingMode: .alwaysOriginal)
-            let drawRect = CGRect(
-                x: carX - tinted.size.width / 2,
-                y: carY - tinted.size.height / 2,
-                width: tinted.size.width,
-                height: tinted.size.height
-            )
-            tinted.draw(in: drawRect)
+        // 车辆图标（缓存）
+        buildCarCache()
+        if let img = carCacheImage {
+            img.draw(in: CGRect(x: carX - img.size.width/2, y: carY - img.size.height/2,
+                                width: img.size.width, height: img.size.height))
         }
     }
 
