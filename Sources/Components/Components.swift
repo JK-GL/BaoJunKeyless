@@ -104,7 +104,14 @@ struct StatusPill: View {
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 8).padding(.vertical, 4)
-        .background(Capsule().fill(color.opacity(0.18)))
+        .background(
+            Capsule()
+                .fill(color.opacity(0.18))
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+                )
+        )
     }
 }
 

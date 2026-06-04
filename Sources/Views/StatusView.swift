@@ -118,7 +118,7 @@ struct StatusView: View {
                     StatusPill(icon: "antenna.radiowaves.left.and.right.slash", text: "BLE 未连接", color: Color.white.opacity(0.45))
                     StatusPill(icon: "key.fill", text: "密钥正常", color: AppTheme.green)
                     StatusPill(icon: modeIcon, text: modeText, color: modeColor)
-                    StatusPill(icon: "lock.open.fill", text: "未锁车", color: AppTheme.orange)
+                    StatusPill(icon: "lock.fill", text: "已锁车", color: AppTheme.green)
                 }
                 .padding(.horizontal, 20)
 
