@@ -227,61 +227,57 @@ class RadarUIView: UIView {
     override var intrinsicContentSize: CGSize { CGSize(width: sz, height: sz) }
 }
 
-// MARK: - 念力扫描波（简单可靠版）
+// MARK: - 念力扫描波（细环 + 拖尾）
 struct PsychicScanView: View {
     let size: CGFloat
 
     var body: some View {
         ZStack {
-            ScanWave(index: 0, size: size)
-            ScanWave(index: 1, size: size)
-            ScanWave(index: 2, size: size)
+            ForEach(0..<3, id: \.self) { i in
+                WaveWithTrail(index: i, size: size)
+            }
         }
         .frame(width: size, height: size)
         .allowsHitTesting(false)
     }
 }
 
-struct ScanWave: View {
+struct WaveWithTrail: View {
     let index: Int
     let size: CGFloat
-    @State private var expand = false
+    @State private var lead = false
+    @State private var trail = false
 
     var body: some View {
         ZStack {
-            // 外层光晕环
+            // ⭐ 拖尾环（暗，比前端慢一点）
             Circle()
-                .stroke(Color.cyan.opacity(0.5), lineWidth: 10)
-                .frame(width: 30, height: 30)
-                .scaleEffect(expand ? 9.0 : 0.1)
-                .opacity(expand ? 0.0 : 0.7)
-                .blur(radius: 8)
+                .stroke(Color.cyan.opacity(0.25), lineWidth: 1.5)
+                .frame(width: 24, height: 24)
+                .scaleEffect(trail ? 8.5 : 0.1)
+                .opacity(trail ? 0.0 : 0.5)
+                .blur(radius: 2)
 
-            // 主亮环
+            // ⭐ 前端亮环（亮，先出发）
             Circle()
-                .stroke(
-                    LinearGradient(
-                        colors: [Color.cyan.opacity(0.9), Color.white],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    lineWidth: 3
-                )
-                .frame(width: 30, height: 30)
-                .scaleEffect(expand ? 9.0 : 0.1)
-                .opacity(expand ? 0.0 : 0.95)
-
-            // 白芯
-            Circle()
-                .stroke(Color.white.opacity(0.9), lineWidth: 1)
-                .frame(width: 30, height: 30)
-                .scaleEffect(expand ? 9.0 : 0.1)
-                .opacity(expand ? 0.0 : 0.8)
+                .stroke(Color.white.opacity(0.9), lineWidth: 1.5)
+                .frame(width: 24, height: 24)
+                .scaleEffect(lead ? 8.5 : 0.1)
+                .opacity(lead ? 0.0 : 0.9)
+                .blur(radius: 0.5)
         }
         .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 1.3) {
-                withAnimation(.easeOut(duration: 4.0).repeatForever(autoreverses: false)) {
-                    expand = true
+            let d = Double(index) * 1.4
+            DispatchQueue.main.asyncAfter(deadline: .now() + d) {
+                // 拖尾先出发（稍慢）
+                withAnimation(.easeOut(duration: 4.5).repeatForever(autoreverses: false)) {
+                    trail = true
+                }
+                // 前端紧跟着出发（快一点）
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    withAnimation(.easeOut(duration: 4.0).repeatForever(autoreverses: false)) {
+                        lead = true
+                    }
                 }
             }
         }
