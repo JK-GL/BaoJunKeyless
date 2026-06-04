@@ -243,7 +243,7 @@ class RadarUIView: UIView {
         let tOff = CGFloat(n) * (r - tSz/2 - 15)
         carSz += (tSz - carSz) * 0.05
         let tx = cx + tOff * 0.7071 + CGFloat(roll) * 3
-        let ty = cy - 40 + tOff * 0.7071 + CGFloat(pitch) * 3  // 车辆上移 40pt
+        let ty = cy + tOff * 0.7071 + CGFloat(pitch) * 3
         carX += (tx - carX) * 0.05
         carY += (ty - carY) * 0.05
 
