@@ -10,13 +10,18 @@ class CrashLogger {
         logFile = dir?.appendingPathComponent("crash_log.txt")
 
         // 注册崩溃处理器
-        NSSetUncaughtExceptionHandler(exceptionHandler)
-        signal(SIGABRT, signalHandler)
-        signal(SIGSEGV, signalHandler)
-        signal(SIGBUS, signalHandler)
-        signal(SIGFPE, signalHandler)
-        signal(SIGILL, signalHandler)
-        signal(SIGPIPE, signalHandler)
+        NSSetUncaughtExceptionHandler { exception in
+            let reason = exception.reason ?? "Unknown"
+            let name = exception.name.rawValue
+            CrashLogger.shared.logCrash("EXCEPTION: \(name)\nReason: \(reason)")
+        }
+
+        signal(SIGABRT) { _ in CrashLogger.shared.logCrash("SIGNAL: SIGABRT"); signal(SIGABRT, SIG_DFL); raise(SIGABRT) }
+        signal(SIGSEGV) { _ in CrashLogger.shared.logCrash("SIGNAL: SIGSEGV"); signal(SIGSEGV, SIG_DFL); raise(SIGSEGV) }
+        signal(SIGBUS)  { _ in CrashLogger.shared.logCrash("SIGNAL: SIGBUS");  signal(SIGBUS, SIG_DFL);  raise(SIGBUS) }
+        signal(SIGFPE)  { _ in CrashLogger.shared.logCrash("SIGNAL: SIGFPE");  signal(SIGFPE, SIG_DFL);  raise(SIGFPE) }
+        signal(SIGILL)  { _ in CrashLogger.shared.logCrash("SIGNAL: SIGILL");  signal(SIGILL, SIG_DFL);  raise(SIGILL) }
+        signal(SIGPIPE) { _ in CrashLogger.shared.logCrash("SIGNAL: SIGPIPE"); signal(SIGPIPE, SIG_DFL); raise(SIGPIPE) }
     }
 
     // MARK: - 记录崩溃信息
@@ -48,28 +53,4 @@ class CrashLogger {
         try? FileManager.default.removeItem(at: url)
     }
 
-    // MARK: - 异常处理器
-    private let exceptionHandler: NSUncaughtExceptionHandler? = { exception in
-        let reason = exception.reason ?? "Unknown"
-        let name = exception.name.rawValue
-        CrashLogger.shared.logCrash("EXCEPTION: \(name)\nReason: \(reason)\nStack: \(exception.callStackSymbols.joined(separator: "\n"))")
-    }
-
-    // MARK: - 信号处理器
-    private let signalHandler: @convention(c) (Int32) -> Void = { signal in
-        let name: String
-        switch signal {
-        case SIGABRT: name = "SIGABRT"
-        case SIGSEGV: name = "SIGSEGV"
-        case SIGBUS:  name = "SIGBUS"
-        case SIGFPE:  name = "SIGFPE"
-        case SIGILL:  name = "SIGILL"
-        case SIGPIPE: name = "SIGPIPE"
-        default:      name = "SIGNAL(\(signal))"
-        }
-        CrashLogger.shared.logCrash("SIGNAL: \(name)")
-        // 重新触发信号让系统处理
-        signal(signal, SIG_DFL)
-        raise(signal)
-    }
 }
