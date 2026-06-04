@@ -1,27 +1,15 @@
 import SwiftUI
 import UIKit
 
-// MARK: - 声波涟漪雷达（Core Graphics 静态 + SwiftUI 波纹动画）
+// MARK: - 雷达（Core Graphics 静态 + SwiftUI 文字/波纹）
 
-// MARK: - 星空粒子
-struct StarParticle {
-    var x: Double
-    var y: Double
-    var size: Double
-    var alpha: Double
-}
+struct StarParticle { var x: Double; var y: Double; var size: Double; var alpha: Double }
 
-// MARK: - 雷达 UIView（只画静态元素 + 车辆图标）
+// MARK: - 雷达 UIView（只画刻度 + 车辆图标，文字全部交给 SwiftUI）
 class RadarUIView: UIView {
     private let sz: CGFloat = 280
-    private var rssi: Double = -42
     private var pitch: Double = 0
     private var roll: Double = 0
-    var onRssiChange: ((Double) -> Void)?
-
-    private var carSz: CGFloat = 70
-    private var carX: CGFloat = 0
-    private var carY: CGFloat = 0
 
     var relativeAngle: Double = 0
     var distance: Double = 0
@@ -29,212 +17,130 @@ class RadarUIView: UIView {
 
     private var staticCache: UIImage?
     private var lastCacheSize: CGSize = .zero
-    private var dbmCacheText: String = ""
-    private var dbmCacheImage: UIImage?
     private var carCacheSize: CGFloat = 0
     private var carCacheImage: UIImage?
     private var carOnlineImage: UIImage?
     private var stars: [StarParticle] = []
+    private var displayLink: CADisplayLink?
+
+    private var carSz: CGFloat = 70
+    private var carX: CGFloat = 0
+    private var carY: CGFloat = 0
 
     private let carImageURL = "https://cdn-df.00bang.cn/images/T1Dw_TBTEv1RCvBVdK.png"
-
-    // 定时更新车辆位置
-    private var displayLink: CADisplayLink?
 
     override init(frame: CGRect) { super.init(frame: frame); setup() }
     required init?(coder: NSCoder) { super.init(coder: coder); setup() }
 
     private func setup() {
         isOpaque = false; backgroundColor = .clear
-        generateStars()
+        stars = (0..<50).map { _ in StarParticle(x: Double.random(in:0...1), y: Double.random(in:0...1), size: Double.random(in:0.5...2.0), alpha: Double.random(in:0.03...0.12)) }
         loadCarImage()
-        // CADisplayLink 更新车辆位置（流畅不卡）
         displayLink = CADisplayLink(target: self, selector: #selector(updateFrame))
         displayLink?.add(to: .main, forMode: .common)
     }
 
     private func loadCarImage() {
         guard let url = URL(string: carImageURL) else { return }
-        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+        let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 30)
+        if let cached = URLCache.shared.cachedResponse(for: request), let img = UIImage(data: cached.data) {
+            DispatchQueue.main.async { self.carOnlineImage = img }; return
+        }
+        URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
             guard let data = data, let img = UIImage(data: data) else { return }
             DispatchQueue.main.async { self?.carOnlineImage = img }
         }.resume()
     }
 
-    private func generateStars() {
-        stars = (0..<50).map { _ in
-            StarParticle(
-                x: Double.random(in: 0...1), y: Double.random(in: 0...1),
-                size: Double.random(in: 0.5...2.0), alpha: Double.random(in: 0.03...0.12)
-            )
-        }
-    }
-
-    private func updateCarPosition() {
-        guard bounds.width > 0 else { return }
-        let cx = bounds.midX, cy = bounds.midY, r = sz / 2
-        let maxDist: Double = 200.0
-        let norm = min(distance / maxDist, 1.0)
-        let carR = r * 0.15 + CGFloat(norm) * (r * 0.7)
-        let angle = relativeAngle * .pi / 180 - .pi / 2
-        let tx = cx + carR * cos(angle)
-        let ty = cy + carR * sin(angle)
-        carX += (tx - carX) * 0.08
-        carY += (ty - carY) * 0.08
-        let tSz = sz * (0.28 - 0.15 * CGFloat(norm))
-        carSz += (tSz - carSz) * 0.05
-    }
-
     func updateGyro(pitch: Double, roll: Double) { self.pitch = pitch; self.roll = roll }
 
     @objc private func updateFrame() {
-        updateCarPosition()
+        guard bounds.width > 0 else { return }
+        let cx = bounds.midX, cy = bounds.midY, r = sz / 2
+        let norm = min(distance / 200.0, 1.0)
+        let carR = r * 0.15 + CGFloat(norm) * (r * 0.7)
+        let angle = relativeAngle * .pi / 180 - .pi / 2
+        let tx = cx + carR * cos(angle), ty = cy + carR * sin(angle)
+        carX += (tx - carX) * 0.08; carY += (ty - carY) * 0.08
+        carSz += (sz * (0.28 - 0.15 * CGFloat(norm)) - carSz) * 0.05
         setNeedsDisplay()
     }
 
     deinit { displayLink?.invalidate() }
 
-    // 静态元素缓存
     private func buildStaticCache(_ size: CGSize) {
         UIGraphicsBeginImageContextWithOptions(size, false, 0)
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
         let cx = size.width / 2, cy = size.height / 2, r = sz / 2
-        let tickColor = UIColor.label
+        let tc = UIColor.label
 
         for deg in 0..<360 {
             let a = CGFloat(deg) * .pi / 180
             let major = deg % 30 == 0, mid = deg % 10 == 0
             let inner: CGFloat = major ? r - 18 : (mid ? r - 11 : r - 7)
-            let alpha: Double = major ? 0.45 : (mid ? 0.2 : 0.08)
-            let w: CGFloat = major ? 1.5 : (mid ? 0.8 : 0.3)
-            ctx.setStrokeColor(tickColor.withAlphaComponent(alpha).cgColor)
-            ctx.setLineWidth(w)
+            ctx.setStrokeColor(tc.withAlphaComponent(major ? 0.45 : (mid ? 0.2 : 0.08)).cgColor)
+            ctx.setLineWidth(major ? 1.5 : (mid ? 0.8 : 0.3))
             ctx.move(to: .init(x: cx + inner * cos(a), y: cy + inner * sin(a)))
             ctx.addLine(to: .init(x: cx + (r - 1) * cos(a), y: cy + (r - 1) * sin(a)))
             ctx.strokePath()
         }
-
-        ctx.setStrokeColor(tickColor.withAlphaComponent(0.15).cgColor)
-        ctx.setLineWidth(1)
+        ctx.setStrokeColor(tc.withAlphaComponent(0.15).cgColor); ctx.setLineWidth(1)
         ctx.strokeEllipse(in: .init(x: cx-r+1, y: cy-r+1, width: (r-1)*2, height: (r-1)*2))
-
         for i in 1...3 {
             let rr = r * CGFloat(i) / 3.5
-            ctx.setStrokeColor(tickColor.withAlphaComponent(0.04 + Double(i)*0.02).cgColor)
-            ctx.setLineWidth(0.5)
+            ctx.setStrokeColor(tc.withAlphaComponent(0.04 + Double(i)*0.02).cgColor); ctx.setLineWidth(0.5)
             ctx.strokeEllipse(in: .init(x: cx-rr, y: cy-rr, width: rr*2, height: rr*2))
         }
-
-        ctx.setStrokeColor(tickColor.withAlphaComponent(0.06).cgColor)
-        ctx.setLineWidth(0.5)
+        ctx.setStrokeColor(tc.withAlphaComponent(0.06).cgColor); ctx.setLineWidth(0.5)
         ctx.move(to: .init(x:cx,y:cy-r+14)); ctx.addLine(to: .init(x:cx,y:cy+r-14))
-        ctx.move(to: .init(x:cx-r+14,y:cy)); ctx.addLine(to: .init(x:cx+r-14,y:cy))
-        ctx.strokePath()
-
-        for star in stars {
-            let sx = CGFloat(star.x) * size.width, sy = CGFloat(star.y) * size.height
-            ctx.setFillColor(UIColor.white.withAlphaComponent(star.alpha).cgColor)
-            ctx.fillEllipse(in: CGRect(x: sx-star.size/2, y: sy-star.size/2, width: star.size, height: star.size))
+        ctx.move(to: .init(x:cx-r+14,y:cy)); ctx.addLine(to: .init(x:cx+r-14,y:cy)); ctx.strokePath()
+        for s in stars {
+            ctx.setFillColor(UIColor.white.withAlphaComponent(s.alpha).cgColor)
+            ctx.fillEllipse(in: CGRect(x: CGFloat(s.x)*size.width - s.size/2, y: CGFloat(s.y)*size.height - s.size/2, width: s.size, height: s.size))
         }
-
-        staticCache = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
+        staticCache = UIGraphicsGetImageFromCurrentImageContext(); UIGraphicsEndImageContext()
         lastCacheSize = size
-    }
-
-    private func buildDbmCache() {
-        let text = String(format: "%.0f", rssi)
-        guard text != dbmCacheText else { return }
-        dbmCacheText = text
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .bold),
-            .foregroundColor: UIColor(red: 0.5, green: 0.85, blue: 1.0, alpha: 0.9)
-        ]
-        let unitAttrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: 9, weight: .medium),
-            .foregroundColor: UIColor.white.withAlphaComponent(0.45)
-        ]
-        let full = NSMutableAttributedString()
-        full.append(NSAttributedString(string: text, attributes: attrs))
-        full.append(NSAttributedString(string: " dBm", attributes: unitAttrs))
-        let sz = full.size()
-        dbmCacheImage = UIGraphicsImageRenderer(size: sz).image { _ in full.draw(at: .zero) }
     }
 
     private func buildCarCache() {
         guard abs(carSz - carCacheSize) > 1.0 else { return }
         carCacheSize = carSz
-        if let online = carOnlineImage {
-            let maxSide = carSz * 0.8
-            let scale = min(maxSide / online.size.width, maxSide / online.size.height)
-            let w = online.size.width * scale, h = online.size.height * scale
-            carCacheImage = UIGraphicsImageRenderer(size: CGSize(width: w, height: h)).image { _ in
-                online.draw(in: CGRect(x: 0, y: 0, width: w, height: h))
-            }
+        if let img = carOnlineImage {
+            let ms = carSz * 0.8, sc = min(ms / img.size.width, ms / img.size.height)
+            let w = img.size.width * sc, h = img.size.height * sc
+            carCacheImage = UIGraphicsImageRenderer(size: CGSize(width: w, height: h)).image { _ in img.draw(in: CGRect(x: 0, y: 0, width: w, height: h)) }
         } else {
-            let cfg = UIImage.SymbolConfiguration(pointSize: carSz * 0.6, weight: .medium)
-            carCacheImage = UIImage(systemName: "car.fill", withConfiguration: cfg)?
-                .withTintColor(UIColor.white.withAlphaComponent(0.85), renderingMode: .alwaysOriginal)
+            carCacheImage = UIImage(systemName: "car.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: carSz * 0.6, weight: .medium))?.withTintColor(UIColor.white.withAlphaComponent(0.85), renderingMode: .alwaysOriginal)
         }
     }
 
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
         let cx = rect.midX, cy = rect.midY, r = sz / 2
-
         if staticCache == nil || lastCacheSize != bounds.size { buildStaticCache(bounds.size) }
         staticCache?.draw(at: .zero)
 
-        // GPS / dBm 文字
-        if bleConnected {
-            buildDbmCache()
-            dbmCacheImage?.draw(at: CGPoint(x: cx - (dbmCacheImage?.size.width ?? 0)/2, y: cy - (dbmCacheImage?.size.height ?? 0)/2))
-        } else {
-            let gpsAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 12, weight: .bold),
-                .foregroundColor: UIColor.systemGreen.withAlphaComponent(0.9)
-            ]
-            let gpsText = NSAttributedString(string: "GPS", attributes: gpsAttrs)
-            let ts = gpsText.size()
-            let rect = CGRect(x: cx - (ts.width+16)/2, y: cy - (ts.height+8)/2, width: ts.width+16, height: ts.height+8)
-            UIBezierPath(roundedRect: rect, cornerRadius: rect.height/2).fill()
-            UIColor.systemGreen.withAlphaComponent(0.12).setFill()
-            UIBezierPath(roundedRect: rect, cornerRadius: rect.height/2).fill()
-            UIColor.systemGreen.withAlphaComponent(0.25).setStroke()
-            UIBezierPath(roundedRect: rect, cornerRadius: rect.height/2).lineWidth = 0.5
-            UIBezierPath(roundedRect: rect, cornerRadius: rect.height/2).stroke()
-            gpsText.draw(at: CGPoint(x: cx - ts.width/2, y: cy - ts.height/2))
-        }
-
         // 车辆图标
         let cs = CGColorSpaceCreateDeviceRGB()
-        let glowR = carSz * 0.7
-        if let g = CGGradient(colorsSpace: cs, colors: [
-            UIColor.systemBlue.withAlphaComponent(0.12).cgColor,
-            UIColor.systemBlue.withAlphaComponent(0.04).cgColor,
-            UIColor.clear.cgColor
-        ] as CFArray, locations: [0, 0.5, 1]) {
-            ctx.drawRadialGradient(g, startCenter: .init(x:carX,y:carY), startRadius: 0,
-                                   endCenter: .init(x:carX,y:carY), endRadius: glowR, options: [])
+        if let g = CGGradient(colorsSpace: cs, colors: [UIColor.systemBlue.withAlphaComponent(0.12).cgColor, UIColor.systemBlue.withAlphaComponent(0.04).cgColor, UIColor.clear.cgColor] as CFArray, locations: [0, 0.5, 1]) {
+            ctx.drawRadialGradient(g, startCenter: .init(x:carX,y:carY), startRadius: 0, endCenter: .init(x:carX,y:carY), endRadius: carSz*0.7, options: [])
         }
         buildCarCache()
-        carCacheImage?.draw(in: CGRect(x: carX - (carCacheImage?.size.width ?? 0)/2,
-                                        y: carY - (carCacheImage?.size.height ?? 0)/2,
-                                        width: carCacheImage?.size.width ?? 0,
-                                        height: carCacheImage?.size.height ?? 0))
+        if let img = carCacheImage {
+            img.draw(in: CGRect(x: carX - img.size.width/2, y: carY - img.size.height/2, width: img.size.width, height: img.size.height))
+        }
     }
 
     override var intrinsicContentSize: CGSize { CGSize(width: sz, height: sz) }
 }
 
-// MARK: - 念力扫描波（细环 + 拖尾）
+// MARK: - SwiftUI 波纹动画
 struct PsychicScanView: View {
     let size: CGFloat
-
     var body: some View {
         ZStack {
             ForEach(0..<3, id: \.self) { i in
-                WaveWithTrail(index: i, size: size)
+                ScanRing(index: i, size: size)
             }
         }
         .frame(width: size, height: size)
@@ -242,11 +148,9 @@ struct PsychicScanView: View {
     }
 }
 
-struct WaveWithTrail: View {
-    let index: Int
-    let size: CGFloat
+struct ScanRing: View {
+    let index: Int; let size: CGFloat
     @State private var expand = false
-
     var body: some View {
         Circle()
             .stroke(Color.cyan.opacity(0.4), lineWidth: 1.5)
@@ -256,9 +160,7 @@ struct WaveWithTrail: View {
             .blur(radius: 1.5)
             .onAppear {
                 DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 1.4) {
-                    withAnimation(.easeOut(duration: 4.5).repeatForever(autoreverses: false)) {
-                        expand = true
-                    }
+                    withAnimation(.easeOut(duration: 4.5).repeatForever(autoreverses: false)) { expand = true }
                 }
             }
     }
@@ -279,29 +181,45 @@ struct RadarRepresentable: UIViewRepresentable {
     }
 }
 
-// MARK: - Radar Card
+// MARK: - Radar Card（文字全部用 SwiftUI Text）
 struct RadarCardView: View {
     @EnvironmentObject var theme: ThemeManager
     @ObservedObject var motion: MotionManager
     @ObservedObject var locationManager: LocationManager
-    @State private var rssiValue: Double = -42
-    @State private var displayValue: Double = -42
     @State private var bleConnected = false
     private let radar = RadarUIView(frame: .zero)
-
     private let carLat = 22.635842
     private let carLng = 114.129604
 
     var body: some View {
         VStack(spacing: 12) {
             ZStack {
-                // 静态雷达 + 车辆图标
                 RadarRepresentable(motion: motion, locationManager: locationManager, radar: radar, bleConnected: bleConnected)
                     .frame(width: 280, height: 280)
                     .clipShape(Circle())
 
-                // ⭐ 动漫念力扫描波
                 PsychicScanView(size: 280)
+
+                // ⭐ 文字全部用 SwiftUI Text（安全，不触发 CoreNLP）
+                if bleConnected {
+                    Text("-42 dBm")
+                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .foregroundStyle(
+                            LinearGradient(colors: [Color(red:0.2,green:0.6,blue:1), Color(red:0.3,green:0.9,blue:1)], startPoint: .leading, endPoint: .trailing)
+                        )
+                        .offset(y: 0)
+                } else {
+                    Text("GPS")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color.green.opacity(0.9))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            Capsule()
+                                .fill(Color.green.opacity(0.12))
+                                .overlay(Capsule().stroke(Color.green.opacity(0.25), lineWidth: 0.5))
+                        )
+                }
             }
 
             if locationManager.distance > 0 {
@@ -313,9 +231,7 @@ struct RadarCardView: View {
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
-        .onAppear {
-            locationManager.setCarLocation(lat: carLat, lng: carLng)
-        }
+        .onAppear { locationManager.setCarLocation(lat: carLat, lng: carLng) }
         .onChange(of: locationManager.relativeAngle) { val in radar.relativeAngle = val }
         .onChange(of: locationManager.distance) { val in radar.distance = val }
     }
