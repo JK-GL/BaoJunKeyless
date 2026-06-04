@@ -99,7 +99,9 @@ struct StatusPill: View {
     let icon: String; let text: String; let color: Color
     var body: some View {
         HStack(spacing: 4) {
-            Image(systemName: icon).font(.system(size: 9, weight: .semibold))
+            Image(systemName: icon)
+                .font(.system(size: 10))
+                .imageScale(.small)
             Text(text).font(.system(size: 11, weight: .medium))
         }
         .foregroundStyle(.white)
