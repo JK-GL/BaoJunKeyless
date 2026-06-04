@@ -61,9 +61,13 @@ class RadarUIView: UIView {
         let carR = r * 0.15 + CGFloat(norm) * (r * 0.7)
         let angle = relativeAngle * .pi / 180 - .pi / 2
         let tx = cx + carR * cos(angle), ty = cy + carR * sin(angle)
-        carX += (tx - carX) * 0.08; carY += (ty - carY) * 0.08
-        carSz += (sz * (0.28 - 0.15 * CGFloat(norm)) - carSz) * 0.05
-        setNeedsDisplay()
+        let dx = tx - carX, dy = ty - carY
+        // 只在车辆移动超过 0.5pt 时才重绘
+        if abs(dx) > 0.5 || abs(dy) > 0.5 {
+            carX += dx * 0.08; carY += dy * 0.08
+            carSz += (sz * (0.28 - 0.15 * CGFloat(norm)) - carSz) * 0.05
+            setNeedsDisplay()
+        }
     }
 
     deinit { displayLink?.invalidate() }

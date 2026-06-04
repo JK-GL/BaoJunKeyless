@@ -75,4 +75,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         if a < 0 { a += 360 }
         return a
     }
+
+    deinit {
+        manager.stopUpdatingLocation()
+        manager.stopUpdatingHeading()
+    }
 }

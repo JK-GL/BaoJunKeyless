@@ -30,49 +30,55 @@ struct CustomVibrationPattern: Identifiable, Codable, Hashable {
     }
 }
 
-// MARK: - 自定义震动播放（Core Haptics — 支持脉冲+持续震动）
+// MARK: - 共享 CoreHaptics 引擎
+private class SharedHapticEngine {
+    static let shared = SharedHapticEngine()
+    var engine: CHHapticEngine?
+    var player: CHHapticAdvancedPatternPlayer?
+
+    private init() {
+        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
+        do {
+            engine = try CHHapticEngine()
+            try engine?.start()
+        } catch {
+            print("Haptic engine init failed: \(error)")
+        }
+    }
+
+    func stop() {
+        try? player?.stop(atTime: 0)
+        player = nil
+    }
+}
+
+// MARK: - 自定义震动播放（使用共享引擎）
 extension CustomVibrationPattern {
     func play(intensity: Double = 1.0) {
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
+        let shared = SharedHapticEngine.shared
+        guard let engine = shared.engine else { return }
 
         var hapticEvents: [CHHapticEvent] = []
         var time: TimeInterval = 0
 
         for evt in events {
             guard evt.duration > 0.01 else { continue }
-
             if evt.intensity > 0 {
                 let i = Float(evt.intensity * intensity)
-
                 if evt.duration > 0.15 {
-                    // 长时震动 → 用 continuous 事件
                     let params = [
                         CHHapticEventParameter(parameterID: .hapticIntensity, value: i),
                         CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.8)
                     ]
-                    hapticEvents.append(CHHapticEvent(
-                        eventType: .hapticContinuous,
-                        parameters: params,
-                        relativeTime: time,
-                        duration: evt.duration
-                    ))
+                    hapticEvents.append(CHHapticEvent(eventType: .hapticContinuous, parameters: params, relativeTime: time, duration: evt.duration))
                 } else {
-                    // 短脉冲 → 用 transient 叠加
-                    let layers: [(Float, Float)] = [
-                        (i, 1.0),
-                        (i * 0.8, 0.6),
-                        (i * 0.5, 0.3),
-                    ]
-                    for (intensityVal, sharpness) in layers {
+                    for (iv, is_) in [(i, 1.0), (i * 0.8, 0.6), (i * 0.5, 0.3)] {
                         let params = [
-                            CHHapticEventParameter(parameterID: .hapticIntensity, value: intensityVal),
-                            CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
+                            CHHapticEventParameter(parameterID: .hapticIntensity, value: iv),
+                            CHHapticEventParameter(parameterID: .hapticSharpness, value: is_)
                         ]
-                        hapticEvents.append(CHHapticEvent(
-                            eventType: .hapticTransient,
-                            parameters: params,
-                            relativeTime: time
-                        ))
+                        hapticEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: params, relativeTime: time))
                     }
                 }
                 time += evt.duration
@@ -82,16 +88,12 @@ extension CustomVibrationPattern {
         }
 
         guard !hapticEvents.isEmpty else { return }
-
         do {
-            let engine = try CHHapticEngine()
-            try engine.start()
+            shared.stop()
             let pattern = try CHHapticPattern(events: hapticEvents, parameters: [])
-            let player = try engine.makePlayer(with: pattern)
+            let player = try engine.makeAdvancedPlayer(with: pattern)
+            shared.player = player
             try player.start(atTime: 0)
-            DispatchQueue.main.asyncAfter(deadline: .now() + time + 0.5) {
-                engine.stop(completionHandler: nil)
-            }
         } catch {
             print("Core Haptics playback failed: \(error)")
         }
