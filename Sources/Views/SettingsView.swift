@@ -78,6 +78,51 @@ struct SettingsView: View {
                         }
                     }
 
+                    // Crash Log
+                    SettingsPanelView(title: "崩溃日志") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            if let log = CrashLogger.shared.readLog() {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    Text(log)
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundStyle(Color.white.opacity(0.62))
+                                        .padding(10)
+                                }
+                                .frame(height: 100)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(Color.white.opacity(0.04))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                                )
+
+                                Button(action: {
+                                    CrashLogger.shared.clearLog()
+                                    withAnimation { toastText = "日志已清空" }
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "trash")
+                                            .font(.system(size: 12))
+                                        Text("清空日志")
+                                            .font(.system(size: 13, weight: .medium))
+                                    }
+                                    .foregroundStyle(Color.red.opacity(0.8))
+                                }
+                            } else {
+                                HStack {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(AppTheme.green)
+                                    Text("暂无崩溃记录")
+                                        .font(.subheadline)
+                                        .foregroundStyle(Color.white.opacity(0.5))
+                                }
+                            }
+                        }
+                    }
+
                     // Reset Button
                     VStack(spacing: 12) {
                         Button(action: { showingResetAlert = true }) {
