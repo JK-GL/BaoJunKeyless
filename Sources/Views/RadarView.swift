@@ -250,19 +250,19 @@ struct WaveWithTrail: View {
 
     var body: some View {
         ZStack {
-            // ⭐ 拖尾环（暗，比前端慢一点）
+            // ⭐ 拖尾环（暗）
             Circle()
                 .stroke(Color.cyan.opacity(0.25), lineWidth: 1.5)
                 .frame(width: 24, height: 24)
-                .scaleEffect(trail ? 8.5 : 0.1)
+                .scaleEffect(trail ? 12.0 : 0.1)
                 .opacity(trail ? 0.0 : 0.5)
                 .blur(radius: 2)
 
-            // ⭐ 前端亮环（亮，先出发）
+            // ⭐ 前端亮环（亮）
             Circle()
                 .stroke(Color.white.opacity(0.9), lineWidth: 1.5)
                 .frame(width: 24, height: 24)
-                .scaleEffect(lead ? 8.5 : 0.1)
+                .scaleEffect(lead ? 12.0 : 0.1)
                 .opacity(lead ? 0.0 : 0.9)
                 .blur(radius: 0.5)
         }
