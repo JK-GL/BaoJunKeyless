@@ -85,6 +85,7 @@ struct StatusView: View {
     @StateObject private var locationManager = LocationManager()
     @StateObject private var store = KeylessSettingsStore()
     @State private var isRefreshing = false
+    @State private var refreshScale: CGFloat = 1.0
 
     // 控制模式文字
     private var modeText: String {
@@ -115,15 +116,26 @@ struct StatusView: View {
                     Spacer()
                     // ⭐ 刷新按钮
                     Button(action: {
-                        isRefreshing = true
+                        // 先放大
+                        withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
+                            refreshScale = 1.3
+                        }
+                        // 然后变沙漏
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            withAnimation(.spring(response: 0.2)) {
+                                refreshScale = 1.0
+                                isRefreshing = true
+                            }
+                        }
                         // 以后接入真实刷新逻辑，完成后 isRefreshing = false
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                             isRefreshing = false
                         }
                     }) {
-                        Image(systemName: isRefreshing ? "hourglass" : "arrow.clockwise")
+                        Image(systemName: isRefreshing ? "hourglass" : "arrow.triangle.2.circlepath")
                             .font(.system(size: 18, weight: .medium))
                             .foregroundStyle(Color.white.opacity(0.62))
+                            .scaleEffect(refreshScale)
                     }
                     .buttonStyle(.plain)
                 }
