@@ -227,14 +227,14 @@ class RadarUIView: UIView {
     override var intrinsicContentSize: CGSize { CGSize(width: sz, height: sz) }
 }
 
-// MARK: - 动漫念力扫描波
+// MARK: - 动漫念力扫描波（霓虹光环 + 发光光晕）
 struct PsychicScanView: View {
     let size: CGFloat
 
     var body: some View {
         ZStack {
             ForEach(0..<3, id: \.self) { i in
-                ScanRing(index: i, size: size)
+                NeonRing(index: i, size: size)
             }
         }
         .frame(width: size, height: size)
@@ -242,7 +242,7 @@ struct PsychicScanView: View {
     }
 }
 
-struct ScanRing: View {
+struct NeonRing: View {
     let index: Int
     let size: CGFloat
     @State private var expand = false
@@ -250,31 +250,53 @@ struct ScanRing: View {
     private var delay: Double { Double(index) * 1.2 }
 
     var body: some View {
-        Circle()
-            .trim(from: 0, to: expand ? 1.0 : 0.0)
-            .stroke(
-                AngularGradient(
-                    gradient: Gradient(stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: .clear, location: 0.25),
-                        .init(color: Color.cyan.opacity(0.6), location: 0.65),
-                        .init(color: Color.white.opacity(0.85), location: 0.92),
-                        .init(color: .clear, location: 1.0)
-                    ]),
-                    center: .center
-                ),
-                style: StrokeStyle(lineWidth: 1.8, lineCap: .round)
-            )
-            .frame(width: size * 0.1, height: size * 0.1)
-            .scaleEffect(expand ? 10.0 : 0.2)
-            .opacity(expand ? 0.0 : 0.85)
-            .onAppear {
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                    withAnimation(.easeOut(duration: 3.5).repeatForever(autoreverses: false)) {
-                        expand = true
-                    }
+        ZStack {
+            // ⭐ 外层发光光晕（blur）
+            Circle()
+                .stroke(
+                    Color.cyan.opacity(0.4),
+                    lineWidth: 8
+                )
+                .frame(width: size * 0.1, height: size * 0.1)
+                .scaleEffect(expand ? 10.0 : 0.2)
+                .opacity(expand ? 0.0 : 0.6)
+                .blur(radius: 6)
+
+            // ⭐ 内层亮环（实心霓虹线）
+            Circle()
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.cyan.opacity(0.8),
+                            Color.white.opacity(1.0),
+                            Color.cyan.opacity(0.8)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 2
+                )
+                .frame(width: size * 0.1, height: size * 0.1)
+                .scaleEffect(expand ? 10.0 : 0.2)
+                .opacity(expand ? 0.0 : 0.9)
+
+            // ⭐ 最内层白芯（极细亮线）
+            Circle()
+                .stroke(
+                    Color.white.opacity(0.95),
+                    lineWidth: 0.8
+                )
+                .frame(width: size * 0.1, height: size * 0.1)
+                .scaleEffect(expand ? 10.0 : 0.2)
+                .opacity(expand ? 0.0 : 0.7)
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                withAnimation(.easeOut(duration: 3.5).repeatForever(autoreverses: false)) {
+                    expand = true
                 }
             }
+        }
     }
 }
 
