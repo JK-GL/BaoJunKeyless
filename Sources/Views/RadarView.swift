@@ -38,8 +38,8 @@ class RadarUIView: UIView {
 
     private let carImageURL = "https://cdn-df.00bang.cn/images/T1Dw_TBTEv1RCvBVdK.png"
 
-    // 定时更新车辆位置（不需要每帧刷新）
-    private var updateTimer: Timer?
+    // 定时更新车辆位置
+    private var displayLink: CADisplayLink?
 
     override init(frame: CGRect) { super.init(frame: frame); setup() }
     required init?(coder: NSCoder) { super.init(coder: coder); setup() }
@@ -48,11 +48,9 @@ class RadarUIView: UIView {
         isOpaque = false; backgroundColor = .clear
         generateStars()
         loadCarImage()
-        // 每 0.1 秒更新一次车辆位置（足够流畅，不卡）
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            self?.updateCarPosition()
-            self?.setNeedsDisplay()
-        }
+        // CADisplayLink 更新车辆位置（流畅不卡）
+        displayLink = CADisplayLink(target: self, selector: #selector(updateFrame))
+        displayLink?.add(to: .main, forMode: .common)
     }
 
     private func loadCarImage() {
@@ -88,7 +86,13 @@ class RadarUIView: UIView {
     }
 
     func updateGyro(pitch: Double, roll: Double) { self.pitch = pitch; self.roll = roll }
-    deinit { updateTimer?.invalidate() }
+
+    @objc private func updateFrame() {
+        updateCarPosition()
+        setNeedsDisplay()
+    }
+
+    deinit { displayLink?.invalidate() }
 
     // 静态元素缓存
     private func buildStaticCache(_ size: CGSize) {
@@ -248,24 +252,23 @@ struct WaveCircle: View {
     var body: some View {
         Circle()
             .stroke(
-                LinearGradient(
-                    colors: [
-                        Color.blue.opacity(0),
-                        Color.blue.opacity(0.35),
-                        Color.blue.opacity(0)
-                    ],
-                    startPoint: .center,
-                    endPoint: .center
-                ),
+                Color.blue.opacity(0.4),
                 lineWidth: 1.5
             )
             .frame(width: radarSize * 0.3, height: radarSize * 0.3)
-            .scaleEffect(animate ? 1.0 : 0.1)
-            .opacity(animate ? 0.0 : 0.7)
+            .scaleEffect(animate ? 1.0 : 0.05)
+            .opacity(animate ? 0.0 : 0.8)
             .onAppear {
-                DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 1.2) {
-                    withAnimation(.easeOut(duration: 2.5).repeatForever(autoreverses: false)) {
-                        animate = true
+                // 错开每个波纹的起始时间
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 1.0) {
+                    animate = true
+                }
+            }
+            .onChange(of: animate) { val in
+                if val {
+                    // 动画完成后重置，形成循环
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        animate = false
                     }
                 }
             }
