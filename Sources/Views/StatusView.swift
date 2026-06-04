@@ -109,9 +109,30 @@ struct StatusView: View {
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
-                PageHeaderView(title: "宝骏云海")
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
+                HStack {
+                    PageHeaderView(title: "宝骏云海")
+                    Spacer()
+                    // ⭐ 刷新按钮
+                    Button(action: {
+                        // 以后接入真实刷新逻辑
+                    }) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.62))
+                            .frame(width: 36, height: 36)
+                            .background(
+                                Circle()
+                                    .fill(.ultraThinMaterial)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                                    )
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
 
                 // ⭐ 状态胶囊 — 四个同排
                 HStack(spacing: 6) {
