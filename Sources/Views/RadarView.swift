@@ -226,16 +226,37 @@ class RadarUIView: UIView {
             ))
         }
 
-        // 中心点
-        ctx.setFillColor(UIColor.systemBlue.withAlphaComponent(0.8).cgColor)
-        ctx.fillEllipse(in: .init(x: cx-4, y: cy-4, width: 8, height: 8))
-
-        // 中心光圈
-        ctx.setStrokeColor(UIColor.systemBlue.withAlphaComponent(0.3).cgColor)
-        ctx.setLineWidth(1)
-        ctx.strokeEllipse(in: .init(x: cx-10, y: cy-10, width: 20, height: 20))
-
         ctx.restoreGState()
+
+        // ── dBm 胶囊（画在 Canvas 里，车辆图标的底层）──
+        let dbmText = String(format: "%.0f", rssi)
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .bold),
+            .foregroundColor: UIColor(red: 0.5, green: 0.85, blue: 1.0, alpha: 0.9)
+        ]
+        let unitAttrs: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: 9, weight: .medium),
+            .foregroundColor: UIColor.white.withAlphaComponent(0.45)
+        ]
+        let numStr = NSAttributedString(string: dbmText, attributes: attrs)
+        let unitStr = NSAttributedString(string: " dBm", attributes: unitAttrs)
+        let full = NSMutableAttributedString()
+        full.append(numStr)
+        full.append(unitStr)
+        let textSize = full.size()
+        let textRect = CGRect(x: cx - textSize.width/2 - 10, y: cy - textSize.height/2 - 5,
+                              width: textSize.width + 20, height: textSize.height + 10)
+
+        // 毛玻璃底板
+        let capsulePath = UIBezierPath(roundedRect: textRect, cornerRadius: textRect.height / 2)
+        UIColor.white.withAlphaComponent(0.04).setFill()
+        capsulePath.fill()
+        UIColor.white.withAlphaComponent(0.1).setStroke()
+        capsulePath.lineWidth = 0.5
+        capsulePath.stroke()
+
+        // 文字
+        full.draw(at: CGPoint(x: cx - textSize.width/2, y: cy - textSize.height/2))
 
         // ── 车辆图标 ──
         let n = (-30 - max(-110, min(-30, rssi))) / 80.0
@@ -310,40 +331,10 @@ struct RadarCardView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            // 雷达 + dBm 胶囊叠加
-            ZStack {
-                RadarRepresentable(motion: motion, radar: radar)
-                    .frame(width: 280, height: 280)
-                    .clipShape(Circle())
-
-                // ⭐ dBm 小胶囊 — 雷达中心
-                HStack(alignment: .firstTextBaseline, spacing: 1) {
-                    Text("\(Int(displayValue))")
-                        .font(.system(size: 14, weight: .bold, design: .monospaced))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: gradientColors,
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-
-                    Text("dBm")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.45))
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    Capsule()
-                        .fill(.ultraThinMaterial)
-                        .overlay(
-                            Capsule()
-                                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
-                        )
-                )
-                .offset(y: 0)
-            }
+            // 雷达（dBm 在 Canvas 内部绘制）
+            RadarRepresentable(motion: motion, radar: radar)
+                .frame(width: 280, height: 280)
+                .clipShape(Circle())
 
             // 状态胶囊
             VStack(spacing: 8) {
