@@ -317,7 +317,7 @@ struct RadarCardView: View {
     @State private var displayValue: Double = -42
     private let radar = RadarUIView(frame: .zero)
 
-    // 模拟车辆 GPS 坐标（实际应从 MQTT 获取）
+    // 车辆 GPS 坐标（从 MQTT 获取）
     private let carLat = 22.635842
     private let carLng = 114.129604
 

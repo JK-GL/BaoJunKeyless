@@ -119,7 +119,7 @@ struct RangeCardView: View {
 
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Image(systemName: "gauge.medium").foregroundColor(.secondary)
-                Text("1140").font(.system(size: 38, weight: .bold, design: .rounded))
+                Text("802").font(.system(size: 38, weight: .bold, design: .rounded))
                 Text("km").font(.system(size: 16, weight: .medium)).foregroundColor(.secondary)
             }
             .padding(.top, 4)
