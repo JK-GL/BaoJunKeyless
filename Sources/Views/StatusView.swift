@@ -45,9 +45,9 @@ enum BLEConnectionState {
 
     var icon: String {
         switch self {
-        case .disconnected: return "bluetooth"
-        case .connecting:   return "bluetooth"
-        case .connected:    return "bluetooth.fill"
+        case .disconnected: return "dot.radiowaves.left.and.right"
+        case .connecting:   return "dot.radiowaves.left.and.right"
+        case .connected:    return "dot.radiowaves.left.and.right"
         }
     }
 }
@@ -145,7 +145,7 @@ struct StatusView: View {
 
                 // ⭐ 状态胶囊 — 四个同排
                 HStack(spacing: 6) {
-                    StatusPill(icon: "bluetooth", text: "BLE 未连接", color: Color.white.opacity(0.45))
+                    StatusPill(icon: "dot.radiowaves.left.and.right", text: "BLE 未连接", color: Color.white.opacity(0.45))
                     StatusPill(icon: "key.fill", text: "密钥正常", color: AppTheme.green)
                     StatusPill(icon: modeIcon, text: modeText, color: modeColor)
                     StatusPill(icon: "lock.fill", text: "已锁车", color: AppTheme.green)
