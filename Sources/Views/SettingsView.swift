@@ -81,10 +81,10 @@ struct SettingsView: View {
                     // Crash Log
                     SettingsPanelView(title: "崩溃日志") {
                         VStack(alignment: .leading, spacing: 10) {
-                            if let log = CrashLogger.shared.readLog() {
+                            if let log = CrashLogger.shared.readLog(), !log.isEmpty {
                                 ScrollView(.horizontal, showsIndicators: false) {
                                     Text(log)
-                                        .font(.system(size: 11, design: .monospaced))
+                                        .font(.system(size: 10, design: .monospaced))
                                         .foregroundStyle(Color.white.opacity(0.62))
                                         .padding(10)
                                 }
@@ -98,17 +98,32 @@ struct SettingsView: View {
                                         .stroke(Color.white.opacity(0.06), lineWidth: 1)
                                 )
 
-                                Button(action: {
-                                    CrashLogger.shared.clearLog()
-                                    withAnimation { toastText = "日志已清空" }
-                                }) {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "trash")
-                                            .font(.system(size: 12))
-                                        Text("清空日志")
-                                            .font(.system(size: 13, weight: .medium))
+                                HStack(spacing: 12) {
+                                    Button(action: {
+                                        UIPasteboard.general.string = log
+                                        withAnimation { toastText = "已复制到剪贴板" }
+                                    }) {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "doc.on.doc")
+                                                .font(.system(size: 12))
+                                            Text("复制")
+                                                .font(.system(size: 13, weight: .medium))
+                                        }
+                                        .foregroundStyle(AppTheme.accent)
                                     }
-                                    .foregroundStyle(Color.red.opacity(0.8))
+
+                                    Button(action: {
+                                        CrashLogger.shared.clearLog()
+                                        withAnimation { toastText = "日志已清空" }
+                                    }) {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "trash")
+                                                .font(.system(size: 12))
+                                            Text("清空")
+                                                .font(.system(size: 13, weight: .medium))
+                                        }
+                                        .foregroundStyle(Color.red.opacity(0.8))
+                                    }
                                 }
                             } else {
                                 HStack {
