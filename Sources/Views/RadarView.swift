@@ -227,74 +227,59 @@ class RadarUIView: UIView {
     override var intrinsicContentSize: CGSize { CGSize(width: sz, height: sz) }
 }
 
-// MARK: - 动漫念力扫描波（前端亮 + 渐变拖尾）
+// MARK: - 念力扫描波（简单可靠版）
 struct PsychicScanView: View {
     let size: CGFloat
 
     var body: some View {
         ZStack {
-            TrailedRing(index: 0, size: size)
-            TrailedRing(index: 1, size: size)
-            TrailedRing(index: 2, size: size)
+            ScanWave(index: 0, size: size)
+            ScanWave(index: 1, size: size)
+            ScanWave(index: 2, size: size)
         }
         .frame(width: size, height: size)
         .allowsHitTesting(false)
     }
 }
 
-struct TrailedRing: View {
+struct ScanWave: View {
     let index: Int
     let size: CGFloat
     @State private var expand = false
 
-    private var delay: Double { Double(index) * 1.5 }
-
     var body: some View {
         ZStack {
-            // ⭐ 外层厚环 + RadialGradient 遮罩（前端亮，尾部渐隐）
+            // 外层光晕环
             Circle()
-                .stroke(Color.cyan, lineWidth: 14)
-                .frame(width: size * 0.08, height: size * 0.08)
-                .scaleEffect(expand ? 12.0 : 0.15)
-                .mask(
-                    RadialGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: .clear, location: 0),
-                            .init(color: .clear, location: 0.25),
-                            .init(color: .white.opacity(0.2), location: 0.55),
-                            .init(color: .white.opacity(0.7), location: 0.82),
-                            .init(color: .white, location: 1.0)
-                        ]),
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: size * 0.6
-                    )
-                )
-                .opacity(expand ? 0.0 : 0.9)
-                .blur(radius: 2)
+                .stroke(Color.cyan.opacity(0.5), lineWidth: 10)
+                .frame(width: 30, height: 30)
+                .scaleEffect(expand ? 9.0 : 0.1)
+                .opacity(expand ? 0.0 : 0.7)
+                .blur(radius: 8)
 
-            // ⭐ 内层亮芯白线
+            // 主亮环
             Circle()
-                .stroke(Color.white, lineWidth: 1.5)
-                .frame(width: size * 0.08, height: size * 0.08)
-                .scaleEffect(expand ? 12.0 : 0.15)
-                .mask(
-                    RadialGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: .clear, location: 0),
-                            .init(color: .clear, location: 0.35),
-                            .init(color: .white.opacity(0.4), location: 0.7),
-                            .init(color: .white, location: 1.0)
-                        ]),
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: size * 0.6
-                    )
+                .stroke(
+                    LinearGradient(
+                        colors: [Color.cyan.opacity(0.9), Color.white],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 3
                 )
-                .opacity(expand ? 0.0 : 0.85)
+                .frame(width: 30, height: 30)
+                .scaleEffect(expand ? 9.0 : 0.1)
+                .opacity(expand ? 0.0 : 0.95)
+
+            // 白芯
+            Circle()
+                .stroke(Color.white.opacity(0.9), lineWidth: 1)
+                .frame(width: 30, height: 30)
+                .scaleEffect(expand ? 9.0 : 0.1)
+                .opacity(expand ? 0.0 : 0.8)
         }
         .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 1.3) {
                 withAnimation(.easeOut(duration: 4.0).repeatForever(autoreverses: false)) {
                     expand = true
                 }
