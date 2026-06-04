@@ -227,51 +227,52 @@ class RadarUIView: UIView {
     override var intrinsicContentSize: CGSize { CGSize(width: sz, height: sz) }
 }
 
-// MARK: - 中心脉冲动画
-struct CenterPulseView: View {
-    @State private var pulse1 = false
-    @State private var pulse2 = false
-    @State private var pulse3 = false
+// MARK: - 雷达声波脉冲动画
+struct SonarPulseView: View {
     let size: CGFloat
+    @State private var phase = false
 
     var body: some View {
         ZStack {
-            // 脉冲圈 1
-            Circle()
-                .stroke(Color.blue.opacity(0.3), lineWidth: 1.5)
-                .frame(width: size * 0.3, height: size * 0.3)
-                .scaleEffect(pulse1 ? 1.2 : 0.4)
-                .opacity(pulse1 ? 0 : 0.6)
-                .animation(.easeOut(duration: 2.0).repeatForever(autoreverses: false), value: pulse1)
-
-            // 脉冲圈 2
-            Circle()
-                .stroke(Color.blue.opacity(0.25), lineWidth: 1)
-                .frame(width: size * 0.3, height: size * 0.3)
-                .scaleEffect(pulse2 ? 1.0 : 0.3)
-                .opacity(pulse2 ? 0 : 0.5)
-                .animation(.easeOut(duration: 2.0).repeatForever(autoreverses: false).delay(0.7), value: pulse2)
-
-            // 脉冲圈 3
-            Circle()
-                .stroke(Color.blue.opacity(0.2), lineWidth: 0.8)
-                .frame(width: size * 0.3, height: size * 0.3)
-                .scaleEffect(pulse3 ? 0.8 : 0.2)
-                .opacity(pulse3 ? 0 : 0.4)
-                .animation(.easeOut(duration: 2.0).repeatForever(autoreverses: false).delay(1.4), value: pulse3)
-
-            // 中心亮点
-            Circle()
-                .fill(Color.blue.opacity(0.6))
-                .frame(width: 6, height: 6)
+            // 3 层声波环，从中心扩散到边缘
+            ForEach(0..<3, id: \.self) { i in
+                SonarRing(index: i, size: size, phase: phase)
+            }
         }
         .frame(width: size, height: size)
         .allowsHitTesting(false)
-        .onAppear {
-            pulse1 = true
-            pulse2 = true
-            pulse3 = true
-        }
+        .onAppear { phase = true }
+    }
+}
+
+struct SonarRing: View {
+    let index: Int
+    let size: CGFloat
+    let phase: Bool
+    @State private var ringPhase = false
+
+    private var delay: Double { Double(index) * 0.8 }
+    private var duration: Double { 2.4 }
+
+    var body: some View {
+        Circle()
+            .stroke(
+                Color.blue.opacity(0.35),
+                lineWidth: 1.2
+            )
+            .frame(width: size * 0.08, height: size * 0.08)
+            .scaleEffect(ringPhase ? 3.5 : 0.2)
+            .opacity(ringPhase ? 0.0 : 0.7)
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    withAnimation(
+                        .easeOut(duration: duration)
+                        .repeatForever(autoreverses: false)
+                    ) {
+                        ringPhase = true
+                    }
+                }
+            }
     }
 }
 
@@ -311,8 +312,8 @@ struct RadarCardView: View {
                     .frame(width: 280, height: 280)
                     .clipShape(Circle())
 
-                // ⭐ 中心脉冲动画
-                CenterPulseView(size: 280)
+                // ⭐ 声波脉冲动画
+                SonarPulseView(size: 280)
             }
 
             if locationManager.distance > 0 {
