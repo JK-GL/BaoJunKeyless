@@ -114,7 +114,7 @@ struct StatusView: View {
                     .padding(.top, 8)
 
                 // ⭐ 状态胶囊 — 四个同排
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     StatusPill(icon: "antenna.radiowaves.left.and.right.slash", text: "BLE 未连接", color: Color.white.opacity(0.45))
                     StatusPill(icon: "key.fill", text: "密钥正常", color: AppTheme.green)
                     StatusPill(icon: modeIcon, text: modeText, color: modeColor)
