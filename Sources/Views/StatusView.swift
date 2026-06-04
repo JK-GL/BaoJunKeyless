@@ -113,11 +113,10 @@ struct StatusView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
 
-                // ⭐ 状态胶囊 — 同一行排列
+                // ⭐ 状态胶囊 — 四个同排
                 HStack(spacing: 8) {
-                    // BLE 状态作为胶囊
                     StatusPill(icon: "antenna.radiowaves.left.and.right.slash", text: "BLE 未连接", color: Color.white.opacity(0.45))
-                    // 控制模式
+                    StatusPill(icon: "key.fill", text: "密钥正常", color: AppTheme.green)
                     StatusPill(icon: modeIcon, text: modeText, color: modeColor)
                     StatusPill(icon: "lock.open.fill", text: "未锁车", color: AppTheme.orange)
                 }
