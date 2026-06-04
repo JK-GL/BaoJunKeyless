@@ -26,6 +26,7 @@ struct StatusView: View {
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var scrollState: AppScrollState
     @StateObject private var motion = MotionManager()
+    @StateObject private var locationManager = LocationManager()
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -34,7 +35,7 @@ struct StatusView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
 
-                RadarCardView(motion: motion)
+                RadarCardView(motion: motion, locationManager: locationManager)
                 QuickActionsView()
                 RangeCardView()
                 BatteryGaugesView()

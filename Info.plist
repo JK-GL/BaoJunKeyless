@@ -27,6 +27,8 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>用于雷达定位显示车辆位置</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColor</key>

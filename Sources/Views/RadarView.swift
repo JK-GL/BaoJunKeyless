@@ -246,15 +246,21 @@ class RadarUIView: UIView {
         let textSize = full.size()
         full.draw(at: CGPoint(x: cx - textSize.width/2, y: cy - textSize.height/2))
 
-        // ── 车辆图标 ──
-        let n = (-30 - max(-110, min(-30, rssi))) / 80.0
-        let tSz: CGFloat = sz * (0.32 - 0.20 * CGFloat(n))
-        let tOff = CGFloat(n) * (r - tSz/2 - 15)
+        // ── 车辆图标（GPS 真实定位）──
+        // relativeAngle: 0=正上方(12点), 90=右(3点), 180=下(6点), 270=左(9点)
+        // distance: 车辆距离（米），映射到雷达半径（最大显示 200 米）
+        let maxDisplayDistance: Double = 200.0
+        let normalizedDist = min(distance / maxDisplayDistance, 1.0)  // 0~1
+        let carRadius = r * 0.15 + CGFloat(normalizedDist) * (r * 0.7)  // 最小 15% 半径
+        let angleRad = relativeAngle * .pi / 180 - .pi / 2  // 0°→上，顺时针
+        let targetX = cx + carRadius * cos(angleRad)
+        let targetY = cy + carRadius * sin(angleRad)
+        carX += (targetX - carX) * 0.08
+        carY += (targetY - carY) * 0.08
+
+        // 车辆大小随距离变化：近→大，远→小
+        let tSz: CGFloat = sz * (0.28 - 0.15 * CGFloat(normalizedDist))
         carSz += (tSz - carSz) * 0.05
-        let tx = cx + tOff * 0.7071 + CGFloat(roll) * 3
-        let ty = cy + tOff * 0.7071 + CGFloat(pitch) * 3
-        carX += (tx - carX) * 0.05
-        carY += (ty - carY) * 0.05
 
         // 车辆发光光晕
         let glowR = carSz * 0.7
@@ -287,10 +293,13 @@ class RadarUIView: UIView {
 // MARK: - SwiftUI 封装
 struct RadarRepresentable: UIViewRepresentable {
     @ObservedObject var motion: MotionManager
+    @ObservedObject var locationManager: LocationManager
     let radar: RadarUIView
     func makeUIView(context: Context) -> RadarUIView { radar }
     func updateUIView(_ v: RadarUIView, context: Context) {
         v.updateGyro(pitch: motion.pitch, roll: motion.roll)
+        v.relativeAngle = locationManager.relativeAngle
+        v.distance = locationManager.distance
     }
 }
 
@@ -298,10 +307,15 @@ struct RadarRepresentable: UIViewRepresentable {
 struct RadarCardView: View {
     @EnvironmentObject var theme: ThemeManager
     @ObservedObject var motion: MotionManager
+    @ObservedObject var locationManager: LocationManager
     @State private var rssiText = "-42"
     @State private var rssiValue: Double = -42
     @State private var displayValue: Double = -42
     private let radar = RadarUIView(frame: .zero)
+
+    // 模拟车辆 GPS 坐标（实际应从 MQTT 获取）
+    private let carLat = 22.635842
+    private let carLng = 114.129604
 
     private var strength: Double {
         max(0, min(1, (rssiValue + 110) / 80))
@@ -320,9 +334,16 @@ struct RadarCardView: View {
     var body: some View {
         VStack(spacing: 12) {
             // 雷达（dBm 在 Canvas 内部绘制）
-            RadarRepresentable(motion: motion, radar: radar)
+            RadarRepresentable(motion: motion, radar: radar, locationManager: locationManager)
                 .frame(width: 280, height: 280)
                 .clipShape(Circle())
+
+            // 距离显示
+            if locationManager.distance > 0 {
+                Text(String(format: "距车辆 %.0f 米", locationManager.distance))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.5))
+            }
 
             // 状态胶囊
             VStack(spacing: 8) {
@@ -340,6 +361,9 @@ struct RadarCardView: View {
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
         .onAppear {
+            // 设置车辆坐标
+            locationManager.setCarLocation(lat: carLat, lng: carLng)
+
             radar.onRssiChange = { val in
                 DispatchQueue.main.async {
                     rssiValue = val
@@ -348,6 +372,12 @@ struct RadarCardView: View {
                     }
                 }
             }
+        }
+        .onChange(of: locationManager.relativeAngle) { _, val in
+            radar.relativeAngle = val
+        }
+        .onChange(of: locationManager.distance) { _, val in
+            radar.distance = val
         }
     }
 }
