@@ -227,76 +227,81 @@ class RadarUIView: UIView {
     override var intrinsicContentSize: CGSize { CGSize(width: sz, height: sz) }
 }
 
-// MARK: - 动漫念力扫描波（霓虹光环 + 发光光晕）
+// MARK: - 动漫念力扫描波（前端亮 + 渐变拖尾）
 struct PsychicScanView: View {
     let size: CGFloat
 
     var body: some View {
         ZStack {
-            ForEach(0..<3, id: \.self) { i in
-                NeonRing(index: i, size: size)
-            }
+            TrailedRing(index: 0, size: size)
+            TrailedRing(index: 1, size: size)
+            TrailedRing(index: 2, size: size)
         }
         .frame(width: size, height: size)
         .allowsHitTesting(false)
     }
 }
 
-struct NeonRing: View {
+struct TrailedRing: View {
     let index: Int
     let size: CGFloat
     @State private var expand = false
 
-    private var delay: Double { Double(index) * 1.2 }
+    private var delay: Double { Double(index) * 1.5 }
 
     var body: some View {
         ZStack {
-            // ⭐ 外层发光光晕（blur）
+            // ⭐ 外层厚环 + RadialGradient 遮罩（前端亮，尾部渐隐）
             Circle()
-                .stroke(
-                    Color.cyan.opacity(0.4),
-                    lineWidth: 8
+                .stroke(Color.cyan, lineWidth: 14)
+                .frame(width: size * 0.08, height: size * 0.08)
+                .scaleEffect(expand ? 12.0 : 0.15)
+                .mask(
+                    RadialGradient(
+                        gradient: Gradient(stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .clear, location: 0.25),
+                            .init(color: .white.opacity(0.2), location: 0.55),
+                            .init(color: .white.opacity(0.7), location: 0.82),
+                            .init(color: .white, location: 1.0)
+                        ]),
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: size * 0.6
+                    )
                 )
-                .frame(width: size * 0.1, height: size * 0.1)
-                .scaleEffect(expand ? 10.0 : 0.2)
-                .opacity(expand ? 0.0 : 0.6)
-                .blur(radius: 6)
-
-            // ⭐ 内层亮环（实心霓虹线）
-            Circle()
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            Color.cyan.opacity(0.8),
-                            Color.white.opacity(1.0),
-                            Color.cyan.opacity(0.8)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    lineWidth: 2
-                )
-                .frame(width: size * 0.1, height: size * 0.1)
-                .scaleEffect(expand ? 10.0 : 0.2)
                 .opacity(expand ? 0.0 : 0.9)
+                .blur(radius: 2)
 
-            // ⭐ 最内层白芯（极细亮线）
+            // ⭐ 内层亮芯白线
             Circle()
-                .stroke(
-                    Color.white.opacity(0.95),
-                    lineWidth: 0.8
+                .stroke(Color.white, lineWidth: 1.5)
+                .frame(width: size * 0.08, height: size * 0.08)
+                .scaleEffect(expand ? 12.0 : 0.15)
+                .mask(
+                    RadialGradient(
+                        gradient: Gradient(stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .clear, location: 0.35),
+                            .init(color: .white.opacity(0.4), location: 0.7),
+                            .init(color: .white, location: 1.0)
+                        ]),
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: size * 0.6
+                    )
                 )
-                .frame(width: size * 0.1, height: size * 0.1)
-                .scaleEffect(expand ? 10.0 : 0.2)
-                .opacity(expand ? 0.0 : 0.7)
+                .opacity(expand ? 0.0 : 0.85)
         }
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                withAnimation(.easeOut(duration: 3.5).repeatForever(autoreverses: false)) {
+                withAnimation(.easeOut(duration: 4.0).repeatForever(autoreverses: false)) {
                     expand = true
                 }
             }
         }
+    }
+}
     }
 }
 
