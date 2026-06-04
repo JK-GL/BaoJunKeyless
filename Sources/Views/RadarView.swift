@@ -38,6 +38,10 @@ class RadarUIView: UIView {
     private var carX: CGFloat = 0
     private var carY: CGFloat = 0
 
+    // ⭐ GPS 真实定位
+    var relativeAngle: Double = 0    // 车辆相对角度（0=正前方）
+    var distance: Double = 0          // 车辆距离（米）
+
     // 静态缓存
     private var staticCache: UIImage?
     private var lastCacheSize: CGSize = .zero
@@ -334,7 +338,7 @@ struct RadarCardView: View {
     var body: some View {
         VStack(spacing: 12) {
             // 雷达（dBm 在 Canvas 内部绘制）
-            RadarRepresentable(motion: motion, radar: radar, locationManager: locationManager)
+            RadarRepresentable(motion: motion, locationManager: locationManager, radar: radar)
                 .frame(width: 280, height: 280)
                 .clipShape(Circle())
 
