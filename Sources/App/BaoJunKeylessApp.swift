@@ -6,6 +6,7 @@ struct BaoJunKeylessApp: App {
 
     init() {
         _ = CrashLogger.shared  // 初始化崩溃日志记录器
+        CrashLogger.shared.logMemoryBaseline()  // 记录启动时内存
     }
 
     var body: some Scene {

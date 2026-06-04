@@ -26,7 +26,8 @@ class CrashLogger {
             CrashLogger.shared.logCrash("⚠️ APP WILL TERMINATE (系统杀死)")
         }
         NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { _ in
-            CrashLogger.shared.logCrash("⚠️ MEMORY WARNING (内存警告)")
+            let mem = Self.memoryUsage()
+            CrashLogger.shared.logCrash("⚠️ MEMORY WARNING — 当前内存: \(mem)")
         }
         NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
             CrashLogger.shared.logCrash("ℹ️ ENTERED BACKGROUND")
@@ -57,5 +58,29 @@ class CrashLogger {
     func clearLog() {
         guard let url = logFile else { return }
         try? FileManager.default.removeItem(at: url)
+    }
+
+    // MARK: - 内存使用量
+    static func memoryUsage() -> String {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return "未知" }
+        let bytes = info.resident_size
+        if bytes > 1024 * 1024 * 1024 {
+            return String(format: "%.1f GB", Double(bytes) / 1024 / 1024 / 1024)
+        } else {
+            return String(format: "%.1f MB", Double(bytes) / 1024 / 1024)
+        }
+    }
+
+    // ⭐ 启动时记录内存基线
+    func logMemoryBaseline() {
+        let mem = Self.memoryUsage()
+        logCrash("ℹ️ MEMORY BASELINE: \(mem)")
     }
 }
