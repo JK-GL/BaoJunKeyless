@@ -21,6 +21,62 @@ class MotionManager: ObservableObject {
     deinit { manager.stopDeviceMotionUpdates() }
 }
 
+// MARK: - BLE 蓝牙状态
+enum BLEConnectionState {
+    case disconnected   // 未连接
+    case connecting     // 连接中
+    case connected      // 已连接
+
+    var text: String {
+        switch self {
+        case .disconnected: return "BLE 未连接"
+        case .connecting:   return "正在连接 E260-BLE"
+        case .connected:    return "已连接 E260-BLE"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .disconnected: return Color.white.opacity(0.45)
+        case .connecting:   return AppTheme.orange
+        case .connected:    return AppTheme.green
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .disconnected: return "antenna.radiowaves.left.and.right.slash"
+        case .connecting:   return "antenna.radiowaves.left.and.right"
+        case .connected:    return "antenna.radiowaves.left.and.right"
+        }
+    }
+}
+
+struct BLEStatusView: View {
+    @State private var bleState: BLEConnectionState = .disconnected
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: bleState.icon)
+                .font(.system(size: 12))
+            Text(bleState.text)
+                .font(.system(size: 12, weight: .medium))
+        }
+        .foregroundStyle(bleState.color)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            Capsule()
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    Capsule()
+                        .stroke(bleState.color.opacity(0.2), lineWidth: 0.5)
+                )
+        )
+        .padding(.horizontal, 20)
+    }
+}
+
 // MARK: - Status View (Tab 1)
 struct StatusView: View {
     @EnvironmentObject var theme: ThemeManager
@@ -34,6 +90,9 @@ struct StatusView: View {
                 PageHeaderView(title: "宝骏云海")
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
+
+                // ⭐ 蓝牙状态指示
+                BLEStatusView()
 
                 RadarCardView(motion: motion, locationManager: locationManager)
                 QuickActionsView()
