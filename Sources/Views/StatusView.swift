@@ -83,6 +83,28 @@ struct StatusView: View {
     @EnvironmentObject var scrollState: AppScrollState
     @StateObject private var motion = MotionManager()
     @StateObject private var locationManager = LocationManager()
+    @StateObject private var store = KeylessSettingsStore()
+
+    // 控制模式文字
+    private var modeText: String {
+        if store.settings.pluginTakeover { return "插件托管" }
+        if store.settings.smartSwitch { return "智能切换" }
+        if store.settings.appManual { return "App 手动" }
+        return "未启用"
+    }
+
+    private var modeColor: Color {
+        if store.settings.pluginTakeover || store.settings.smartSwitch { return AppTheme.green }
+        if store.settings.appManual { return AppTheme.orange }
+        return Color.white.opacity(0.45)
+    }
+
+    private var modeIcon: String {
+        if store.settings.pluginTakeover { return "shield.fill" }
+        if store.settings.smartSwitch { return "arrow.triangle.2.circlepath" }
+        if store.settings.appManual { return "iphone" }
+        return "slash.circle"
+    }
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -91,13 +113,12 @@ struct StatusView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
 
-                // ⭐ 蓝牙状态指示
-                BLEStatusView()
-
-                // ⭐ 状态胶囊 — 一行排列
+                // ⭐ 状态胶囊 — 同一行排列
                 HStack(spacing: 8) {
-                    StatusPill(icon: "shield.fill", text: "密钥正常", color: AppTheme.green)
-                    StatusPill(icon: "arrow.triangle.2.circlepath", text: "全程接管", color: AppTheme.purple)
+                    // BLE 状态作为胶囊
+                    StatusPill(icon: "antenna.radiowaves.left.and.right.slash", text: "BLE 未连接", color: Color.white.opacity(0.45))
+                    // 控制模式
+                    StatusPill(icon: modeIcon, text: modeText, color: modeColor)
                     StatusPill(icon: "lock.open.fill", text: "未锁车", color: AppTheme.orange)
                 }
                 .padding(.horizontal, 20)
