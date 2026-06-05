@@ -26,11 +26,16 @@ class CrashLogger {
             CrashLogger.shared.logCrash("⚠️ APP WILL TERMINATE (系统杀死)")
         }
         NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { _ in
-            let mem = Self.memoryUsage()
+            let mem = Self.formatBytes(Self.memoryUsageBytes())
             CrashLogger.shared.logCrash("⚠️ MEMORY WARNING — 当前内存: \(mem)")
         }
         NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
             CrashLogger.shared.logCrash("ℹ️ ENTERED BACKGROUND")
+            CrashLogger.shared.mark("Lifecycle", "background")
+        }
+        NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in
+            CrashLogger.shared.logCrash("ℹ️ WILL ENTER FOREGROUND")
+            CrashLogger.shared.mark("Lifecycle", "foreground")
         }
     }
 
@@ -60,41 +65,19 @@ class CrashLogger {
         try? FileManager.default.removeItem(at: url)
     }
 
-    // MARK: - 内存使用量
-    static func memoryUsage() -> String {
-        var info = mach_task_basic_info()
-        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
-        let result = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
-            }
-        }
-        guard result == KERN_SUCCESS else { return "未知" }
-        let bytes = info.resident_size
-        if bytes > 1024 * 1024 * 1024 {
-            return String(format: "%.1f GB", Double(bytes) / 1024 / 1024 / 1024)
-        } else {
-            return String(format: "%.1f MB", Double(bytes) / 1024 / 1024)
-        }
-    }
-
-    // ⭐ 启动时记录内存基线
-    func logMemoryBaseline() {
-        let mem = Self.memoryUsage()
-        logCrash("ℹ️ MEMORY BASELINE: \(mem)")
-    }
-
-    // ⭐ 定时内存监控（每 30 秒记录一次）
     private var memoryTimer: Timer?
-    private var lastMemory: String = ""
+    private var lastMemoryBytes: UInt64 = 0
 
     func startMemoryMonitor() {
+        memoryTimer?.invalidate()
         memoryTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            let current = Self.memoryUsage()
-            if current != self.lastMemory {
-                self.logCrash("📊 MEMORY: \(current)")
-                self.lastMemory = current
+            let current = Self.memoryUsageBytes()
+            if self.lastMemoryBytes == 0 || current != self.lastMemoryBytes {
+                let delta = Int64(current) - Int64(self.lastMemoryBytes)
+                let sign = delta >= 0 ? "+" : ""
+                self.logCrash("📊 MEMORY: \(Self.formatBytes(current)) (Δ\(sign)\(Self.formatBytes(UInt64(abs(delta)))))")
+                self.lastMemoryBytes = current
             }
         }
     }
@@ -102,5 +85,41 @@ class CrashLogger {
     func stopMemoryMonitor() {
         memoryTimer?.invalidate()
         memoryTimer = nil
+    }
+
+    static func memoryUsageBytes() -> UInt64 {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return 0 }
+        return UInt64(info.resident_size)
+    }
+
+    static func formatBytes(_ bytes: UInt64) -> String {
+        if bytes > 1024 * 1024 * 1024 {
+            return String(format: "%.1f GB", Double(bytes) / 1024 / 1024 / 1024)
+        } else {
+            return String(format: "%.1f MB", Double(bytes) / 1024 / 1024)
+        }
+    }
+
+    func logMemoryBaseline() {
+        let mem = Self.formatBytes(Self.memoryUsageBytes())
+        logCrash("ℹ️ MEMORY BASELINE: \(mem)")
+    }
+
+    func logEvent(_ component: String, _ message: String, file: String = #file, line: Int = #line) {
+        let current = Self.formatBytes(Self.memoryUsageBytes())
+        let src = ((file as NSString).lastPathComponent as NSString).deletingPathExtension
+        logCrash("🧭 [\(component)] \(message) — MEM: \(current) — \(src):\(line)")
+    }
+
+    func mark(_ component: String, _ message: String, details: String? = nil, file: String = #file, line: Int = #line) {
+        let body = [message, details].compactMap { $0 }.joined(separator: " | ")
+        logEvent(component, body, file: file, line: line)
     }
 }

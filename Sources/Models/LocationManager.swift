@@ -80,11 +80,13 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     // ⭐ 前后台切换
     func pause() {
+        CrashLogger.shared.mark("Location", "pause")
         manager.stopUpdatingLocation()
         manager.stopUpdatingHeading()
     }
 
     func resume() {
+        CrashLogger.shared.mark("Location", "resume")
         manager.startUpdatingLocation()
         manager.startUpdatingHeading()
     }

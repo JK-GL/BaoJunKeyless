@@ -18,7 +18,23 @@ class MotionManager: ObservableObject {
         }
     }
 
-    deinit { manager.stopDeviceMotionUpdates() }
+    func pause() {
+        CrashLogger.shared.mark("Motion", "pause")
+        manager.stopDeviceMotionUpdates()
+    }
+
+    func resume() {
+        guard manager.isDeviceMotionAvailable else { return }
+        CrashLogger.shared.mark("Motion", "resume")
+        if !manager.isDeviceMotionActive {
+            manager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
+                guard let self = self, let m = motion else { return }
+                let smooth = 0.15
+                self.pitch += smooth * (m.attitude.pitch - self.pitch)
+                self.roll  += smooth * (m.attitude.roll  - self.roll)
+            }
+        }
+    }
 }
 
 // MARK: - BLE 蓝牙状态
@@ -168,9 +184,11 @@ struct StatusView: View {
         }
         // ⭐ 前后台暂停/恢复
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            motion.pause()
             locationManager.pause()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            motion.resume()
             locationManager.resume()
         }
     }

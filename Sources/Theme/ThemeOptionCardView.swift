@@ -8,6 +8,9 @@ struct ThemeOptionCardView: View {
     let theme: AppThemeConfiguration
     let isSelected: Bool
 
+    @State private var previewCacheKey: Int = .min
+    @State private var cachedPreviewImage: Image?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             ZStack(alignment: .topTrailing) {
@@ -72,18 +75,29 @@ struct ThemeOptionCardView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(isSelected ? theme.accent.opacity(0.36) : Color.white.opacity(0.06), lineWidth: 1)
         )
+        .onAppear { refreshCacheIfNeeded() }
+        .onChange(of: theme.customBackgroundImageData?.count ?? 0) { _ in refreshCacheIfNeeded() }
     }
 
-    #if canImport(UIKit)
-    private var previewImage: Image? {
-        guard let data = theme.customBackgroundImageData,
-              let uiImage = UIImage(data: data)
-        else {
-            return nil
+    private func refreshCacheIfNeeded() {
+        let key = theme.customBackgroundImageData?.count ?? 0
+        CrashLogger.shared.mark("ThemeThumb", "cacheRefresh", details: "key=\(key)")
+        guard previewCacheKey != key else { return }
+        previewCacheKey = key
+        #if canImport(UIKit)
+        if let data = theme.customBackgroundImageData,
+           let uiImage = UIImage(data: data) {
+            cachedPreviewImage = Image(uiImage: uiImage)
+        } else {
+            cachedPreviewImage = nil
         }
-        return Image(uiImage: uiImage)
+        #endif
     }
-    #else
-    private var previewImage: Image? { nil }
-    #endif
+
+    private var previewImage: Image? {
+        if previewCacheKey != (theme.customBackgroundImageData?.count ?? 0) {
+            refreshCacheIfNeeded()
+        }
+        return cachedPreviewImage
+    }
 }

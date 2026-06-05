@@ -7,7 +7,7 @@ struct BaoJunKeylessApp: App {
     init() {
         _ = CrashLogger.shared
         CrashLogger.shared.logMemoryBaseline()
-        CrashLogger.shared.startMemoryMonitor()  // 每 30 秒记录内存
+        CrashLogger.shared.startMemoryMonitor()
     }
 
     var body: some Scene {

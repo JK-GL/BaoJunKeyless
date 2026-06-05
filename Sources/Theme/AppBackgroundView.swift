@@ -11,6 +11,9 @@ struct AppBackgroundView: View {
     @AppStorage(AppThemeStorage.customBackgroundRevisionKey) private var customBackgroundRevision = 0
     @AppStorage(AppThemeStorage.customBackgroundBlurKey) private var customBackgroundBlur = 0.0
 
+    @State private var cachedThemeRevision: Int = .min
+    @State private var cachedBackgroundImage: Image?
+
     private var theme: AppThemeConfiguration {
         AppThemeConfiguration(
             selectedThemeRawValue: selectedThemeRawValue,
@@ -68,18 +71,31 @@ struct AppBackgroundView: View {
         .ignoresSafeArea()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(false)
+        .onAppear { updateCacheIfNeeded() }
+        .onChange(of: selectedThemeRawValue) { _ in updateCacheIfNeeded() }
+        .onChange(of: customAccentData) { _ in updateCacheIfNeeded() }
+        .onChange(of: customBackgroundRevision) { _ in updateCacheIfNeeded() }
+        .onChange(of: customBackgroundBlur) { _ in updateCacheIfNeeded() }
     }
 
-    #if canImport(UIKit)
-    private var backgroundImage: Image? {
-        guard let data = theme.customBackgroundImageData,
-              let uiImage = UIImage(data: data)
-        else {
-            return nil
+    private func updateCacheIfNeeded() {
+        CrashLogger.shared.mark("ThemeBG", "cacheRefresh", details: "revision=\(customBackgroundRevision)")
+        guard cachedThemeRevision != customBackgroundRevision else { return }
+        cachedThemeRevision = customBackgroundRevision
+        #if canImport(UIKit)
+        if let data = theme.customBackgroundImageData,
+           let uiImage = UIImage(data: data) {
+            cachedBackgroundImage = Image(uiImage: uiImage)
+        } else {
+            cachedBackgroundImage = nil
         }
-        return Image(uiImage: uiImage)
+        #endif
     }
-    #else
-    private var backgroundImage: Image? { nil }
-    #endif
+
+    private var backgroundImage: Image? {
+        if cachedThemeRevision != customBackgroundRevision {
+            updateCacheIfNeeded()
+        }
+        return cachedBackgroundImage
+    }
 }
