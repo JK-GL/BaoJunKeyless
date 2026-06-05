@@ -72,9 +72,7 @@ struct AppBackgroundView: View {
 
     #if canImport(UIKit)
     private var backgroundImage: Image? {
-        guard let data = theme.customBackgroundImageData,
-              let uiImage = UIImage(data: data)
-        else {
+        guard let uiImage = AppThemeStorage.cachedUIImage(for: theme.customBackgroundRevision) else {
             return nil
         }
         return Image(uiImage: uiImage)

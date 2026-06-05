@@ -119,6 +119,7 @@ enum AppThemeStorage {
 
     private static var cachedBackgroundData: Data?
     private static var cachedBackgroundRevision: Int = .min
+    private static var cachedBackgroundUIImage: UIImage?
 
     static func customAccent(from data: Data) -> Color {
         guard !data.isEmpty, let persisted = try? JSONDecoder().decode(PersistedThemeColor.self, from: data) else {
@@ -144,7 +145,15 @@ enum AppThemeStorage {
         return data
     }
 
-
+    static func cachedUIImage(for revision: Int) -> UIImage? {
+        if cachedBackgroundRevision == revision, let cachedBackgroundUIImage { return cachedBackgroundUIImage }
+        guard let data = backgroundImageData(revision: revision) else {
+            cachedBackgroundUIImage = nil
+            return nil
+        }
+        cachedBackgroundUIImage = UIImage(data: data)
+        return cachedBackgroundUIImage
+    }
 
     static func saveBackgroundImageData(_ data: Data) throws {
         guard let url = backgroundImageURL() else {
