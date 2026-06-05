@@ -12,7 +12,6 @@ struct ContentView: View {
             AppBackgroundView()
 
             tabContent(for: selectedTab)
-                .id(selectedTab)
                 .transition(.opacity)
                 .environmentObject(scrollState)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

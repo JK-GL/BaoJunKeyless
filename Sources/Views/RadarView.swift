@@ -27,6 +27,8 @@ final class RadarUIView: UIView {
     private var carY: CGFloat = 0
     private var drawCount = 0
     private var lastDrawLogCount = 0
+    private var lastDisplayTimestamp: CFTimeInterval = 0
+    private let minimumDisplayInterval: CFTimeInterval = 1.0 / 18.0
 
     private static let carImageURL = URL(string: "https://cdn-df.00bang.cn/images/T1Dw_TBTEv1RCvBVdK.png")!
     private static var sharedCarImage: UIImage?
@@ -102,7 +104,12 @@ final class RadarUIView: UIView {
             carY += dy * 0.18
             let targetSize = sz * (0.28 - 0.15 * CGFloat(norm))
             carCacheTargetSize = max(targetSize, 34)
-            setNeedsDisplay()
+
+            let now = CFAbsoluteTimeGetCurrent()
+            if now - lastDisplayTimestamp >= minimumDisplayInterval {
+                lastDisplayTimestamp = now
+                setNeedsDisplay()
+            }
         }
     }
 
