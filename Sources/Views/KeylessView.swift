@@ -10,8 +10,8 @@ enum VibrationChoice: Hashable {
 struct KeylessView: View {
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var scrollState: AppScrollState
+    @EnvironmentObject var settingsStore: KeylessSettingsStore
     @StateObject private var customStore = CustomVibrationStore()
-    @StateObject private var store = KeylessSettingsStore()
 
     // 仅用于 UI 状态（不持久化）
     @State private var showUnlockRecorder = false
@@ -41,29 +41,29 @@ struct KeylessView: View {
     private var keylessSection: some View {
         CardView(title: "无感功能", icon: "dot.radiowaves.left.and.right", iconColor: AppTheme.purple) {
             // 主开关
-            ToggleRow(icon: "power", label: "无感开关", isOn: $store.settings.keylessEnabled)
+            ToggleRow(icon: "power", label: "无感开关", isOn: $settingsStore.settings.keylessEnabled)
 
             // 折叠区域
-            if store.settings.keylessEnabled {
+            if settingsStore.settings.keylessEnabled {
                 VStack(spacing: 12) {
                     // 三选一互斥
                     ToggleRow(icon: "shield.fill", label: "插件托管", isOn: Binding(
-                        get: { store.settings.pluginTakeover },
-                        set: { if $0 { setMode(.plugin) } else { store.settings.pluginTakeover = false } }
+                        get: { settingsStore.settings.pluginTakeover },
+                        set: { if $0 { setMode(.plugin) } else { settingsStore.settings.pluginTakeover = false } }
                     ))
                     ToggleRow(icon: "arrow.triangle.2.circlepath", label: "智能切换", isOn: Binding(
-                        get: { store.settings.smartSwitch },
-                        set: { if $0 { setMode(.smart) } else { store.settings.smartSwitch = false } }
+                        get: { settingsStore.settings.smartSwitch },
+                        set: { if $0 { setMode(.smart) } else { settingsStore.settings.smartSwitch = false } }
                     ))
                     ToggleRow(icon: "iphone", label: "App 手动", isOn: Binding(
-                        get: { store.settings.appManual },
-                        set: { if $0 { setMode(.manual) } else { store.settings.appManual = false } }
+                        get: { settingsStore.settings.appManual },
+                        set: { if $0 { setMode(.manual) } else { settingsStore.settings.appManual = false } }
                     ))
 
-                    ToggleRow(icon: "exclamationmark.triangle.fill", label: "D/R 挡禁止", isOn: $store.settings.drBlock)
+                    ToggleRow(icon: "exclamationmark.triangle.fill", label: "D/R 挡禁止", isOn: $settingsStore.settings.drBlock)
                     SliderRow(icon: "gauge.medium", label: "重复指令间隔",
-                              value: $store.settings.cmdInterval, range: 1...15, step: 1,
-                              format: "\(Int(store.settings.cmdInterval))s", tint: AppTheme.purple)
+                              value: $settingsStore.settings.cmdInterval, range: 1...15, step: 1,
+                              format: "\(Int(settingsStore.settings.cmdInterval))s", tint: AppTheme.purple)
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -74,28 +74,28 @@ struct KeylessView: View {
     private enum ControlMode { case plugin, smart, manual }
 
     private func setMode(_ mode: ControlMode) {
-        store.settings.pluginTakeover = (mode == .plugin)
-        store.settings.smartSwitch = (mode == .smart)
-        store.settings.appManual = (mode == .manual)
+        settingsStore.settings.pluginTakeover = (mode == .plugin)
+        settingsStore.settings.smartSwitch = (mode == .smart)
+        settingsStore.settings.appManual = (mode == .manual)
     }
 
     // MARK: 解锁设置
     private var unlockSection: some View {
         CardView(title: "解锁设置", icon: "lock.open.fill", iconColor: AppTheme.green) {
-            ToggleRow(icon: "power", label: "解锁开关", isOn: $store.settings.unlockEnabled)
+            ToggleRow(icon: "power", label: "解锁开关", isOn: $settingsStore.settings.unlockEnabled)
 
-            if store.settings.unlockEnabled {
+            if settingsStore.settings.unlockEnabled {
                 VStack(spacing: 12) {
                     SliderRow(icon: "wifi", label: "dBm 阈值",
-                              value: $store.settings.unlockThreshold, range: -110...(-30), step: 1,
-                              format: "\(Int(store.settings.unlockThreshold)) dBm", tint: AppTheme.green)
+                              value: $settingsStore.settings.unlockThreshold, range: -110...(-30), step: 1,
+                              format: "\(Int(settingsStore.settings.unlockThreshold)) dBm", tint: AppTheme.green)
 
-                    ToggleRow(icon: "flame.fill", label: "震动反馈", isOn: $store.settings.unlockVibrate)
+                    ToggleRow(icon: "flame.fill", label: "震动反馈", isOn: $settingsStore.settings.unlockVibrate)
 
-                    if store.settings.unlockVibrate {
+                    if settingsStore.settings.unlockVibrate {
                         vibDetail(
                             choice: unlockVibChoiceBinding,
-                            strength: $store.settings.unlockVibStrength,
+                            strength: $settingsStore.settings.unlockVibStrength,
                             tint: AppTheme.green,
                             testLabel: "模拟解锁震动",
                             showRecorder: $showUnlockRecorder,
@@ -103,7 +103,7 @@ struct KeylessView: View {
                         )
                     }
 
-                    ToggleRow(icon: "bell.fill", label: "解锁弹窗", isOn: $store.settings.unlockPopup)
+                    ToggleRow(icon: "bell.fill", label: "解锁弹窗", isOn: $settingsStore.settings.unlockPopup)
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -111,7 +111,7 @@ struct KeylessView: View {
         .sheet(isPresented: $showUnlockRecorder) {
             VibrationRecorderView { pattern in
                 customStore.add(pattern)
-                store.setUnlockVibChoice(.custom(pattern.id))
+                settingsStore.setUnlockVibChoice(.custom(pattern.id))
             }
         }
     }
@@ -119,24 +119,24 @@ struct KeylessView: View {
     // MARK: 上锁设置
     private var lockSection: some View {
         CardView(title: "上锁设置", icon: "lock.fill", iconColor: AppTheme.red) {
-            ToggleRow(icon: "power", label: "上锁开关", isOn: $store.settings.lockEnabled)
+            ToggleRow(icon: "power", label: "上锁开关", isOn: $settingsStore.settings.lockEnabled)
 
-            if store.settings.lockEnabled {
+            if settingsStore.settings.lockEnabled {
                 VStack(spacing: 12) {
                     SliderRow(icon: "wifi", label: "dBm 阈值",
-                              value: $store.settings.lockThreshold, range: -110...(-30), step: 1,
-                              format: "\(Int(store.settings.lockThreshold)) dBm", tint: AppTheme.red)
+                              value: $settingsStore.settings.lockThreshold, range: -110...(-30), step: 1,
+                              format: "\(Int(settingsStore.settings.lockThreshold)) dBm", tint: AppTheme.red)
 
                     SliderRow(icon: "gauge.medium", label: "上锁延迟",
-                              value: $store.settings.lockDelay, range: 0...60, step: 1,
-                              format: "\(Int(store.settings.lockDelay))s", tint: AppTheme.red)
+                              value: $settingsStore.settings.lockDelay, range: 0...60, step: 1,
+                              format: "\(Int(settingsStore.settings.lockDelay))s", tint: AppTheme.red)
 
-                    ToggleRow(icon: "flame.fill", label: "震动反馈", isOn: $store.settings.lockVibrate)
+                    ToggleRow(icon: "flame.fill", label: "震动反馈", isOn: $settingsStore.settings.lockVibrate)
 
-                    if store.settings.lockVibrate {
+                    if settingsStore.settings.lockVibrate {
                         vibDetail(
                             choice: lockVibChoiceBinding,
-                            strength: $store.settings.lockVibStrength,
+                            strength: $settingsStore.settings.lockVibStrength,
                             tint: AppTheme.red,
                             testLabel: "模拟上锁震动",
                             showRecorder: $showLockRecorder,
@@ -144,7 +144,7 @@ struct KeylessView: View {
                         )
                     }
 
-                    ToggleRow(icon: "bell.fill", label: "上锁弹窗", isOn: $store.settings.lockPopup)
+                    ToggleRow(icon: "bell.fill", label: "上锁弹窗", isOn: $settingsStore.settings.lockPopup)
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -152,7 +152,7 @@ struct KeylessView: View {
         .sheet(isPresented: $showLockRecorder) {
             VibrationRecorderView { pattern in
                 customStore.add(pattern)
-                store.setLockVibChoice(.custom(pattern.id))
+                settingsStore.setLockVibChoice(.custom(pattern.id))
             }
         }
     }
@@ -161,15 +161,15 @@ struct KeylessView: View {
 
     private var unlockVibChoiceBinding: Binding<VibrationChoice> {
         Binding(
-            get: { store.unlockVibChoice() },
-            set: { store.setUnlockVibChoice($0) }
+            get: { settingsStore.unlockVibChoice() },
+            set: { settingsStore.setUnlockVibChoice($0) }
         )
     }
 
     private var lockVibChoiceBinding: Binding<VibrationChoice> {
         Binding(
-            get: { store.lockVibChoice() },
-            set: { store.setLockVibChoice($0) }
+            get: { settingsStore.lockVibChoice() },
+            set: { settingsStore.setLockVibChoice($0) }
         )
     }
 

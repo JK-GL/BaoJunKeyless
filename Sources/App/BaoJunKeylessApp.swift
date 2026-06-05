@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct BaoJunKeylessApp: App {
     @StateObject private var theme = ThemeManager()
+    @StateObject private var keylessSettings = KeylessSettingsStore()
 
     init() {
         _ = CrashLogger.shared
@@ -16,6 +17,7 @@ struct BaoJunKeylessApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(theme)
+                .environmentObject(keylessSettings)
                 .preferredColorScheme(.dark)
                 .onAppear {
                     // 显示上次崩溃日志

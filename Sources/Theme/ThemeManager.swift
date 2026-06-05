@@ -1,5 +1,9 @@
 import SwiftUI
 
+#if canImport(UIKit)
+import UIKit
+#endif
+
 // MARK: - App Theme Color Constants
 struct AppTheme {
     static let accent  = Color.blue
@@ -11,24 +15,30 @@ struct AppTheme {
     static let pageBg  = Color.clear
 }
 
-// MARK: - Theme Manager (bridges AppThemeConfiguration to EnvironmentObject)
-class ThemeManager: ObservableObject {
-    @AppStorage(AppThemePreset.storageKey) var selectedThemeRawValue = AppThemePreset.midnight.rawValue
-    @AppStorage(AppThemeStorage.customAccentDataKey) var customAccentData = Data()
-    @AppStorage(AppThemeStorage.customBackgroundRevisionKey) var customBackgroundRevision = 0
-    @AppStorage(AppThemeStorage.customBackgroundBlurKey) var customBackgroundBlur: Double = 0
+// MARK: - Theme Manager (single source of truth for theme state)
+@MainActor
+final class ThemeManager: ObservableObject {
+    @Published private(set) var selectedThemeRawValue: String
+    @Published private(set) var customAccentData: Data
+    @Published private(set) var customBackgroundRevision: Int
+    @Published private(set) var customBackgroundBlur: Double
 
-    // 缓存的背景 UIImage，跨 tab 持久
-    private(set) var cachedBackgroundUIImage: UIImage?
-    private var cachedBackgroundRevision: Int = .min
+    #if canImport(UIKit)
+    @Published private(set) var storedBackgroundImage: UIImage?
+    #endif
 
-    init() {}
+    private let defaults: UserDefaults
 
-    func refreshBackgroundImageIfNeeded() {
-        let rev = customBackgroundRevision
-        if cachedBackgroundRevision == rev { return }
-        cachedBackgroundRevision = rev
-        cachedBackgroundUIImage = AppThemeStorage.cachedUIImage(for: rev)
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        selectedThemeRawValue = defaults.string(forKey: AppThemePreset.storageKey) ?? AppThemePreset.midnight.rawValue
+        customAccentData = defaults.data(forKey: AppThemeStorage.customAccentDataKey) ?? Data()
+        customBackgroundRevision = defaults.object(forKey: AppThemeStorage.customBackgroundRevisionKey) as? Int ?? 0
+        customBackgroundBlur = defaults.object(forKey: AppThemeStorage.customBackgroundBlurKey) as? Double ?? 0
+        #if canImport(UIKit)
+        storedBackgroundImage = nil
+        #endif
+        refreshBackgroundImage()
     }
 
     var current: AppThemeConfiguration {
@@ -40,11 +50,63 @@ class ThemeManager: ObservableObject {
         )
     }
 
-    // Dynamic accent from theme system
     var accent: Color { current.accent }
 
+    #if canImport(UIKit)
+    var currentBackgroundImage: UIImage? {
+        current.preset == .custom ? storedBackgroundImage : nil
+    }
+
+    var customThemePreviewImage: UIImage? {
+        storedBackgroundImage
+    }
+    #endif
+
+    func configuration(for preset: AppThemePreset) -> AppThemeConfiguration {
+        AppThemeConfiguration(
+            selectedThemeRawValue: preset.rawValue,
+            customAccentData: preset == .custom ? customAccentData : Data(),
+            customBackgroundRevision: customBackgroundRevision,
+            customBackgroundBlur: customBackgroundBlur
+        )
+    }
+
+    func setThemePreset(_ preset: AppThemePreset) {
+        selectedThemeRawValue = preset.rawValue
+        defaults.set(preset.rawValue, forKey: AppThemePreset.storageKey)
+    }
+
+    func setCustomAccent(_ color: Color) {
+        let data = AppThemeStorage.customAccentData(from: color)
+        customAccentData = data
+        defaults.set(data, forKey: AppThemeStorage.customAccentDataKey)
+    }
+
+    func setBackgroundBlur(_ blur: Double) {
+        let clamped = min(max(blur, 0), 36)
+        customBackgroundBlur = clamped
+        defaults.set(clamped, forKey: AppThemeStorage.customBackgroundBlurKey)
+    }
+
+    func saveCustomBackgroundImageData(_ data: Data) {
+        try? AppThemeStorage.saveBackgroundImageData(data)
+        if selectedThemeRawValue != AppThemePreset.custom.rawValue {
+            selectedThemeRawValue = AppThemePreset.custom.rawValue
+            defaults.set(selectedThemeRawValue, forKey: AppThemePreset.storageKey)
+        }
+        customBackgroundRevision += 1
+        defaults.set(customBackgroundRevision, forKey: AppThemeStorage.customBackgroundRevisionKey)
+        refreshBackgroundImage()
+    }
+
+    func removeCustomBackgroundImage() {
+        try? AppThemeStorage.removeBackgroundImage()
+        customBackgroundRevision += 1
+        defaults.set(customBackgroundRevision, forKey: AppThemeStorage.customBackgroundRevisionKey)
+        refreshBackgroundImage()
+    }
+
     // MARK: - XMusic Color Tokens (always dark, white-based)
-    // Matches XMusic's direct Color.white.opacity() usage
 
     var cardBg: Color {
         Color.white.opacity(0.06)
@@ -72,5 +134,13 @@ class ThemeManager: ObservableObject {
 
     var pillStroke: Color {
         Color.white.opacity(0.12)
+    }
+
+    private func refreshBackgroundImage() {
+        #if canImport(UIKit)
+        storedBackgroundImage = AppThemeStorage.hasBackgroundImage()
+            ? AppThemeStorage.cachedUIImage(for: customBackgroundRevision)
+            : nil
+        #endif
     }
 }

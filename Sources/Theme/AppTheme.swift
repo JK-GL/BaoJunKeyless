@@ -178,6 +178,11 @@ enum AppThemeStorage {
         cachedBackgroundRevision = .min
     }
 
+    static func hasBackgroundImage() -> Bool {
+        guard let url = backgroundImageURL() else { return false }
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
     private static func backgroundImageURL() -> URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first?
@@ -189,22 +194,20 @@ enum AppThemeStorage {
 struct AppThemeConfiguration {
     let preset: AppThemePreset
     let customAccent: Color
-    let customBackgroundImageData: Data?
     let customBackgroundRevision: Int
+    let hasCustomBackgroundImage: Bool
     let customBackgroundBlur: CGFloat
 
     var accent: Color { preset == .custom ? customAccent : preset.presetAccent }
     var gradientColors: [Color] { preset.presetGradientColors }
     var primaryGlow: Color { preset == .custom ? customAccent.opacity(0.28) : preset.presetPrimaryGlow }
     var secondaryGlow: Color { preset.presetSecondaryGlow }
-    var hasCustomBackgroundImage: Bool { !(customBackgroundImageData?.isEmpty ?? true) }
 
     init(selectedThemeRawValue: String, customAccentData: Data, customBackgroundRevision: Int, customBackgroundBlur: Double = 0) {
         preset = AppThemePreset.resolve(from: selectedThemeRawValue)
         customAccent = AppThemeStorage.customAccent(from: customAccentData)
-        let storedBackgroundData = customBackgroundRevision >= 0 ? AppThemeStorage.backgroundImageData(revision: customBackgroundRevision) : nil
-        customBackgroundImageData = preset == .custom ? storedBackgroundData : nil
         self.customBackgroundRevision = customBackgroundRevision
+        hasCustomBackgroundImage = preset == .custom && customBackgroundRevision >= 0 && AppThemeStorage.hasBackgroundImage()
         self.customBackgroundBlur = CGFloat(min(max(customBackgroundBlur, 0), 36))
     }
 }

@@ -97,30 +97,30 @@ struct BLEStatusView: View {
 struct StatusView: View {
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var scrollState: AppScrollState
+    @EnvironmentObject var settingsStore: KeylessSettingsStore
     @StateObject private var motion = MotionManager()
     @StateObject private var locationManager = LocationManager()
-    @StateObject private var store = KeylessSettingsStore()
     @State private var isRefreshing = false
     @State private var refreshScale: CGFloat = 1.0
 
     // 控制模式文字
     private var modeText: String {
-        if store.settings.pluginTakeover { return "插件托管" }
-        if store.settings.smartSwitch { return "智能切换" }
-        if store.settings.appManual { return "App 手动" }
+        if settingsStore.settings.pluginTakeover { return "插件托管" }
+        if settingsStore.settings.smartSwitch { return "智能切换" }
+        if settingsStore.settings.appManual { return "App 手动" }
         return "未启用"
     }
 
     private var modeColor: Color {
-        if store.settings.pluginTakeover || store.settings.smartSwitch { return AppTheme.green }
-        if store.settings.appManual { return AppTheme.orange }
+        if settingsStore.settings.pluginTakeover || settingsStore.settings.smartSwitch { return AppTheme.green }
+        if settingsStore.settings.appManual { return AppTheme.orange }
         return Color.white.opacity(0.45)
     }
 
     private var modeIcon: String {
-        if store.settings.pluginTakeover { return "shield.fill" }
-        if store.settings.smartSwitch { return "arrow.triangle.2.circlepath" }
-        if store.settings.appManual { return "iphone" }
+        if settingsStore.settings.pluginTakeover { return "shield.fill" }
+        if settingsStore.settings.smartSwitch { return "arrow.triangle.2.circlepath" }
+        if settingsStore.settings.appManual { return "iphone" }
         return "slash.circle"
     }
 

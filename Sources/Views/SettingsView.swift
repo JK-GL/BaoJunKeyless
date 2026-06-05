@@ -5,14 +5,9 @@ import Combine
 struct SettingsView: View {
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var scrollState: AppScrollState
-    @AppStorage(AppThemePreset.storageKey) private var themeRaw = AppThemePreset.midnight.rawValue
-    @AppStorage(AppThemeStorage.customAccentDataKey) private var accentData = Data()
-    @AppStorage(AppThemeStorage.customBackgroundRevisionKey) private var bgRevision = 0
-    @AppStorage(AppThemeStorage.customBackgroundBlurKey) private var bgBlur = 0.0
 
     @State private var showingResetAlert = false
     @State private var toastText: String?
-    @State private var isCustomEditorExpanded = false
     @State private var isPhotoPickerPresented = false
     @State private var isCrashLogExpanded = false
     @State private var crashLogText: String = ""
@@ -20,8 +15,7 @@ struct SettingsView: View {
     @State private var crashLogTimer: Timer.TimerPublisher = Timer.publish(every: 3.0, on: .main, in: .common)
 
     private var currentTheme: AppThemeConfiguration {
-        AppThemeConfiguration(selectedThemeRawValue: themeRaw, customAccentData: accentData,
-                              customBackgroundRevision: bgRevision, customBackgroundBlur: bgBlur)
+        theme.current
     }
 
     var body: some View {
@@ -41,12 +35,12 @@ struct SettingsView: View {
                                 LazyHStack(spacing: 6) {
                                     ForEach(AppThemePreset.allCases) { preset in
                                         Button {
-                                            themeRaw = preset.rawValue
-                                            if preset != .custom { isCustomEditorExpanded = false }
+                                            theme.setThemePreset(preset)
                                         } label: {
                                             ThemeOptionCardView(
                                                 theme: themeConfig(for: preset),
-                                                isSelected: currentTheme.preset == preset
+                                                isSelected: currentTheme.preset == preset,
+                                                previewUIImage: preset == .custom ? theme.customThemePreviewImage : nil
                                             )
                                         }
                                         .buttonStyle(.plain)
@@ -314,17 +308,16 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(Color.white.opacity(0.62))
                     Spacer()
-                    Slider(value: $bgBlur, in: 0...36)
+                    Slider(value: backgroundBlurBinding, in: 0...36)
                         .frame(width: 160)
                         .tint(currentTheme.accent)
-                    Text("\(Int(bgBlur))")
+                    Text("\(Int(currentTheme.customBackgroundBlur))")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(Color.white.opacity(0.62))
                 }
 
                 Button("移除背景图") {
-                    try? AppThemeStorage.removeBackgroundImage()
-                    bgRevision += 1
+                    theme.removeCustomBackgroundImage()
                 }
                 .font(.caption)
                 .foregroundStyle(Color.red.opacity(0.8))
@@ -341,10 +334,8 @@ struct SettingsView: View {
         )
         .sheet(isPresented: $isPhotoPickerPresented) {
             PhotoPicker { data in
-                if let d = data {
-                    try? AppThemeStorage.saveBackgroundImageData(d)
-                    themeRaw = AppThemePreset.custom.rawValue
-                    bgRevision += 1
+                if let data {
+                    theme.saveCustomBackgroundImageData(data)
                 }
             }
         }
@@ -352,16 +343,16 @@ struct SettingsView: View {
 
     private var accentBinding: Binding<Color> {
         Binding(get: { currentTheme.customAccent },
-                set: { accentData = AppThemeStorage.customAccentData(from: $0) })
+                set: { theme.setCustomAccent($0) })
+    }
+
+    private var backgroundBlurBinding: Binding<Double> {
+        Binding(get: { Double(currentTheme.customBackgroundBlur) },
+                set: { theme.setBackgroundBlur($0) })
     }
 
     private func themeConfig(for preset: AppThemePreset) -> AppThemeConfiguration {
-        var data = accentData
-        if preset != .custom { data = Data() }
-        return AppThemeConfiguration(selectedThemeRawValue: preset.rawValue,
-                                     customAccentData: data,
-                                     customBackgroundRevision: bgRevision,
-                                     customBackgroundBlur: bgBlur)
+        theme.configuration(for: preset)
     }
 
     private func refreshCrashLog() {
@@ -392,8 +383,9 @@ struct PhotoPicker: UIViewControllerRepresentable {
         init(_ p: PhotoPicker) { parent = p }
         func imagePickerController(_ picker: UIImagePickerController,
                                    didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            let img = info[.originalImage] as? UIImage
-            parent.onPick(img?.jpegData(compressionQuality: 0.8))
+            let image = info[.originalImage] as? UIImage
+            let processedData = image.flatMap { ThemeBackgroundImageProcessor.makeBackgroundImageData(from: $0) }
+            parent.onPick(processedData)
             picker.dismiss(animated: true)
         }
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {

@@ -6,18 +6,13 @@ private let menuBarCornerRadius: CGFloat = 24
 struct MenuBarView: View {
     private static let tabSelectionAnimation = Animation.spring(response: 0.34, dampingFraction: 0.86)
 
-    @AppStorage(AppThemePreset.storageKey) private var selectedThemeRawValue = AppThemePreset.midnight.rawValue
-    @AppStorage(AppThemeStorage.customAccentDataKey) private var customAccentData = Data()
+    @EnvironmentObject private var themeManager: ThemeManager
     @Binding var selectedTab: AppTab
     var navigationAnimation: Namespace.ID
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var theme: AppThemeConfiguration {
-        AppThemeConfiguration(
-            selectedThemeRawValue: selectedThemeRawValue,
-            customAccentData: customAccentData,
-            customBackgroundRevision: 0
-        )
+        themeManager.current
     }
 
     var body: some View {

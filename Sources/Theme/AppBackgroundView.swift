@@ -1,24 +1,11 @@
 import SwiftUI
 
-#if canImport(UIKit)
-import UIKit
-#endif
-
 /// 应用全局背景层，提供统一的渐变和光斑氛围。
 struct AppBackgroundView: View {
-    @AppStorage(AppThemePreset.storageKey) private var selectedThemeRawValue = AppThemePreset.midnight.rawValue
-    @AppStorage(AppThemeStorage.customAccentDataKey) private var customAccentData = Data()
-    @AppStorage(AppThemeStorage.customBackgroundRevisionKey) private var customBackgroundRevision = 0
-    @AppStorage(AppThemeStorage.customBackgroundBlurKey) private var customBackgroundBlur = 0.0
-    @State private var updateToken: Int = 0
+    @EnvironmentObject private var themeManager: ThemeManager
 
     private var theme: AppThemeConfiguration {
-        AppThemeConfiguration(
-            selectedThemeRawValue: selectedThemeRawValue,
-            customAccentData: customAccentData,
-            customBackgroundRevision: customBackgroundRevision,
-            customBackgroundBlur: customBackgroundBlur
-        )
+        themeManager.current
     }
 
     var body: some View {
@@ -69,22 +56,12 @@ struct AppBackgroundView: View {
         .ignoresSafeArea()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(false)
-        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
-            updateToken &+= 1
-        }
     }
 
-    #if canImport(UIKit)
     private var backgroundImage: Image? {
-        _ = updateToken
-        guard let data = theme.customBackgroundImageData,
-              let uiImage = UIImage(data: data)
-        else {
+        guard let uiImage = themeManager.currentBackgroundImage else {
             return nil
         }
         return Image(uiImage: uiImage)
     }
-    #else
-    private var backgroundImage: Image? { nil }
-    #endif
 }
