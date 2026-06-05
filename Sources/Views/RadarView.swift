@@ -1,11 +1,10 @@
 import SwiftUI
 import UIKit
 
-// MARK: - 雷达（Core Graphics 静态 + SwiftUI 文字/波纹）
+// MARK: - 雷达（静态背景图层 + 动态车图层）
 
 struct StarParticle { var x: Double; var y: Double; var size: Double; var alpha: Double }
 
-// MARK: - 雷达 UIView（只画刻度 + 车辆图标，文字全部交给 SwiftUI）
 final class RadarUIView: UIView {
     private let sz: CGFloat = 280
     private var pitch: Double = 0
@@ -15,24 +14,20 @@ final class RadarUIView: UIView {
     var distance: Double = 0
     var bleConnected: Bool = false
 
-    private var staticCache: UIImage?
-    private var lastCacheSize: CGSize = .zero
-    private var carCacheTargetSize: CGFloat = 34
-    private var cachedRenderedCarSize: CGFloat = 0
-    private var carCacheImage: UIImage?
-    private var carOnlineImage: UIImage?
+    private let backgroundImageView = UIImageView()
+    private let glowView = UIView()
+    private let carImageView = UIImageView()
     private var memoryWarningObserver: NSObjectProtocol?
     private var stars: [StarParticle] = []
-    private var carX: CGFloat = 0
-    private var carY: CGFloat = 0
-    private var drawCount = 0
-    private var lastDrawLogCount = 0
-    private var lastDisplayTimestamp: CFTimeInterval = 0
-    private let minimumDisplayInterval: CFTimeInterval = 1.0 / 18.0
+    private var lastCacheSize: CGSize = .zero
+    private var displayedCarCenter: CGPoint = .zero
+    private var displayedCarSize: CGFloat = 34
+    private var carOnlineImage: UIImage?
 
     private static let carImageURL = URL(string: "https://cdn-df.00bang.cn/images/T1Dw_TBTEv1RCvBVdK.png")!
     private static var sharedCarImage: UIImage?
     private static var sharedCarImageLoadInFlight = false
+    private static var staticBackgroundCache: [String: UIImage] = [:]
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -59,9 +54,27 @@ final class RadarUIView: UIView {
         }
     }
 
+    override var intrinsicContentSize: CGSize { CGSize(width: sz, height: sz) }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        backgroundImageView.frame = bounds
+
+        if backgroundImageView.image == nil || lastCacheSize != bounds.size {
+            rebuildStaticBackground(bounds.size)
+        }
+
+        if displayedCarCenter == .zero {
+            displayedCarCenter = CGPoint(x: bounds.midX, y: bounds.midY)
+        }
+        updatePosition(force: true)
+    }
+
     private func setup() {
         isOpaque = false
         backgroundColor = .clear
+        clipsToBounds = false
+
         stars = (0..<50).map { _ in
             StarParticle(
                 x: Double.random(in: 0...1),
@@ -70,9 +83,26 @@ final class RadarUIView: UIView {
                 alpha: Double.random(in: 0.03...0.12)
             )
         }
+
+        backgroundImageView.contentMode = .scaleToFill
+        backgroundImageView.clipsToBounds = true
+        addSubview(backgroundImageView)
+
+        glowView.isUserInteractionEnabled = false
+        glowView.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.12)
+        glowView.layer.cornerCurve = .continuous
+        glowView.isHidden = !AppDiagnosticsSettings.isRadarGradientEnabled
+        addSubview(glowView)
+
+        carImageView.contentMode = .scaleAspectFit
+        carImageView.clipsToBounds = false
+        addSubview(carImageView)
+
         if let shared = Self.sharedCarImage {
             carOnlineImage = shared
+            carImageView.image = shared
         } else {
+            carImageView.image = UIImage(systemName: "car.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
             loadCarImage()
         }
 
@@ -82,34 +112,8 @@ final class RadarUIView: UIView {
             queue: .main
         ) { [weak self] _ in
             CrashLogger.shared.mark("Radar", "memoryWarning")
-            self?.staticCache = nil
-            self?.carCacheImage = nil
-        }
-    }
-
-    // ⭐ 由 SwiftUI onChange 调用，自动适配设备刷新率
-    func updatePosition() {
-        guard bounds.width > 0 else { return }
-        let cx = bounds.midX, cy = bounds.midY, r = sz / 2
-        let norm = min(distance / 200.0, 1.0)
-        let carR = r * 0.15 + CGFloat(norm) * (r * 0.7)
-        let angle = relativeAngle * .pi / 180 - .pi / 2
-        let tx = cx + carR * cos(angle)
-        let ty = cy + carR * sin(angle)
-        let dx = tx - carX
-        let dy = ty - carY
-        let movement = max(abs(dx), abs(dy))
-        if movement > 1.2 {
-            carX += dx * 0.18
-            carY += dy * 0.18
-            let targetSize = sz * (0.28 - 0.15 * CGFloat(norm))
-            carCacheTargetSize = max(targetSize, 34)
-
-            let now = CFAbsoluteTimeGetCurrent()
-            if now - lastDisplayTimestamp >= minimumDisplayInterval {
-                lastDisplayTimestamp = now
-                setNeedsDisplay()
-            }
+            self?.backgroundImageView.image = nil
+            self?.lastCacheSize = .zero
         }
     }
 
@@ -119,55 +123,86 @@ final class RadarUIView: UIView {
     }
 
     func clearTransientCache() {
-        staticCache = nil
-        carCacheImage = nil
+        backgroundImageView.image = nil
+        lastCacheSize = .zero
     }
 
-    private func loadCarImage() {
-        CrashLogger.shared.mark("Radar", "loadCarImage:start")
-        if Self.sharedCarImageLoadInFlight { return }
-        Self.sharedCarImageLoadInFlight = true
+    func updatePosition(force: Bool = false) {
+        guard bounds.width > 0 else { return }
 
-        let request = URLRequest(url: Self.carImageURL, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
-        let task = URLSession.shared.dataTask(with: request) { data, _, _ in
-            defer { Self.sharedCarImageLoadInFlight = false }
-            guard let data = data, let img = UIImage(data: data) else {
-                DispatchQueue.main.async { [weak self] in
-                    self?.carOnlineImage = UIImage(systemName: "car.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
-                }
-                return
-            }
+        let cx = bounds.midX
+        let cy = bounds.midY
+        let r = min(bounds.width, bounds.height) / 2
+        let norm = min(distance / 200.0, 1.0)
+        let targetRadius = r * 0.15 + CGFloat(norm) * (r * 0.7)
+        let angle = relativeAngle * .pi / 180 - .pi / 2
+        let targetCenter = CGPoint(
+            x: cx + targetRadius * cos(angle),
+            y: cy + targetRadius * sin(angle)
+        )
+        let targetSize = max(sz * (0.28 - 0.15 * CGFloat(norm)), 34)
 
-            let finalImage = img
-            Self.sharedCarImage = finalImage
-            if AppDiagnosticsSettings.isDiagnosticsEnabled {
-                CrashLogger.shared.logImageDiagnostics(
-                    "RadarCar",
-                    width: finalImage.size.width,
-                    height: finalImage.size.height,
-                    bytes: data.count,
-                    note: "network"
-                )
-            }
-            DispatchQueue.main.async { [weak self] in
-                self?.carOnlineImage = finalImage
-                self?.carCacheImage = nil
-                self?.setNeedsDisplay()
-            }
+        let nextCenter: CGPoint
+        let nextSize: CGFloat
+        if force || displayedCarCenter == .zero {
+            nextCenter = targetCenter
+            nextSize = targetSize
+        } else {
+            let dx = targetCenter.x - displayedCarCenter.x
+            let dy = targetCenter.y - displayedCarCenter.y
+            nextCenter = CGPoint(
+                x: displayedCarCenter.x + dx * 0.22,
+                y: displayedCarCenter.y + dy * 0.22
+            )
+            nextSize = displayedCarSize + (targetSize - displayedCarSize) * 0.22
         }
-        task.resume()
+
+        displayedCarCenter = nextCenter
+        displayedCarSize = nextSize
+
+        let glowSize = displayedCarSize * 1.8
+        glowView.isHidden = !AppDiagnosticsSettings.isRadarGradientEnabled
+        glowView.frame = CGRect(
+            x: displayedCarCenter.x - glowSize / 2,
+            y: displayedCarCenter.y - glowSize / 2,
+            width: glowSize,
+            height: glowSize
+        )
+        glowView.layer.cornerRadius = glowSize / 2
+        glowView.alpha = AppDiagnosticsSettings.isRadarGradientEnabled ? 1 : 0
+
+        carImageView.frame = CGRect(
+            x: displayedCarCenter.x - displayedCarSize / 2,
+            y: displayedCarCenter.y - displayedCarSize / 2,
+            width: displayedCarSize,
+            height: displayedCarSize
+        )
     }
 
-    private func buildStaticCache(_ size: CGSize) {
+    private func rebuildStaticBackground(_ size: CGSize) {
+        let key = "\(Int(size.width))x\(Int(size.height))"
+        if let cached = Self.staticBackgroundCache[key] {
+            backgroundImageView.image = cached
+            lastCacheSize = size
+            return
+        }
+
+        if AppDiagnosticsSettings.isDiagnosticsEnabled {
+            CrashLogger.shared.mark("Radar", "rebuildStaticCache", details: key)
+        }
+
         let renderer = UIGraphicsImageRenderer(size: size)
         let image = renderer.image { context in
             let ctx = context.cgContext
-            let cx = size.width / 2, cy = size.height / 2, r = sz / 2
+            let cx = size.width / 2
+            let cy = size.height / 2
+            let r = min(size.width, size.height) / 2
             let tc = UIColor.label
 
             for deg in 0..<360 {
                 let a = CGFloat(deg) * .pi / 180
-                let major = deg % 30 == 0, mid = deg % 10 == 0
+                let major = deg % 30 == 0
+                let mid = deg % 10 == 0
                 let inner: CGFloat = major ? r - 18 : (mid ? r - 11 : r - 7)
                 ctx.setStrokeColor(tc.withAlphaComponent(major ? 0.45 : (mid ? 0.2 : 0.08)).cgColor)
                 ctx.setLineWidth(major ? 1.5 : (mid ? 0.8 : 0.3))
@@ -175,6 +210,7 @@ final class RadarUIView: UIView {
                 ctx.addLine(to: .init(x: cx + (r - 1) * cos(a), y: cy + (r - 1) * sin(a)))
                 ctx.strokePath()
             }
+
             ctx.setStrokeColor(tc.withAlphaComponent(0.15).cgColor)
             ctx.setLineWidth(1)
             ctx.strokeEllipse(in: .init(x: cx - r + 1, y: cy - r + 1, width: (r - 1) * 2, height: (r - 1) * 2))
@@ -196,78 +232,56 @@ final class RadarUIView: UIView {
 
             for s in stars {
                 ctx.setFillColor(UIColor.white.withAlphaComponent(s.alpha).cgColor)
-                ctx.fillEllipse(in: CGRect(x: CGFloat(s.x) * size.width - s.size / 2,
-                                           y: CGFloat(s.y) * size.height - s.size / 2,
-                                           width: s.size,
-                                           height: s.size))
+                ctx.fillEllipse(in: CGRect(
+                    x: CGFloat(s.x) * size.width - s.size / 2,
+                    y: CGFloat(s.y) * size.height - s.size / 2,
+                    width: s.size,
+                    height: s.size
+                ))
             }
         }
 
-        staticCache = image
+        Self.staticBackgroundCache[key] = image
+        backgroundImageView.image = image
         lastCacheSize = size
     }
 
-    private func buildCarCache() {
-        let targetSize = max(carCacheTargetSize, 34)
-        guard abs(targetSize - cachedRenderedCarSize) > 2.0 || carCacheImage == nil else { return }
-        cachedRenderedCarSize = targetSize
+    private func loadCarImage() {
+        CrashLogger.shared.mark("Radar", "loadCarImage:start")
+        if Self.sharedCarImageLoadInFlight { return }
+        Self.sharedCarImageLoadInFlight = true
 
-        if let img = carOnlineImage {
-            let ms = targetSize * 0.8
-            let sc = min(ms / max(img.size.width, 1), ms / max(img.size.height, 1))
-            let w = max(img.size.width * sc, 1)
-            let h = max(img.size.height * sc, 1)
-            carCacheImage = UIGraphicsImageRenderer(size: CGSize(width: w, height: h)).image { _ in
-                img.draw(in: CGRect(x: 0, y: 0, width: w, height: h))
+        let request = URLRequest(url: Self.carImageURL, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
+        let task = URLSession.shared.dataTask(with: request) { data, _, _ in
+            defer { Self.sharedCarImageLoadInFlight = false }
+            guard let data = data, let img = UIImage(data: data) else {
+                DispatchQueue.main.async { [weak self] in
+                    let fallback = UIImage(systemName: "car.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
+                    self?.carOnlineImage = fallback
+                    self?.carImageView.image = fallback
+                }
+                return
             }
-        } else {
-            carCacheImage = UIImage(
-                systemName: "car.fill",
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: targetSize * 0.6, weight: .medium)
-            )?.withTintColor(UIColor.white.withAlphaComponent(0.85), renderingMode: .alwaysOriginal)
-        }
-    }
 
-    override func draw(_ rect: CGRect) {
-        guard let ctx = UIGraphicsGetCurrentContext() else { return }
-        drawCount += 1
-        if AppDiagnosticsSettings.isDiagnosticsEnabled, drawCount - lastDrawLogCount >= 120 {
-            lastDrawLogCount = drawCount
-            CrashLogger.shared.mark("Radar", "drawCount", details: "count=\(drawCount)")
-        }
-
-        if staticCache == nil || lastCacheSize != bounds.size {
-            CrashLogger.shared.mark("Radar", "rebuildStaticCache", details: "\(Int(bounds.size.width))x\(Int(bounds.size.height))")
-            buildStaticCache(bounds.size)
-        }
-        staticCache?.draw(at: .zero)
-
-        if AppDiagnosticsSettings.isRadarGradientEnabled {
-            let cs = CGColorSpaceCreateDeviceRGB()
-            if let g = CGGradient(colorsSpace: cs,
-                                  colors: [UIColor.systemBlue.withAlphaComponent(0.12).cgColor,
-                                           UIColor.systemBlue.withAlphaComponent(0.04).cgColor,
-                                           UIColor.clear.cgColor] as CFArray,
-                                  locations: [0, 0.5, 1]) {
-                ctx.drawRadialGradient(g,
-                                       startCenter: .init(x: carX, y: carY),
-                                       startRadius: 0,
-                                       endCenter: .init(x: carX, y: carY),
-                                       endRadius: cachedRenderedCarSize * 0.7,
-                                       options: [])
+            let finalImage = img
+            Self.sharedCarImage = finalImage
+            if AppDiagnosticsSettings.isDiagnosticsEnabled {
+                CrashLogger.shared.logImageDiagnostics(
+                    "RadarCar",
+                    width: finalImage.size.width,
+                    height: finalImage.size.height,
+                    bytes: data.count,
+                    note: "network"
+                )
+            }
+            DispatchQueue.main.async { [weak self] in
+                self?.carOnlineImage = finalImage
+                self?.carImageView.image = finalImage
+                self?.updatePosition(force: true)
             }
         }
-
-        buildCarCache()
-        if let img = carCacheImage {
-            img.draw(in: CGRect(x: carX - img.size.width / 2,
-                                y: carY - img.size.height / 2,
-                                width: img.size.width,
-                                height: img.size.height))
-        }
+        task.resume()
     }
-
-    override var intrinsicContentSize: CGSize { CGSize(width: sz, height: sz) }
 }
 
 // MARK: - SwiftUI 波纹动画
@@ -317,23 +331,15 @@ struct RadarRepresentable: UIViewRepresentable {
     var bleConnected: Bool = false
 
     func makeUIView(context: Context) -> RadarUIView {
-        let v = RadarUIView(frame: .zero)
-        context.coordinator.radarView = v
-        return v
+        RadarUIView(frame: .zero)
     }
 
-    func updateUIView(_ v: RadarUIView, context: Context) {
-        v.updateGyro(pitch: motion.pitch, roll: motion.roll)
-        v.relativeAngle = locationManager.relativeAngle
-        v.distance = locationManager.distance
-        v.bleConnected = bleConnected
-        v.updatePosition()
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    final class Coordinator {
-        weak var radarView: RadarUIView?
+    func updateUIView(_ view: RadarUIView, context: Context) {
+        view.updateGyro(pitch: motion.pitch, roll: motion.roll)
+        view.relativeAngle = locationManager.relativeAngle
+        view.distance = locationManager.distance
+        view.bleConnected = bleConnected
+        view.updatePosition()
     }
 }
 
