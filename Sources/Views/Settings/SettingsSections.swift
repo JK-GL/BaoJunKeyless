@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 
 struct SettingsThemeSection: View {
     @EnvironmentObject var theme: ThemeManager
@@ -156,8 +155,6 @@ struct SettingsCrashLogSection: View {
     @Binding var crashLogText: String
     @Binding var isCrashLogExpanded: Bool
     @Binding var toastText: String?
-    let crashLogTimer: Timer.TimerPublisher
-    @Binding var crashLogTimerCancellable: Cancellable?
     let refreshCrashLog: () -> Void
 
     var body: some View {
@@ -247,6 +244,19 @@ struct SettingsCrashLogSection: View {
 
                     HStack(spacing: 12) {
                         Button {
+                            refreshCrashLog()
+                            withAnimation { toastText = "日志已刷新" }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 12))
+                                Text("刷新")
+                                    .font(.system(size: 13, weight: .medium))
+                            }
+                            .foregroundStyle(AppTheme.accent)
+                        }
+
+                        Button {
                             UIPasteboard.general.string = crashLogText
                             withAnimation { toastText = "已复制到剪贴板" }
                         } label: {
@@ -290,23 +300,13 @@ struct SettingsCrashLogSection: View {
         .onAppear {
             if isCrashLogExpanded {
                 refreshCrashLog()
-                crashLogTimerCancellable = crashLogTimer.connect()
             }
         }
         .onChange(of: isCrashLogExpanded) { expanded in
             if expanded {
                 refreshCrashLog()
-                crashLogTimerCancellable = crashLogTimer.connect()
-            } else {
-                crashLogTimerCancellable?.cancel()
-                crashLogTimerCancellable = nil
             }
         }
-        .onDisappear {
-            crashLogTimerCancellable?.cancel()
-            crashLogTimerCancellable = nil
-        }
-        .onReceive(crashLogTimer) { _ in refreshCrashLog() }
     }
 }
 

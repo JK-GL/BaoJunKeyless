@@ -79,13 +79,12 @@ class CrashLogger {
 
     private var memoryTimer: Timer?
     private var lastMemoryBytes: UInt64 = 0
-    private var diagnosticsTimer: Timer?
+    private var lastDiagnosticsSnapshotBytes: UInt64 = 0
 
     func startMemoryMonitor() {
         memoryTimer?.invalidate()
-        diagnosticsTimer?.invalidate()
 
-        let interval = AppDiagnosticsSettings.isDiagnosticsEnabled ? 5.0 : 30.0
+        let interval = AppDiagnosticsSettings.isDiagnosticsEnabled ? 10.0 : 30.0
         memoryTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             let current = Self.memoryUsageBytes()
@@ -95,20 +94,22 @@ class CrashLogger {
                 self.logCrash("📊 MEMORY: \(Self.formatBytes(current)) (Δ\(sign)\(Self.formatBytes(UInt64(abs(delta)))))")
                 self.lastMemoryBytes = current
             }
-        }
 
-        if AppDiagnosticsSettings.isDiagnosticsEnabled {
-            diagnosticsTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-                CrashLogger.shared.logDiagnosticsSnapshot(tag: "periodic")
+            if AppDiagnosticsSettings.isDiagnosticsEnabled {
+                let baseline = self.lastDiagnosticsSnapshotBytes == 0 ? current : self.lastDiagnosticsSnapshotBytes
+                let threshold: UInt64 = 50 * 1024 * 1024
+                let crossedThreshold = current >= baseline ? (current - baseline) >= threshold : (baseline - current) >= threshold
+                if self.lastDiagnosticsSnapshotBytes == 0 || crossedThreshold {
+                    self.lastDiagnosticsSnapshotBytes = current
+                    CrashLogger.shared.logDiagnosticsSnapshot(tag: "threshold")
+                }
             }
         }
     }
 
     func stopMemoryMonitor() {
         memoryTimer?.invalidate()
-        diagnosticsTimer?.invalidate()
         memoryTimer = nil
-        diagnosticsTimer = nil
     }
 
     func setLoggingEnabled(_ enabled: Bool) {

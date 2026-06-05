@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 
 // MARK: - Settings View (Tab 4 — XMusic SettingsPanelView style)
 struct SettingsView: View {
@@ -11,8 +10,6 @@ struct SettingsView: View {
     @State private var isPhotoPickerPresented = false
     @State private var isCrashLogExpanded = false
     @State private var crashLogText: String = ""
-    @State private var crashLogTimerCancellable: Cancellable?
-    @State private var crashLogTimer: Timer.TimerPublisher = Timer.publish(every: 3.0, on: .main, in: .common)
 
     private var currentTheme: AppThemeConfiguration {
         theme.current
@@ -39,8 +36,6 @@ struct SettingsView: View {
                     crashLogText: $crashLogText,
                     isCrashLogExpanded: $isCrashLogExpanded,
                     toastText: $toastText,
-                    crashLogTimer: crashLogTimer,
-                    crashLogTimerCancellable: $crashLogTimerCancellable,
                     refreshCrashLog: refreshCrashLog
                 )
 
