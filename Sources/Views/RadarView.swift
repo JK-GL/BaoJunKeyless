@@ -159,8 +159,8 @@ final class RadarUIView: UIView {
         let targetRadius = r * 0.15 + CGFloat(norm) * (r * 0.7)
         let angle = relativeAngle * .pi / 180 - .pi / 2
         let targetCenter = CGPoint(
-            x: cx + targetRadius * cos(angle),
-            y: cy + targetRadius * sin(angle)
+            x: cx + targetRadius * CGFloat(cos(angle)),
+            y: cy + targetRadius * CGFloat(sin(angle))
         )
         let targetSize = max(sz * (0.28 - 0.15 * CGFloat(norm)), 34)
 
