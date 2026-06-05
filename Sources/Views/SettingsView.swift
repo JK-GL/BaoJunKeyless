@@ -29,7 +29,7 @@ struct SettingsView: View {
             AppBackgroundView()
 
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 16) {
+                LazyVStack(alignment: .leading, spacing: 16) {
                     PageHeaderView(title: "设置")
                         .padding(.horizontal, 20)
                         .padding(.top, 8)
