@@ -179,48 +179,6 @@ final class RadarUIView: UIView {
         lastCacheSize = size
     }
 
-        for deg in 0..<360 {
-            let a = CGFloat(deg) * .pi / 180
-            let major = deg % 30 == 0, mid = deg % 10 == 0
-            let inner: CGFloat = major ? r - 18 : (mid ? r - 11 : r - 7)
-            ctx.setStrokeColor(tc.withAlphaComponent(major ? 0.45 : (mid ? 0.2 : 0.08)).cgColor)
-            ctx.setLineWidth(major ? 1.5 : (mid ? 0.8 : 0.3))
-            ctx.move(to: .init(x: cx + inner * cos(a), y: cy + inner * sin(a)))
-            ctx.addLine(to: .init(x: cx + (r - 1) * cos(a), y: cy + (r - 1) * sin(a)))
-            ctx.strokePath()
-        }
-        ctx.setStrokeColor(tc.withAlphaComponent(0.15).cgColor)
-        ctx.setLineWidth(1)
-        ctx.strokeEllipse(in: .init(x: cx - r + 1, y: cy - r + 1, width: (r - 1) * 2, height: (r - 1) * 2))
-
-        for i in 1...3 {
-            let rr = r * CGFloat(i) / 3.5
-            ctx.setStrokeColor(tc.withAlphaComponent(0.04 + Double(i) * 0.02).cgColor)
-            ctx.setLineWidth(0.5)
-            ctx.strokeEllipse(in: .init(x: cx - rr, y: cy - rr, width: rr * 2, height: rr * 2))
-        }
-
-        ctx.setStrokeColor(tc.withAlphaComponent(0.06).cgColor)
-        ctx.setLineWidth(0.5)
-        ctx.move(to: .init(x: cx, y: cy - r + 14))
-        ctx.addLine(to: .init(x: cx, y: cy + r - 14))
-        ctx.move(to: .init(x: cx - r + 14, y: cy))
-        ctx.addLine(to: .init(x: cx + r - 14, y: cy))
-        ctx.strokePath()
-
-        for s in stars {
-            ctx.setFillColor(UIColor.white.withAlphaComponent(s.alpha).cgColor)
-            ctx.fillEllipse(in: CGRect(x: CGFloat(s.x) * size.width - s.size / 2,
-                                       y: CGFloat(s.y) * size.height - s.size / 2,
-                                       width: s.size,
-                                       height: s.size))
-        }
-
-        staticCache = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        lastCacheSize = size
-    }
-
     private func buildCarCache() {
         let targetSize = max(carCacheSize, 34)
         guard abs(targetSize - carCacheSize) > 0.8 || carCacheImage == nil else { return }
