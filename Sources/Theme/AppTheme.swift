@@ -137,7 +137,7 @@ enum AppThemeStorage {
         if cachedBackgroundRevision == revision, let cachedBackgroundData { return cachedBackgroundData }
         guard let url = backgroundImageURL(), FileManager.default.fileExists(atPath: url.path), let data = try? Data(contentsOf: url) else {
             cachedBackgroundData = nil
-            cachedBackgroundRevision = revision
+            cachedBackgroundRevision = .min
             return nil
         }
         cachedBackgroundData = data
@@ -157,6 +157,7 @@ enum AppThemeStorage {
 
     static func invalidateBackgroundImageCache() {
         cachedBackgroundUIImage = nil
+        cachedBackgroundRevision = .min
     }
 
     static func saveBackgroundImageData(_ data: Data) throws {
