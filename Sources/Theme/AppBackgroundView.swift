@@ -11,7 +11,8 @@ struct AppBackgroundView: View {
     @AppStorage(AppThemeStorage.customBackgroundRevisionKey) private var customBackgroundRevision = 0
     @AppStorage(AppThemeStorage.customBackgroundBlurKey) private var customBackgroundBlur = 0.0
 
-    @State private var cachedThemeRevision: Int = .min
+    @State private var cachedSelectedThemeRawValue: String = ""
+    @State private var cachedBackgroundRevision: Int = .min
     @State private var cachedBackgroundImage: Image?
     @State private var cachedBlur: CGFloat = 0
 
@@ -80,12 +81,13 @@ struct AppBackgroundView: View {
     }
 
     private func updateCache() {
-        let newRevision = customBackgroundRevision
-        if cachedThemeRevision == newRevision { return }
-        cachedThemeRevision = newRevision
+        if cachedSelectedThemeRawValue == selectedThemeRawValue && cachedBackgroundRevision == customBackgroundRevision { return }
+        cachedSelectedThemeRawValue = selectedThemeRawValue
+        cachedBackgroundRevision = customBackgroundRevision
         cachedBlur = customBackgroundBlur
         #if canImport(UIKit)
-        if theme.preset == .custom, let uiImage = AppThemeStorage.cachedUIImage(for: newRevision) {
+        let currentTheme = theme
+        if currentTheme.preset == .custom, let uiImage = AppThemeStorage.cachedUIImage(for: customBackgroundRevision) {
             cachedBackgroundImage = Image(uiImage: uiImage)
         } else {
             cachedBackgroundImage = nil
