@@ -316,6 +316,8 @@ struct SettingsDiagnosticsSection: View {
     @AppStorage(AppDiagnosticsSettings.disableBackgroundBlurKey) private var disableBackgroundBlur = false
     @AppStorage(AppDiagnosticsSettings.disableThemePreviewKey) private var disableThemePreview = false
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
+    @AppStorage(AppDiagnosticsSettings.enableRadarScanKey) private var enableRadarScan = false
+    @AppStorage(AppDiagnosticsSettings.enableRadarGradientKey) private var enableRadarGradient = false
 
     var body: some View {
         SettingsPanelView(title: "内存诊断", subtitle: "用于隔离背景图、模糊、预览和雷达带来的内存问题。") {
@@ -325,6 +327,8 @@ struct SettingsDiagnosticsSection: View {
                 ToggleRow(icon: "drop.triangle", label: "禁用背景模糊", isOn: $disableBackgroundBlur)
                 ToggleRow(icon: "rectangle.on.rectangle.slash", label: "禁用主题预览", isOn: $disableThemePreview)
                 ToggleRow(icon: "wave.3.slash", label: "禁用雷达", isOn: $disableRadar)
+                ToggleRow(icon: "dot.radiowaves.left.and.right", label: "启用雷达波纹动画", isOn: $enableRadarScan)
+                ToggleRow(icon: "sparkles", label: "启用雷达径向渐变", isOn: $enableRadarGradient)
 
                 Button {
                     CrashLogger.shared.logDiagnosticsSnapshot(tag: "manual")
@@ -355,5 +359,7 @@ struct SettingsDiagnosticsSection: View {
         .onChange(of: disableBackgroundBlur) { _ in CrashLogger.shared.logDiagnosticsSnapshot(tag: "toggle") }
         .onChange(of: disableThemePreview) { _ in CrashLogger.shared.logDiagnosticsSnapshot(tag: "toggle") }
         .onChange(of: disableRadar) { _ in CrashLogger.shared.logDiagnosticsSnapshot(tag: "toggle") }
+        .onChange(of: enableRadarScan) { _ in CrashLogger.shared.logDiagnosticsSnapshot(tag: "toggle") }
+        .onChange(of: enableRadarGradient) { _ in CrashLogger.shared.logDiagnosticsSnapshot(tag: "toggle") }
     }
 }

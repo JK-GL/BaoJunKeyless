@@ -17,13 +17,16 @@ final class RadarUIView: UIView {
 
     private var staticCache: UIImage?
     private var lastCacheSize: CGSize = .zero
-    private var carCacheSize: CGFloat = 0
+    private var carCacheTargetSize: CGFloat = 34
+    private var cachedRenderedCarSize: CGFloat = 0
     private var carCacheImage: UIImage?
     private var carOnlineImage: UIImage?
     private var memoryWarningObserver: NSObjectProtocol?
     private var stars: [StarParticle] = []
     private var carX: CGFloat = 0
     private var carY: CGFloat = 0
+    private var drawCount = 0
+    private var lastDrawLogCount = 0
 
     private static let carImageURL = URL(string: "https://cdn-df.00bang.cn/images/T1Dw_TBTEv1RCvBVdK.png")!
     private static var sharedCarImage: UIImage?
@@ -32,16 +35,25 @@ final class RadarUIView: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         setup()
+        if AppDiagnosticsSettings.isDiagnosticsEnabled {
+            CrashLogger.shared.mark("Radar", "init")
+        }
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         setup()
+        if AppDiagnosticsSettings.isDiagnosticsEnabled {
+            CrashLogger.shared.mark("Radar", "init(coder)")
+        }
     }
 
     deinit {
         if let token = memoryWarningObserver {
             NotificationCenter.default.removeObserver(token)
+        }
+        if AppDiagnosticsSettings.isDiagnosticsEnabled {
+            CrashLogger.shared.mark("Radar", "deinit")
         }
     }
 
@@ -84,12 +96,12 @@ final class RadarUIView: UIView {
         let ty = cy + carR * sin(angle)
         let dx = tx - carX
         let dy = ty - carY
-        if abs(dx) > 0.5 || abs(dy) > 0.5 {
-            carX += dx * 0.08
-            carY += dy * 0.08
+        let movement = max(abs(dx), abs(dy))
+        if movement > 1.2 {
+            carX += dx * 0.18
+            carY += dy * 0.18
             let targetSize = sz * (0.28 - 0.15 * CGFloat(norm))
-            let clampedTarget = max(targetSize, 34)
-            carCacheSize += (clampedTarget - carCacheSize) * 0.05
+            carCacheTargetSize = max(targetSize, 34)
             setNeedsDisplay()
         }
     }
@@ -189,9 +201,9 @@ final class RadarUIView: UIView {
     }
 
     private func buildCarCache() {
-        let targetSize = max(carCacheSize, 34)
-        guard abs(targetSize - carCacheSize) > 0.8 || carCacheImage == nil else { return }
-        carCacheSize = targetSize
+        let targetSize = max(carCacheTargetSize, 34)
+        guard abs(targetSize - cachedRenderedCarSize) > 2.0 || carCacheImage == nil else { return }
+        cachedRenderedCarSize = targetSize
 
         if let img = carOnlineImage {
             let ms = targetSize * 0.8
@@ -211,24 +223,32 @@ final class RadarUIView: UIView {
 
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
+        drawCount += 1
+        if AppDiagnosticsSettings.isDiagnosticsEnabled, drawCount - lastDrawLogCount >= 120 {
+            lastDrawLogCount = drawCount
+            CrashLogger.shared.mark("Radar", "drawCount", details: "count=\(drawCount)")
+        }
+
         if staticCache == nil || lastCacheSize != bounds.size {
             CrashLogger.shared.mark("Radar", "rebuildStaticCache", details: "\(Int(bounds.size.width))x\(Int(bounds.size.height))")
             buildStaticCache(bounds.size)
         }
         staticCache?.draw(at: .zero)
 
-        let cs = CGColorSpaceCreateDeviceRGB()
-        if let g = CGGradient(colorsSpace: cs,
-                              colors: [UIColor.systemBlue.withAlphaComponent(0.12).cgColor,
-                                       UIColor.systemBlue.withAlphaComponent(0.04).cgColor,
-                                       UIColor.clear.cgColor] as CFArray,
-                              locations: [0, 0.5, 1]) {
-            ctx.drawRadialGradient(g,
-                                   startCenter: .init(x: carX, y: carY),
-                                   startRadius: 0,
-                                   endCenter: .init(x: carX, y: carY),
-                                   endRadius: carCacheSize * 0.7,
-                                   options: [])
+        if AppDiagnosticsSettings.isRadarGradientEnabled {
+            let cs = CGColorSpaceCreateDeviceRGB()
+            if let g = CGGradient(colorsSpace: cs,
+                                  colors: [UIColor.systemBlue.withAlphaComponent(0.12).cgColor,
+                                           UIColor.systemBlue.withAlphaComponent(0.04).cgColor,
+                                           UIColor.clear.cgColor] as CFArray,
+                                  locations: [0, 0.5, 1]) {
+                ctx.drawRadialGradient(g,
+                                       startCenter: .init(x: carX, y: carY),
+                                       startRadius: 0,
+                                       endCenter: .init(x: carX, y: carY),
+                                       endRadius: cachedRenderedCarSize * 0.7,
+                                       options: [])
+            }
         }
 
         buildCarCache()
@@ -246,14 +266,18 @@ final class RadarUIView: UIView {
 // MARK: - SwiftUI 波纹动画
 struct PsychicScanView: View {
     let size: CGFloat
+    @AppStorage(AppDiagnosticsSettings.enableRadarScanKey) private var enableRadarScan = false
+
     var body: some View {
-        ZStack {
-            ForEach(0..<3, id: \.self) { i in
-                ScanRing(index: i, size: size)
+        if enableRadarScan {
+            ZStack {
+                ForEach(0..<2, id: \.self) { i in
+                    ScanRing(index: i, size: size)
+                }
             }
+            .frame(width: size, height: size)
+            .allowsHitTesting(false)
         }
-        .frame(width: size, height: size)
-        .allowsHitTesting(false)
     }
 }
 
@@ -264,14 +288,14 @@ struct ScanRing: View {
 
     var body: some View {
         Circle()
-            .stroke(Color.cyan.opacity(0.32), lineWidth: 1.2)
+            .stroke(Color.cyan.opacity(0.24), lineWidth: 1.0)
             .frame(width: 24, height: 24)
-            .scaleEffect(expand ? 12.0 : 0.1)
-            .opacity(expand ? 0.0 : 0.55)
-            .blur(radius: 1.5)
+            .scaleEffect(expand ? 9.0 : 0.2)
+            .opacity(expand ? 0.0 : 0.45)
+            .blur(radius: 0.5)
             .onAppear {
-                DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 1.4) {
-                    withAnimation(.easeOut(duration: 4.5).repeatForever(autoreverses: false)) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 1.8) {
+                    withAnimation(.easeOut(duration: 3.6).repeatForever(autoreverses: false)) {
                         expand = true
                     }
                 }
