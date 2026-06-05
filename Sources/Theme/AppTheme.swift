@@ -156,6 +156,7 @@ enum AppThemeStorage {
     }
 
     static func invalidateBackgroundImageCache() {
+        cachedBackgroundData = nil
         cachedBackgroundUIImage = nil
         cachedBackgroundRevision = .min
     }
@@ -168,6 +169,7 @@ enum AppThemeStorage {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: nil)
         try data.write(to: url, options: .atomic)
         cachedBackgroundData = data
+        cachedBackgroundUIImage = nil
         cachedBackgroundRevision = (cachedBackgroundRevision == .min ? 0 : cachedBackgroundRevision + 1)
     }
 
@@ -175,6 +177,7 @@ enum AppThemeStorage {
         guard let url = backgroundImageURL(), FileManager.default.fileExists(atPath: url.path) else { return }
         try FileManager.default.removeItem(at: url)
         cachedBackgroundData = nil
+        cachedBackgroundUIImage = nil
         cachedBackgroundRevision = .min
     }
 
