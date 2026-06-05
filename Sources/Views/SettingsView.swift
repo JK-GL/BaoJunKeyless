@@ -18,10 +18,16 @@ struct SettingsView: View {
     @State private var crashLogText: String = ""
     @State private var crashLogTimerCancellable: Cancellable?
     @State private var crashLogTimer: Timer.TimerPublisher = Timer.publish(every: 3.0, on: .main, in: .common)
+    @State private var cachedThemeRevision: Int = .min
+    @State private var cachedTheme: AppThemeConfiguration?
 
     private var currentTheme: AppThemeConfiguration {
-        AppThemeConfiguration(selectedThemeRawValue: themeRaw, customAccentData: accentData,
+        if cachedThemeRevision == bgRevision, let cached = cachedTheme { return cached }
+        let theme = AppThemeConfiguration(selectedThemeRawValue: themeRaw, customAccentData: accentData,
                               customBackgroundRevision: bgRevision, customBackgroundBlur: bgBlur)
+        cachedThemeRevision = bgRevision
+        cachedTheme = theme
+        return theme
     }
 
     var body: some View {
@@ -38,7 +44,7 @@ struct SettingsView: View {
                     SettingsPanelView(title: "外观与皮肤", subtitle: "切换主题或设置自定义背景。") {
                         VStack(alignment: .leading, spacing: 6) {
                             ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 6) {
+                                LazyHStack(spacing: 6) {
                                     ForEach(AppThemePreset.allCases) { preset in
                                         Button {
                                             themeRaw = preset.rawValue
