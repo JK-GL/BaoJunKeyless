@@ -68,7 +68,8 @@ class CrashLogger {
 
     func readReversedRecentLog(limit: Int = 400) -> String {
         guard let raw = readLog(), !raw.isEmpty else { return "" }
-        return String(raw.split(separator: "\n", omittingEmptySubsequences: false).suffix(limit).reversed())
+        let lines = raw.components(separatedBy: "\n")
+        return lines.suffix(limit).reversed().joined(separator: "\n")
     }
 
     func clearLog() {

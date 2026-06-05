@@ -190,6 +190,7 @@ struct AppThemeConfiguration {
         customAccent = AppThemeStorage.customAccent(from: customAccentData)
         let storedBackgroundData = customBackgroundRevision >= 0 ? AppThemeStorage.backgroundImageData(revision: customBackgroundRevision) : nil
         customBackgroundImageData = preset == .custom ? storedBackgroundData : nil
+        self.customBackgroundRevision = customBackgroundRevision
         self.customBackgroundBlur = CGFloat(min(max(customBackgroundBlur, 0), 36))
     }
 }
