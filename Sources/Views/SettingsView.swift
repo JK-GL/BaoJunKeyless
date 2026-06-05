@@ -145,6 +145,7 @@ struct SettingsView: View {
                                     )
                                     .labelsHidden()
                                     .toggleStyle(.switch)
+                                    .tint(theme.accent)
                                     .scaleEffect(0.7)
                                 }
 
@@ -189,7 +190,7 @@ struct SettingsView: View {
                                             Text("复制")
                                                 .font(.system(size: 13, weight: .medium))
                                         }
-                                        .foregroundStyle(theme.accent)
+                                        .foregroundStyle(AppTheme.accent)
                                     }
 
                                     Button {
