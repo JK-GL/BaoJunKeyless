@@ -147,8 +147,20 @@ enum AppThemeStorage {
 
     static func backgroundImage(revision: Int) -> UIImage? {
         if cachedBackgroundRevision == revision { return cachedBackgroundImage }
-        let data = backgroundImageData(revision: revision)
-        cachedBackgroundImage = data.flatMap { UIImage(data: $0) }
+        guard let data = backgroundImageData(revision: revision), let full = UIImage(data: data) else {
+            cachedBackgroundImage = nil
+            return nil
+        }
+        let maxSide: CGFloat = 1280
+        let largest = max(full.size.width, full.size.height)
+        if largest <= maxSide {
+            cachedBackgroundImage = full
+        } else {
+            let scale = maxSide / largest
+            let target = CGSize(width: full.size.width * scale, height: full.size.height * scale)
+            let renderer = UIGraphicsImageRenderer(size: target)
+            cachedBackgroundImage = renderer.image { _ in full.draw(in: CGRect(origin: .zero, size: target)) }
+        }
         return cachedBackgroundImage
     }
 
