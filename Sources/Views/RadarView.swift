@@ -23,8 +23,6 @@ final class RadarUIView: UIView {
     private var displayedCarSize: CGFloat = 34
     private var targetCarCenter: CGPoint = .zero
     private var targetCarSize: CGFloat = 34
-    private var carVelocity: CGVector = .zero
-    private var sizeVelocity: CGFloat = 0
     private var markerDisplayLink: CADisplayLink?
     private var lastDisplayLinkTimestamp: CFTimeInterval = 0
     private var lastBackgroundSize: CGSize = .zero
@@ -110,20 +108,6 @@ final class RadarUIView: UIView {
         backgroundImageView.isUserInteractionEnabled = false
         addSubview(backgroundImageView)
 
-        glowView.backgroundColor = .clear
-        glowView.isHidden = true
-        glowView.isUserInteractionEnabled = false
-        glowLayer.type = .radial
-        glowLayer.colors = [
-            UIColor.systemCyan.withAlphaComponent(0.40).cgColor,
-            UIColor.systemBlue.withAlphaComponent(0.18).cgColor,
-            UIColor.systemBlue.withAlphaComponent(0.055).cgColor,
-            UIColor.clear.cgColor
-        ]
-        glowLayer.locations = [0, 0.34, 0.68, 1]
-        glowView.layer.addSublayer(glowLayer)
-        addSubview(glowView)
-
         carImageView.contentMode = .scaleAspectFit
         carImageView.isUserInteractionEnabled = false
         addSubview(carImageView)
@@ -160,8 +144,6 @@ final class RadarUIView: UIView {
         carImageView.layer.removeAllAnimations()
         lastBackgroundSize = .zero
         lastDisplayLinkTimestamp = 0
-        carVelocity = .zero
-        sizeVelocity = 0
     }
 
     private func restoreDynamicResourcesIfNeeded() {
@@ -195,8 +177,6 @@ final class RadarUIView: UIView {
         if force || displayedCarCenter == .zero {
             displayedCarCenter = nextCenter
             displayedCarSize = nextSize
-            carVelocity = .zero
-            sizeVelocity = 0
             applyMarkerFrame()
         }
 
@@ -238,39 +218,27 @@ final class RadarUIView: UIView {
         }
         lastDisplayLinkTimestamp = displayLink.timestamp
 
-        // 地图 marker 式平滑追踪：传感器只更新目标点，屏幕刷新负责追赶。
-        // 使用阻尼弹簧而不是一阶低通：响应更快，但保留连续惯性，避免“跟手慢/发涩”。
+        // 无弹性平滑追踪：只做指数缓动，不带速度、不允许过冲。
+        // 高频传感器只刷新目标点；屏幕每帧向目标点贴近，避免“弹来弹去”的观感。
         let clampedDt = min(max(dt, 1.0 / 120.0), 1.0 / 30.0)
-        let positionResponse: CGFloat = 30.0
-        let positionDamping: CGFloat = 0.82
-        let sizeResponse: CGFloat = 24.0
-        let sizeDamping: CGFloat = 0.86
+        let positionResponse: CGFloat = 22.0
+        let sizeResponse: CGFloat = 18.0
+        let positionAlpha = min(max(1 - exp(-positionResponse * clampedDt), 0.20), 0.48)
+        let sizeAlpha = min(max(1 - exp(-sizeResponse * clampedDt), 0.16), 0.38)
 
         let dx = targetCarCenter.x - displayedCarCenter.x
         let dy = targetCarCenter.y - displayedCarCenter.y
         let ds = targetCarSize - displayedCarSize
 
-        carVelocity.dx = (carVelocity.dx + dx * positionResponse * clampedDt) * positionDamping
-        carVelocity.dy = (carVelocity.dy + dy * positionResponse * clampedDt) * positionDamping
-        sizeVelocity = (sizeVelocity + ds * sizeResponse * clampedDt) * sizeDamping
-
         displayedCarCenter = CGPoint(
-            x: displayedCarCenter.x + carVelocity.dx,
-            y: displayedCarCenter.y + carVelocity.dy
+            x: displayedCarCenter.x + dx * positionAlpha,
+            y: displayedCarCenter.y + dy * positionAlpha
         )
-        displayedCarSize += sizeVelocity
+        displayedCarSize += ds * sizeAlpha
 
-        let remainingX = targetCarCenter.x - displayedCarCenter.x
-        let remainingY = targetCarCenter.y - displayedCarCenter.y
-        let remainingSize = targetCarSize - displayedCarSize
-        if abs(remainingX) < 0.12, abs(remainingY) < 0.12,
-           abs(remainingSize) < 0.08,
-           abs(carVelocity.dx) < 0.04, abs(carVelocity.dy) < 0.04,
-           abs(sizeVelocity) < 0.03 {
+        if abs(dx) < 0.18, abs(dy) < 0.18, abs(ds) < 0.10 {
             displayedCarCenter = targetCarCenter
             displayedCarSize = targetCarSize
-            carVelocity = .zero
-            sizeVelocity = 0
         }
 
         applyMarkerFrame()
@@ -283,14 +251,8 @@ final class RadarUIView: UIView {
         carImageView.bounds = CGRect(x: 0, y: 0, width: displayedCarSize, height: displayedCarSize)
         carImageView.center = displayedCarCenter
 
-        let glowSize = displayedCarSize * 2.05
-        glowView.isHidden = false
-        glowView.bounds = CGRect(x: 0, y: 0, width: glowSize, height: glowSize)
-        glowView.center = displayedCarCenter
-        glowView.layer.cornerRadius = glowSize / 2
-        glowLayer.frame = CGRect(x: 0, y: 0, width: glowSize, height: glowSize)
-        glowLayer.cornerRadius = glowSize / 2
-        glowView.alpha = 0.95
+        glowView.isHidden = true
+        glowView.alpha = 0
 
         CATransaction.commit()
     }
