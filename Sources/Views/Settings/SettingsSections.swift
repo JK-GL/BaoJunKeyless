@@ -309,3 +309,51 @@ struct SettingsCrashLogSection: View {
         .onReceive(crashLogTimer) { _ in refreshCrashLog() }
     }
 }
+
+struct SettingsDiagnosticsSection: View {
+    @AppStorage(AppDiagnosticsSettings.diagnosticsEnabledKey) private var diagnosticsEnabled = false
+    @AppStorage(AppDiagnosticsSettings.disableBackgroundImageKey) private var disableBackgroundImage = false
+    @AppStorage(AppDiagnosticsSettings.disableBackgroundBlurKey) private var disableBackgroundBlur = false
+    @AppStorage(AppDiagnosticsSettings.disableThemePreviewKey) private var disableThemePreview = false
+    @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
+
+    var body: some View {
+        SettingsPanelView(title: "内存诊断", subtitle: "用于隔离背景图、模糊、预览和雷达带来的内存问题。") {
+            VStack(spacing: 12) {
+                ToggleRow(icon: "stethoscope", label: "启用诊断模式", isOn: $diagnosticsEnabled)
+                ToggleRow(icon: "photo.slash", label: "禁用背景图", isOn: $disableBackgroundImage)
+                ToggleRow(icon: "drop.triangle", label: "禁用背景模糊", isOn: $disableBackgroundBlur)
+                ToggleRow(icon: "rectangle.on.rectangle.slash", label: "禁用主题预览", isOn: $disableThemePreview)
+                ToggleRow(icon: "wave.3.slash", label: "禁用雷达", isOn: $disableRadar)
+
+                Button {
+                    CrashLogger.shared.logDiagnosticsSnapshot(tag: "manual")
+                    CrashLogger.shared.logMemoryBaseline()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "waveform.path.ecg")
+                            .font(.system(size: 13))
+                        Text("记录一次诊断快照")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .foregroundStyle(AppTheme.accent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .onChange(of: diagnosticsEnabled) { enabled in
+            CrashLogger.shared.setLoggingEnabled(CrashLogger.shared.isLoggingEnabled)
+            CrashLogger.shared.mark("Diagnostics", enabled ? "enabled" : "disabled")
+        }
+        .onChange(of: disableBackgroundImage) { _ in CrashLogger.shared.logDiagnosticsSnapshot(tag: "toggle") }
+        .onChange(of: disableBackgroundBlur) { _ in CrashLogger.shared.logDiagnosticsSnapshot(tag: "toggle") }
+        .onChange(of: disableThemePreview) { _ in CrashLogger.shared.logDiagnosticsSnapshot(tag: "toggle") }
+        .onChange(of: disableRadar) { _ in CrashLogger.shared.logDiagnosticsSnapshot(tag: "toggle") }
+    }
+}

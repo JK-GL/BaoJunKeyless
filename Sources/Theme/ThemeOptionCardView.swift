@@ -7,6 +7,7 @@ import UIKit
 struct ThemeOptionCardView: View {
     let theme: AppThemeConfiguration
     let isSelected: Bool
+    @AppStorage(AppDiagnosticsSettings.disableThemePreviewKey) private var disableThemePreview = false
     #if canImport(UIKit)
     let previewUIImage: UIImage?
     #endif
@@ -75,11 +76,23 @@ struct ThemeOptionCardView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(isSelected ? theme.accent.opacity(0.36) : Color.white.opacity(0.06), lineWidth: 1)
         )
+        .onAppear {
+            guard AppDiagnosticsSettings.isDiagnosticsEnabled,
+                  theme.preset == .custom,
+                  let previewUIImage else { return }
+            CrashLogger.shared.logImageDiagnostics(
+                "ThemePreview",
+                width: previewUIImage.size.width,
+                height: previewUIImage.size.height,
+                note: "selected=\(isSelected)"
+            )
+        }
     }
 
     #if canImport(UIKit)
     private var previewImage: Image? {
-        guard let previewUIImage else {
+        guard !disableThemePreview,
+              let previewUIImage else {
             return nil
         }
         return Image(uiImage: previewUIImage)

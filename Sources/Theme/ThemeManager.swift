@@ -90,6 +90,16 @@ final class ThemeManager: ObservableObject {
 
     func saveCustomBackgroundImageData(_ data: Data) {
         try? AppThemeStorage.saveBackgroundImageData(data)
+        if AppDiagnosticsSettings.isDiagnosticsEnabled,
+           let image = UIImage(data: data) {
+            CrashLogger.shared.logImageDiagnostics(
+                "ThemeSave",
+                width: image.size.width,
+                height: image.size.height,
+                bytes: data.count,
+                note: "save"
+            )
+        }
         if selectedThemeRawValue != AppThemePreset.custom.rawValue {
             selectedThemeRawValue = AppThemePreset.custom.rawValue
             defaults.set(selectedThemeRawValue, forKey: AppThemePreset.storageKey)

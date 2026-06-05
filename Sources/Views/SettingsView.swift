@@ -44,6 +44,8 @@ struct SettingsView: View {
                     refreshCrashLog: refreshCrashLog
                 )
 
+                SettingsDiagnosticsSection()
+
                 SettingsResetSection(showingResetAlert: $showingResetAlert)
 
                 Spacer(minLength: 100)

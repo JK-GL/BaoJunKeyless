@@ -3,6 +3,8 @@ import SwiftUI
 /// 应用全局背景层，提供统一的渐变和光斑氛围。
 struct AppBackgroundView: View {
     @EnvironmentObject private var themeManager: ThemeManager
+    @AppStorage(AppDiagnosticsSettings.disableBackgroundImageKey) private var disableBackgroundImage = false
+    @AppStorage(AppDiagnosticsSettings.disableBackgroundBlurKey) private var disableBackgroundBlur = false
 
     private var theme: AppThemeConfiguration {
         themeManager.current
@@ -18,7 +20,7 @@ struct AppBackgroundView: View {
                         .antialiased(true)
                         .scaledToFill()
                         .frame(width: proxy.size.width, height: proxy.size.height)
-                        .blur(radius: theme.customBackgroundBlur)
+                        .blur(radius: disableBackgroundBlur ? 0 : theme.customBackgroundBlur)
                         .clipped()
 
                     LinearGradient(
@@ -56,12 +58,30 @@ struct AppBackgroundView: View {
         .ignoresSafeArea()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(false)
+        .onAppear {
+            logBackgroundDiagnosticsIfNeeded(note: "appear")
+        }
+        .onChange(of: theme.customBackgroundRevision) { revision in
+            logBackgroundDiagnosticsIfNeeded(note: "revision=\(revision)")
+        }
     }
 
     private var backgroundImage: Image? {
-        guard let uiImage = themeManager.currentBackgroundImage else {
+        guard !disableBackgroundImage,
+              let uiImage = themeManager.currentBackgroundImage else {
             return nil
         }
         return Image(uiImage: uiImage)
+    }
+
+    private func logBackgroundDiagnosticsIfNeeded(note: String) {
+        guard AppDiagnosticsSettings.isDiagnosticsEnabled,
+              let image = themeManager.currentBackgroundImage else { return }
+        CrashLogger.shared.logImageDiagnostics(
+            "Background",
+            width: image.size.width,
+            height: image.size.height,
+            note: "blur=\(disableBackgroundBlur ? 0 : Int(theme.customBackgroundBlur)) | \(note)"
+        )
     }
 }

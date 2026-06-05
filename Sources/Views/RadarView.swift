@@ -121,6 +121,15 @@ final class RadarUIView: UIView {
 
             let finalImage = img
             Self.sharedCarImage = finalImage
+            if AppDiagnosticsSettings.isDiagnosticsEnabled {
+                CrashLogger.shared.logImageDiagnostics(
+                    "RadarCar",
+                    width: finalImage.size.width,
+                    height: finalImage.size.height,
+                    bytes: data.count,
+                    note: "network"
+                )
+            }
             DispatchQueue.main.async { [weak self] in
                 self?.carOnlineImage = finalImage
                 self?.carCacheImage = nil

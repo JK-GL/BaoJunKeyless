@@ -79,10 +79,14 @@ class CrashLogger {
 
     private var memoryTimer: Timer?
     private var lastMemoryBytes: UInt64 = 0
+    private var diagnosticsTimer: Timer?
 
     func startMemoryMonitor() {
         memoryTimer?.invalidate()
-        memoryTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        diagnosticsTimer?.invalidate()
+
+        let interval = AppDiagnosticsSettings.isDiagnosticsEnabled ? 5.0 : 30.0
+        memoryTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             let current = Self.memoryUsageBytes()
             if self.lastMemoryBytes == 0 || current != self.lastMemoryBytes {
@@ -92,11 +96,19 @@ class CrashLogger {
                 self.lastMemoryBytes = current
             }
         }
+
+        if AppDiagnosticsSettings.isDiagnosticsEnabled {
+            diagnosticsTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+                CrashLogger.shared.logDiagnosticsSnapshot(tag: "periodic")
+            }
+        }
     }
 
     func stopMemoryMonitor() {
         memoryTimer?.invalidate()
+        diagnosticsTimer?.invalidate()
         memoryTimer = nil
+        diagnosticsTimer = nil
     }
 
     func setLoggingEnabled(_ enabled: Bool) {
@@ -131,6 +143,42 @@ class CrashLogger {
     func logMemoryBaseline() {
         let mem = Self.formatBytes(Self.memoryUsageBytes())
         logCrash("ℹ️ MEMORY BASELINE: \(mem)")
+        if AppDiagnosticsSettings.isDiagnosticsEnabled {
+            logDiagnosticsSnapshot(tag: "baseline")
+        }
+    }
+
+    func logImageDiagnostics(_ component: String,
+                             width: CGFloat,
+                             height: CGFloat,
+                             bytes: Int? = nil,
+                             note: String? = nil,
+                             file: String = #file,
+                             line: Int = #line) {
+        let decodedBytes = Int(width * height * 4)
+        var details: [String] = ["size=\(Int(width))x\(Int(height))", "decoded≈\(Self.formatBytes(UInt64(max(decodedBytes, 0))))"]
+        if let bytes {
+            details.append("data=\(Self.formatBytes(UInt64(max(bytes, 0))))")
+        }
+        if let note {
+            details.append(note)
+        }
+        mark(component, "image", details: details.joined(separator: " | "), file: file, line: line)
+    }
+
+    func logDiagnosticsSnapshot(tag: String,
+                                file: String = #file,
+                                line: Int = #line) {
+        let defaults = UserDefaults.standard
+        let details = [
+            "tag=\(tag)",
+            "diag=\(AppDiagnosticsSettings.isDiagnosticsEnabled)",
+            "bgOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableBackgroundImageKey))",
+            "blurOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableBackgroundBlurKey))",
+            "previewOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableThemePreviewKey))",
+            "radarOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableRadarKey))"
+        ].joined(separator: " | ")
+        mark("Diagnostics", "snapshot", details: details, file: file, line: line)
     }
 
     func logEvent(_ component: String, _ message: String, file: String = #file, line: Int = #line) {
