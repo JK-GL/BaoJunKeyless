@@ -76,6 +76,7 @@ struct ThemeOptionCardView: View {
 
     #if canImport(UIKit)
     private var previewImage: Image? {
+        guard theme.preset == .custom else { return nil }
         guard let uiImage = AppThemeStorage.cachedUIImage(for: theme.customBackgroundRevision) else {
             return nil
         }

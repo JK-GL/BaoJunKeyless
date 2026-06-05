@@ -68,10 +68,13 @@ struct AppBackgroundView: View {
         .ignoresSafeArea()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(false)
+        .onChange(of: selectedThemeRawValue) { _ in AppThemeStorage.invalidateBackgroundImageCache() }
+        .onChange(of: customBackgroundRevision) { _ in AppThemeStorage.invalidateBackgroundImageCache() }
     }
 
     #if canImport(UIKit)
     private var backgroundImage: Image? {
+        if theme.preset != .custom { return nil }
         guard let uiImage = AppThemeStorage.cachedUIImage(for: theme.customBackgroundRevision) else {
             return nil
         }

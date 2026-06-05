@@ -155,6 +155,10 @@ enum AppThemeStorage {
         return cachedBackgroundUIImage
     }
 
+    static func invalidateBackgroundImageCache() {
+        cachedBackgroundUIImage = nil
+    }
+
     static func saveBackgroundImageData(_ data: Data) throws {
         guard let url = backgroundImageURL() else {
             throw NSError(domain: "XMusic.AppTheme", code: 1, userInfo: [NSLocalizedDescriptionKey: "无法定位主题背景存储目录。"])
