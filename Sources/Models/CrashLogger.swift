@@ -83,4 +83,24 @@ class CrashLogger {
         let mem = Self.memoryUsage()
         logCrash("ℹ️ MEMORY BASELINE: \(mem)")
     }
+
+    // ⭐ 定时内存监控（每 30 秒记录一次）
+    private var memoryTimer: Timer?
+    private var lastMemory: String = ""
+
+    func startMemoryMonitor() {
+        memoryTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            let current = Self.memoryUsage()
+            if current != self.lastMemory {
+                self.logCrash("📊 MEMORY: \(current)")
+                self.lastMemory = current
+            }
+        }
+    }
+
+    func stopMemoryMonitor() {
+        memoryTimer?.invalidate()
+        memoryTimer = nil
+    }
 }

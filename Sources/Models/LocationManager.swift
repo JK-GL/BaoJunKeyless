@@ -78,6 +78,17 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         return a
     }
 
+    // ⭐ 前后台切换
+    func pause() {
+        manager.stopUpdatingLocation()
+        manager.stopUpdatingHeading()
+    }
+
+    func resume() {
+        manager.startUpdatingLocation()
+        manager.startUpdatingHeading()
+    }
+
     deinit {
         manager.stopUpdatingLocation()
         manager.stopUpdatingHeading()

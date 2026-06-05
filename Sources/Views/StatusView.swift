@@ -166,6 +166,13 @@ struct StatusView: View {
         .onDisappear {
             scrollState.reset()
         }
+        // ⭐ 前后台暂停/恢复
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            locationManager.pause()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            locationManager.resume()
+        }
     }
 }
 

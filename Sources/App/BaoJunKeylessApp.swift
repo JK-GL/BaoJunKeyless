@@ -5,8 +5,9 @@ struct BaoJunKeylessApp: App {
     @StateObject private var theme = ThemeManager()
 
     init() {
-        _ = CrashLogger.shared  // 初始化崩溃日志记录器
-        CrashLogger.shared.logMemoryBaseline()  // 记录启动时内存
+        _ = CrashLogger.shared
+        CrashLogger.shared.logMemoryBaseline()
+        CrashLogger.shared.startMemoryMonitor()  // 每 30 秒记录内存
     }
 
     var body: some Scene {
