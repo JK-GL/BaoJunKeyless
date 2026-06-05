@@ -7,6 +7,7 @@ import UIKit
 struct ThemeOptionCardView: View {
     let theme: AppThemeConfiguration
     let isSelected: Bool
+    @State private var updateToken: Int = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -72,12 +73,17 @@ struct ThemeOptionCardView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(isSelected ? theme.accent.opacity(0.36) : Color.white.opacity(0.06), lineWidth: 1)
         )
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+            updateToken &+= 1
+        }
     }
 
     #if canImport(UIKit)
     private var previewImage: Image? {
-        guard theme.preset == .custom else { return nil }
-        guard let uiImage = AppThemeStorage.cachedUIImage(for: theme.customBackgroundRevision) else {
+        _ = updateToken
+        guard let data = theme.customBackgroundImageData,
+              let uiImage = UIImage(data: data)
+        else {
             return nil
         }
         return Image(uiImage: uiImage)
