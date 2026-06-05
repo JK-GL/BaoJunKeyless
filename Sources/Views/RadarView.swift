@@ -48,7 +48,7 @@ final class RadarUIView: UIView {
     private func setup() {
         isOpaque = false
         backgroundColor = .clear
-        stars = (0..<50).map {
+        stars = (0..<50).map { _ in
             StarParticle(
                 x: Double.random(in: 0...1),
                 y: Double.random(in: 0...1),

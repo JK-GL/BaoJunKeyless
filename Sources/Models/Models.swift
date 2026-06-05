@@ -96,7 +96,7 @@ enum VibrationPattern: String, CaseIterable {
             addEvent(.hapticTransient, duration: 0.08)
             addEvent(.hapticTransient, duration: 0.12)
         case .continuousLight:
-            for j in 0..<6 {
+            for _ in 0..<6 {
                 addEvent(.hapticTransient, duration: 0.05)
                 addPause(0.06)
             }
