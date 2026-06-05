@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var toastText: String?
     @State private var isCustomEditorExpanded = false
     @State private var isPhotoPickerPresented = false
+    @State private var isCrashLogExpanded = false
 
     private var currentTheme: AppThemeConfiguration {
         AppThemeConfiguration(selectedThemeRawValue: themeRaw, customAccentData: accentData,
@@ -78,62 +79,79 @@ struct SettingsView: View {
                         }
                     }
 
-                    // Crash Log
-                    SettingsPanelView(title: "崩溃日志") {
-                        VStack(alignment: .leading, spacing: 10) {
-                            if let log = CrashLogger.shared.readLog(), !log.isEmpty {
+                    // Crash Log（可折叠、可滚动）
+                    CollapsibleCard(
+                        title: "崩溃日志",
+                        icon: "ladybug.fill",
+                        iconColor: Color.red.opacity(0.85),
+                        isExpanded: $isCrashLogExpanded,
+                        headerExtra: {
+                            if CrashLogger.shared.readLog()?.isEmpty == false {
+                                Text("有记录")
+                                    .font(.caption2)
+                                    .foregroundStyle(Color.orange.opacity(0.9))
+                            } else {
+                                Text("无记录")
+                                    .font(.caption2)
+                                    .foregroundStyle(Color.white.opacity(0.45))
+                            }
+                        }
+                    ) {
+                        if let log = CrashLogger.shared.readLog(), !log.isEmpty {
+                            ScrollView(.vertical, showsIndicators: true) {
                                 ScrollView(.horizontal, showsIndicators: false) {
                                     Text(log)
                                         .font(.system(size: 10, design: .monospaced))
                                         .foregroundStyle(Color.white.opacity(0.62))
                                         .padding(10)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
                                 }
-                                .frame(height: 100)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .fill(Color.white.opacity(0.04))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                                )
+                            }
+                            .frame(maxHeight: 260)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color.white.opacity(0.04))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                            )
 
-                                HStack(spacing: 12) {
-                                    Button(action: {
-                                        UIPasteboard.general.string = log
-                                        withAnimation { toastText = "已复制到剪贴板" }
-                                    }) {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "doc.on.doc")
-                                                .font(.system(size: 12))
-                                            Text("复制")
-                                                .font(.system(size: 13, weight: .medium))
-                                        }
-                                        .foregroundStyle(AppTheme.accent)
+                            HStack(spacing: 12) {
+                                Button(action: {
+                                    UIPasteboard.general.string = log
+                                    withAnimation { toastText = "已复制到剪贴板" }
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "doc.on.doc")
+                                            .font(.system(size: 12))
+                                        Text("复制")
+                                            .font(.system(size: 13, weight: .medium))
                                     }
+                                    .foregroundStyle(AppTheme.accent)
+                                }
 
-                                    Button(action: {
-                                        CrashLogger.shared.clearLog()
-                                        withAnimation { toastText = "日志已清空" }
-                                    }) {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "trash")
-                                                .font(.system(size: 12))
-                                            Text("清空")
-                                                .font(.system(size: 13, weight: .medium))
-                                        }
-                                        .foregroundStyle(Color.red.opacity(0.8))
+                                Button(action: {
+                                    CrashLogger.shared.clearLog()
+                                    withAnimation { toastText = "日志已清空" }
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "trash")
+                                            .font(.system(size: 12))
+                                        Text("清空")
+                                            .font(.system(size: 13, weight: .medium))
                                     }
+                                    .foregroundStyle(Color.red.opacity(0.8))
                                 }
-                            } else {
-                                HStack {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundStyle(AppTheme.green)
-                                    Text("暂无崩溃记录")
-                                        .font(.subheadline)
-                                        .foregroundStyle(Color.white.opacity(0.5))
-                                }
+                            }
+                        } else {
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(AppTheme.green)
+                                Text("暂无崩溃记录")
+                                    .font(.subheadline)
+                                    .foregroundStyle(Color.white.opacity(0.5))
                             }
                         }
                     }
