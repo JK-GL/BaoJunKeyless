@@ -1,14 +1,12 @@
 import SwiftUI
 import UIKit
 
-// MARK: - 雷达（静态背景图层 + 动态车图层）
+// MARK: - 雷达（静态背景图层 + 动态车标图层）
 
 struct StarParticle { var x: Double; var y: Double; var size: Double; var alpha: Double }
 
 final class RadarUIView: UIView {
     private let sz: CGFloat = 280
-    private var pitch: Double = 0
-    private var roll: Double = 0
 
     var relativeAngle: Double = 0
     var distance: Double = 0
@@ -19,9 +17,9 @@ final class RadarUIView: UIView {
     private let carImageView = UIImageView()
     private var memoryWarningObserver: NSObjectProtocol?
     private var stars: [StarParticle] = []
-    private var lastCacheSize: CGSize = .zero
     private var displayedCarCenter: CGPoint = .zero
     private var displayedCarSize: CGFloat = 34
+    private var lastBackgroundSize: CGSize = .zero
     private var carOnlineImage: UIImage?
 
     private static let carImageURL = URL(string: "https://cdn-df.00bang.cn/images/T1Dw_TBTEv1RCvBVdK.png")!
@@ -56,24 +54,35 @@ final class RadarUIView: UIView {
 
     override var intrinsicContentSize: CGSize { CGSize(width: sz, height: sz) }
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil {
+            releaseHeavyResources()
+        } else {
+            restoreDynamicResourcesIfNeeded()
+            setNeedsLayout()
+        }
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
+        layer.cornerRadius = min(bounds.width, bounds.height) / 2
+        layer.masksToBounds = true
         backgroundImageView.frame = bounds
 
-        if backgroundImageView.image == nil || lastCacheSize != bounds.size {
+        if backgroundImageView.image == nil || lastBackgroundSize != bounds.size {
             rebuildStaticBackground(bounds.size)
         }
 
         if displayedCarCenter == .zero {
             displayedCarCenter = CGPoint(x: bounds.midX, y: bounds.midY)
         }
-        updatePosition(force: true)
+        updateMarker(force: true)
     }
 
     private func setup() {
         isOpaque = false
         backgroundColor = .clear
-        clipsToBounds = false
 
         stars = (0..<50).map { _ in
             StarParticle(
@@ -85,26 +94,19 @@ final class RadarUIView: UIView {
         }
 
         backgroundImageView.contentMode = .scaleToFill
-        backgroundImageView.clipsToBounds = true
+        backgroundImageView.isUserInteractionEnabled = false
         addSubview(backgroundImageView)
 
-        glowView.isUserInteractionEnabled = false
         glowView.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.12)
-        glowView.layer.cornerCurve = .continuous
-        glowView.isHidden = !AppDiagnosticsSettings.isRadarGradientEnabled
+        glowView.isHidden = true
+        glowView.isUserInteractionEnabled = false
         addSubview(glowView)
 
         carImageView.contentMode = .scaleAspectFit
-        carImageView.clipsToBounds = false
+        carImageView.isUserInteractionEnabled = false
         addSubview(carImageView)
 
-        if let shared = Self.sharedCarImage {
-            carOnlineImage = shared
-            carImageView.image = shared
-        } else {
-            carImageView.image = UIImage(systemName: "car.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
-            loadCarImage()
-        }
+        restoreDynamicResourcesIfNeeded()
 
         memoryWarningObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification,
@@ -112,22 +114,42 @@ final class RadarUIView: UIView {
             queue: .main
         ) { [weak self] _ in
             CrashLogger.shared.mark("Radar", "memoryWarning")
-            self?.backgroundImageView.image = nil
-            self?.lastCacheSize = .zero
+            Self.staticBackgroundCache.removeAll()
+            self?.releaseHeavyResources()
         }
     }
 
     func updateGyro(pitch: Double, roll: Double) {
-        self.pitch = pitch
-        self.roll = roll
-    }
-
-    func clearTransientCache() {
-        backgroundImageView.image = nil
-        lastCacheSize = .zero
+        // 当前雷达样式中未直接使用陀螺仪角，但保留接口以兼容上层调用。
     }
 
     func updatePosition(force: Bool = false) {
+        updateMarker(force: force)
+    }
+
+    func clearTransientCache() {
+        releaseHeavyResources()
+    }
+
+    func releaseHeavyResources() {
+        backgroundImageView.image = nil
+        glowView.layer.removeAllAnimations()
+        glowView.isHidden = true
+        carImageView.layer.removeAllAnimations()
+        lastBackgroundSize = .zero
+    }
+
+    private func restoreDynamicResourcesIfNeeded() {
+        if let shared = Self.sharedCarImage {
+            carOnlineImage = shared
+            carImageView.image = shared
+        } else if carImageView.image == nil {
+            carImageView.image = UIImage(systemName: "car.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
+            loadCarImage()
+        }
+    }
+
+    private func updateMarker(force: Bool) {
         guard bounds.width > 0 else { return }
 
         let cx = bounds.midX
@@ -137,53 +159,50 @@ final class RadarUIView: UIView {
         let targetRadius = r * 0.15 + CGFloat(norm) * (r * 0.7)
         let angle = relativeAngle * .pi / 180 - .pi / 2
         let targetCenter = CGPoint(
-            x: cx + targetRadius * CGFloat(cos(angle)),
-            y: cy + targetRadius * CGFloat(sin(angle))
+            x: cx + targetRadius * cos(angle),
+            y: cy + targetRadius * sin(angle)
         )
         let targetSize = max(sz * (0.28 - 0.15 * CGFloat(norm)), 34)
 
-        let nextCenter: CGPoint
-        let nextSize: CGFloat
         if force || displayedCarCenter == .zero {
-            nextCenter = targetCenter
-            nextSize = targetSize
+            displayedCarCenter = targetCenter
+            displayedCarSize = targetSize
         } else {
             let dx = targetCenter.x - displayedCarCenter.x
             let dy = targetCenter.y - displayedCarCenter.y
-            nextCenter = CGPoint(
+            displayedCarCenter = CGPoint(
                 x: displayedCarCenter.x + dx * 0.22,
                 y: displayedCarCenter.y + dy * 0.22
             )
-            nextSize = displayedCarSize + (targetSize - displayedCarSize) * 0.22
+            displayedCarSize += (targetSize - displayedCarSize) * 0.22
         }
 
-        displayedCarCenter = nextCenter
-        displayedCarSize = nextSize
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
 
-        let glowSize = displayedCarSize * 1.8
-        glowView.isHidden = !AppDiagnosticsSettings.isRadarGradientEnabled
-        glowView.frame = CGRect(
-            x: displayedCarCenter.x - glowSize / 2,
-            y: displayedCarCenter.y - glowSize / 2,
-            width: glowSize,
-            height: glowSize
-        )
-        glowView.layer.cornerRadius = glowSize / 2
-        glowView.alpha = AppDiagnosticsSettings.isRadarGradientEnabled ? 1 : 0
+        carImageView.bounds = CGRect(x: 0, y: 0, width: displayedCarSize, height: displayedCarSize)
+        carImageView.center = displayedCarCenter
 
-        carImageView.frame = CGRect(
-            x: displayedCarCenter.x - displayedCarSize / 2,
-            y: displayedCarCenter.y - displayedCarSize / 2,
-            width: displayedCarSize,
-            height: displayedCarSize
-        )
+        if AppDiagnosticsSettings.isRadarGradientEnabled {
+            let glowSize = displayedCarSize * 1.8
+            glowView.isHidden = false
+            glowView.bounds = CGRect(x: 0, y: 0, width: glowSize, height: glowSize)
+            glowView.center = displayedCarCenter
+            glowView.layer.cornerRadius = glowSize / 2
+            glowView.alpha = 1
+        } else {
+            glowView.isHidden = true
+            glowView.alpha = 0
+        }
+
+        CATransaction.commit()
     }
 
     private func rebuildStaticBackground(_ size: CGSize) {
         let key = "\(Int(size.width))x\(Int(size.height))"
         if let cached = Self.staticBackgroundCache[key] {
             backgroundImageView.image = cached
-            lastCacheSize = size
+            lastBackgroundSize = size
             return
         }
 
@@ -243,7 +262,7 @@ final class RadarUIView: UIView {
 
         Self.staticBackgroundCache[key] = image
         backgroundImageView.image = image
-        lastCacheSize = size
+        lastBackgroundSize = size
     }
 
     private func loadCarImage() {
@@ -277,7 +296,7 @@ final class RadarUIView: UIView {
             DispatchQueue.main.async { [weak self] in
                 self?.carOnlineImage = finalImage
                 self?.carImageView.image = finalImage
-                self?.updatePosition(force: true)
+                self?.updateMarker(force: true)
             }
         }
         task.resume()
@@ -341,6 +360,10 @@ struct RadarRepresentable: UIViewRepresentable {
         view.bleConnected = bleConnected
         view.updatePosition()
     }
+
+    static func dismantleUIView(_ uiView: RadarUIView, coordinator: ()) {
+        uiView.releaseHeavyResources()
+    }
 }
 
 // MARK: - Radar Card（文字全部用 SwiftUI Text）
@@ -357,7 +380,6 @@ struct RadarCardView: View {
             ZStack {
                 RadarRepresentable(motion: motion, locationManager: locationManager, bleConnected: bleConnected)
                     .frame(width: 280, height: 280)
-                    .clipShape(Circle())
 
                 PsychicScanView(size: 280)
 
