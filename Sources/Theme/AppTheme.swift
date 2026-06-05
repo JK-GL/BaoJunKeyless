@@ -119,7 +119,6 @@ enum AppThemeStorage {
 
     private static var cachedBackgroundData: Data?
     private static var cachedBackgroundRevision: Int = .min
-    private static var cachedBackgroundImage: UIImage?
 
     static func customAccent(from data: Data) -> Color {
         guard !data.isEmpty, let persisted = try? JSONDecoder().decode(PersistedThemeColor.self, from: data) else {
@@ -145,24 +144,7 @@ enum AppThemeStorage {
         return data
     }
 
-    static func backgroundImage(revision: Int) -> UIImage? {
-        if cachedBackgroundRevision == revision { return cachedBackgroundImage }
-        guard let data = backgroundImageData(revision: revision), let full = UIImage(data: data) else {
-            cachedBackgroundImage = nil
-            return nil
-        }
-        let maxSide: CGFloat = 1280
-        let largest = max(full.size.width, full.size.height)
-        if largest <= maxSide {
-            cachedBackgroundImage = full
-        } else {
-            let scale = maxSide / largest
-            let target = CGSize(width: full.size.width * scale, height: full.size.height * scale)
-            let renderer = UIGraphicsImageRenderer(size: target)
-            cachedBackgroundImage = renderer.image { _ in full.draw(in: CGRect(origin: .zero, size: target)) }
-        }
-        return cachedBackgroundImage
-    }
+
 
     static func saveBackgroundImageData(_ data: Data) throws {
         guard let url = backgroundImageURL() else {
@@ -193,7 +175,7 @@ enum AppThemeStorage {
 struct AppThemeConfiguration {
     let preset: AppThemePreset
     let customAccent: Color
-    let customBackgroundImage: UIImage?
+    let customBackgroundImageData: Data?
     let customBackgroundRevision: Int
     let customBackgroundBlur: CGFloat
 
@@ -201,13 +183,13 @@ struct AppThemeConfiguration {
     var gradientColors: [Color] { preset.presetGradientColors }
     var primaryGlow: Color { preset == .custom ? customAccent.opacity(0.28) : preset.presetPrimaryGlow }
     var secondaryGlow: Color { preset.presetSecondaryGlow }
-    var hasCustomBackgroundImage: Bool { customBackgroundImage != nil }
+    var hasCustomBackgroundImage: Bool { !(customBackgroundImageData?.isEmpty ?? true) }
 
     init(selectedThemeRawValue: String, customAccentData: Data, customBackgroundRevision: Int, customBackgroundBlur: Double = 0) {
         preset = AppThemePreset.resolve(from: selectedThemeRawValue)
         customAccent = AppThemeStorage.customAccent(from: customAccentData)
-        self.customBackgroundRevision = customBackgroundRevision
-        customBackgroundImage = preset == .custom ? AppThemeStorage.backgroundImage(revision: customBackgroundRevision) : nil
+        let storedBackgroundData = customBackgroundRevision >= 0 ? AppThemeStorage.backgroundImageData(revision: customBackgroundRevision) : nil
+        customBackgroundImageData = preset == .custom ? storedBackgroundData : nil
         self.customBackgroundBlur = CGFloat(min(max(customBackgroundBlur, 0), 36))
     }
 }

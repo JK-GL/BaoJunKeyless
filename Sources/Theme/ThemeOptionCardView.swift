@@ -8,9 +8,6 @@ struct ThemeOptionCardView: View {
     let theme: AppThemeConfiguration
     let isSelected: Bool
 
-    @State private var previewCacheKey: Int = .min
-    @State private var cachedPreviewImage: Image?
-
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             ZStack(alignment: .topTrailing) {
@@ -75,27 +72,18 @@ struct ThemeOptionCardView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(isSelected ? theme.accent.opacity(0.36) : Color.white.opacity(0.06), lineWidth: 1)
         )
-        .onAppear { refreshCacheIfNeeded() }
-        .onChange(of: theme.customBackgroundRevision) { _ in refreshCacheIfNeeded() }
     }
 
-    private func refreshCacheIfNeeded() {
-        let key = theme.customBackgroundRevision
-        if previewCacheKey == key { return }
-        previewCacheKey = key
-        #if canImport(UIKit)
-        if let uiImage = theme.customBackgroundImage {
-            cachedPreviewImage = Image(uiImage: uiImage)
-        } else {
-            cachedPreviewImage = nil
-        }
-        #endif
-    }
-
+    #if canImport(UIKit)
     private var previewImage: Image? {
-        if previewCacheKey != theme.customBackgroundRevision {
-            refreshCacheIfNeeded()
+        guard let data = theme.customBackgroundImageData,
+              let uiImage = UIImage(data: data)
+        else {
+            return nil
         }
-        return cachedPreviewImage
+        return Image(uiImage: uiImage)
     }
+    #else
+    private var previewImage: Image? { nil }
+    #endif
 }

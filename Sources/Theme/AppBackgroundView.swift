@@ -11,9 +11,6 @@ struct AppBackgroundView: View {
     @AppStorage(AppThemeStorage.customBackgroundRevisionKey) private var customBackgroundRevision = 0
     @AppStorage(AppThemeStorage.customBackgroundBlurKey) private var customBackgroundBlur = 0.0
 
-    @State private var cachedThemeRevision: Int = .min
-    @State private var cachedBackgroundImage: Image?
-
     private var theme: AppThemeConfiguration {
         AppThemeConfiguration(
             selectedThemeRawValue: selectedThemeRawValue,
@@ -71,30 +68,18 @@ struct AppBackgroundView: View {
         .ignoresSafeArea()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(false)
-        .onAppear { updateCacheIfNeeded() }
-        .onChange(of: selectedThemeRawValue) { _ in updateCacheIfNeeded() }
-        .onChange(of: customAccentData) { _ in updateCacheIfNeeded() }
-        .onChange(of: customBackgroundRevision) { _ in updateCacheIfNeeded() }
-        .onChange(of: customBackgroundBlur) { _ in updateCacheIfNeeded() }
     }
 
-    private func updateCacheIfNeeded() {
-        guard cachedThemeRevision != customBackgroundRevision else { return }
-        CrashLogger.shared.mark("ThemeBG", "cacheRefresh", details: "revision=\(customBackgroundRevision)")
-        cachedThemeRevision = customBackgroundRevision
-        #if canImport(UIKit)
-        if let uiImage = theme.customBackgroundImage {
-            cachedBackgroundImage = Image(uiImage: uiImage)
-        } else {
-            cachedBackgroundImage = nil
-        }
-        #endif
-    }
-
+    #if canImport(UIKit)
     private var backgroundImage: Image? {
-        if cachedThemeRevision != customBackgroundRevision {
-            updateCacheIfNeeded()
+        guard let data = theme.customBackgroundImageData,
+              let uiImage = UIImage(data: data)
+        else {
+            return nil
         }
-        return cachedBackgroundImage
+        return Image(uiImage: uiImage)
     }
+    #else
+    private var backgroundImage: Image? { nil }
+    #endif
 }
