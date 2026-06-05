@@ -6,7 +6,20 @@ import UIKit
 
 /// 应用全局背景层，提供统一的渐变和光斑氛围。
 struct AppBackgroundView: View {
-    @EnvironmentObject var theme: ThemeManager
+    @AppStorage(AppThemePreset.storageKey) private var selectedThemeRawValue = AppThemePreset.midnight.rawValue
+    @AppStorage(AppThemeStorage.customAccentDataKey) private var customAccentData = Data()
+    @AppStorage(AppThemeStorage.customBackgroundRevisionKey) private var customBackgroundRevision = 0
+    @AppStorage(AppThemeStorage.customBackgroundBlurKey) private var customBackgroundBlur = 0.0
+    @State private var updateToken: Int = 0
+
+    private var theme: AppThemeConfiguration {
+        AppThemeConfiguration(
+            selectedThemeRawValue: selectedThemeRawValue,
+            customAccentData: customAccentData,
+            customBackgroundRevision: customBackgroundRevision,
+            customBackgroundBlur: customBackgroundBlur
+        )
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -18,7 +31,7 @@ struct AppBackgroundView: View {
                         .antialiased(true)
                         .scaledToFill()
                         .frame(width: proxy.size.width, height: proxy.size.height)
-                        .blur(radius: theme.current.customBackgroundBlur)
+                        .blur(radius: theme.customBackgroundBlur)
                         .clipped()
 
                     LinearGradient(
@@ -33,20 +46,20 @@ struct AppBackgroundView: View {
                 }
 
                 LinearGradient(
-                    colors: theme.current.gradientColors,
+                    colors: theme.gradientColors,
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
                 .opacity(backgroundImage == nil ? 1 : 0.56)
 
                 Circle()
-                    .fill(theme.current.primaryGlow)
+                    .fill(theme.primaryGlow)
                     .frame(width: 320, height: 320)
                     .blur(radius: 80)
                     .offset(x: -120, y: -260)
 
                 Circle()
-                    .fill(theme.current.secondaryGlow)
+                    .fill(theme.secondaryGlow)
                     .frame(width: 300, height: 300)
                     .blur(radius: 86)
                     .offset(x: 140, y: 120)
@@ -56,16 +69,16 @@ struct AppBackgroundView: View {
         .ignoresSafeArea()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(false)
-        .onAppear { theme.refreshBackgroundImageIfNeeded() }
-        .onChange(of: theme.selectedThemeRawValue) { _ in theme.refreshBackgroundImageIfNeeded() }
-        .onChange(of: theme.customBackgroundRevision) { _ in theme.refreshBackgroundImageIfNeeded() }
-        .onChange(of: theme.customBackgroundBlur) { _ in theme.refreshBackgroundImageIfNeeded() }
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+            updateToken &+= 1
+        }
     }
 
     #if canImport(UIKit)
     private var backgroundImage: Image? {
-        guard theme.selectedThemeRawValue == "custom",
-              let uiImage = theme.cachedBackgroundUIImage
+        _ = updateToken
+        guard let data = theme.customBackgroundImageData,
+              let uiImage = UIImage(data: data)
         else {
             return nil
         }
