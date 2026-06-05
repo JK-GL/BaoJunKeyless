@@ -5,17 +5,19 @@ import CoreLocation
 class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
 
-    @Published var phoneLocation: CLLocation?
-    @Published var heading: CLLocationDirection = 0  // 手机朝向角度
+    private var phoneLocation: CLLocation?
+    private var heading: CLLocationDirection = 0  // 手机朝向角度
 
     // 车辆坐标（从 MQTT/API 获取后设置）
-    @Published var carLatitude: Double = 0
-    @Published var carLongitude: Double = 0
+    private var carLatitude: Double = 0
+    private var carLongitude: Double = 0
 
     // 计算结果
-    @Published var distance: CLLocationDistance = 0   // 距离（米）
-    @Published var bearing: CLLocationDirection = 0   // 方位角（度）
-    @Published var relativeAngle: CLLocationDirection = 0  // 相对角度（雷达上显示）
+    @Published private(set) var distance: CLLocationDistance = 0   // 距离（米）
+    @Published private(set) var relativeAngle: CLLocationDirection = 0  // 相对角度（雷达上显示）
+
+    private var lastPublishedDistance: CLLocationDistance = -1
+    private var lastPublishedRelativeAngle: CLLocationDirection = -1
 
     override init() {
         super.init()
@@ -51,13 +53,25 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         guard let phone = phoneLocation else { return }
 
         let carLoc = CLLocation(latitude: carLatitude, longitude: carLongitude)
-        distance = phone.distance(from: carLoc)
+        let nextDistance = phone.distance(from: carLoc)
 
         // 方位角：从手机到车辆
-        bearing = calculateBearing(from: phone, to: carLoc)
+        let nextBearing = calculateBearing(from: phone, to: carLoc)
 
         // 相对角度：车辆方位 - 手机朝向（映射到雷达 360°）
-        relativeAngle = normalizeAngle(bearing - heading)
+        let nextRelativeAngle = normalizeAngle(nextBearing - heading)
+
+        // 保留连续 heading 采样，但不要把每个微小传感器抖动都发布给 SwiftUI。
+        // 0.25° 已远小于之前导致卡顿的 5°，肉眼仍连续，但能显著减少 13mini 高频刷新压力。
+        if lastPublishedDistance < 0 || abs(nextDistance - lastPublishedDistance) >= 0.25 {
+            distance = nextDistance
+            lastPublishedDistance = nextDistance
+        }
+
+        if lastPublishedRelativeAngle < 0 || angleDelta(nextRelativeAngle, lastPublishedRelativeAngle) >= 0.25 {
+            relativeAngle = nextRelativeAngle
+            lastPublishedRelativeAngle = nextRelativeAngle
+        }
     }
 
     // MARK: - Haversine 方位角计算
@@ -70,6 +84,11 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
         let bearing = atan2(y, x) * 180 / .pi
         return normalizeAngle(bearing)
+    }
+
+    private func angleDelta(_ a: Double, _ b: Double) -> Double {
+        let raw = abs(a - b).truncatingRemainder(dividingBy: 360)
+        return min(raw, 360 - raw)
     }
 
     private func normalizeAngle(_ angle: Double) -> Double {
