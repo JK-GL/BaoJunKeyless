@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 // MARK: - Settings View (Tab 4 — XMusic SettingsPanelView style)
 struct SettingsView: View {
@@ -14,6 +15,9 @@ struct SettingsView: View {
     @State private var isCustomEditorExpanded = false
     @State private var isPhotoPickerPresented = false
     @State private var isCrashLogExpanded = false
+    @State private var crashLogText: String = ""
+    @State private var crashLogTimerCancellable: Cancellable?
+    @State private var crashLogTimer: Timer.TimerPublisher = Timer.publish(every: 1.0, on: .main, in: .common)
 
     private var currentTheme: AppThemeConfiguration {
         AppThemeConfiguration(selectedThemeRawValue: themeRaw, customAccentData: accentData,
@@ -79,95 +83,140 @@ struct SettingsView: View {
                         }
                     }
 
-                    // Crash Log（可折叠、可滚动）
-                    CollapsibleCard(
-                        title: "崩溃日志",
-                        icon: "ladybug.fill",
-                        iconColor: Color.red.opacity(0.85),
-                        isExpanded: $isCrashLogExpanded,
-                        headerExtra: {
+                    // Crash Log（整行点击展开、实时刷新）
+                    VStack(alignment: .leading, spacing: 0) {
+                        Button {
+                            withAnimation(.spring(response: 0.28)) { isCrashLogExpanded.toggle() }
+                        } label: {
                             HStack(spacing: 8) {
-                                if CrashLogger.shared.readLog()?.isEmpty == false {
-                                    Text("有记录")
-                                        .font(.caption2)
-                                        .foregroundStyle(Color.orange.opacity(0.9))
-                                } else {
+                                Image(systemName: "ladybug.fill")
+                                    .foregroundStyle(Color.red.opacity(0.85))
+                                    .font(.system(size: 15, weight: .semibold))
+                                Text("崩溃日志")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.white)
+
+                                Spacer()
+
+                                if crashLogText.isEmpty {
                                     Text("无记录")
                                         .font(.caption2)
                                         .foregroundStyle(Color.white.opacity(0.45))
+                                } else {
+                                    Text("有记录")
+                                        .font(.caption2)
+                                        .foregroundStyle(Color.orange.opacity(0.9))
                                 }
 
                                 Toggle(
                                     "",
                                     isOn: Binding(
                                         get: { CrashLogger.shared.isLoggingEnabled },
-                                        set: { CrashLogger.shared.setLoggingEnabled($0) }
+                                        set: { newValue in
+                                            CrashLogger.shared.setLoggingEnabled(newValue)
+                                            refreshCrashLog()
+                                        }
                                     )
                                 )
                                 .labelsHidden()
                                 .toggleStyle(.switch)
                                 .scaleEffect(0.7)
+
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(Color.white.opacity(0.62))
+                                    .rotationEffect(.degrees(isCrashLogExpanded ? 90 : 0))
                             }
+                            .padding(16)
+                            .contentShape(Rectangle())
                         }
-                    ) {
-                        if let log = CrashLogger.shared.readLog(), !log.isEmpty {
-                            ScrollView(.vertical, showsIndicators: true) {
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    Text(log)
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .foregroundStyle(Color.white.opacity(0.62))
-                                        .padding(10)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                            }
-                            .frame(maxHeight: 260)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(Color.white.opacity(0.04))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                            )
+                        .buttonStyle(.plain)
 
-                            HStack(spacing: 12) {
-                                Button(action: {
-                                    UIPasteboard.general.string = log
-                                    withAnimation { toastText = "已复制到剪贴板" }
-                                }) {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "doc.on.doc")
-                                            .font(.system(size: 12))
-                                        Text("复制")
-                                            .font(.system(size: 13, weight: .medium))
-                                    }
-                                    .foregroundStyle(AppTheme.accent)
-                                }
+                        if isCrashLogExpanded {
+                            Divider().background(Color.white.opacity(0.08))
 
-                                Button(action: {
-                                    CrashLogger.shared.clearLog()
-                                    withAnimation { toastText = "日志已清空" }
-                                }) {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "trash")
-                                            .font(.system(size: 12))
-                                        Text("清空")
-                                            .font(.system(size: 13, weight: .medium))
+                            VStack(alignment: .leading, spacing: 10) {
+                                if crashLogText.isEmpty {
+                                    HStack {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(AppTheme.green)
+                                            .font(.system(size: 14))
+                                        Text("暂无崩溃记录")
+                                            .font(.subheadline)
+                                            .foregroundStyle(Color.white.opacity(0.5))
                                     }
-                                    .foregroundStyle(Color.red.opacity(0.8))
+                                } else {
+                                    ScrollView(.vertical, showsIndicators: true) {
+                                        ScrollView(.horizontal, showsIndicators: false) {
+                                            Text(crashLogText)
+                                                .font(.system(size: 10, design: .monospaced))
+                                                .foregroundStyle(Color.white.opacity(0.62))
+                                                .padding(10)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                    }
+                                    .frame(maxHeight: 260)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .fill(Color.white.opacity(0.04))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                                    )
+
+                                    HStack(spacing: 12) {
+                                        Button {
+                                            UIPasteboard.general.string = crashLogText
+                                            withAnimation { toastText = "已复制到剪贴板" }
+                                        } label: {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "doc.on.doc")
+                                                    .font(.system(size: 12))
+                                                Text("复制")
+                                                    .font(.system(size: 13, weight: .medium))
+                                            }
+                                            .foregroundStyle(AppTheme.accent)
+                                        }
+
+                                        Button {
+                                            CrashLogger.shared.clearLog()
+                                            refreshCrashLog()
+                                            withAnimation { toastText = "日志已清空" }
+                                        } label: {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "trash")
+                                                    .font(.system(size: 12))
+                                                Text("清空")
+                                                    .font(.system(size: 13, weight: .medium))
+                                            }
+                                            .foregroundStyle(Color.red.opacity(0.8))
+                                        }
+                                    }
                                 }
                             }
-                        } else {
-                            HStack {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(AppTheme.green)
-                                Text("暂无崩溃记录")
-                                    .font(.subheadline)
-                                    .foregroundStyle(Color.white.opacity(0.5))
-                            }
+                            .padding(16)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
+                    .background(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .fill(Color.white.opacity(0.06))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+                    .padding(.horizontal, 18)
+                    .onAppear {
+                        refreshCrashLog()
+                        crashLogTimerCancellable = crashLogTimer.connect()
+                    }
+                    .onDisappear {
+                        crashLogTimerCancellable?.cancel()
+                        crashLogTimerCancellable = nil
+                    }
+                    .onReceive(crashLogTimer) { _ in refreshCrashLog() }
 
                     // Reset Button
                     VStack(spacing: 12) {
@@ -294,6 +343,13 @@ struct SettingsView: View {
                                      customAccentData: data,
                                      customBackgroundRevision: bgRevision,
                                      customBackgroundBlur: bgBlur)
+    }
+
+    private func refreshCrashLog() {
+        let newText = CrashLogger.shared.readLog() ?? ""
+        if crashLogText != newText {
+            crashLogText = newText
+        }
     }
 }
 
