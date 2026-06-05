@@ -97,7 +97,7 @@ struct SettingsView: View {
                         } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: "ladybug.fill")
-                                    .foregroundStyle(theme.accent)
+                                    .foregroundStyle(Color.red.opacity(0.85))
                                     .font(.system(size: 15, weight: .semibold))
                                 Text("崩溃日志")
                                     .font(.system(size: 15, weight: .semibold))
@@ -123,18 +123,18 @@ struct SettingsView: View {
                                     if crashLogText.isEmpty {
                                         Text("暂无记录")
                                             .font(.caption2)
-                                            .foregroundStyle(theme.textTertiary)
+                                            .foregroundStyle(Color.white.opacity(0.45))
                                     } else {
                                         Text("有记录")
                                             .font(.caption2)
-                                            .foregroundStyle(theme.accent)
+                                            .foregroundStyle(Color.orange.opacity(0.9))
                                     }
 
                                     Spacer()
 
                                     Text("记录开关")
                                         .font(.caption2)
-                                        .foregroundStyle(theme.textTertiary)
+                                        .foregroundStyle(Color.white.opacity(0.45))
 
                                     Toggle(
                                         "",
@@ -203,7 +203,7 @@ struct SettingsView: View {
                                             Text("清空")
                                                 .font(.system(size: 13, weight: .medium))
                                         }
-                                        .foregroundStyle(theme.accent)
+                                        .foregroundStyle(Color.red.opacity(0.8))
                                     }
                                 }
                             }
