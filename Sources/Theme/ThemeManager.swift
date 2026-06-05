@@ -18,7 +18,18 @@ class ThemeManager: ObservableObject {
     @AppStorage(AppThemeStorage.customBackgroundRevisionKey) var customBackgroundRevision = 0
     @AppStorage(AppThemeStorage.customBackgroundBlurKey) var customBackgroundBlur: Double = 0
 
+    // 缓存的背景 UIImage，跨 tab 持久
+    private(set) var cachedBackgroundUIImage: UIImage?
+    private var cachedBackgroundRevision: Int = .min
+
     init() {}
+
+    func refreshBackgroundImageIfNeeded() {
+        let rev = customBackgroundRevision
+        if cachedBackgroundRevision == rev { return }
+        cachedBackgroundRevision = rev
+        cachedBackgroundUIImage = AppThemeStorage.cachedUIImage(for: rev)
+    }
 
     var current: AppThemeConfiguration {
         AppThemeConfiguration(
