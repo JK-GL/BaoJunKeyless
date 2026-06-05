@@ -27,6 +27,7 @@ final class RadarUIView: UIView {
     private var lastDisplayLinkTimestamp: CFTimeInterval = 0
     private var lastBackgroundSize: CGSize = .zero
     private var carOnlineImage: UIImage?
+    private var isUsingSFSymbolCar = false
 
     private static let carImageURL = URL(string: "https://cdn-df.00bang.cn/images/T1Dw_TBTEv1RCvBVdK.png")!
     private static var sharedCarImage: UIImage?
@@ -130,6 +131,7 @@ final class RadarUIView: UIView {
     }
 
     func updatePosition(force: Bool = false) {
+        restoreDynamicResourcesIfNeeded()
         updateMarker(force: force)
     }
 
@@ -147,6 +149,26 @@ final class RadarUIView: UIView {
     }
 
     private func restoreDynamicResourcesIfNeeded() {
+        let useSFSymbol = AppDiagnosticsSettings.shouldUseSFRadarCarIcon
+        if useSFSymbol {
+            if !isUsingSFSymbolCar || carImageView.image == nil {
+                Self.sharedCarImage = nil
+                URLCache.shared.removeAllCachedResponses()
+                isUsingSFSymbolCar = true
+                carOnlineImage = nil
+                carImageView.image = UIImage(systemName: "car.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
+                if AppDiagnosticsSettings.isDiagnosticsEnabled {
+                    CrashLogger.shared.mark("RadarCar", "useSFSymbol")
+                }
+            }
+            return
+        }
+
+        if isUsingSFSymbolCar {
+            isUsingSFSymbolCar = false
+            carImageView.image = nil
+        }
+
         if let shared = Self.sharedCarImage {
             carOnlineImage = shared
             carImageView.image = shared
@@ -325,6 +347,7 @@ final class RadarUIView: UIView {
     }
 
     private func loadCarImage() {
+        guard !AppDiagnosticsSettings.shouldUseSFRadarCarIcon else { return }
         CrashLogger.shared.mark("Radar", "loadCarImage:start")
         if Self.sharedCarImageLoadInFlight { return }
         Self.sharedCarImageLoadInFlight = true
@@ -353,6 +376,7 @@ final class RadarUIView: UIView {
                 )
             }
             DispatchQueue.main.async { [weak self] in
+                guard !AppDiagnosticsSettings.shouldUseSFRadarCarIcon else { return }
                 self?.carOnlineImage = finalImage
                 self?.carImageView.image = finalImage
                 self?.updateMarker(force: true)
@@ -404,7 +428,6 @@ struct ScanRing: View {
 
 // MARK: - SwiftUI 封装
 struct RadarRepresentable: UIViewRepresentable {
-    @ObservedObject var motion: MotionManager
     @ObservedObject var locationManager: LocationManager
     var bleConnected: Bool = false
 
@@ -413,7 +436,6 @@ struct RadarRepresentable: UIViewRepresentable {
     }
 
     func updateUIView(_ view: RadarUIView, context: Context) {
-        view.updateGyro(pitch: motion.pitch, roll: motion.roll)
         view.relativeAngle = locationManager.relativeAngle
         view.distance = locationManager.distance
         view.bleConnected = bleConnected
@@ -428,7 +450,6 @@ struct RadarRepresentable: UIViewRepresentable {
 // MARK: - Radar Card（文字全部用 SwiftUI Text）
 struct RadarCardView: View {
     @EnvironmentObject var theme: ThemeManager
-    @ObservedObject var motion: MotionManager
     @ObservedObject var locationManager: LocationManager
     @State private var bleConnected = false
     private let carLat = 22.635842
@@ -437,7 +458,7 @@ struct RadarCardView: View {
     var body: some View {
         VStack(spacing: 12) {
             ZStack {
-                RadarRepresentable(motion: motion, locationManager: locationManager, bleConnected: bleConnected)
+                RadarRepresentable(locationManager: locationManager, bleConnected: bleConnected)
                     .frame(width: 280, height: 280)
 
                 PsychicScanView(size: 280)

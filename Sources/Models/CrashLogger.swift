@@ -177,7 +177,8 @@ class CrashLogger {
             "bgOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableBackgroundImageKey))",
             "blurOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableBackgroundBlurKey))",
             "previewOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableThemePreviewKey))",
-            "radarOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableRadarKey))"
+            "radarOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableRadarKey))",
+            "sfCar=\(defaults.bool(forKey: AppDiagnosticsSettings.useSFRadarCarIconKey))"
         ].joined(separator: " | ")
         mark("Diagnostics", "snapshot", details: details, file: file, line: line)
     }

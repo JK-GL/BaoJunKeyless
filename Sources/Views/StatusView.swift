@@ -60,7 +60,6 @@ struct StatusView: View {
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var settingsStore: KeylessSettingsStore
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
-    @StateObject private var motion = MotionManager()
     @StateObject private var locationManager = LocationManager()
     @State private var isRefreshing = false
     @State private var refreshScale: CGFloat = 1.0
@@ -107,7 +106,7 @@ struct StatusView: View {
                             .foregroundColor(.secondary)
                     }
                 } else {
-                    RadarCardView(motion: motion, locationManager: locationManager)
+                    RadarCardView(locationManager: locationManager)
                 }
                 QuickActionsView()
                 RangeCardView()
@@ -123,11 +122,9 @@ struct StatusView: View {
             scrollState.reset()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
-            motion.pause()
             locationManager.pause()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            motion.resume()
             locationManager.resume()
         }
     }
