@@ -276,7 +276,9 @@ struct RadarRepresentable: UIViewRepresentable {
     var bleConnected: Bool = false
 
     func makeUIView(context: Context) -> RadarUIView {
-        RadarUIView(frame: .zero)
+        let v = RadarUIView(frame: .zero)
+        context.coordinator.radarView = v
+        return v
     }
 
     func updateUIView(_ v: RadarUIView, context: Context) {
@@ -285,6 +287,12 @@ struct RadarRepresentable: UIViewRepresentable {
         v.distance = locationManager.distance
         v.bleConnected = bleConnected
         v.updatePosition()
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator {
+        weak var radarView: RadarUIView?
     }
 }
 

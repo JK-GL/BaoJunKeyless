@@ -119,6 +119,7 @@ enum AppThemeStorage {
 
     private static var cachedBackgroundData: Data?
     private static var cachedBackgroundRevision: Int = .min
+    private static var cachedBackgroundImage: UIImage?
 
     static func customAccent(from data: Data) -> Color {
         guard !data.isEmpty, let persisted = try? JSONDecoder().decode(PersistedThemeColor.self, from: data) else {
@@ -142,6 +143,13 @@ enum AppThemeStorage {
         cachedBackgroundData = data
         cachedBackgroundRevision = revision
         return data
+    }
+
+    static func backgroundImage(revision: Int) -> UIImage? {
+        if cachedBackgroundRevision == revision { return cachedBackgroundImage }
+        let data = backgroundImageData(revision: revision)
+        cachedBackgroundImage = data.flatMap { UIImage(data: $0) }
+        return cachedBackgroundImage
     }
 
     static func saveBackgroundImageData(_ data: Data) throws {
@@ -173,7 +181,7 @@ enum AppThemeStorage {
 struct AppThemeConfiguration {
     let preset: AppThemePreset
     let customAccent: Color
-    let customBackgroundImageData: Data?
+    let customBackgroundImage: UIImage?
     let customBackgroundRevision: Int
     let customBackgroundBlur: CGFloat
 
@@ -181,13 +189,13 @@ struct AppThemeConfiguration {
     var gradientColors: [Color] { preset.presetGradientColors }
     var primaryGlow: Color { preset == .custom ? customAccent.opacity(0.28) : preset.presetPrimaryGlow }
     var secondaryGlow: Color { preset.presetSecondaryGlow }
-    var hasCustomBackgroundImage: Bool { !(customBackgroundImageData?.isEmpty ?? true) }
+    var hasCustomBackgroundImage: Bool { customBackgroundImage != nil }
 
     init(selectedThemeRawValue: String, customAccentData: Data, customBackgroundRevision: Int, customBackgroundBlur: Double = 0) {
         preset = AppThemePreset.resolve(from: selectedThemeRawValue)
         customAccent = AppThemeStorage.customAccent(from: customAccentData)
         self.customBackgroundRevision = customBackgroundRevision
-        customBackgroundImageData = preset == .custom ? AppThemeStorage.backgroundImageData(revision: customBackgroundRevision) : nil
+        customBackgroundImage = preset == .custom ? AppThemeStorage.backgroundImage(revision: customBackgroundRevision) : nil
         self.customBackgroundBlur = CGFloat(min(max(customBackgroundBlur, 0), 36))
     }
 }

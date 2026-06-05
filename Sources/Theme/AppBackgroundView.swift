@@ -79,12 +79,11 @@ struct AppBackgroundView: View {
     }
 
     private func updateCacheIfNeeded() {
-        CrashLogger.shared.mark("ThemeBG", "cacheRefresh", details: "revision=\(customBackgroundRevision)")
         guard cachedThemeRevision != customBackgroundRevision else { return }
+        CrashLogger.shared.mark("ThemeBG", "cacheRefresh", details: "revision=\(customBackgroundRevision)")
         cachedThemeRevision = customBackgroundRevision
         #if canImport(UIKit)
-        if let data = theme.customBackgroundImageData,
-           let uiImage = UIImage(data: data) {
+        if let uiImage = theme.customBackgroundImage {
             cachedBackgroundImage = Image(uiImage: uiImage)
         } else {
             cachedBackgroundImage = nil

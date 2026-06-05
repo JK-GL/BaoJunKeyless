@@ -76,17 +76,15 @@ struct ThemeOptionCardView: View {
                 .stroke(isSelected ? theme.accent.opacity(0.36) : Color.white.opacity(0.06), lineWidth: 1)
         )
         .onAppear { refreshCacheIfNeeded() }
-        .onChange(of: theme.customBackgroundImageData?.count ?? 0) { _ in refreshCacheIfNeeded() }
+        .onChange(of: theme.customBackgroundRevision) { _ in refreshCacheIfNeeded() }
     }
 
     private func refreshCacheIfNeeded() {
-        let key = theme.customBackgroundImageData?.count ?? 0
-        CrashLogger.shared.mark("ThemeThumb", "cacheRefresh", details: "key=\(key)")
-        guard previewCacheKey != key else { return }
+        let key = theme.customBackgroundRevision
+        if previewCacheKey == key { return }
         previewCacheKey = key
         #if canImport(UIKit)
-        if let data = theme.customBackgroundImageData,
-           let uiImage = UIImage(data: data) {
+        if let uiImage = theme.customBackgroundImage {
             cachedPreviewImage = Image(uiImage: uiImage)
         } else {
             cachedPreviewImage = nil
@@ -95,7 +93,7 @@ struct ThemeOptionCardView: View {
     }
 
     private var previewImage: Image? {
-        if previewCacheKey != (theme.customBackgroundImageData?.count ?? 0) {
+        if previewCacheKey != theme.customBackgroundRevision {
             refreshCacheIfNeeded()
         }
         return cachedPreviewImage
