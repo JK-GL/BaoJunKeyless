@@ -91,6 +91,7 @@ struct SettingsView: View {
 
                     // Crash Log（整行点击展开、实时刷新）
                     VStack(alignment: .leading, spacing: 0) {
+                        // 标题行：点击展开/收起
                         Button {
                             withAnimation(.spring(response: 0.28)) { isCrashLogExpanded.toggle() }
                         } label: {
@@ -101,12 +102,26 @@ struct SettingsView: View {
                                 Text("崩溃日志")
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(.white)
-
                                 Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(theme.textSecondary)
+                                    .rotationEffect(.degrees(isCrashLogExpanded ? 90 : 0))
+                            }
+                            .padding(16)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
 
-                                if isCrashLogExpanded {
+                        // 展开后的内容
+                        if isCrashLogExpanded {
+                            Divider().background(theme.cardStroke)
+
+                            VStack(alignment: .leading, spacing: 10) {
+                                // 状态行 + 开关
+                                HStack(spacing: 8) {
                                     if crashLogText.isEmpty {
-                                        Text("无记录")
+                                        Text("暂无记录")
                                             .font(.caption2)
                                             .foregroundStyle(Color.white.opacity(0.45))
                                     } else {
@@ -114,6 +129,12 @@ struct SettingsView: View {
                                             .font(.caption2)
                                             .foregroundStyle(Color.orange.opacity(0.9))
                                     }
+
+                                    Spacer()
+
+                                    Text("记录开关")
+                                        .font(.caption2)
+                                        .foregroundStyle(Color.white.opacity(0.45))
 
                                     Toggle(
                                         "",
@@ -130,20 +151,7 @@ struct SettingsView: View {
                                     .scaleEffect(0.7)
                                 }
 
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(theme.textSecondary)
-                                    .rotationEffect(.degrees(isCrashLogExpanded ? 90 : 0))
-                            }
-                            .padding(16)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-
-                        if isCrashLogExpanded {
-                            Divider().background(theme.cardStroke)
-
-                            VStack(alignment: .leading, spacing: 10) {
+                                // 日志内容
                                 if crashLogText.isEmpty {
                                     HStack {
                                         Image(systemName: "checkmark.circle.fill")
@@ -170,34 +178,35 @@ struct SettingsView: View {
                                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                                             .stroke(Color.white.opacity(0.06), lineWidth: 1)
                                     )
+                                }
 
-                                    HStack(spacing: 12) {
-                                        Button {
-                                            UIPasteboard.general.string = crashLogText
-                                            withAnimation { toastText = "已复制到剪贴板" }
-                                        } label: {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "doc.on.doc")
-                                                    .font(.system(size: 12))
-                                                Text("复制")
-                                                    .font(.system(size: 13, weight: .medium))
-                                            }
-                                            .foregroundStyle(theme.accent)
+                                // 操作按钮
+                                HStack(spacing: 12) {
+                                    Button {
+                                        UIPasteboard.general.string = crashLogText
+                                        withAnimation { toastText = "已复制到剪贴板" }
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "doc.on.doc")
+                                                .font(.system(size: 12))
+                                            Text("复制")
+                                                .font(.system(size: 13, weight: .medium))
                                         }
+                                        .foregroundStyle(theme.accent)
+                                    }
 
-                                        Button {
-                                            CrashLogger.shared.clearLog()
-                                            refreshCrashLog()
-                                            withAnimation { toastText = "日志已清空" }
-                                        } label: {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "trash")
-                                                    .font(.system(size: 12))
-                                                Text("清空")
-                                                    .font(.system(size: 13, weight: .medium))
-                                            }
-                                            .foregroundStyle(Color.red.opacity(0.8))
+                                    Button {
+                                        CrashLogger.shared.clearLog()
+                                        refreshCrashLog()
+                                        withAnimation { toastText = "日志已清空" }
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "trash")
+                                                .font(.system(size: 12))
+                                            Text("清空")
+                                                .font(.system(size: 13, weight: .medium))
                                         }
+                                        .foregroundStyle(Color.red.opacity(0.8))
                                     }
                                 }
                             }
