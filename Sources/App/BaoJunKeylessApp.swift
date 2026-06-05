@@ -6,8 +6,10 @@ struct BaoJunKeylessApp: App {
 
     init() {
         _ = CrashLogger.shared
-        CrashLogger.shared.logMemoryBaseline()
-        CrashLogger.shared.startMemoryMonitor()
+        if CrashLogger.shared.isLoggingEnabled {
+            CrashLogger.shared.logMemoryBaseline()
+            CrashLogger.shared.startMemoryMonitor()
+        }
     }
 
     var body: some Scene {

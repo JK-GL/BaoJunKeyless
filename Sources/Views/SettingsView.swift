@@ -101,7 +101,7 @@ struct SettingsView: View {
                                     "",
                                     isOn: Binding(
                                         get: { CrashLogger.shared.isLoggingEnabled },
-                                        set: { CrashLogger.shared.isLoggingEnabled = $0 }
+                                        set: { CrashLogger.shared.setLoggingEnabled($0) }
                                     )
                                 )
                                 .labelsHidden()
