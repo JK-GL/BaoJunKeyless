@@ -186,7 +186,7 @@ final class RadarUIView: UIView {
     private func startMarkerDisplayLinkIfNeeded() {
         guard window != nil, markerDisplayLink == nil else { return }
         let displayLink = CADisplayLink(target: self, selector: #selector(stepMarkerSmoothing(_:)))
-        displayLink.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+        displayLink.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
         displayLink.add(to: .main, forMode: .common)
         markerDisplayLink = displayLink
     }

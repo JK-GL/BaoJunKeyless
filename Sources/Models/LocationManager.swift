@@ -22,7 +22,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
         manager.distanceFilter = 10      // ⭐ 移动 10 米以上才更新 GPS
-        manager.headingFilter = 5        // ⭐ 方向变化 5° 以上才更新
+        manager.headingFilter = kCLHeadingFilterNone  // ⭐ 方位连续更新，避免雷达车图 5° 一跳导致卡顿
         manager.requestWhenInUseAuthorization()
         manager.startUpdatingLocation()
         manager.startUpdatingHeading()
