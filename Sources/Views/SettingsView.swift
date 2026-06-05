@@ -17,7 +17,7 @@ struct SettingsView: View {
     @State private var isCrashLogExpanded = false
     @State private var crashLogText: String = ""
     @State private var crashLogTimerCancellable: Cancellable?
-    @State private var crashLogTimer: Timer.TimerPublisher = Timer.publish(every: 1.0, on: .main, in: .common)
+    @State private var crashLogTimer: Timer.TimerPublisher = Timer.publish(every: 3.0, on: .main, in: .common)
 
     private var currentTheme: AppThemeConfiguration {
         AppThemeConfiguration(selectedThemeRawValue: themeRaw, customAccentData: accentData,
@@ -146,16 +146,21 @@ struct SettingsView: View {
                                             .foregroundStyle(Color.white.opacity(0.5))
                                     }
                                 } else {
-                                    ScrollView(.vertical, showsIndicators: true) {
-                                        ScrollView(.horizontal, showsIndicators: false) {
+                                    ScrollViewReader { proxy in
+                                        ScrollView(.vertical, showsIndicators: true) {
                                             Text(crashLogText)
                                                 .font(.system(size: 10, design: .monospaced))
                                                 .foregroundStyle(Color.white.opacity(0.62))
+                                                .textSelection(.enabled)
                                                 .padding(10)
                                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                                .id("crashLogTop")
+                                        }
+                                        .frame(maxHeight: 260)
+                                        .onChange(of: crashLogText) { _ in
+                                            proxy.scrollTo("crashLogTop", anchor: .top)
                                         }
                                     }
-                                    .frame(maxHeight: 260)
                                     .background(
                                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                                             .fill(Color.white.opacity(0.04))
@@ -209,8 +214,19 @@ struct SettingsView: View {
                     )
                     .padding(.horizontal, 18)
                     .onAppear {
-                        refreshCrashLog()
-                        crashLogTimerCancellable = crashLogTimer.connect()
+                        if isCrashLogExpanded {
+                            refreshCrashLog()
+                            crashLogTimerCancellable = crashLogTimer.connect()
+                        }
+                    }
+                    .onChange(of: isCrashLogExpanded) { expanded in
+                        if expanded {
+                            refreshCrashLog()
+                            crashLogTimerCancellable = crashLogTimer.connect()
+                        } else {
+                            crashLogTimerCancellable?.cancel()
+                            crashLogTimerCancellable = nil
+                        }
                     }
                     .onDisappear {
                         crashLogTimerCancellable?.cancel()
@@ -346,7 +362,7 @@ struct SettingsView: View {
     }
 
     private func refreshCrashLog() {
-        let newText = CrashLogger.shared.readLog() ?? ""
+        let newText = CrashLogger.shared.readReversedRecentLog(limit: 500)
         if crashLogText != newText {
             crashLogText = newText
         }

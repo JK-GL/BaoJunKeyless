@@ -66,6 +66,13 @@ class CrashLogger {
         return try? String(contentsOf: url, encoding: .utf8)
     }
 
+    func readReversedRecentLog(limit: Int = 400) -> String {
+        guard let raw = readLog(), !raw.isEmpty else { return "" }
+        let lines = raw.components(separatedBy: "\n")
+        let tail = lines.suffix(limit)
+        return tail.reversed().joined(separator: "\n")
+    }
+
     func clearLog() {
         guard let url = logFile else { return }
         try? FileManager.default.removeItem(at: url)
