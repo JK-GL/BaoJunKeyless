@@ -86,14 +86,27 @@ struct SettingsView: View {
                         iconColor: Color.red.opacity(0.85),
                         isExpanded: $isCrashLogExpanded,
                         headerExtra: {
-                            if CrashLogger.shared.readLog()?.isEmpty == false {
-                                Text("有记录")
-                                    .font(.caption2)
-                                    .foregroundStyle(Color.orange.opacity(0.9))
-                            } else {
-                                Text("无记录")
-                                    .font(.caption2)
-                                    .foregroundStyle(Color.white.opacity(0.45))
+                            HStack(spacing: 8) {
+                                if CrashLogger.shared.readLog()?.isEmpty == false {
+                                    Text("有记录")
+                                        .font(.caption2)
+                                        .foregroundStyle(Color.orange.opacity(0.9))
+                                } else {
+                                    Text("无记录")
+                                        .font(.caption2)
+                                        .foregroundStyle(Color.white.opacity(0.45))
+                                }
+
+                                Toggle(
+                                    "",
+                                    isOn: Binding(
+                                        get: { CrashLogger.shared.isLoggingEnabled },
+                                        set: { CrashLogger.shared.isLoggingEnabled = $0 }
+                                    )
+                                )
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                                .scaleEffect(0.7)
                             }
                         }
                     ) {

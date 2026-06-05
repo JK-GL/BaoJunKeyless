@@ -5,6 +5,11 @@ import UIKit
 class CrashLogger {
     static let shared = CrashLogger()
     private let logFile: URL?
+    private let loggingKey = "CrashLoggerEnabled"
+    var isLoggingEnabled: Bool {
+        get { UserDefaults.standard.object(forKey: loggingKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: loggingKey) }
+    }
 
     private init() {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
@@ -41,6 +46,7 @@ class CrashLogger {
 
     // MARK: - 记录
     func logCrash(_ message: String) {
+        guard isLoggingEnabled else { return }
         let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .medium)
         let entry = "[\(timestamp)] \(message)\n"
         guard let data = entry.data(using: .utf8), let url = logFile else { return }
