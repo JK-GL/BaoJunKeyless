@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import QuartzCore
 
 // MARK: - 雷达（静态背景图层 + 动态车标图层）
 
@@ -14,6 +15,7 @@ final class RadarUIView: UIView {
 
     private let backgroundImageView = UIImageView()
     private let glowView = UIView()
+    private let glowLayer = CAGradientLayer()
     private let carImageView = UIImageView()
     private var memoryWarningObserver: NSObjectProtocol?
     private var stars: [StarParticle] = []
@@ -97,9 +99,17 @@ final class RadarUIView: UIView {
         backgroundImageView.isUserInteractionEnabled = false
         addSubview(backgroundImageView)
 
-        glowView.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.12)
+        glowView.backgroundColor = .clear
         glowView.isHidden = true
         glowView.isUserInteractionEnabled = false
+        glowLayer.type = .radial
+        glowLayer.colors = [
+            UIColor.systemBlue.withAlphaComponent(0.10).cgColor,
+            UIColor.systemBlue.withAlphaComponent(0.025).cgColor,
+            UIColor.clear.cgColor
+        ]
+        glowLayer.locations = [0, 0.42, 1]
+        glowView.layer.addSublayer(glowLayer)
         addSubview(glowView)
 
         carImageView.contentMode = .scaleAspectFit
@@ -178,18 +188,22 @@ final class RadarUIView: UIView {
         }
 
         CATransaction.begin()
-        CATransaction.setDisableActions(true)
+        CATransaction.setDisableActions(false)
+        CATransaction.setAnimationDuration(force ? 0 : 0.12)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
 
         carImageView.bounds = CGRect(x: 0, y: 0, width: displayedCarSize, height: displayedCarSize)
         carImageView.center = displayedCarCenter
 
         if AppDiagnosticsSettings.isRadarGradientEnabled {
-            let glowSize = displayedCarSize * 1.8
+            let glowSize = displayedCarSize * 1.65
             glowView.isHidden = false
             glowView.bounds = CGRect(x: 0, y: 0, width: glowSize, height: glowSize)
             glowView.center = displayedCarCenter
             glowView.layer.cornerRadius = glowSize / 2
-            glowView.alpha = 1
+            glowLayer.frame = CGRect(x: 0, y: 0, width: glowSize, height: glowSize)
+            glowLayer.cornerRadius = glowSize / 2
+            glowView.alpha = 0.72
         } else {
             glowView.isHidden = true
             glowView.alpha = 0
