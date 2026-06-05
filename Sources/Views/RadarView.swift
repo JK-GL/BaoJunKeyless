@@ -21,6 +21,10 @@ final class RadarUIView: UIView {
     private var stars: [StarParticle] = []
     private var displayedCarCenter: CGPoint = .zero
     private var displayedCarSize: CGFloat = 34
+    private var targetCarCenter: CGPoint = .zero
+    private var targetCarSize: CGFloat = 34
+    private var markerDisplayLink: CADisplayLink?
+    private var lastDisplayLinkTimestamp: CFTimeInterval = 0
     private var lastBackgroundSize: CGSize = .zero
     private var carOnlineImage: UIImage?
 
@@ -46,6 +50,8 @@ final class RadarUIView: UIView {
     }
 
     deinit {
+        markerDisplayLink?.invalidate()
+        markerDisplayLink = nil
         if let token = memoryWarningObserver {
             NotificationCenter.default.removeObserver(token)
         }
@@ -59,10 +65,12 @@ final class RadarUIView: UIView {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window == nil {
+            stopMarkerDisplayLink()
             releaseHeavyResources()
         } else {
             restoreDynamicResourcesIfNeeded()
             setNeedsLayout()
+            startMarkerDisplayLinkIfNeeded()
         }
     }
 
@@ -78,6 +86,7 @@ final class RadarUIView: UIView {
 
         if displayedCarCenter == .zero {
             displayedCarCenter = CGPoint(x: bounds.midX, y: bounds.midY)
+            targetCarCenter = displayedCarCenter
         }
         updateMarker(force: true)
     }
@@ -147,6 +156,7 @@ final class RadarUIView: UIView {
         glowView.isHidden = true
         carImageView.layer.removeAllAnimations()
         lastBackgroundSize = .zero
+        lastDisplayLinkTimestamp = 0
     }
 
     private func restoreDynamicResourcesIfNeeded() {
@@ -168,42 +178,98 @@ final class RadarUIView: UIView {
         let norm = min(distance / 200.0, 1.0)
         let targetRadius = r * 0.15 + CGFloat(norm) * (r * 0.7)
         let angle = relativeAngle * .pi / 180 - .pi / 2
-        let targetCenter = CGPoint(
+        let nextCenter = CGPoint(
             x: cx + targetRadius * CGFloat(cos(angle)),
             y: cy + targetRadius * CGFloat(sin(angle))
         )
-        let targetSize = max(sz * (0.28 - 0.15 * CGFloat(norm)), 34)
+        let nextSize = max(sz * (0.28 - 0.15 * CGFloat(norm)), 34)
+
+        targetCarCenter = nextCenter
+        targetCarSize = nextSize
 
         if force || displayedCarCenter == .zero {
-            displayedCarCenter = targetCenter
-            displayedCarSize = targetSize
-        } else {
-            let dx = targetCenter.x - displayedCarCenter.x
-            let dy = targetCenter.y - displayedCarCenter.y
-            displayedCarCenter = CGPoint(
-                x: displayedCarCenter.x + dx * 0.22,
-                y: displayedCarCenter.y + dy * 0.22
-            )
-            displayedCarSize += (targetSize - displayedCarSize) * 0.22
+            displayedCarCenter = nextCenter
+            displayedCarSize = nextSize
+            applyMarkerFrame()
         }
 
+        startMarkerDisplayLinkIfNeeded()
+    }
+
+    private func startMarkerDisplayLinkIfNeeded() {
+        guard window != nil, markerDisplayLink == nil else { return }
+        let displayLink = CADisplayLink(target: self, selector: #selector(stepMarkerSmoothing(_:)))
+        displayLink.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+        displayLink.add(to: .main, forMode: .common)
+        markerDisplayLink = displayLink
+    }
+
+    private func stopMarkerDisplayLink() {
+        markerDisplayLink?.invalidate()
+        markerDisplayLink = nil
+        lastDisplayLinkTimestamp = 0
+    }
+
+    @objc private func stepMarkerSmoothing(_ displayLink: CADisplayLink) {
+        guard window != nil, bounds.width > 0 else {
+            stopMarkerDisplayLink()
+            return
+        }
+
+        if displayedCarCenter == .zero {
+            displayedCarCenter = targetCarCenter == .zero ? CGPoint(x: bounds.midX, y: bounds.midY) : targetCarCenter
+            displayedCarSize = targetCarSize
+            applyMarkerFrame()
+            return
+        }
+
+        let dt: CGFloat
+        if lastDisplayLinkTimestamp == 0 {
+            dt = CGFloat(displayLink.targetTimestamp - displayLink.timestamp)
+        } else {
+            dt = CGFloat(displayLink.timestamp - lastDisplayLinkTimestamp)
+        }
+        lastDisplayLinkTimestamp = displayLink.timestamp
+
+        // 地图 marker 式平滑追踪：传感器只更新目标点，屏幕刷新负责追赶。
+        // 这样不会产生一串互相打断的隐式动画，观感比每次更新都开动画更丝滑。
+        let response: CGFloat = 17.0
+        let alpha = min(max(1 - exp(-response * max(dt, 1.0 / 120.0)), 0.18), 0.42)
+
+        let dx = targetCarCenter.x - displayedCarCenter.x
+        let dy = targetCarCenter.y - displayedCarCenter.y
+        let ds = targetCarSize - displayedCarSize
+
+        displayedCarCenter = CGPoint(
+            x: displayedCarCenter.x + dx * alpha,
+            y: displayedCarCenter.y + dy * alpha
+        )
+        displayedCarSize += ds * alpha
+
+        if abs(dx) < 0.25, abs(dy) < 0.25, abs(ds) < 0.15 {
+            displayedCarCenter = targetCarCenter
+            displayedCarSize = targetCarSize
+        }
+
+        applyMarkerFrame()
+    }
+
+    private func applyMarkerFrame() {
         CATransaction.begin()
-        CATransaction.setDisableActions(false)
-        CATransaction.setAnimationDuration(force ? 0 : 0.12)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        CATransaction.setDisableActions(true)
 
         carImageView.bounds = CGRect(x: 0, y: 0, width: displayedCarSize, height: displayedCarSize)
         carImageView.center = displayedCarCenter
 
         if AppDiagnosticsSettings.isRadarGradientEnabled {
-            let glowSize = displayedCarSize * 1.65
+            let glowSize = displayedCarSize * 1.48
             glowView.isHidden = false
             glowView.bounds = CGRect(x: 0, y: 0, width: glowSize, height: glowSize)
             glowView.center = displayedCarCenter
             glowView.layer.cornerRadius = glowSize / 2
             glowLayer.frame = CGRect(x: 0, y: 0, width: glowSize, height: glowSize)
             glowLayer.cornerRadius = glowSize / 2
-            glowView.alpha = 0.72
+            glowView.alpha = 0.58
         } else {
             glowView.isHidden = true
             glowView.alpha = 0
