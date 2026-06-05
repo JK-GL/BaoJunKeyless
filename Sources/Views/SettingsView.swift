@@ -104,33 +104,35 @@ struct SettingsView: View {
 
                                 Spacer()
 
-                                if crashLogText.isEmpty {
-                                    Text("无记录")
-                                        .font(.caption2)
-                                        .foregroundStyle(Color.white.opacity(0.45))
-                                } else {
-                                    Text("有记录")
-                                        .font(.caption2)
-                                        .foregroundStyle(Color.orange.opacity(0.9))
-                                }
+                                if isCrashLogExpanded {
+                                    if crashLogText.isEmpty {
+                                        Text("无记录")
+                                            .font(.caption2)
+                                            .foregroundStyle(Color.white.opacity(0.45))
+                                    } else {
+                                        Text("有记录")
+                                            .font(.caption2)
+                                            .foregroundStyle(Color.orange.opacity(0.9))
+                                    }
 
-                                Toggle(
-                                    "",
-                                    isOn: Binding(
-                                        get: { CrashLogger.shared.isLoggingEnabled },
-                                        set: { newValue in
-                                            CrashLogger.shared.setLoggingEnabled(newValue)
-                                            refreshCrashLog()
-                                        }
+                                    Toggle(
+                                        "",
+                                        isOn: Binding(
+                                            get: { CrashLogger.shared.isLoggingEnabled },
+                                            set: { newValue in
+                                                CrashLogger.shared.setLoggingEnabled(newValue)
+                                                refreshCrashLog()
+                                            }
+                                        )
                                     )
-                                )
-                                .labelsHidden()
-                                .toggleStyle(.switch)
-                                .scaleEffect(0.7)
+                                    .labelsHidden()
+                                    .toggleStyle(.switch)
+                                    .scaleEffect(0.7)
+                                }
 
                                 Image(systemName: "chevron.right")
                                     .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(Color.white.opacity(0.62))
+                                    .foregroundStyle(theme.textSecondary)
                                     .rotationEffect(.degrees(isCrashLogExpanded ? 90 : 0))
                             }
                             .padding(16)
@@ -139,7 +141,7 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
 
                         if isCrashLogExpanded {
-                            Divider().background(Color.white.opacity(0.08))
+                            Divider().background(theme.cardStroke)
 
                             VStack(alignment: .leading, spacing: 10) {
                                 if crashLogText.isEmpty {
@@ -152,21 +154,14 @@ struct SettingsView: View {
                                             .foregroundStyle(Color.white.opacity(0.5))
                                     }
                                 } else {
-                                    ScrollViewReader { proxy in
-                                        ScrollView(.vertical, showsIndicators: true) {
-                                            Text(crashLogText)
-                                                .font(.system(size: 10, design: .monospaced))
-                                                .foregroundStyle(Color.white.opacity(0.62))
-                                                .textSelection(.enabled)
-                                                .padding(10)
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-                                                .id("crashLogTop")
-                                        }
-                                        .frame(maxHeight: 260)
-                                        .onChange(of: crashLogText) { _ in
-                                            proxy.scrollTo("crashLogTop", anchor: .top)
-                                        }
+                                    ScrollView(.vertical, showsIndicators: true) {
+                                        Text(crashLogText)
+                                            .font(.system(size: 10, design: .monospaced))
+                                            .foregroundStyle(Color.white.opacity(0.62))
+                                            .padding(10)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
                                     }
+                                    .frame(maxHeight: 260)
                                     .background(
                                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                                             .fill(Color.white.opacity(0.04))
@@ -187,7 +182,7 @@ struct SettingsView: View {
                                                 Text("复制")
                                                     .font(.system(size: 13, weight: .medium))
                                             }
-                                            .foregroundStyle(AppTheme.accent)
+                                            .foregroundStyle(theme.accent)
                                         }
 
                                         Button {
@@ -212,11 +207,11 @@ struct SettingsView: View {
                     }
                     .background(
                         RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .fill(Color.white.opacity(0.06))
+                            .fill(theme.cardBg)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                            .stroke(theme.cardStroke, lineWidth: 1)
                     )
                     .padding(.horizontal, 18)
                     .onAppear {
