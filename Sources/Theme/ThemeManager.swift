@@ -54,11 +54,13 @@ final class ThemeManager: ObservableObject {
 
     #if canImport(UIKit)
     var currentBackgroundImage: UIImage? {
-        current.preset == .custom ? storedBackgroundImage : nil
+        guard !DeviceMemoryProfile.shouldUseLightweightImages else { return nil }
+        return current.preset == .custom ? storedBackgroundImage : nil
     }
 
     var customThemePreviewImage: UIImage? {
-        storedBackgroundImage
+        guard !DeviceMemoryProfile.shouldUseLightweightImages else { return nil }
+        return storedBackgroundImage
     }
     #endif
 
@@ -148,6 +150,11 @@ final class ThemeManager: ObservableObject {
 
     private func refreshBackgroundImage() {
         #if canImport(UIKit)
+        guard !DeviceMemoryProfile.shouldUseLightweightImages else {
+            storedBackgroundImage = nil
+            AppThemeStorage.invalidateBackgroundImageCache()
+            return
+        }
         storedBackgroundImage = AppThemeStorage.hasBackgroundImage()
             ? AppThemeStorage.cachedUIImage(for: customBackgroundRevision)
             : nil

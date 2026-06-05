@@ -32,6 +32,7 @@ class CrashLogger {
         }
         NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { _ in
             let mem = Self.formatBytes(Self.memoryUsageBytes())
+            DeviceMemoryProfile.purgeImageCaches()
             CrashLogger.shared.logCrash("⚠️ MEMORY WARNING — 当前内存: \(mem)")
         }
         NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
@@ -177,7 +178,9 @@ class CrashLogger {
             "bgOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableBackgroundImageKey))",
             "blurOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableBackgroundBlurKey))",
             "previewOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableThemePreviewKey))",
-            "radarOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableRadarKey))"
+            "radarOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableRadarKey))",
+            "lightImages=\(DeviceMemoryProfile.shouldUseLightweightImages)",
+            "ram=\(Self.formatBytes(DeviceMemoryProfile.physicalMemoryBytes))"
         ].joined(separator: " | ")
         mark("Diagnostics", "snapshot", details: details, file: file, line: line)
     }
