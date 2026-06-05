@@ -11,11 +11,6 @@ struct AppBackgroundView: View {
     @AppStorage(AppThemeStorage.customBackgroundRevisionKey) private var customBackgroundRevision = 0
     @AppStorage(AppThemeStorage.customBackgroundBlurKey) private var customBackgroundBlur = 0.0
 
-    @State private var cachedSelectedThemeRawValue: String = ""
-    @State private var cachedBackgroundRevision: Int = .min
-    @State private var cachedBackgroundImage: Image?
-    @State private var cachedBlur: CGFloat = 0
-
     private var theme: AppThemeConfiguration {
         AppThemeConfiguration(
             selectedThemeRawValue: selectedThemeRawValue,
@@ -35,7 +30,7 @@ struct AppBackgroundView: View {
                         .antialiased(true)
                         .scaledToFill()
                         .frame(width: proxy.size.width, height: proxy.size.height)
-                        .blur(radius: cachedBlur)
+                        .blur(radius: theme.customBackgroundBlur)
                         .clipped()
 
                     LinearGradient(
@@ -73,27 +68,18 @@ struct AppBackgroundView: View {
         .ignoresSafeArea()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(false)
-        .onAppear { updateCache() }
-        .onChange(of: selectedThemeRawValue) { _ in updateCache() }
-        .onChange(of: customAccentData) { _ in updateCache() }
-        .onChange(of: customBackgroundRevision) { _ in updateCache() }
-        .onChange(of: customBackgroundBlur) { _ in updateCache() }
     }
 
-    private func updateCache() {
-        if cachedSelectedThemeRawValue == selectedThemeRawValue && cachedBackgroundRevision == customBackgroundRevision { return }
-        cachedSelectedThemeRawValue = selectedThemeRawValue
-        cachedBackgroundRevision = customBackgroundRevision
-        cachedBlur = customBackgroundBlur
-        #if canImport(UIKit)
-        let currentTheme = theme
-        if currentTheme.preset == .custom, let uiImage = AppThemeStorage.cachedUIImage(for: customBackgroundRevision) {
-            cachedBackgroundImage = Image(uiImage: uiImage)
-        } else {
-            cachedBackgroundImage = nil
+    #if canImport(UIKit)
+    private var backgroundImage: Image? {
+        guard theme.preset == .custom,
+              let uiImage = AppThemeStorage.cachedUIImage(for: customBackgroundRevision)
+        else {
+            return nil
         }
-        #endif
+        return Image(uiImage: uiImage)
     }
-
-    private var backgroundImage: Image? { cachedBackgroundImage }
+    #else
+    private var backgroundImage: Image? { nil }
+    #endif
 }
