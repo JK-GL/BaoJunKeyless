@@ -18,16 +18,10 @@ struct SettingsView: View {
     @State private var crashLogText: String = ""
     @State private var crashLogTimerCancellable: Cancellable?
     @State private var crashLogTimer: Timer.TimerPublisher = Timer.publish(every: 3.0, on: .main, in: .common)
-    @State private var cachedThemeRevision: Int = .min
-    @State private var cachedTheme: AppThemeConfiguration?
 
     private var currentTheme: AppThemeConfiguration {
-        if cachedThemeRevision == bgRevision, let cached = cachedTheme { return cached }
-        let theme = AppThemeConfiguration(selectedThemeRawValue: themeRaw, customAccentData: accentData,
+        AppThemeConfiguration(selectedThemeRawValue: themeRaw, customAccentData: accentData,
                               customBackgroundRevision: bgRevision, customBackgroundBlur: bgBlur)
-        cachedThemeRevision = bgRevision
-        cachedTheme = theme
-        return theme
     }
 
     var body: some View {
