@@ -343,6 +343,7 @@ struct SettingsView: View {
             PhotoPicker { data in
                 if let d = data {
                     try? AppThemeStorage.saveBackgroundImageData(d)
+                    themeRaw = AppThemePreset.custom.rawValue
                     bgRevision += 1
                 }
             }
