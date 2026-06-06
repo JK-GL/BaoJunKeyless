@@ -10,7 +10,7 @@ struct KeylessView: View {
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var settingsStore: KeylessSettingsStore
-    @StateObject private var customStore = CustomVibrationStore()
+    @EnvironmentObject var customStore: CustomVibrationStore
 
     @State private var showUnlockRecorder = false
     @State private var showLockRecorder = false

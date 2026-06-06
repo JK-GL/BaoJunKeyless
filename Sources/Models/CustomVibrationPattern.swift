@@ -126,10 +126,6 @@ class CustomVibrationStore: ObservableObject {
         save()
     }
 
-    static func resetStoredPatterns() {
-        UserDefaults.standard.removeObject(forKey: storageKey)
-    }
-
     func reset() {
         patterns.removeAll()
         UserDefaults.standard.removeObject(forKey: key)

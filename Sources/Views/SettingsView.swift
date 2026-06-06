@@ -6,6 +6,7 @@ struct SettingsView: View {
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var keylessSettings: KeylessSettingsStore
+    @EnvironmentObject var customVibrationStore: CustomVibrationStore
 
     @State private var showingResetAlert = false
     @State private var toastText: String?
@@ -122,7 +123,7 @@ struct SettingsView: View {
 
     private func resetAllSettings() {
         keylessSettings.reset()
-        CustomVibrationStore.resetStoredPatterns()
+        customVibrationStore.reset()
         theme.resetAppearance()
         AppDiagnosticsSettings.resetHiddenDiagnosticsToggles()
         CrashLogger.shared.logCurrentStatus(tag: "reset")

@@ -4,6 +4,7 @@ import SwiftUI
 struct BaoJunKeylessApp: App {
     @StateObject private var theme = ThemeManager()
     @StateObject private var keylessSettings = KeylessSettingsStore()
+    @StateObject private var customVibrationStore = CustomVibrationStore()
 
     init() {
         _ = CrashLogger.shared
@@ -19,6 +20,7 @@ struct BaoJunKeylessApp: App {
             ContentView()
                 .environmentObject(theme)
                 .environmentObject(keylessSettings)
+                .environmentObject(customVibrationStore)
                 .preferredColorScheme(.dark)
         }
     }
