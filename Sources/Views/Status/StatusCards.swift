@@ -115,89 +115,189 @@ struct RangeRow: View {
 }
 
 struct BatteryGaugesView: View {
-    private let gauges: [GaugeItem] = [
-        GaugeItem(icon: "bolt.fill", label: "电池电压", value: "386.2", maxValue: "420V", percent: 0.92, color: .blue),
-        GaugeItem(icon: "bolt.fill", label: "电池电流", value: "24.5", maxValue: "150A", percent: 0.16, color: .green),
-        GaugeItem(icon: "battery.100", label: "SOH", value: "98.2", maxValue: "100%", percent: 0.982, color: .purple),
-        GaugeItem(icon: "thermometer.medium", label: "电池温度", value: "32", maxValue: "60°C", percent: 0.53, color: .orange)
+    private let metrics: [BatterySystemMetric] = [
+        BatterySystemMetric(icon: "bolt.fill", label: "动力电压", value: "109.5V", color: AppTheme.accent),
+        BatterySystemMetric(icon: "waveform.path.ecg", label: "动力电流", value: "0.0A", color: AppTheme.green),
+        BatterySystemMetric(icon: "car.fill", label: "小电瓶", value: "12.4V", color: AppTheme.accent),
+        BatterySystemMetric(icon: "checkmark.seal.fill", label: "电池指示", value: "正常", color: AppTheme.green)
     ]
 
     var body: some View {
-        CardView(title: "电池仪表", icon: "bolt.fill", iconColor: AppTheme.accent) {
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                ForEach(gauges) { GaugeCard(item: $0) }
-            }
-        }
-    }
-}
+        CardView(title: "电池系统", icon: "battery.100.bolt", iconColor: AppTheme.accent) {
+            VStack(spacing: 14) {
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(AppTheme.green.opacity(0.12))
+                            .frame(width: 46, height: 46)
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(AppTheme.green)
+                    }
 
-struct GaugeCard: View {
-    @EnvironmentObject var theme: ThemeManager
-    let item: GaugeItem
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("电池正常")
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+                        Text("高压系统 / 小电瓶状态正常")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
 
-    var body: some View {
-        VStack(spacing: 8) {
-            ZStack {
-                Circle().stroke(Color(.systemGray5), lineWidth: 6).frame(width: 60, height: 60)
-                Circle()
-                    .trim(from: 0, to: item.percent)
-                    .stroke(AngularGradient(colors: [item.color.opacity(0.3), item.color], center: .center),
-                            style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                    .frame(width: 60, height: 60)
-                    .rotationEffect(.degrees(-90))
-                VStack(spacing: 0) {
-                    Text(item.value).font(.system(size: 14, weight: .bold, design: .monospaced))
-                    Text(item.maxValue).font(.system(size: 9)).foregroundColor(.secondary)
+                    Spacer(minLength: 8)
+
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("99%")
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.green)
+                        Text("健康度")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    ForEach(metrics) { metric in
+                        BatterySystemMetricChip(metric: metric)
+                    }
                 }
             }
-            HStack(spacing: 4) {
-                Image(systemName: item.icon).font(.system(size: 10)).foregroundColor(item.color)
-                Text(item.label).font(.system(size: 12, weight: .medium)).foregroundColor(.secondary)
-            }
-        }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(theme.cardBg))
-    }
-}
-
-struct TemperatureView: View {
-    private let temps: [TempItem] = [
-        TempItem(icon: "thermometer", label: "电池包", value: "32°C", status: "正常", color: .green),
-        TempItem(icon: "thermometer", label: "电机",   value: "45°C", status: "正常", color: .green),
-        TempItem(icon: "thermometer", label: "控制器", value: "38°C", status: "正常", color: .green),
-        TempItem(icon: "thermometer", label: "充电口", value: "28°C", status: "正常", color: .green)
-    ]
-
-    var body: some View {
-        CardView(title: "温度监控", icon: "thermometer.medium", iconColor: AppTheme.orange) {
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                ForEach(temps) { TempCard(item: $0) }
-            }
         }
     }
 }
 
-struct TempCard: View {
+private struct BatterySystemMetric: Identifiable {
+    let id = UUID()
+    let icon: String
+    let label: String
+    let value: String
+    let color: Color
+}
+
+private struct BatterySystemMetricChip: View {
     @EnvironmentObject var theme: ThemeManager
-    let item: TempItem
+    let metric: BatterySystemMetric
 
     var body: some View {
         HStack(spacing: 10) {
             ZStack {
-                RoundedRectangle(cornerRadius: 12).fill(item.color.opacity(0.1)).frame(width: 36, height: 36)
-                Image(systemName: item.icon).font(.system(size: 14, weight: .medium)).foregroundColor(item.color)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(metric.color.opacity(0.12))
+                    .frame(width: 34, height: 34)
+                Image(systemName: metric.icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(metric.color)
             }
+
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.label).font(.system(size: 12)).foregroundColor(.secondary)
-                HStack(spacing: 4) {
-                    Text(item.value).font(.system(size: 14, weight: .bold, design: .monospaced))
-                    Text(item.status).font(.system(size: 10, weight: .medium)).foregroundColor(item.color)
-                }
+                Text(metric.label)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                Text(metric.value)
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(theme.cardBg))
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(theme.cardBg))
+    }
+}
+
+struct TemperatureView: View {
+    private let rows: [TemperatureMetric] = [
+        TemperatureMetric(icon: "thermometer", label: "电池最高", value: "25°C", status: "正常", color: AppTheme.green),
+        TemperatureMetric(icon: "thermometer", label: "电池最低", value: "25°C", status: "正常", color: AppTheme.green),
+        TemperatureMetric(icon: "thermometer", label: "电机温度", value: "27°C", status: "正常", color: AppTheme.green),
+        TemperatureMetric(icon: "thermometer", label: "逆变器", value: "27°C", status: "正常", color: AppTheme.green),
+        TemperatureMetric(icon: "thermometer", label: "车内温度", value: "22°C", status: "舒适", color: AppTheme.accent),
+        TemperatureMetric(icon: "thermometer", label: "空调设定", value: "17°C", status: "设定", color: AppTheme.orange)
+    ]
+
+    var body: some View {
+        CardView(title: "温度监控", icon: "thermometer.medium", iconColor: AppTheme.orange) {
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(AppTheme.green.opacity(0.12))
+                            .frame(width: 46, height: 46)
+                        Image(systemName: "thermometer.medium")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(AppTheme.green)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("电池均温")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text("25°C")
+                                .font(.system(size: 28, weight: .bold, design: .rounded))
+                                .foregroundColor(.primary)
+                            Text("正常")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(AppTheme.green)
+                        }
+                    }
+
+                    Spacer()
+                }
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(AppTheme.green.opacity(0.08)))
+
+                VStack(spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                        TemperatureMetricRow(metric: row)
+                        if index < rows.count - 1 {
+                            Divider()
+                                .padding(.leading, 36)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct TemperatureMetric: Identifiable {
+    let id = UUID()
+    let icon: String
+    let label: String
+    let value: String
+    let status: String
+    let color: Color
+}
+
+private struct TemperatureMetricRow: View {
+    let metric: TemperatureMetric
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: metric.icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(metric.color)
+                .frame(width: 24)
+
+            Text(metric.label)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.secondary)
+
+            Spacer()
+
+            Text(metric.value)
+                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                .foregroundColor(.primary)
+
+            Text(metric.status)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(metric.color)
+                .frame(minWidth: 30, alignment: .trailing)
+        }
+        .padding(.vertical, 9)
     }
 }
 
