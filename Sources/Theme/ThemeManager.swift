@@ -116,6 +116,20 @@ final class ThemeManager: ObservableObject {
         refreshBackgroundImage()
     }
 
+    func resetAppearance() {
+        selectedThemeRawValue = AppThemePreset.midnight.rawValue
+        customAccentData = Data()
+        customBackgroundRevision = 0
+        customBackgroundBlur = 0
+        defaults.removeObject(forKey: AppThemePreset.storageKey)
+        defaults.removeObject(forKey: AppThemeStorage.customAccentDataKey)
+        defaults.removeObject(forKey: AppThemeStorage.customBackgroundRevisionKey)
+        defaults.removeObject(forKey: AppThemeStorage.customBackgroundBlurKey)
+        try? AppThemeStorage.removeBackgroundImage()
+        AppThemeStorage.invalidateBackgroundImageCache()
+        refreshBackgroundImage()
+    }
+
     // MARK: - XMusic Color Tokens (always dark, white-based)
 
     var cardBg: Color {

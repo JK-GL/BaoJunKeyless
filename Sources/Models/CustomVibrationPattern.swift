@@ -104,7 +104,8 @@ extension CustomVibrationPattern {
 class CustomVibrationStore: ObservableObject {
     @Published var patterns: [CustomVibrationPattern] = []
 
-    private let key = "CustomVibrationPatterns"
+    private static let storageKey = "CustomVibrationPatterns"
+    private let key = CustomVibrationStore.storageKey
 
     init() {
         load()
@@ -123,6 +124,15 @@ class CustomVibrationStore: ObservableObject {
     func delete(_ pattern: CustomVibrationPattern) {
         patterns.removeAll { $0.id == pattern.id }
         save()
+    }
+
+    static func resetStoredPatterns() {
+        UserDefaults.standard.removeObject(forKey: storageKey)
+    }
+
+    func reset() {
+        patterns.removeAll()
+        UserDefaults.standard.removeObject(forKey: key)
     }
 
     private func save() {

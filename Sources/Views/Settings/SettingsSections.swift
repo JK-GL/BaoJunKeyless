@@ -109,10 +109,11 @@ struct SettingsAboutSection: View {
     var body: some View {
         SettingsPanelView(title: "关于") {
             VStack(alignment: .leading, spacing: 10) {
-                SettingsStatusRowView(title: "插件版本", value: "v1.0.0")
-                SettingsStatusRowView(title: "构建号", value: "2026.05.31")
-                SettingsStatusRowView(title: "框架", value: "Theos / Logos")
-                SettingsStatusRowView(title: "越狱", value: "Dopamine rootless")
+                SettingsStatusRowView(title: "App 版本", value: AppInfo.version)
+                SettingsStatusRowView(title: "构建号", value: AppInfo.build)
+                SettingsStatusRowView(title: "系统", value: AppInfo.systemVersion)
+                SettingsStatusRowView(title: "设备内存", value: AppInfo.memoryText)
+                SettingsStatusRowView(title: "框架", value: "SwiftUI / UIKit")
             }
         }
     }
@@ -120,6 +121,7 @@ struct SettingsAboutSection: View {
 
 struct SettingsResetSection: View {
     @Binding var showingResetAlert: Bool
+    let onReset: () -> Void
 
     var body: some View {
         VStack(spacing: 12) {
@@ -141,10 +143,10 @@ struct SettingsResetSection: View {
             .darkAlert(
                 isPresented: $showingResetAlert,
                 title: "重置插件",
-                message: "确定要重置全部插件数据吗？此操作不可撤销。",
+                message: "确定要重置主题、背景图、无感车控和自定义震动吗？错误日志不会清空。",
                 confirmTitle: "确认重置",
                 confirmColor: .red
-            ) { }
+            ) { onReset() }
         }
         .padding(.horizontal, 16)
     }
@@ -242,7 +244,7 @@ struct SettingsCrashLogSection: View {
                         )
                     }
 
-                    HStack(spacing: 12) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 12)], alignment: .leading, spacing: 10) {
                         Button {
                             refreshCrashLog()
                             withAnimation { toastText = "日志已刷新" }

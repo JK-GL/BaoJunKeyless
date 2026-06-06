@@ -87,6 +87,11 @@ class KeylessSettingsStore: ObservableObject {
         }
     }
 
+    func reset() {
+        settings = KeylessSettings()
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
     // MARK: - 持久化
 
     private func save() {

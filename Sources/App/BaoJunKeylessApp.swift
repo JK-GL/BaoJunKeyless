@@ -20,12 +20,6 @@ struct BaoJunKeylessApp: App {
                 .environmentObject(theme)
                 .environmentObject(keylessSettings)
                 .preferredColorScheme(.dark)
-                .onAppear {
-                    // 显示上次崩溃日志
-                    if let log = CrashLogger.shared.readLog() {
-                        print("=== 上次崩溃日志 ===\n\(log)")
-                    }
-                }
         }
     }
 }

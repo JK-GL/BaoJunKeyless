@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var scrollState: AppScrollState
+    @EnvironmentObject var keylessSettings: KeylessSettingsStore
 
     @State private var showingResetAlert = false
     @State private var toastText: String?
@@ -39,7 +40,10 @@ struct SettingsView: View {
                     refreshCrashLog: refreshCrashLog
                 )
 
-                SettingsResetSection(showingResetAlert: $showingResetAlert)
+                SettingsResetSection(
+                    showingResetAlert: $showingResetAlert,
+                    onReset: resetAllSettings
+                )
 
                 Spacer(minLength: 100)
             }
@@ -84,9 +88,18 @@ struct SettingsView: View {
     }
 
     private func refreshCrashLog() {
-        let newText = CrashLogger.shared.readReversedRecentLog(limit: 500)
+        let newText = CrashLogger.shared.readReversedRecentLog(limit: 300)
         if crashLogText != newText {
             crashLogText = newText
         }
+    }
+
+    private func resetAllSettings() {
+        keylessSettings.reset()
+        CustomVibrationStore.resetStoredPatterns()
+        theme.resetAppearance()
+        AppDiagnosticsSettings.resetHiddenDiagnosticsToggles()
+        CrashLogger.shared.logCurrentStatus(tag: "reset")
+        withAnimation { toastText = "设置已重置" }
     }
 }

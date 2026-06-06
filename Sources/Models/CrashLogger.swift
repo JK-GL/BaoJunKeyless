@@ -57,6 +57,16 @@ class CrashLogger {
         } else {
             try? data.write(to: url, options: .atomic)
         }
+        trimLogIfNeeded()
+    }
+
+    private func trimLogIfNeeded(maxLines: Int = 1000) {
+        guard let url = logFile,
+              let raw = try? String(contentsOf: url, encoding: .utf8) else { return }
+        let lines = raw.components(separatedBy: "\n")
+        guard lines.count > maxLines + 100 else { return }
+        let trimmed = lines.suffix(maxLines).joined(separator: "\n")
+        try? trimmed.write(to: url, atomically: true, encoding: .utf8)
     }
 
     func readLog() -> String? {
