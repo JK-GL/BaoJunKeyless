@@ -257,16 +257,9 @@ struct StatusDashboardPair<Left: View, Right: View>: View {
     }
 
     var body: some View {
-        if UIScreen.main.bounds.width >= 390 {
-            HStack(alignment: .top, spacing: -18) {
-                left.frame(maxWidth: .infinity)
-                right.frame(maxWidth: .infinity)
-            }
-        } else {
-            VStack(spacing: 16) {
-                left
-                right
-            }
+        HStack(alignment: .top, spacing: -18) {
+            left.frame(maxWidth: .infinity)
+            right.frame(maxWidth: .infinity)
         }
     }
 }
