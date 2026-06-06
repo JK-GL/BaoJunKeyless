@@ -11,6 +11,7 @@ struct KeylessView: View {
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var settingsStore: KeylessSettingsStore
     @EnvironmentObject var customStore: CustomVibrationStore
+    @EnvironmentObject var vehicleLog: VehicleEventLogStore
 
     @State private var showUnlockRecorder = false
     @State private var showLockRecorder = false
@@ -45,12 +46,14 @@ struct KeylessView: View {
             VibrationRecorderView { pattern in
                 customStore.add(pattern)
                 settingsStore.setUnlockVibChoice(.custom(pattern.id))
+                vehicleLog.add(.keyless, "录制解锁震动", detail: pattern.name)
             }
         }
         .sheet(isPresented: $showLockRecorder) {
             VibrationRecorderView { pattern in
                 customStore.add(pattern)
                 settingsStore.setLockVibChoice(.custom(pattern.id))
+                vehicleLog.add(.keyless, "录制上锁震动", detail: pattern.name)
             }
         }
     }
@@ -59,6 +62,14 @@ struct KeylessView: View {
         settingsStore.settings.pluginTakeover = (mode == .plugin)
         settingsStore.settings.smartSwitch = (mode == .smart)
         settingsStore.settings.appManual = (mode == .manual)
+
+        let text: String
+        switch mode {
+        case .plugin: text = "插件托管"
+        case .smart: text = "智能切换"
+        case .manual: text = "App 手动"
+        }
+        vehicleLog.add(.keyless, "切换无感模式", detail: text)
     }
 
     private var unlockVibChoiceBinding: Binding<VibrationChoice> {

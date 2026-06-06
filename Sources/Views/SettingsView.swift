@@ -7,6 +7,7 @@ struct SettingsView: View {
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var keylessSettings: KeylessSettingsStore
     @EnvironmentObject var customVibrationStore: CustomVibrationStore
+    @EnvironmentObject var vehicleLog: VehicleEventLogStore
 
     @State private var showingResetAlert = false
     @State private var toastText: String?
@@ -126,6 +127,7 @@ struct SettingsView: View {
         customVibrationStore.reset()
         theme.resetAppearance()
         AppDiagnosticsSettings.resetHiddenDiagnosticsToggles()
+        vehicleLog.add(.system, "重置全部设置", detail: "错误日志保留")
         CrashLogger.shared.logCurrentStatus(tag: "reset")
         withAnimation { toastText = "设置已重置" }
     }

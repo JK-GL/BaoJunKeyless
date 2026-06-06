@@ -37,15 +37,6 @@ struct KeyInfoItem: Identifiable {
     let value: String
 }
 
-struct LogEntry: Identifiable {
-    let id = UUID()
-    let time: String
-    let icon: String
-    let color: Color
-    let title: String
-    let detail: String
-}
-
 // MARK: - Vibration Pattern
 enum VibrationPattern: String, CaseIterable {
     case shortSingle    = "短促单震"

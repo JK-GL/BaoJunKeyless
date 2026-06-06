@@ -4,24 +4,12 @@ import SwiftUI
 struct LogView: View {
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var scrollState: AppScrollState
-    @State private var logs: [LogEntry] = [
-        LogEntry(time: "14:52", icon: "lock.open.fill", color: .green,
-                 title: "无感解锁", detail: "信号强度: -48 dBm → 阈值: -48 dBm"),
-        LogEntry(time: "14:30", icon: "bolt.fill", color: .orange,
-                 title: "远程启动", detail: "发动机预热 5 分钟"),
-        LogEntry(time: "13:15", icon: "lock.fill", color: .red,
-                 title: "无感上锁", detail: "延迟 15s 后执行, RSSI: -72 dBm"),
-        LogEntry(time: "12:00", icon: "location.fill", color: .purple,
-                 title: "寻车闪灯", detail: "双闪+喇叭鸣响"),
-        LogEntry(time: "10:30", icon: "bolt.fill", color: .blue,
-                 title: "BLE 钥匙加载", detail: "从五菱 APP 读取钥匙数据成功"),
-        LogEntry(time: "10:28", icon: "antenna.radiowaves.left.and.right", color: .blue,
-                 title: "BLE 连接", detail: "连接到 E260-BLE (CC:45:A5:DA:B5:C3)"),
-        LogEntry(time: "10:25", icon: "power", color: .secondary,
-                 title: "插件启动", detail: "BaojunBLEHUD v1.0.0 初始化")
-    ]
-
+    @EnvironmentObject var vehicleLog: VehicleEventLogStore
     @State private var showingClearAlert = false
+
+    private var todayLogs: [VehicleEventLogEntry] {
+        vehicleLog.todayEntries
+    }
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -32,23 +20,30 @@ struct LogView: View {
 
                 CardView(title: "今日日志", icon: "list.bullet.rectangle", iconColor: theme.accent) {
                     HStack {
+                        Text("真实事件记录")
+                            .font(.caption)
+                            .foregroundStyle(theme.textSecondary)
                         Spacer()
-                        Text(DateFormatter.localizedString(from: Date(),
-                                                           dateStyle: .medium, timeStyle: .none))
-                            .font(.caption).foregroundStyle(theme.textSecondary)
+                        Text(DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .none))
+                            .font(.caption)
+                            .foregroundStyle(theme.textSecondary)
                     }
                     .padding(.bottom, 4)
 
-                    VStack(spacing: 0) {
-                        ForEach(Array(logs.enumerated()), id: \.element.id) { index, log in
-                            LogRow(log: log, isLast: index == logs.count - 1)
+                    if todayLogs.isEmpty {
+                        EmptyLogStateView()
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(Array(todayLogs.enumerated()), id: \.element.id) { index, log in
+                                VehicleLogRow(log: log, isLast: index == todayLogs.count - 1)
+                            }
                         }
                     }
                 }
 
                 Button(action: { showingClearAlert = true }) {
                     HStack(spacing: 6) {
-                        Image(systemName: "arrow.counterclockwise")
+                        Image(systemName: "trash")
                             .font(.system(size: 13))
                         Text("清除今日日志")
                             .font(.system(size: 14, weight: .medium))
@@ -62,11 +57,11 @@ struct LogView: View {
                 .darkAlert(
                     isPresented: $showingClearAlert,
                     title: "清除日志",
-                    message: "确定要清除今日所有日志吗？此操作不可撤销。",
+                    message: "确定要清除今日所有车辆事件日志吗？错误日志不会清空。",
                     confirmTitle: "确认清除",
                     confirmColor: .red
                 ) {
-                    withAnimation { logs.removeAll() }
+                    withAnimation { vehicleLog.clearToday() }
                 }
 
                 Spacer(minLength: 100)
@@ -79,9 +74,24 @@ struct LogView: View {
     }
 }
 
+private struct EmptyLogStateView: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(AppTheme.green)
+            Text("今天暂无车辆事件")
+                .font(.system(size: 13))
+                .foregroundStyle(Color.white.opacity(0.5))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
+    }
+}
+
 // MARK: - Log Row
-struct LogRow: View {
-    let log: LogEntry
+struct VehicleLogRow: View {
+    let log: VehicleEventLogEntry
     let isLast: Bool
 
     var body: some View {
@@ -89,15 +99,15 @@ struct LogRow: View {
             VStack(spacing: 0) {
                 ZStack {
                     Circle()
-                        .fill(log.color.opacity(0.15))
+                        .fill(log.category.color.opacity(0.15))
                         .frame(width: 32, height: 32)
-                    Image(systemName: log.icon)
+                    Image(systemName: log.category.icon)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(log.color)
+                        .foregroundColor(log.category.color)
                 }
                 if !isLast {
                     Rectangle()
-                        .fill(Color(.systemGray4))
+                        .fill(Color.white.opacity(0.10))
                         .frame(width: 1.5, height: 30)
                 }
             }
@@ -105,15 +115,18 @@ struct LogRow: View {
                 HStack {
                     Text(log.title)
                         .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
                     Spacer()
-                    Text(log.time)
+                    Text(log.timeText)
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundColor(.secondary)
                 }
-                Text(log.detail)
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
+                if !log.detail.isEmpty {
+                    Text(log.detail)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .lineLimit(3)
+                }
             }
             .padding(.bottom, isLast ? 0 : 14)
         }

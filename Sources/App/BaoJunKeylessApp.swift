@@ -5,6 +5,7 @@ struct BaoJunKeylessApp: App {
     @StateObject private var theme = ThemeManager()
     @StateObject private var keylessSettings = KeylessSettingsStore()
     @StateObject private var customVibrationStore = CustomVibrationStore()
+    @StateObject private var vehicleEventLogStore = VehicleEventLogStore()
 
     init() {
         _ = CrashLogger.shared
@@ -21,6 +22,7 @@ struct BaoJunKeylessApp: App {
                 .environmentObject(theme)
                 .environmentObject(keylessSettings)
                 .environmentObject(customVibrationStore)
+                .environmentObject(vehicleEventLogStore)
                 .preferredColorScheme(.dark)
         }
     }
