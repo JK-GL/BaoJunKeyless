@@ -126,7 +126,7 @@ struct BatteryGaugesView: View {
     var body: some View {
         CardView(title: "电池系统", icon: "battery.100.bolt", iconColor: AppTheme.accent) {
             VStack(spacing: 12) {
-                VehicleStatusMetricGrid(metrics: [topMetric])
+                VehicleStatusMetricCard(metric: topMetric)
                 VehicleStatusMetricGrid(metrics: metrics)
             }
         }

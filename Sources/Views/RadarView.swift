@@ -108,6 +108,19 @@ final class RadarUIView: UIView {
         backgroundImageView.isUserInteractionEnabled = false
         addSubview(backgroundImageView)
 
+        glowView.backgroundColor = .clear
+        glowView.isHidden = true
+        glowView.isUserInteractionEnabled = false
+        glowLayer.type = .radial
+        glowLayer.colors = [
+            UIColor.systemBlue.withAlphaComponent(0.10).cgColor,
+            UIColor.systemBlue.withAlphaComponent(0.025).cgColor,
+            UIColor.clear.cgColor
+        ]
+        glowLayer.locations = [0, 0.42, 1]
+        glowView.layer.addSublayer(glowLayer)
+        addSubview(glowView)
+
         carImageView.contentMode = .scaleAspectFit
         carImageView.isUserInteractionEnabled = false
         addSubview(carImageView)
@@ -284,8 +297,23 @@ final class RadarUIView: UIView {
         carImageView.bounds = CGRect(x: 0, y: 0, width: displayedCarSize, height: displayedCarSize)
         carImageView.center = displayedCarCenter
 
-        glowView.isHidden = true
-        glowView.alpha = 0
+        let glowSize = displayedCarSize * 1.65
+        glowView.isHidden = false
+        glowView.bounds = CGRect(x: 0, y: 0, width: glowSize, height: glowSize)
+        glowView.center = displayedCarCenter
+        glowView.layer.cornerRadius = glowSize / 2
+        glowLayer.frame = CGRect(x: 0, y: 0, width: glowSize, height: glowSize)
+        glowLayer.cornerRadius = glowSize / 2
+        glowView.alpha = 0.72
+        if glowView.layer.animation(forKey: "radar-pulse") == nil {
+            let pulse = CABasicAnimation(keyPath: "opacity")
+            pulse.fromValue = 0.55
+            pulse.toValue = 0.72
+            pulse.duration = 2.2
+            pulse.autoreverses = true
+            pulse.repeatCount = .infinity
+            glowView.layer.add(pulse, forKey: "radar-pulse")
+        }
 
         CATransaction.commit()
     }
