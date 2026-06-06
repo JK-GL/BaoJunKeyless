@@ -1,4 +1,28 @@
 import SwiftUI
+import UIKit
+
+private enum VehicleLogFilter: Hashable, CaseIterable {
+    case all
+    case category(VehicleEventLogCategory)
+
+    static var allCases: [VehicleLogFilter] {
+        [.all] + VehicleEventLogCategory.allCases.map { .category($0) }
+    }
+
+    var title: String {
+        switch self {
+        case .all: return "全部"
+        case .category(let category): return category.title
+        }
+    }
+
+    var fileTag: String {
+        switch self {
+        case .all: return "all"
+        case .category(let category): return category.fileTag
+        }
+    }
+}
 
 // MARK: - Log View (Tab 3)
 struct LogView: View {
@@ -6,9 +30,22 @@ struct LogView: View {
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var vehicleLog: VehicleEventLogStore
     @State private var showingClearAlert = false
+    @State private var selectedFilter: VehicleLogFilter = .all
+    @State private var exportedLogURL: URL?
+    @State private var isShareSheetPresented = false
+    @State private var toastText: String?
 
     private var todayLogs: [VehicleEventLogEntry] {
         vehicleLog.todayEntries
+    }
+
+    private var filteredLogs: [VehicleEventLogEntry] {
+        switch selectedFilter {
+        case .all:
+            return todayLogs
+        case .category(let category):
+            return todayLogs.filter { $0.category == category }
+        }
     }
 
     var body: some View {
@@ -30,28 +67,26 @@ struct LogView: View {
                     }
                     .padding(.bottom, 4)
 
-                    if todayLogs.isEmpty {
-                        EmptyLogStateView()
+                    VehicleLogFilterBar(selectedFilter: $selectedFilter)
+                        .padding(.bottom, 8)
+
+                    if filteredLogs.isEmpty {
+                        EmptyLogStateView(filterTitle: selectedFilter.title)
                     } else {
                         VStack(spacing: 0) {
-                            ForEach(Array(todayLogs.enumerated()), id: \.element.id) { index, log in
-                                VehicleLogRow(log: log, isLast: index == todayLogs.count - 1)
+                            ForEach(Array(filteredLogs.enumerated()), id: \.element.id) { index, log in
+                                VehicleLogRow(log: log, isLast: index == filteredLogs.count - 1)
                             }
                         }
                     }
                 }
 
-                Button(action: { showingClearAlert = true }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 13))
-                        Text("清除今日日志")
-                            .font(.system(size: 14, weight: .medium))
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 86), spacing: 12)], alignment: .leading, spacing: 10) {
+                    LogActionButton(icon: "doc.on.doc", title: "复制今日", action: copyFilteredLogs)
+                    LogActionButton(icon: "square.and.arrow.up", title: "导出今日", action: exportFilteredLogs)
+                    LogActionButton(icon: "trash", title: "清除今日") {
+                        showingClearAlert = true
                     }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.08), lineWidth: 1))
                 }
                 .padding(.horizontal, 16)
                 .darkAlert(
@@ -68,19 +103,113 @@ struct LogView: View {
             }
         }
         .modifier(ChromeScrollTrackingModifier(scrollState: scrollState))
+        .sheet(isPresented: $isShareSheetPresented) {
+            if let exportedLogURL {
+                ShareSheet(activityItems: [exportedLogURL])
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let text = toastText {
+                ToastView(text: text)
+                    .padding(.bottom, 80)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            withAnimation { toastText = nil }
+                        }
+                    }
+            }
+        }
         .onDisappear {
             scrollState.reset()
         }
     }
+
+    private func copyFilteredLogs() {
+        let text = vehicleLog.exportText(entries: filteredLogs)
+        guard !text.isEmpty else {
+            withAnimation { toastText = "暂无可复制日志" }
+            return
+        }
+        UIPasteboard.general.string = text
+        withAnimation { toastText = "已复制今日日志" }
+    }
+
+    private func exportFilteredLogs() {
+        guard let url = vehicleLog.exportFile(entries: filteredLogs, filterTitle: selectedFilter.fileTag) else {
+            withAnimation { toastText = "暂无日志可导出" }
+            return
+        }
+        exportedLogURL = url
+        isShareSheetPresented = true
+    }
+}
+
+private struct VehicleLogFilterBar: View {
+    @Binding var selectedFilter: VehicleLogFilter
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(VehicleLogFilter.allCases, id: \.self) { filter in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.16)) {
+                            selectedFilter = filter
+                        }
+                    } label: {
+                        Text(filter.title)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(selectedFilter == filter ? .black : Color.white.opacity(0.68))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(selectedFilter == filter ? AppTheme.accent : Color.white.opacity(0.08))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+}
+
+private struct LogActionButton: View {
+    let icon: String
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 13))
+                Text(title)
+                    .font(.system(size: 14, weight: .medium))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.08), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
 }
 
 private struct EmptyLogStateView: View {
+    let filterTitle: String
+
+    private var message: String {
+        filterTitle == "全部" ? "今天暂无车辆事件" : "今天暂无\(filterTitle)事件"
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 14))
                 .foregroundStyle(AppTheme.green)
-            Text("今天暂无车辆事件")
+            Text(message)
                 .font(.system(size: 13))
                 .foregroundStyle(Color.white.opacity(0.5))
         }
