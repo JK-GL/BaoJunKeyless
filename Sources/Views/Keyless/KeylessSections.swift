@@ -2,31 +2,46 @@ import SwiftUI
 
 struct KeylessMainSection: View {
     @EnvironmentObject var settingsStore: KeylessSettingsStore
+    @EnvironmentObject var vehicleLog: VehicleEventLogStore
     let setMode: (KeylessControlMode) -> Void
 
     var body: some View {
         CardView(title: "无感功能", icon: "dot.radiowaves.left.and.right", iconColor: AppTheme.purple) {
-            ToggleRow(icon: "power", label: "无感开关", isOn: $settingsStore.settings.keylessEnabled)
+            ToggleRow(icon: "power", label: "无感开关", isOn: Binding(
+                get: { settingsStore.settings.keylessEnabled },
+                set: { enabled in
+                    settingsStore.settings.keylessEnabled = enabled
+                    vehicleLog.add(.keyless, enabled ? "开启无感开关" : "关闭无感开关")
+                }
+            ))
 
             if settingsStore.settings.keylessEnabled {
                 VStack(spacing: 12) {
                     ToggleRow(icon: "shield.fill", label: "插件托管", isOn: Binding(
                         get: { settingsStore.settings.pluginTakeover },
-                        set: { if $0 { setMode(.plugin) } else { settingsStore.settings.pluginTakeover = false } }
+                        set: { if $0 { setMode(.plugin) } else { settingsStore.settings.pluginTakeover = false; vehicleLog.add(.keyless, "关闭插件托管") } }
                     ))
                     ToggleRow(icon: "arrow.triangle.2.circlepath", label: "智能切换", isOn: Binding(
                         get: { settingsStore.settings.smartSwitch },
-                        set: { if $0 { setMode(.smart) } else { settingsStore.settings.smartSwitch = false } }
+                        set: { if $0 { setMode(.smart) } else { settingsStore.settings.smartSwitch = false; vehicleLog.add(.keyless, "关闭智能切换") } }
                     ))
                     ToggleRow(icon: "iphone", label: "App 手动", isOn: Binding(
                         get: { settingsStore.settings.appManual },
-                        set: { if $0 { setMode(.manual) } else { settingsStore.settings.appManual = false } }
+                        set: { if $0 { setMode(.manual) } else { settingsStore.settings.appManual = false; vehicleLog.add(.keyless, "关闭 App 手动") } }
                     ))
 
-                    ToggleRow(icon: "exclamationmark.triangle.fill", label: "D/R 挡禁止", isOn: $settingsStore.settings.drBlock)
+                    ToggleRow(icon: "exclamationmark.triangle.fill", label: "D/R 挡禁止", isOn: Binding(
+                        get: { settingsStore.settings.drBlock },
+                        set: { enabled in
+                            settingsStore.settings.drBlock = enabled
+                            vehicleLog.add(.keyless, enabled ? "开启 D/R 挡禁止" : "关闭 D/R 挡禁止")
+                        }
+                    ))
                     SliderRow(icon: "gauge.medium", label: "重复指令间隔",
                               value: $settingsStore.settings.cmdInterval, range: 1...15, step: 1,
-                              format: "\(Int(settingsStore.settings.cmdInterval))s", tint: AppTheme.purple)
+                              format: "\(Int(settingsStore.settings.cmdInterval))s", tint: AppTheme.purple) { value in
+                        vehicleLog.add(.keyless, "修改重复指令间隔", detail: "\(Int(value))s")
+                    }
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -36,21 +51,36 @@ struct KeylessMainSection: View {
 
 struct UnlockSettingsSection: View {
     @EnvironmentObject var settingsStore: KeylessSettingsStore
+    @EnvironmentObject var vehicleLog: VehicleEventLogStore
     @Binding var showRecorder: Bool
     let choice: Binding<VibrationChoice>
     let customStore: CustomVibrationStore
 
     var body: some View {
         CardView(title: "解锁设置", icon: "lock.open.fill", iconColor: AppTheme.green) {
-            ToggleRow(icon: "power", label: "解锁开关", isOn: $settingsStore.settings.unlockEnabled)
+            ToggleRow(icon: "power", label: "解锁开关", isOn: Binding(
+                get: { settingsStore.settings.unlockEnabled },
+                set: { enabled in
+                    settingsStore.settings.unlockEnabled = enabled
+                    vehicleLog.add(.keyless, enabled ? "开启无感解锁" : "关闭无感解锁")
+                }
+            ))
 
             if settingsStore.settings.unlockEnabled {
                 VStack(spacing: 12) {
                     SliderRow(icon: "wifi", label: "dBm 阈值",
                               value: $settingsStore.settings.unlockThreshold, range: -110...(-30), step: 1,
-                              format: "\(Int(settingsStore.settings.unlockThreshold)) dBm", tint: AppTheme.green)
+                              format: "\(Int(settingsStore.settings.unlockThreshold)) dBm", tint: AppTheme.green) { value in
+                        vehicleLog.add(.keyless, "修改解锁阈值", detail: "\(Int(value)) dBm")
+                    }
 
-                    ToggleRow(icon: "flame.fill", label: "震动反馈", isOn: $settingsStore.settings.unlockVibrate)
+                    ToggleRow(icon: "flame.fill", label: "震动反馈", isOn: Binding(
+                        get: { settingsStore.settings.unlockVibrate },
+                        set: { enabled in
+                            settingsStore.settings.unlockVibrate = enabled
+                            vehicleLog.add(.keyless, enabled ? "开启解锁震动反馈" : "关闭解锁震动反馈")
+                        }
+                    ))
 
                     if settingsStore.settings.unlockVibrate {
                         VibrationSettingsDetail(
@@ -73,25 +103,42 @@ struct UnlockSettingsSection: View {
 
 struct LockSettingsSection: View {
     @EnvironmentObject var settingsStore: KeylessSettingsStore
+    @EnvironmentObject var vehicleLog: VehicleEventLogStore
     @Binding var showRecorder: Bool
     let choice: Binding<VibrationChoice>
     let customStore: CustomVibrationStore
 
     var body: some View {
         CardView(title: "上锁设置", icon: "lock.fill", iconColor: AppTheme.red) {
-            ToggleRow(icon: "power", label: "上锁开关", isOn: $settingsStore.settings.lockEnabled)
+            ToggleRow(icon: "power", label: "上锁开关", isOn: Binding(
+                get: { settingsStore.settings.lockEnabled },
+                set: { enabled in
+                    settingsStore.settings.lockEnabled = enabled
+                    vehicleLog.add(.keyless, enabled ? "开启无感上锁" : "关闭无感上锁")
+                }
+            ))
 
             if settingsStore.settings.lockEnabled {
                 VStack(spacing: 12) {
                     SliderRow(icon: "wifi", label: "dBm 阈值",
                               value: $settingsStore.settings.lockThreshold, range: -110...(-30), step: 1,
-                              format: "\(Int(settingsStore.settings.lockThreshold)) dBm", tint: AppTheme.red)
+                              format: "\(Int(settingsStore.settings.lockThreshold)) dBm", tint: AppTheme.red) { value in
+                        vehicleLog.add(.keyless, "修改上锁阈值", detail: "\(Int(value)) dBm")
+                    }
 
                     SliderRow(icon: "gauge.medium", label: "上锁延迟",
                               value: $settingsStore.settings.lockDelay, range: 0...60, step: 1,
-                              format: "\(Int(settingsStore.settings.lockDelay))s", tint: AppTheme.red)
+                              format: "\(Int(settingsStore.settings.lockDelay))s", tint: AppTheme.red) { value in
+                        vehicleLog.add(.keyless, "修改上锁延迟", detail: "\(Int(value))s")
+                    }
 
-                    ToggleRow(icon: "flame.fill", label: "震动反馈", isOn: $settingsStore.settings.lockVibrate)
+                    ToggleRow(icon: "flame.fill", label: "震动反馈", isOn: Binding(
+                        get: { settingsStore.settings.lockVibrate },
+                        set: { enabled in
+                            settingsStore.settings.lockVibrate = enabled
+                            vehicleLog.add(.keyless, enabled ? "开启上锁震动反馈" : "关闭上锁震动反馈")
+                        }
+                    ))
 
                     if settingsStore.settings.lockVibrate {
                         VibrationSettingsDetail(

@@ -31,8 +31,7 @@ struct LogView: View {
     @EnvironmentObject var vehicleLog: VehicleEventLogStore
     @State private var showingClearAlert = false
     @State private var selectedFilter: VehicleLogFilter = .all
-    @State private var exportedLogURL: URL?
-    @State private var isShareSheetPresented = false
+    @State private var sharePayload: SharePayload?
     @State private var toastText: String?
 
     private var todayLogs: [VehicleEventLogEntry] {
@@ -97,16 +96,15 @@ struct LogView: View {
                     confirmColor: .red
                 ) {
                     withAnimation { vehicleLog.clearToday() }
+                    vehicleLog.add(.action, "清除今日日志", detail: "filter=\(selectedFilter.title)")
                 }
 
                 Spacer(minLength: 100)
             }
         }
         .modifier(ChromeScrollTrackingModifier(scrollState: scrollState))
-        .sheet(isPresented: $isShareSheetPresented) {
-            if let exportedLogURL {
-                ShareSheet(activityItems: [exportedLogURL])
-            }
+        .sheet(item: $sharePayload) { payload in
+            ShareSheet(activityItems: payload.activityItems)
         }
         .overlay(alignment: .bottom) {
             if let text = toastText {
@@ -126,22 +124,27 @@ struct LogView: View {
     }
 
     private func copyFilteredLogs() {
-        let text = vehicleLog.exportText(entries: filteredLogs)
-        guard !text.isEmpty else {
+        guard !filteredLogs.isEmpty else {
             withAnimation { toastText = "暂无可复制日志" }
             return
         }
+        vehicleLog.add(.action, "复制今日日志", detail: "filter=\(selectedFilter.title) count=\(filteredLogs.count)")
+        let text = vehicleLog.exportText(entries: filteredLogs)
         UIPasteboard.general.string = text
         withAnimation { toastText = "已复制今日日志" }
     }
 
     private func exportFilteredLogs() {
+        guard !filteredLogs.isEmpty else {
+            withAnimation { toastText = "暂无日志可导出" }
+            return
+        }
+        vehicleLog.add(.action, "导出今日日志", detail: "filter=\(selectedFilter.title) count=\(filteredLogs.count)")
         guard let url = vehicleLog.exportFile(entries: filteredLogs, filterTitle: selectedFilter.fileTag) else {
             withAnimation { toastText = "暂无日志可导出" }
             return
         }
-        exportedLogURL = url
-        isShareSheetPresented = true
+        sharePayload = SharePayload(activityItems: [url])
     }
 }
 

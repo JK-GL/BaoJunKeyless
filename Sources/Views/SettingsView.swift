@@ -14,8 +14,7 @@ struct SettingsView: View {
     @State private var isPhotoPickerPresented = false
     @State private var isCrashLogExpanded = false
     @State private var crashLogText: String = ""
-    @State private var exportedLogURL: URL?
-    @State private var isShareSheetPresented = false
+    @State private var sharePayload: SharePayload?
 
     private var currentTheme: AppThemeConfiguration {
         theme.current
@@ -66,10 +65,8 @@ struct SettingsView: View {
                 }
             }
         }
-        .sheet(isPresented: $isShareSheetPresented) {
-            if let exportedLogURL {
-                ShareSheet(activityItems: [exportedLogURL])
-            }
+        .sheet(item: $sharePayload) { payload in
+            ShareSheet(activityItems: payload.activityItems)
         }
         .overlay(alignment: .bottom) {
             if let text = toastText {
@@ -117,9 +114,8 @@ struct SettingsView: View {
             withAnimation { toastText = "暂无日志可导出" }
             return
         }
-        exportedLogURL = url
+        sharePayload = SharePayload(activityItems: [url])
         refreshCrashLog()
-        isShareSheetPresented = true
     }
 
     private func resetAllSettings() {

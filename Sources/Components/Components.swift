@@ -138,6 +138,7 @@ struct SliderRow: View {
     let icon: String; let label: String
     @Binding var value: Double; let range: ClosedRange<Double>; let step: Double
     let format: String; let tint: Color
+    var onEditingEnded: ((Double) -> Void)? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -147,7 +148,10 @@ struct SliderRow: View {
                 Text(format).font(.system(size: 14, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Color.white.opacity(0.62))
             }
-            Slider(value: $value, in: range, step: step).tint(tint)
+            Slider(value: $value, in: range, step: step) { editing in
+                if !editing { onEditingEnded?(value) }
+            }
+            .tint(tint)
         }
     }
 }
