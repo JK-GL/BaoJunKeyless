@@ -12,12 +12,17 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private var carLatitude: Double = 0
     private var carLongitude: Double = 0
 
-    // 计算结果
-    @Published private(set) var distance: CLLocationDistance = 0   // 距离（米）
-    @Published private(set) var relativeAngle: CLLocationDirection = 0  // 相对角度（雷达上显示）
+    // 雷达内部状态：不走 @Published，避免高频 heading 让 SwiftUI 反复刷新。
+    private(set) var radarDistance: CLLocationDistance = 0
+    private(set) var radarRelativeAngle: CLLocationDirection = 0
+    var radarPositionHandler: ((CLLocationDistance, CLLocationDirection) -> Void)?
 
+    // UI 文字只需要低频更新。
+    @Published private(set) var distance: CLLocationDistance = 0
+
+    private var lastRadarDistance: CLLocationDistance = -1
+    private var lastRadarRelativeAngle: CLLocationDirection = -1
     private var lastPublishedDistance: CLLocationDistance = -1
-    private var lastPublishedRelativeAngle: CLLocationDirection = -1
 
     override init() {
         super.init()
@@ -62,15 +67,27 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         let nextRelativeAngle = normalizeAngle(nextBearing - heading)
 
         // 保留连续 heading 采样，但不要把每个微小传感器抖动都发布给 SwiftUI。
-        // 0.25° 已远小于之前导致卡顿的 5°，肉眼仍连续，但能显著减少 13mini 高频刷新压力。
-        if lastPublishedDistance < 0 || abs(nextDistance - lastPublishedDistance) >= 0.25 {
-            distance = nextDistance
-            lastPublishedDistance = nextDistance
+        // 雷达位置直接回调给 UIKit 视图；距离文字才低频 @Published 给 SwiftUI。
+        var radarChanged = false
+        if lastRadarDistance < 0 || abs(nextDistance - lastRadarDistance) >= 0.25 {
+            radarDistance = nextDistance
+            lastRadarDistance = nextDistance
+            radarChanged = true
         }
 
-        if lastPublishedRelativeAngle < 0 || angleDelta(nextRelativeAngle, lastPublishedRelativeAngle) >= 0.25 {
-            relativeAngle = nextRelativeAngle
-            lastPublishedRelativeAngle = nextRelativeAngle
+        if lastRadarRelativeAngle < 0 || angleDelta(nextRelativeAngle, lastRadarRelativeAngle) >= 0.25 {
+            radarRelativeAngle = nextRelativeAngle
+            lastRadarRelativeAngle = nextRelativeAngle
+            radarChanged = true
+        }
+
+        if radarChanged, lastRadarDistance >= 0, lastRadarRelativeAngle >= 0 {
+            radarPositionHandler?(radarDistance, radarRelativeAngle)
+        }
+
+        if lastPublishedDistance < 0 || abs(nextDistance - lastPublishedDistance) >= 1.0 {
+            distance = nextDistance
+            lastPublishedDistance = nextDistance
         }
     }
 

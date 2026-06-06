@@ -71,7 +71,6 @@ final class RadarUIView: UIView {
         } else {
             restoreDynamicResourcesIfNeeded()
             setNeedsLayout()
-            startMarkerDisplayLinkIfNeeded()
         }
     }
 
@@ -171,7 +170,9 @@ final class RadarUIView: UIView {
 
         if let shared = Self.sharedCarImage {
             carOnlineImage = shared
-            carImageView.image = shared
+            if carImageView.image !== shared {
+                carImageView.image = shared
+            }
         } else if carImageView.image == nil {
             carImageView.image = UIImage(systemName: "car.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
             loadCarImage()
@@ -193,6 +194,11 @@ final class RadarUIView: UIView {
         )
         let nextSize = max(sz * (0.28 - 0.15 * CGFloat(norm)), 34)
 
+        let targetChanged = force
+            || abs(nextCenter.x - targetCarCenter.x) >= 0.05
+            || abs(nextCenter.y - targetCarCenter.y) >= 0.05
+            || abs(nextSize - targetCarSize) >= 0.05
+
         targetCarCenter = nextCenter
         targetCarSize = nextSize
 
@@ -202,7 +208,9 @@ final class RadarUIView: UIView {
             applyMarkerFrame()
         }
 
-        startMarkerDisplayLinkIfNeeded()
+        if targetChanged && !force {
+            startMarkerDisplayLinkIfNeeded()
+        }
     }
 
     private func startMarkerDisplayLinkIfNeeded() {
@@ -261,6 +269,9 @@ final class RadarUIView: UIView {
         if abs(dx) < 0.18, abs(dy) < 0.18, abs(ds) < 0.10 {
             displayedCarCenter = targetCarCenter
             displayedCarSize = targetCarSize
+            applyMarkerFrame()
+            stopMarkerDisplayLink()
+            return
         }
 
         applyMarkerFrame()
@@ -428,21 +439,48 @@ struct ScanRing: View {
 
 // MARK: - SwiftUI 封装
 struct RadarRepresentable: UIViewRepresentable {
-    @ObservedObject var locationManager: LocationManager
+    let locationManager: LocationManager
     var bleConnected: Bool = false
 
+    func makeCoordinator() -> Coordinator {
+        Coordinator(locationManager: locationManager)
+    }
+
+    final class Coordinator {
+        weak var locationManager: LocationManager?
+
+        init(locationManager: LocationManager) {
+            self.locationManager = locationManager
+        }
+    }
+
     func makeUIView(context: Context) -> RadarUIView {
-        RadarUIView(frame: .zero)
+        let view = RadarUIView(frame: .zero)
+        locationManager.radarPositionHandler = { [weak view] distance, relativeAngle in
+            guard let view else { return }
+            view.distance = distance
+            view.relativeAngle = relativeAngle
+            view.updatePosition()
+        }
+        view.distance = locationManager.radarDistance
+        view.relativeAngle = locationManager.radarRelativeAngle
+        view.updatePosition(force: true)
+        return view
     }
 
     func updateUIView(_ view: RadarUIView, context: Context) {
-        view.relativeAngle = locationManager.relativeAngle
-        view.distance = locationManager.distance
         view.bleConnected = bleConnected
+        locationManager.radarPositionHandler = { [weak view] distance, relativeAngle in
+            guard let view else { return }
+            view.distance = distance
+            view.relativeAngle = relativeAngle
+            view.updatePosition()
+        }
         view.updatePosition()
     }
 
-    static func dismantleUIView(_ uiView: RadarUIView, coordinator: ()) {
+    static func dismantleUIView(_ uiView: RadarUIView, coordinator: Coordinator) {
+        coordinator.locationManager?.radarPositionHandler = nil
         uiView.releaseHeavyResources()
     }
 }
@@ -496,7 +534,5 @@ struct RadarCardView: View {
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
         .onAppear { locationManager.setCarLocation(lat: carLat, lng: carLng) }
-        .onChange(of: locationManager.relativeAngle) { _ in }
-        .onChange(of: locationManager.distance) { _ in }
     }
 }
