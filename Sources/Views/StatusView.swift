@@ -60,8 +60,10 @@ struct StatusView: View {
                 RangeCardView()
                 BatteryGaugesView()
                 TemperatureView()
+                ChargingStatusView()
                 BodyStatusView()
                 DrivingStatusView()
+                LightingStatusView()
                 VehicleInfoMergedCard()
 
                 Spacer(minLength: 100)

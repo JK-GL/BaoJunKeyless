@@ -115,49 +115,18 @@ struct RangeRow: View {
 }
 
 struct BatteryGaugesView: View {
+    private let topMetric = VehicleStatusMetric(icon: "battery.100.bolt", label: "剩余电量", value: "17.8kWh", color: AppTheme.accent)
     private let metrics: [VehicleStatusMetric] = [
-        VehicleStatusMetric(icon: "battery.100.bolt", label: "剩余电量", value: "17.8kWh", color: AppTheme.accent),
+        VehicleStatusMetric(icon: "checkmark.seal.fill", label: "电池健康", value: "99%", color: AppTheme.green),
         VehicleStatusMetric(icon: "bolt.fill", label: "动力电压", value: "109.5V", color: AppTheme.accent),
         VehicleStatusMetric(icon: "waveform.path.ecg", label: "动力电流", value: "0.0A", color: AppTheme.green),
-        VehicleStatusMetric(icon: "car.fill", label: "小电瓶", value: "12.4V", color: AppTheme.accent),
-        VehicleStatusMetric(icon: "checkmark.seal.fill", label: "电池状态", value: "正常", color: AppTheme.green),
-        VehicleStatusMetric(icon: "checkmark.circle.fill", label: "电池指示", value: "正常", color: AppTheme.green)
+        VehicleStatusMetric(icon: "car.fill", label: "小电瓶", value: "12.4V", color: AppTheme.accent)
     ]
 
     var body: some View {
         CardView(title: "电池系统", icon: "battery.100.bolt", iconColor: AppTheme.accent) {
-            VStack(spacing: 14) {
-                HStack(spacing: 12) {
-                    ZStack {
-                        Circle()
-                            .fill(AppTheme.green.opacity(0.12))
-                            .frame(width: 46, height: 46)
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(AppTheme.green)
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("电池正常")
-                            .font(.system(size: 18, weight: .bold, design: .rounded))
-                            .foregroundColor(.primary)
-                        Text("高压系统 / 小电瓶状态正常")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.secondary)
-                    }
-
-                    Spacer(minLength: 8)
-
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("99%")
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
-                            .foregroundColor(AppTheme.green)
-                        Text("健康度")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.secondary)
-                    }
-                }
-
+            VStack(spacing: 12) {
+                VehicleStatusMetricGrid(metrics: [topMetric])
                 VehicleStatusMetricGrid(metrics: metrics)
             }
         }
@@ -189,39 +158,66 @@ struct TemperatureView: View {
     }
 }
 
+struct ChargingStatusView: View {
+    private let metrics: [VehicleStatusMetric] = [
+        VehicleStatusMetric(icon: "bolt.fill", label: "充电中", value: "否", color: AppTheme.orange),
+        VehicleStatusMetric(icon: "gauge.medium", label: "充电功率", value: "--", status: "kW", color: Color.white.opacity(0.45)),
+        VehicleStatusMetric(icon: "bolt.circle.fill", label: "充电状态", value: "--", color: Color.white.opacity(0.45)),
+        VehicleStatusMetric(icon: "bolt.fill", label: "充电指示", value: "关闭", color: AppTheme.orange),
+        VehicleStatusMetric(icon: "arrow.clockwise", label: "补能状态", value: "--", color: Color.white.opacity(0.45)),
+        VehicleStatusMetric(icon: "bolt.fill", label: "OBC电流", value: "0A", color: AppTheme.orange),
+        VehicleStatusMetric(icon: "thermometer", label: "OBC温度", value: "--", color: Color.white.opacity(0.45))
+    ]
+
+    var body: some View {
+        CardView(title: "充电状态", icon: "bolt.circle.fill", iconColor: AppTheme.orange) {
+            VehicleStatusMetricGrid(metrics: metrics)
+        }
+    }
+}
+
 struct BodyStatusView: View {
     private let coreMetrics: [VehicleStatusMetric] = [
         VehicleStatusMetric(icon: "lock.fill", label: "车锁", value: "已锁车", color: AppTheme.green),
         VehicleStatusMetric(icon: "car.fill", label: "车门", value: "全关", color: AppTheme.green),
         VehicleStatusMetric(icon: "rectangle.fill", label: "车窗", value: "全关", color: AppTheme.green),
-        VehicleStatusMetric(icon: "car.fill", label: "尾门", value: "关闭", color: AppTheme.green),
-        VehicleStatusMetric(icon: "key.fill", label: "钥匙", value: "钥匙正常", color: AppTheme.green),
-        VehicleStatusMetric(icon: "eye.fill", label: "哨兵", value: "关闭", color: Color.white.opacity(0.45))
+        VehicleStatusMetric(icon: "eye.fill", label: "哨兵", value: "关闭", color: Color.white.opacity(0.45)),
+        VehicleStatusMetric(icon: "lock.fill", label: "尾门锁", value: "已锁", color: AppTheme.green),
+        VehicleStatusMetric(icon: "car.fill", label: "尾门", value: "关闭", color: AppTheme.green)
     ]
 
-    private let detailMetrics: [VehicleStatusMetric] = [
-        VehicleStatusMetric(icon: "car.fill", label: "左前门", value: "关", color: AppTheme.green),
-        VehicleStatusMetric(icon: "car.fill", label: "右前门", value: "关", color: AppTheme.green),
-        VehicleStatusMetric(icon: "car.fill", label: "左后门", value: "关", color: AppTheme.green),
-        VehicleStatusMetric(icon: "car.fill", label: "右后门", value: "关", color: AppTheme.green),
-        VehicleStatusMetric(icon: "lock.fill", label: "左前锁", value: "已锁", color: AppTheme.green),
-        VehicleStatusMetric(icon: "lock.fill", label: "右前锁", value: "已锁", color: AppTheme.green),
-        VehicleStatusMetric(icon: "lock.fill", label: "左后锁", value: "已锁", color: AppTheme.green),
-        VehicleStatusMetric(icon: "lock.fill", label: "右后锁", value: "已锁", color: AppTheme.green),
-        VehicleStatusMetric(icon: "rectangle", label: "左前窗", value: "关 0%", color: AppTheme.green),
-        VehicleStatusMetric(icon: "rectangle", label: "右前窗", value: "关 0%", color: AppTheme.green),
-        VehicleStatusMetric(icon: "rectangle", label: "左后窗", value: "关 0%", color: AppTheme.green),
-        VehicleStatusMetric(icon: "rectangle", label: "右后窗", value: "关 0%", color: AppTheme.green),
-        VehicleStatusMetric(icon: "lock.fill", label: "尾门锁", value: "已锁", color: AppTheme.green),
-        VehicleStatusMetric(icon: "questionmark.circle.fill", label: "左滑门", value: "--", color: Color.white.opacity(0.45)),
-        VehicleStatusMetric(icon: "questionmark.circle.fill", label: "右滑门", value: "--", color: Color.white.opacity(0.45))
-    ]
+    private var warningMessages: [String] {
+        var warnings: [String] = []
+        for metric in coreMetrics {
+            if metric.color == AppTheme.orange || metric.color == AppTheme.red {
+                if metric.value != "全关" && metric.value != "已锁车" && metric.value != "已锁" && metric.value != "关闭" && metric.value != "--" {
+                    warnings.append("\(metric.label)\(metric.value)")
+                }
+            }
+        }
+        return warnings
+    }
 
     var body: some View {
         CardView(title: "车身状态", icon: "car.fill", iconColor: AppTheme.green) {
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 VehicleStatusMetricGrid(metrics: coreMetrics)
-                VehicleStatusMetricGrid(metrics: detailMetrics)
+
+                let warnings = warningMessages
+                if !warnings.isEmpty {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(AppTheme.orange)
+                        Text("未关提醒：" + warnings.joined(separator: "；"))
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.secondary)
+                            .lineLimit(3)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(AppTheme.orange.opacity(0.08)))
+                }
             }
         }
     }
@@ -229,15 +225,31 @@ struct BodyStatusView: View {
 
 struct DrivingStatusView: View {
     private let metrics: [VehicleStatusMetric] = [
-        VehicleStatusMetric(icon: "gearshape.fill", label: "档位", value: "P挡", color: AppTheme.green),
+        VehicleStatusMetric(icon: "scope", label: "方向盘", value: "0.0°", color: AppTheme.accent),
         VehicleStatusMetric(icon: "speedometer", label: "车速", value: "--", status: "km/h", color: Color.white.opacity(0.45)),
         VehicleStatusMetric(icon: "arrow.up.circle.fill", label: "油门", value: "0%", color: AppTheme.green),
-        VehicleStatusMetric(icon: "stop.circle.fill", label: "刹车", value: "0%", color: AppTheme.green),
-        VehicleStatusMetric(icon: "scope", label: "方向盘", value: "0.0°", color: AppTheme.accent)
+        VehicleStatusMetric(icon: "stop.circle.fill", label: "刹车", value: "0%", color: AppTheme.green)
     ]
 
     var body: some View {
         CardView(title: "驾驶状态", icon: "scope", iconColor: AppTheme.accent) {
+            VehicleStatusMetricGrid(metrics: metrics)
+        }
+    }
+}
+
+struct LightingStatusView: View {
+    private let metrics: [VehicleStatusMetric] = [
+        VehicleStatusMetric(icon: "lightbulb.fill", label: "近光灯", value: "关闭", color: AppTheme.orange),
+        VehicleStatusMetric(icon: "sun.max.fill", label: "远光灯", value: "关闭", color: AppTheme.orange),
+        VehicleStatusMetric(icon: "arrow.left.arrow.right", label: "左转向", value: "关闭", color: AppTheme.accent),
+        VehicleStatusMetric(icon: "arrow.left.arrow.right", label: "右转向", value: "关闭", color: AppTheme.accent),
+        VehicleStatusMetric(icon: "sun.min.fill", label: "示宽灯", value: "关闭", color: AppTheme.orange),
+        VehicleStatusMetric(icon: "cloud.fog", label: "前雾灯", value: "关闭", color: AppTheme.orange)
+    ]
+
+    var body: some View {
+        CardView(title: "灯光状态", icon: "lightbulb.fill", iconColor: AppTheme.orange) {
             VehicleStatusMetricGrid(metrics: metrics)
         }
     }
