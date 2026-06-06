@@ -26,7 +26,12 @@ enum StatusBLEState {
     case weak
     case error
 
-    var icon: String { "dot.radiowaves.left.and.right" }
+    var icon: String {
+        switch self {
+        case .connected: return "antenna.radiowaves.left.and.right"
+        case .disconnected, .scanning, .weak, .error: return "antenna.radiowaves.left.and.right.slash"
+        }
+    }
 
     var text: String {
         switch self {
@@ -190,7 +195,7 @@ private struct AuthStatusBadge: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Image(systemName: "shield.fill")
+            Image(systemName: authStatus.text == nil ? "checkmark.seal.fill" : "xmark.seal.fill")
                 .font(.system(size: 14, weight: .semibold))
             if let text = authStatus.text {
                 Text(text)

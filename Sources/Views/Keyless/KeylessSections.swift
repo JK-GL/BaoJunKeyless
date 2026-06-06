@@ -17,7 +17,7 @@ struct KeylessMainSection: View {
 
             if settingsStore.settings.keylessEnabled {
                 VStack(spacing: 12) {
-                    ToggleRow(icon: "shield.fill", label: "插件托管", isOn: Binding(
+                    ToggleRow(icon: "puzzlepiece", label: "插件托管", isOn: Binding(
                         get: { settingsStore.settings.pluginTakeover },
                         set: { if $0 { setMode(.plugin) } else { settingsStore.settings.pluginTakeover = false; vehicleLog.add(.keyless, "关闭插件托管") } }
                     ))
@@ -74,7 +74,7 @@ struct UnlockSettingsSection: View {
                         vehicleLog.add(.keyless, "修改解锁阈值", detail: "\(Int(value)) dBm")
                     }
 
-                    ToggleRow(icon: "flame.fill", label: "震动反馈", isOn: Binding(
+                    ToggleRow(icon: "iphone.radiowaves.left.and.right", label: "震动反馈", isOn: Binding(
                         get: { settingsStore.settings.unlockVibrate },
                         set: { enabled in
                             settingsStore.settings.unlockVibrate = enabled
@@ -132,7 +132,7 @@ struct LockSettingsSection: View {
                         vehicleLog.add(.keyless, "修改上锁延迟", detail: "\(Int(value))s")
                     }
 
-                    ToggleRow(icon: "flame.fill", label: "震动反馈", isOn: Binding(
+                    ToggleRow(icon: "iphone.radiowaves.left.and.right", label: "震动反馈", isOn: Binding(
                         get: { settingsStore.settings.lockVibrate },
                         set: { enabled in
                             settingsStore.settings.lockVibrate = enabled

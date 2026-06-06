@@ -26,7 +26,7 @@ struct StatusView: View {
 
     private var modeIcon: String {
         guard settingsStore.settings.keylessEnabled else { return "bolt.slash.fill" }
-        if settingsStore.settings.pluginTakeover { return "bolt.fill" }
+        if settingsStore.settings.pluginTakeover { return "puzzlepiece" }
         if settingsStore.settings.smartSwitch { return "arrow.triangle.2.circlepath" }
         if settingsStore.settings.appManual { return "iphone" }
         return "pause.circle.fill"

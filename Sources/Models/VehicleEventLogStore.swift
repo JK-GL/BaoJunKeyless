@@ -38,7 +38,7 @@ enum VehicleEventLogCategory: String, Codable, CaseIterable, Hashable {
         case .system: return "power"
         case .ble: return "antenna.radiowaves.left.and.right"
         case .keyless: return "key.fill"
-        case .plugin: return "shield.fill"
+        case .plugin: return "puzzlepiece"
         case .action: return "bolt.fill"
         case .warning: return "exclamationmark.triangle.fill"
         case .error: return "xmark.octagon.fill"
