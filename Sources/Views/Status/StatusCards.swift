@@ -115,11 +115,13 @@ struct RangeRow: View {
 }
 
 struct BatteryGaugesView: View {
-    private let metrics: [BatterySystemMetric] = [
-        BatterySystemMetric(icon: "bolt.fill", label: "动力电压", value: "109.5V", color: AppTheme.accent),
-        BatterySystemMetric(icon: "waveform.path.ecg", label: "动力电流", value: "0.0A", color: AppTheme.green),
-        BatterySystemMetric(icon: "car.fill", label: "小电瓶", value: "12.4V", color: AppTheme.accent),
-        BatterySystemMetric(icon: "checkmark.seal.fill", label: "电池指示", value: "正常", color: AppTheme.green)
+    private let metrics: [VehicleStatusMetric] = [
+        VehicleStatusMetric(icon: "battery.100.bolt", label: "剩余电量", value: "17.8kWh", color: AppTheme.accent),
+        VehicleStatusMetric(icon: "bolt.fill", label: "动力电压", value: "109.5V", color: AppTheme.accent),
+        VehicleStatusMetric(icon: "waveform.path.ecg", label: "动力电流", value: "0.0A", color: AppTheme.green),
+        VehicleStatusMetric(icon: "car.fill", label: "小电瓶", value: "12.4V", color: AppTheme.accent),
+        VehicleStatusMetric(icon: "checkmark.seal.fill", label: "电池状态", value: "正常", color: AppTheme.green),
+        VehicleStatusMetric(icon: "checkmark.circle.fill", label: "电池指示", value: "正常", color: AppTheme.green)
     ]
 
     var body: some View {
@@ -156,27 +158,123 @@ struct BatteryGaugesView: View {
                     }
                 }
 
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                    ForEach(metrics) { metric in
-                        BatterySystemMetricChip(metric: metric)
-                    }
-                }
+                VehicleStatusMetricGrid(metrics: metrics)
             }
         }
     }
 }
 
-private struct BatterySystemMetric: Identifiable {
+struct TemperatureView: View {
+    private let cabinMetrics: [VehicleStatusMetric] = [
+        VehicleStatusMetric(icon: "thermometer", label: "车内温度", value: "22°C", status: "舒适", color: AppTheme.accent),
+        VehicleStatusMetric(icon: "snowflake", label: "空调设定", value: "17°C", status: "设定", color: AppTheme.orange)
+    ]
+
+    private let thermalMetrics: [VehicleStatusMetric] = [
+        VehicleStatusMetric(icon: "thermometer.medium", label: "电池均温", value: "25°C", status: "正常", color: AppTheme.green),
+        VehicleStatusMetric(icon: "thermometer.high", label: "电池最高", value: "25°C", status: "正常", color: AppTheme.green),
+        VehicleStatusMetric(icon: "thermometer.low", label: "电池最低", value: "25°C", status: "正常", color: AppTheme.green),
+        VehicleStatusMetric(icon: "gearshape.fill", label: "电机温度", value: "27°C", status: "正常", color: AppTheme.green),
+        VehicleStatusMetric(icon: "cpu.fill", label: "逆变器", value: "27°C", status: "正常", color: AppTheme.green),
+        VehicleStatusMetric(icon: "bolt.fill", label: "充电机", value: "--", status: "--", color: Color.white.opacity(0.45))
+    ]
+
+    var body: some View {
+        CardView(title: "温度监控", icon: "thermometer.medium", iconColor: AppTheme.orange) {
+            VStack(spacing: 12) {
+                VehicleStatusMetricGrid(metrics: cabinMetrics)
+                VehicleStatusMetricGrid(metrics: thermalMetrics)
+            }
+        }
+    }
+}
+
+struct BodyStatusView: View {
+    private let coreMetrics: [VehicleStatusMetric] = [
+        VehicleStatusMetric(icon: "lock.fill", label: "车锁", value: "已锁车", color: AppTheme.green),
+        VehicleStatusMetric(icon: "car.fill", label: "车门", value: "全关", color: AppTheme.green),
+        VehicleStatusMetric(icon: "rectangle.fill", label: "车窗", value: "全关", color: AppTheme.green),
+        VehicleStatusMetric(icon: "car.fill", label: "尾门", value: "关闭", color: AppTheme.green),
+        VehicleStatusMetric(icon: "key.fill", label: "钥匙", value: "钥匙正常", color: AppTheme.green),
+        VehicleStatusMetric(icon: "eye.fill", label: "哨兵", value: "关闭", color: Color.white.opacity(0.45))
+    ]
+
+    private let detailMetrics: [VehicleStatusMetric] = [
+        VehicleStatusMetric(icon: "car.fill", label: "左前门", value: "关", color: AppTheme.green),
+        VehicleStatusMetric(icon: "car.fill", label: "右前门", value: "关", color: AppTheme.green),
+        VehicleStatusMetric(icon: "car.fill", label: "左后门", value: "关", color: AppTheme.green),
+        VehicleStatusMetric(icon: "car.fill", label: "右后门", value: "关", color: AppTheme.green),
+        VehicleStatusMetric(icon: "lock.fill", label: "左前锁", value: "已锁", color: AppTheme.green),
+        VehicleStatusMetric(icon: "lock.fill", label: "右前锁", value: "已锁", color: AppTheme.green),
+        VehicleStatusMetric(icon: "lock.fill", label: "左后锁", value: "已锁", color: AppTheme.green),
+        VehicleStatusMetric(icon: "lock.fill", label: "右后锁", value: "已锁", color: AppTheme.green),
+        VehicleStatusMetric(icon: "rectangle", label: "左前窗", value: "关 0%", color: AppTheme.green),
+        VehicleStatusMetric(icon: "rectangle", label: "右前窗", value: "关 0%", color: AppTheme.green),
+        VehicleStatusMetric(icon: "rectangle", label: "左后窗", value: "关 0%", color: AppTheme.green),
+        VehicleStatusMetric(icon: "rectangle", label: "右后窗", value: "关 0%", color: AppTheme.green),
+        VehicleStatusMetric(icon: "lock.fill", label: "尾门锁", value: "已锁", color: AppTheme.green),
+        VehicleStatusMetric(icon: "questionmark.circle.fill", label: "左滑门", value: "--", color: Color.white.opacity(0.45)),
+        VehicleStatusMetric(icon: "questionmark.circle.fill", label: "右滑门", value: "--", color: Color.white.opacity(0.45))
+    ]
+
+    var body: some View {
+        CardView(title: "车身状态", icon: "car.fill", iconColor: AppTheme.green) {
+            VStack(spacing: 12) {
+                VehicleStatusMetricGrid(metrics: coreMetrics)
+                VehicleStatusMetricGrid(metrics: detailMetrics)
+            }
+        }
+    }
+}
+
+struct DrivingStatusView: View {
+    private let metrics: [VehicleStatusMetric] = [
+        VehicleStatusMetric(icon: "gearshape.fill", label: "档位", value: "P挡", color: AppTheme.green),
+        VehicleStatusMetric(icon: "speedometer", label: "车速", value: "--", status: "km/h", color: Color.white.opacity(0.45)),
+        VehicleStatusMetric(icon: "arrow.up.circle.fill", label: "油门", value: "0%", color: AppTheme.green),
+        VehicleStatusMetric(icon: "stop.circle.fill", label: "刹车", value: "0%", color: AppTheme.green),
+        VehicleStatusMetric(icon: "scope", label: "方向盘", value: "0.0°", color: AppTheme.accent)
+    ]
+
+    var body: some View {
+        CardView(title: "驾驶状态", icon: "scope", iconColor: AppTheme.accent) {
+            VehicleStatusMetricGrid(metrics: metrics)
+        }
+    }
+}
+
+private struct VehicleStatusMetric: Identifiable {
     let id = UUID()
     let icon: String
     let label: String
     let value: String
+    let status: String?
     let color: Color
+
+    init(icon: String, label: String, value: String, status: String? = nil, color: Color) {
+        self.icon = icon
+        self.label = label
+        self.value = value
+        self.status = status
+        self.color = color
+    }
 }
 
-private struct BatterySystemMetricChip: View {
+private struct VehicleStatusMetricGrid: View {
+    let metrics: [VehicleStatusMetric]
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+            ForEach(metrics) { metric in
+                VehicleStatusMetricCard(metric: metric)
+            }
+        }
+    }
+}
+
+private struct VehicleStatusMetricCard: View {
     @EnvironmentObject var theme: ThemeManager
-    let metric: BatterySystemMetric
+    let metric: VehicleStatusMetric
 
     var body: some View {
         HStack(spacing: 10) {
@@ -194,110 +292,24 @@ private struct BatterySystemMetricChip: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
-                Text(metric.value)
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(metric.value)
+                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                    if let status = metric.status {
+                        Text(status)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(metric.color)
+                            .lineLimit(1)
+                    }
+                }
             }
             Spacer(minLength: 0)
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(theme.cardBg))
-    }
-}
-
-struct TemperatureView: View {
-    private let rows: [TemperatureMetric] = [
-        TemperatureMetric(icon: "thermometer", label: "电池最高", value: "25°C", status: "正常", color: AppTheme.green),
-        TemperatureMetric(icon: "thermometer", label: "电池最低", value: "25°C", status: "正常", color: AppTheme.green),
-        TemperatureMetric(icon: "thermometer", label: "电机温度", value: "27°C", status: "正常", color: AppTheme.green),
-        TemperatureMetric(icon: "thermometer", label: "逆变器", value: "27°C", status: "正常", color: AppTheme.green),
-        TemperatureMetric(icon: "thermometer", label: "车内温度", value: "22°C", status: "舒适", color: AppTheme.accent),
-        TemperatureMetric(icon: "thermometer", label: "空调设定", value: "17°C", status: "设定", color: AppTheme.orange)
-    ]
-
-    var body: some View {
-        CardView(title: "温度监控", icon: "thermometer.medium", iconColor: AppTheme.orange) {
-            VStack(spacing: 12) {
-                HStack(spacing: 12) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(AppTheme.green.opacity(0.12))
-                            .frame(width: 46, height: 46)
-                        Image(systemName: "thermometer.medium")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(AppTheme.green)
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("电池均温")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.secondary)
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text("25°C")
-                                .font(.system(size: 28, weight: .bold, design: .rounded))
-                                .foregroundColor(.primary)
-                            Text("正常")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(AppTheme.green)
-                        }
-                    }
-
-                    Spacer()
-                }
-                .padding(12)
-                .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(AppTheme.green.opacity(0.08)))
-
-                VStack(spacing: 0) {
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                        TemperatureMetricRow(metric: row)
-                        if index < rows.count - 1 {
-                            Divider()
-                                .padding(.leading, 36)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private struct TemperatureMetric: Identifiable {
-    let id = UUID()
-    let icon: String
-    let label: String
-    let value: String
-    let status: String
-    let color: Color
-}
-
-private struct TemperatureMetricRow: View {
-    let metric: TemperatureMetric
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: metric.icon)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(metric.color)
-                .frame(width: 24)
-
-            Text(metric.label)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.secondary)
-
-            Spacer()
-
-            Text(metric.value)
-                .font(.system(size: 14, weight: .bold, design: .monospaced))
-                .foregroundColor(.primary)
-
-            Text(metric.status)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(metric.color)
-                .frame(minWidth: 30, alignment: .trailing)
-        }
-        .padding(.vertical, 9)
     }
 }
 
