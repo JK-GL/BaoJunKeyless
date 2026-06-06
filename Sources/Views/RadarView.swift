@@ -14,15 +14,11 @@ final class RadarUIView: UIView {
     var bleConnected: Bool = false
 
     private let backgroundImageView = UIImageView()
-    private let glowView = UIView()
-    private let glowLayer = CAGradientLayer()
     private let carImageView = UIImageView()
     private var memoryWarningObserver: NSObjectProtocol?
     private var stars: [StarParticle] = []
     private var displayedCarCenter: CGPoint = .zero
     private var displayedCarSize: CGFloat = 34
-    private var previousGlowSize: CGFloat = -1
-    private var previousGlowCenter: CGPoint = .init(x: -1, y: -1)
     private var targetCarCenter: CGPoint = .zero
     private var targetCarSize: CGFloat = 34
     private var markerDisplayLink: CADisplayLink?
@@ -110,19 +106,6 @@ final class RadarUIView: UIView {
         backgroundImageView.isUserInteractionEnabled = false
         addSubview(backgroundImageView)
 
-        glowView.backgroundColor = .clear
-        glowView.isHidden = true
-        glowView.isUserInteractionEnabled = false
-        glowLayer.type = .radial
-        glowLayer.colors = [
-            UIColor.systemBlue.withAlphaComponent(0.10).cgColor,
-            UIColor.systemBlue.withAlphaComponent(0.025).cgColor,
-            UIColor.clear.cgColor
-        ]
-        glowLayer.locations = [0, 0.42, 1]
-        glowView.layer.addSublayer(glowLayer)
-        addSubview(glowView)
-
         carImageView.contentMode = .scaleAspectFit
         carImageView.isUserInteractionEnabled = false
         addSubview(carImageView)
@@ -155,10 +138,6 @@ final class RadarUIView: UIView {
 
     func releaseHeavyResources() {
         backgroundImageView.image = nil
-        glowView.layer.removeAllAnimations()
-        glowView.isHidden = true
-        previousGlowSize = -1
-        previousGlowCenter = .init(x: -1, y: -1)
         carImageView.layer.removeAllAnimations()
         lastBackgroundSize = .zero
         lastDisplayLinkTimestamp = 0
@@ -301,32 +280,6 @@ final class RadarUIView: UIView {
         carImageView.bounds = CGRect(x: 0, y: 0, width: displayedCarSize, height: displayedCarSize)
         carImageView.center = displayedCarCenter
 
-        let glowSize = displayedCarSize * 1.65
-        let sizeChanged = abs(glowSize - previousGlowSize) >= 0.25
-        let centerChanged = abs(displayedCarCenter.x - previousGlowCenter.x) >= 0.25 || abs(displayedCarCenter.y - previousGlowCenter.y) >= 0.25
-
-        if glowView.isHidden || sizeChanged || centerChanged {
-            glowView.isHidden = false
-            glowView.bounds = CGRect(x: 0, y: 0, width: glowSize, height: glowSize)
-            glowView.center = displayedCarCenter
-            glowView.layer.cornerRadius = glowSize / 2
-            glowLayer.frame = CGRect(x: 0, y: 0, width: glowSize, height: glowSize)
-            glowLayer.cornerRadius = glowSize / 2
-            glowView.alpha = 0.72
-            previousGlowSize = glowSize
-            previousGlowCenter = displayedCarCenter
-
-            if glowView.layer.animation(forKey: "radar-pulse") == nil {
-                let pulse = CABasicAnimation(keyPath: "opacity")
-                pulse.fromValue = 0.55
-                pulse.toValue = 0.72
-                pulse.duration = 2.2
-                pulse.autoreverses = true
-                pulse.repeatCount = .infinity
-                glowView.layer.add(pulse, forKey: "radar-pulse")
-            }
-        }
-
         CATransaction.commit()
     }
 
@@ -440,18 +393,15 @@ final class RadarUIView: UIView {
 // MARK: - SwiftUI 波纹动画
 struct PsychicScanView: View {
     let size: CGFloat
-    @AppStorage(AppDiagnosticsSettings.enableRadarScanKey) private var enableRadarScan = false
 
     var body: some View {
-        if enableRadarScan {
-            ZStack {
-                ForEach(0..<2, id: \.self) { i in
-                    ScanRing(index: i, size: size)
-                }
+        ZStack {
+            ForEach(0..<2, id: \.self) { i in
+                ScanRing(index: i, size: size)
             }
-            .frame(width: size, height: size)
-            .allowsHitTesting(false)
         }
+        .frame(width: size, height: size)
+        .allowsHitTesting(false)
     }
 }
 
