@@ -21,6 +21,8 @@ final class RadarUIView: UIView {
     private var stars: [StarParticle] = []
     private var displayedCarCenter: CGPoint = .zero
     private var displayedCarSize: CGFloat = 34
+    private var previousGlowSize: CGFloat = -1
+    private var previousGlowCenter: CGPoint = .init(x: -1, y: -1)
     private var targetCarCenter: CGPoint = .zero
     private var targetCarSize: CGFloat = 34
     private var markerDisplayLink: CADisplayLink?
@@ -155,6 +157,8 @@ final class RadarUIView: UIView {
         backgroundImageView.image = nil
         glowView.layer.removeAllAnimations()
         glowView.isHidden = true
+        previousGlowSize = -1
+        previousGlowCenter = .init(x: -1, y: -1)
         carImageView.layer.removeAllAnimations()
         lastBackgroundSize = .zero
         lastDisplayLinkTimestamp = 0
@@ -298,21 +302,29 @@ final class RadarUIView: UIView {
         carImageView.center = displayedCarCenter
 
         let glowSize = displayedCarSize * 1.65
-        glowView.isHidden = false
-        glowView.bounds = CGRect(x: 0, y: 0, width: glowSize, height: glowSize)
-        glowView.center = displayedCarCenter
-        glowView.layer.cornerRadius = glowSize / 2
-        glowLayer.frame = CGRect(x: 0, y: 0, width: glowSize, height: glowSize)
-        glowLayer.cornerRadius = glowSize / 2
-        glowView.alpha = 0.72
-        if glowView.layer.animation(forKey: "radar-pulse") == nil {
-            let pulse = CABasicAnimation(keyPath: "opacity")
-            pulse.fromValue = 0.55
-            pulse.toValue = 0.72
-            pulse.duration = 2.2
-            pulse.autoreverses = true
-            pulse.repeatCount = .infinity
-            glowView.layer.add(pulse, forKey: "radar-pulse")
+        let sizeChanged = abs(glowSize - previousGlowSize) >= 0.25
+        let centerChanged = abs(displayedCarCenter.x - previousGlowCenter.x) >= 0.25 || abs(displayedCarCenter.y - previousGlowCenter.y) >= 0.25
+
+        if glowView.isHidden || sizeChanged || centerChanged {
+            glowView.isHidden = false
+            glowView.bounds = CGRect(x: 0, y: 0, width: glowSize, height: glowSize)
+            glowView.center = displayedCarCenter
+            glowView.layer.cornerRadius = glowSize / 2
+            glowLayer.frame = CGRect(x: 0, y: 0, width: glowSize, height: glowSize)
+            glowLayer.cornerRadius = glowSize / 2
+            glowView.alpha = 0.72
+            previousGlowSize = glowSize
+            previousGlowCenter = displayedCarCenter
+
+            if glowView.layer.animation(forKey: "radar-pulse") == nil {
+                let pulse = CABasicAnimation(keyPath: "opacity")
+                pulse.fromValue = 0.55
+                pulse.toValue = 0.72
+                pulse.duration = 2.2
+                pulse.autoreverses = true
+                pulse.repeatCount = .infinity
+                glowView.layer.add(pulse, forKey: "radar-pulse")
+            }
         }
 
         CATransaction.commit()
