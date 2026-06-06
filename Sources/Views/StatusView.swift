@@ -58,11 +58,17 @@ struct StatusView: View {
                 }
                 QuickActionsView()
                 RangeCardView()
-                BatteryGaugesView()
-                TemperatureView()
-                ChargingStatusView()
                 BodyStatusView()
-                DrivingStatusView()
+                StatusDashboardPair {
+                    DrivingStatusView()
+                } right: {
+                    BatteryGaugesView()
+                }
+                StatusDashboardPair {
+                    TemperatureView()
+                } right: {
+                    ChargingStatusView()
+                }
                 LightingStatusView()
                 VehicleInfoMergedCard()
 
