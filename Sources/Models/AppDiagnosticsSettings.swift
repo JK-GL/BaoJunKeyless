@@ -25,4 +25,16 @@ enum AppDiagnosticsSettings {
     static var isRadarGradientEnabled: Bool {
         UserDefaults.standard.object(forKey: enableRadarGradientKey) as? Bool ?? false
     }
+
+    static func resetHiddenDiagnosticsToggles() {
+        let defaults = UserDefaults.standard
+        defaults.set(false, forKey: diagnosticsEnabledKey)
+        defaults.set(false, forKey: disableBackgroundImageKey)
+        defaults.set(false, forKey: disableBackgroundBlurKey)
+        defaults.set(false, forKey: disableThemePreviewKey)
+        defaults.set(false, forKey: disableRadarKey)
+        defaults.set(false, forKey: useSFRadarCarIconKey)
+        defaults.set(false, forKey: enableRadarScanKey)
+        defaults.set(false, forKey: enableRadarGradientKey)
+    }
 }

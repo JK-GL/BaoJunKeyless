@@ -35,11 +35,9 @@ class CrashLogger {
             CrashLogger.shared.logCrash("⚠️ MEMORY WARNING — 当前内存: \(mem)")
         }
         NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
-            CrashLogger.shared.logCrash("ℹ️ ENTERED BACKGROUND")
             CrashLogger.shared.mark("Lifecycle", "background")
         }
         NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in
-            CrashLogger.shared.logCrash("ℹ️ WILL ENTER FOREGROUND")
             CrashLogger.shared.mark("Lifecycle", "foreground")
         }
     }
@@ -79,30 +77,27 @@ class CrashLogger {
 
     private var memoryTimer: Timer?
     private var lastMemoryBytes: UInt64 = 0
-    private var lastDiagnosticsSnapshotBytes: UInt64 = 0
+    private var lastMemoryWarningSnapshotBytes: UInt64 = 0
 
     func startMemoryMonitor() {
         memoryTimer?.invalidate()
 
-        let interval = AppDiagnosticsSettings.isDiagnosticsEnabled ? 10.0 : 30.0
-        memoryTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+        memoryTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             let current = Self.memoryUsageBytes()
-            if self.lastMemoryBytes == 0 || current != self.lastMemoryBytes {
-                let delta = Int64(current) - Int64(self.lastMemoryBytes)
-                let sign = delta >= 0 ? "+" : ""
-                self.logCrash("📊 MEMORY: \(Self.formatBytes(current)) (Δ\(sign)\(Self.formatBytes(UInt64(abs(delta)))))")
-                self.lastMemoryBytes = current
-            }
+            defer { self.lastMemoryBytes = current }
 
-            if AppDiagnosticsSettings.isDiagnosticsEnabled {
-                let baseline = self.lastDiagnosticsSnapshotBytes == 0 ? current : self.lastDiagnosticsSnapshotBytes
-                let threshold: UInt64 = 50 * 1024 * 1024
-                let crossedThreshold = current >= baseline ? (current - baseline) >= threshold : (baseline - current) >= threshold
-                if self.lastDiagnosticsSnapshotBytes == 0 || crossedThreshold {
-                    self.lastDiagnosticsSnapshotBytes = current
-                    CrashLogger.shared.logDiagnosticsSnapshot(tag: "threshold")
-                }
+            guard self.lastMemoryBytes > 0 else { return }
+
+            let delta = Int64(current) - Int64(self.lastMemoryBytes)
+            let largeIncrease = delta >= Int64(80 * 1024 * 1024)
+            let highMemory = current >= 500 * 1024 * 1024
+            let highMemoryChanged = highMemory && abs(Int64(current) - Int64(self.lastMemoryWarningSnapshotBytes)) >= Int64(80 * 1024 * 1024)
+
+            if largeIncrease || highMemoryChanged {
+                let sign = delta >= 0 ? "+" : ""
+                self.logCrash("⚠️ MEMORY NOTICE: \(Self.formatBytes(current)) (Δ\(sign)\(Self.formatBytes(UInt64(abs(delta)))))")
+                self.lastMemoryWarningSnapshotBytes = current
             }
         }
     }
@@ -144,9 +139,6 @@ class CrashLogger {
     func logMemoryBaseline() {
         let mem = Self.formatBytes(Self.memoryUsageBytes())
         logCrash("ℹ️ MEMORY BASELINE: \(mem)")
-        if AppDiagnosticsSettings.isDiagnosticsEnabled {
-            logDiagnosticsSnapshot(tag: "baseline")
-        }
     }
 
     func logImageDiagnostics(_ component: String,
@@ -167,20 +159,20 @@ class CrashLogger {
         mark(component, "image", details: details.joined(separator: " | "), file: file, line: line)
     }
 
-    func logDiagnosticsSnapshot(tag: String,
-                                file: String = #file,
-                                line: Int = #line) {
+    func logCurrentStatus(tag: String,
+                          file: String = #file,
+                          line: Int = #line) {
         let defaults = UserDefaults.standard
         let details = [
             "tag=\(tag)",
-            "diag=\(AppDiagnosticsSettings.isDiagnosticsEnabled)",
+            "mem=\(Self.formatBytes(Self.memoryUsageBytes()))",
             "bgOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableBackgroundImageKey))",
             "blurOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableBackgroundBlurKey))",
             "previewOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableThemePreviewKey))",
             "radarOff=\(defaults.bool(forKey: AppDiagnosticsSettings.disableRadarKey))",
             "sfCar=\(defaults.bool(forKey: AppDiagnosticsSettings.useSFRadarCarIconKey))"
         ].joined(separator: " | ")
-        mark("Diagnostics", "snapshot", details: details, file: file, line: line)
+        mark("Status", "snapshot", details: details, file: file, line: line)
     }
 
     func logEvent(_ component: String, _ message: String, file: String = #file, line: Int = #line) {

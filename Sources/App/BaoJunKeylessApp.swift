@@ -7,6 +7,7 @@ struct BaoJunKeylessApp: App {
 
     init() {
         _ = CrashLogger.shared
+        AppDiagnosticsSettings.resetHiddenDiagnosticsToggles()
         if CrashLogger.shared.isLoggingEnabled {
             CrashLogger.shared.logMemoryBaseline()
             CrashLogger.shared.startMemoryMonitor()
