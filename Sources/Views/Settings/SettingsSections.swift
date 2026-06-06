@@ -158,6 +158,8 @@ struct SettingsCrashLogSection: View {
     @Binding var isCrashLogExpanded: Bool
     @Binding var toastText: String?
     let refreshCrashLog: () -> Void
+    let copyRecentLog: () -> Void
+    let exportCrashLog: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -273,13 +275,24 @@ struct SettingsCrashLogSection: View {
                         }
 
                         Button {
-                            UIPasteboard.general.string = crashLogText
-                            withAnimation { toastText = "已复制到剪贴板" }
+                            copyRecentLog()
                         } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "doc.on.doc")
                                     .font(.system(size: 12))
-                                Text("复制")
+                                Text("复制最近")
+                                    .font(.system(size: 13, weight: .medium))
+                            }
+                            .foregroundStyle(AppTheme.accent)
+                        }
+
+                        Button {
+                            exportCrashLog()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 12))
+                                Text("导出")
                                     .font(.system(size: 13, weight: .medium))
                             }
                             .foregroundStyle(AppTheme.accent)

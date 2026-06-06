@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Settings View (Tab 4 — XMusic SettingsPanelView style)
 struct SettingsView: View {
@@ -11,6 +12,8 @@ struct SettingsView: View {
     @State private var isPhotoPickerPresented = false
     @State private var isCrashLogExpanded = false
     @State private var crashLogText: String = ""
+    @State private var exportedLogURL: URL?
+    @State private var isShareSheetPresented = false
 
     private var currentTheme: AppThemeConfiguration {
         theme.current
@@ -37,7 +40,9 @@ struct SettingsView: View {
                     crashLogText: $crashLogText,
                     isCrashLogExpanded: $isCrashLogExpanded,
                     toastText: $toastText,
-                    refreshCrashLog: refreshCrashLog
+                    refreshCrashLog: refreshCrashLog,
+                    copyRecentLog: copyRecentLog,
+                    exportCrashLog: exportCrashLog
                 )
 
                 SettingsResetSection(
@@ -57,6 +62,11 @@ struct SettingsView: View {
                 if let data {
                     theme.saveCustomBackgroundImageData(data)
                 }
+            }
+        }
+        .sheet(isPresented: $isShareSheetPresented) {
+            if let exportedLogURL {
+                ShareSheet(activityItems: [exportedLogURL])
             }
         }
         .overlay(alignment: .bottom) {
@@ -92,6 +102,22 @@ struct SettingsView: View {
         if crashLogText != newText {
             crashLogText = newText
         }
+    }
+
+    private func copyRecentLog() {
+        let text = CrashLogger.shared.readRecentLog(limit: 100)
+        UIPasteboard.general.string = text.isEmpty ? crashLogText : text
+        withAnimation { toastText = "已复制最近日志" }
+    }
+
+    private func exportCrashLog() {
+        guard let url = CrashLogger.shared.exportLogFile(tag: "export") else {
+            withAnimation { toastText = "暂无日志可导出" }
+            return
+        }
+        exportedLogURL = url
+        refreshCrashLog()
+        isShareSheetPresented = true
     }
 
     private func resetAllSettings() {

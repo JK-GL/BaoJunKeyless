@@ -80,6 +80,29 @@ class CrashLogger {
         return lines.suffix(limit).reversed().joined(separator: "\n")
     }
 
+    func readRecentLog(limit: Int = 100) -> String {
+        guard let raw = readLog(), !raw.isEmpty else { return "" }
+        let lines = raw.components(separatedBy: "\n")
+        return lines.suffix(limit).joined(separator: "\n")
+    }
+
+    func exportLogFile(tag: String = "export") -> URL? {
+        logCurrentStatus(tag: tag)
+        guard let raw = readLog(), !raw.isEmpty else { return nil }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        let filename = "BaoJunKeyless_error_log_\(formatter.string(from: Date())).txt"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        do {
+            try raw.write(to: url, atomically: true, encoding: .utf8)
+            return url
+        } catch {
+            logCrash("⚠️ EXPORT LOG FAILED: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     func clearLog() {
         guard let url = logFile else { return }
         try? FileManager.default.removeItem(at: url)
