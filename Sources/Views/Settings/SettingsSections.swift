@@ -109,11 +109,11 @@ struct SettingsAboutSection: View {
     var body: some View {
         SettingsPanelView(title: "关于") {
             VStack(alignment: .leading, spacing: 10) {
-                SettingsStatusRowView(title: "App 版本", value: AppInfo.version)
-                SettingsStatusRowView(title: "构建号", value: AppInfo.build)
+                SettingsStatusRowView(title: "版本", value: AppInfo.pluginVersion)
                 SettingsStatusRowView(title: "系统", value: AppInfo.systemVersion)
-                SettingsStatusRowView(title: "设备内存", value: AppInfo.memoryText)
                 SettingsStatusRowView(title: "框架", value: "SwiftUI / UIKit")
+                SettingsStatusRowView(title: "日期", value: AppInfo.buildDate)
+                SettingsStatusRowView(title: "越狱", value: AppInfo.jailbreakEnvironment)
             }
         }
     }
@@ -143,7 +143,7 @@ struct SettingsResetSection: View {
             .darkAlert(
                 isPresented: $showingResetAlert,
                 title: "重置插件",
-                message: "确定要重置主题、背景图、无感车控和自定义震动吗？错误日志不会清空。",
+                message: "将重置主题、背景图、无感车控和自定义震动。错误日志不会清空。",
                 confirmTitle: "确认重置",
                 confirmColor: .red
             ) { onReset() }

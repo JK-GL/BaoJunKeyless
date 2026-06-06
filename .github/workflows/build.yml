@@ -19,6 +19,9 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Generate Build Date
+        run: echo "BUILD_DATE=$(TZ=Asia/Shanghai date +'%Y%m%d.%H%M')" >> "$GITHUB_ENV"
+
       - name: Generate Xcode Project
         run: xcodegen generate
 
@@ -32,8 +35,8 @@ jobs:
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            ENABLE_BITCODE=NO \
-            COPY_PHASE_STRIP=NO 2>&1 | tail -30
+            COPY_PHASE_STRIP=NO \
+            CURRENT_PROJECT_VERSION="$BUILD_DATE" 2>&1 | tail -30
 
       - name: Inspect .app
         run: |

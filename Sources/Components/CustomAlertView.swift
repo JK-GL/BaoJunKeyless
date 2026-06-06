@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - 自定义深色弹窗修饰符
 struct DarkAlertModifier: ViewModifier {
@@ -59,6 +60,7 @@ struct CustomAlertView: View {
                 .font(.system(size: 15))
                 .foregroundStyle(Color.white.opacity(0.62))
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
                 .padding(.bottom, 24)
@@ -89,7 +91,7 @@ struct CustomAlertView: View {
                 }
             }
         }
-        .frame(width: 280)
+        .frame(maxWidth: min(UIScreen.main.bounds.width - 48, 320))
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(.ultraThinMaterial)
