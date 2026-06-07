@@ -81,10 +81,18 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             self.lastReverseGeocodedCoordinate = coordinate
             self.lastReverseGeocodedDate = Date()
 
-            let resolved = placemarks?.first.flatMap { Self.formattedAddress(from: $0) }
-            let finalAddress = resolved
-                ?? self.externalFallbackAddress
-                ?? String(format: "%.5f, %.5f", coordinate.latitude, coordinate.longitude)
+            var finalAddress: String?
+            if let placemark = placemarks?.first {
+                finalAddress = Self.formattedAddress(from: placemark)
+            }
+
+            if finalAddress == nil {
+                finalAddress = self.externalFallbackAddress
+            }
+
+            if finalAddress == nil {
+                finalAddress = String(format: "%.5f, %.5f", coordinate.latitude, coordinate.longitude)
+            }
 
             DispatchQueue.main.async {
                 self.vehicleAddress = finalAddress
@@ -95,12 +103,18 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     static func formattedAddress(from placemark: CLPlacemark) -> String? {
         var parts: [String] = []
 
-        if let subLocality = placemark.subLocality {
+        if let locality = placemark.locality {
+            parts.append(locality)
+        }
+
+        if let subLocality = placemark.subLocality, subLocality != placemark.locality {
             parts.append(subLocality)
         }
 
         if let thoroughfare = placemark.thoroughfare {
-            parts.append(thoroughfare)
+            if parts.last != thoroughfare {
+                parts.append(thoroughfare)
+            }
         }
 
         if let subThoroughfare = placemark.subThoroughfare {
@@ -109,21 +123,25 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             }
         }
 
-        if let name = placemark.name, !name.isEmpty {
-            if parts.last != name {
-                parts.append(name)
-            }
-        }
+        if let rawName = placemark.name, !rawName.isEmpty {
+            let name = rawName
+            let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if parts.count < 2, let locality = placemark.locality {
-            if parts.last != locality {
-                parts.append(locality)
-            }
-        }
+            let nameIsAllDigits = !trimmedName.isEmpty && trimmedName.unicodeScalars.allSatisfy { CharacterSet.decimalDigits.contains($0) }
 
-        if parts.count < 2, let administrativeArea = placemark.administrativeArea {
-            if parts.last != administrativeArea {
-                parts.append(administrativeArea)
+            if nameIsAllDigits {
+                if parts.last != name {
+                    parts.append(name)
+                }
+            } else if let last = parts.last, last.unicodeScalars.allSatisfy({ CharacterSet.decimalDigits.contains($0) }), let range = name.rangeOfCharacter(from: .decimalDigits) {
+                let tail = String(name[range.lowerBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !tail.isEmpty, parts.last != tail {
+                    parts.append(tail)
+                }
+            } else {
+                if parts.last != name {
+                    parts.append(name)
+                }
             }
         }
 
