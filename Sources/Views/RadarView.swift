@@ -482,7 +482,6 @@ struct RadarCardView: View {
     @State private var bleConnected = false
     private let carLat = 22.635842
     private let carLng = 114.129604
-    private let carAddress = "广东省深圳市龙岗区企生活创新科技园"
 
     var body: some View {
         VStack(spacing: 12) {
@@ -537,6 +536,6 @@ struct RadarCardView: View {
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
-        .onAppear { locationManager.setCarLocation(lat: carLat, lng: carLng, address: carAddress) }
+        .onAppear { locationManager.setCarLocation(lat: carLat, lng: carLng) }
     }
 }

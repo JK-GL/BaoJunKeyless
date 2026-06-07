@@ -21,6 +21,12 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published private(set) var distance: CLLocationDistance = 0
     @Published private(set) var vehicleAddress: String = ""
 
+    private let geocoder = CLGeocoder()
+    private var lastReverseGeocodedCoordinate: CLLocationCoordinate2D?
+    private var lastReverseGeocodedDate: Date?
+    private var externalFallbackAddress: String?
+    private var reverseGeocodeInFlight = false
+
     private var lastRadarDistance: CLLocationDistance = -1
     private var lastRadarRelativeAngle: CLLocationDirection = -1
     private var lastPublishedDistance: CLLocationDistance = -1
@@ -40,10 +46,91 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     func setCarLocation(lat: Double, lng: Double, address: String? = nil) {
         carLatitude = lat
         carLongitude = lng
-        if let address, !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            vehicleAddress = address
+
+        let trimmedAddress = address?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmedAddress, !trimmedAddress.isEmpty {
+            externalFallbackAddress = trimmedAddress
         }
+
         recalculate()
+        reverseGeocodeCarCoordinateIfNeeded(force: vehicleAddress.isEmpty)
+    }
+
+    private func reverseGeocodeCarCoordinateIfNeeded(force: Bool = false) {
+        let coordinate = CLLocationCoordinate2D(latitude: carLatitude, longitude: carLongitude)
+        guard carLatitude != 0 || carLongitude != 0 else { return }
+        guard !reverseGeocodeInFlight else { return }
+
+        let now = Date()
+        let distanceFromLast: Double
+        if let last = lastReverseGeocodedCoordinate {
+            distanceFromLast = CLLocation(latitude: last.latitude, longitude: last.longitude)
+                .distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+        } else {
+            distanceFromLast = .greatestFiniteMagnitude
+        }
+
+        let elapsed = lastReverseGeocodedDate.map { now.timeIntervalSince($0) } ?? .greatestFiniteMagnitude
+        let needsUpdate = force || distanceFromLast >= 50 || elapsed >= 60
+        guard needsUpdate else { return }
+
+        reverseGeocodeInFlight = true
+        geocoder.reverseGeocodeLocation(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) { [weak self] placemarks, _ in
+            guard let self else { return }
+            self.reverseGeocodeInFlight = false
+            self.lastReverseGeocodedCoordinate = coordinate
+            self.lastReverseGeocodedDate = Date()
+
+            let resolved = placemarks?.first.flatMap { Self.formattedAddress(from: $0) }
+            let finalAddress = resolved
+                ?? self.externalFallbackAddress
+                ?? String(format: "%.5f, %.5f", coordinate.latitude, coordinate.longitude)
+
+            DispatchQueue.main.async {
+                self.vehicleAddress = finalAddress
+            }
+        }
+    }
+
+    static func formattedAddress(from placemark: CLPlacemark) -> String? {
+        var parts: [String] = []
+
+        if let administrativeArea = placemark.administrativeArea {
+            parts.append(administrativeArea)
+        }
+
+        if let locality = placemark.locality {
+            if parts.last != locality {
+                parts.append(locality)
+            }
+        }
+
+        if let subLocality = placemark.subLocality {
+            if parts.last != subLocality {
+                parts.append(subLocality)
+            }
+        }
+
+        if let thoroughfare = placemark.thoroughfare {
+            if parts.last != thoroughfare {
+                parts.append(thoroughfare)
+            }
+        }
+
+        if let subThoroughfare = placemark.subThoroughfare {
+            if parts.last != subThoroughfare {
+                parts.append(subThoroughfare)
+            }
+        }
+
+        if let name = placemark.name, !name.isEmpty {
+            if parts.last != name {
+                parts.append(name)
+            }
+        }
+
+        let address = parts.joined()
+        return address.isEmpty ? nil : address
     }
 
     // MARK: - CLLocationManagerDelegate
