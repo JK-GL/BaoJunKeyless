@@ -53,7 +53,7 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
         return ret
     }
 
-    func getAddress(wgs84Lat: Double, wgs84Lng: Double, address: String? = nil, provider: AddressServiceType = .apple, amapWebKey: String? = nil, completion: @escaping (String?) -> Void) {
+    func getAddress(wgs84Lat: Double, wgs84Lng: Double, address: String? = nil, amapWebKey: String? = nil, completion: @escaping (String?) -> Void) {
         let coordinate = CLLocationCoordinate2D(latitude: wgs84Lat, longitude: wgs84Lng)
 
         let applyResult: (CLLocationCoordinate2D, String?) -> Void = { [weak self] resolvedCoordinate, address in
@@ -83,7 +83,7 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
         let needsUpdate = distanceFromLast >= 50 || elapsed >= 60 || (cachedAddress ?? "").isEmpty
         guard needsUpdate else { return }
 
-        if provider == .amap, let key = amapWebKey, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if let key = amapWebKey, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let gcj = Self.wgs84ToGcj02(lat: wgs84Lat, lng: wgs84Lng)
             reverseGeocodeAmap(gcjLat: gcj.lat, gcjLng: gcj.lng, key: key) { [weak self] resolved in
                 let finalAddress = resolved ?? self?.cachedAddress

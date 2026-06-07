@@ -9,7 +9,6 @@ struct StatusView: View {
     @State private var isRefreshing = false
     @State private var refreshScale: CGFloat = 1.0
     @State private var isAddressFloatingPresented = false
-    @State private var addressFloatingToastText: String?
 
     private var modeText: String {
         guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
@@ -105,7 +104,6 @@ struct StatusView: View {
                 .zIndex(10)
             }
         }
-        .animation(.easeInOut(duration: 0.22), value: isAddressFloatingPresented)
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenAddressFloatingWindow"))) { _ in
             withAnimation { isAddressFloatingPresented = true }
         }
@@ -140,26 +138,16 @@ struct StatusView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
-                    Image(systemName: "map")
-                        .foregroundStyle(AppTheme.accent)
+                    Image(systemName: "key.fill")
+                        .foregroundStyle(AppTheme.orange)
                         .frame(width: 20)
-                    Text("地址解析方式")
+                    Text(addressSettings.hasAmapWebKey ? "高德 Key 已填写" : "填写后自动使用高德 API")
                         .font(.subheadline)
                         .foregroundStyle(.white)
                     Spacer()
                 }
 
-                Picker("地址解析方式", selection: Binding(
-                    get: { addressSettings.provider },
-                    set: { addressSettings.provider = $0 }
-                )) {
-                    ForEach(AddressServiceType.allCases) { item in
-                        Text(item.title).tag(item)
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                TextField("高德 Web 服务 Key", text: Binding(
+                TextField("填写高德 Web 服务 Key", text: Binding(
                     get: { addressSettings.amapWebKey },
                     set: { addressSettings.setAmapWebKey($0) }
                 ))
@@ -183,13 +171,6 @@ struct StatusView: View {
                 }
             }
 
-            if let toast = addressFloatingToastText, !toast.isEmpty {
-                Text(toast)
-                    .font(.caption)
-                    .foregroundStyle(Color.white.opacity(0.45))
-                    .frame(maxWidth: .infinity, alignment: .center)
-            }
-
             VStack(spacing: 10) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) { isAddressFloatingPresented = false }
@@ -206,7 +187,8 @@ struct StatusView: View {
                 Button {
                     let keyword = locationManager.vehicleAddress.trimmingCharacters(in: .whitespacesAndNewlines)
                     let address = keyword.isEmpty ? "22.635842,114.129604" : keyword
-                    if let url = URL(string: "amap://search?keyword=\(address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? address)") {
+                    let encoded = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? address
+                    if let url = URL(string: "amap://search?keyword=\(encoded)"), UIApplication.shared.canOpenURL(url) {
                         UIApplication.shared.open(url)
                     }
                 } label: {
@@ -216,16 +198,6 @@ struct StatusView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 11)
                         .background(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.18), lineWidth: 1))
-                }
-
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { isAddressFloatingPresented = false }
-                } label: {
-                    Text("完成")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.55))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
                 }
             }
         }

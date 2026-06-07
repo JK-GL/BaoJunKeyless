@@ -50,7 +50,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         LocationResolver.shared.getAddress(
             wgs84Lat: lat,
             wgs84Lng: lng,
-            provider: addressSettings.provider,
+            address: address,
             amapWebKey: addressSettings.amapWebKey
         ) { [weak self] resolved in
             guard let self else { return }
