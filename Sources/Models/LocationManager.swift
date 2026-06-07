@@ -21,12 +21,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published private(set) var distance: CLLocationDistance = 0
     @Published private(set) var vehicleAddress: String = ""
 
-    private let geocoder = CLGeocoder()
-    private var lastReverseGeocodedCoordinate: CLLocationCoordinate2D?
-    private var lastReverseGeocodedDate: Date?
-    private var externalFallbackAddress: String?
-    private var reverseGeocodeInFlight = false
-
     private var lastRadarDistance: CLLocationDistance = -1
     private var lastRadarRelativeAngle: CLLocationDirection = -1
     private var lastPublishedDistance: CLLocationDistance = -1
@@ -46,86 +40,18 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     func setCarLocation(lat: Double, lng: Double, address: String? = nil) {
         carLatitude = lat
         carLongitude = lng
-
-        let trimmedAddress = address?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let trimmedAddress, !trimmedAddress.isEmpty {
-            externalFallbackAddress = trimmedAddress
-        }
-
         recalculate()
-        reverseGeocodeCarCoordinateIfNeeded(force: vehicleAddress.isEmpty)
-    }
 
-    private func reverseGeocodeCarCoordinateIfNeeded(force: Bool = false) {
-        let wgsCoordinate = CLLocationCoordinate2D(latitude: carLatitude, longitude: carLongitude)
-        let gcjCoordinate = Self.wgs84ToGcj02(wgsCoordinate)
-        guard carLatitude != 0 || carLongitude != 0 else { return }
-        guard !reverseGeocodeInFlight else { return }
-
-        let now = Date()
-        let distanceFromLast: Double
-        if let last = lastReverseGeocodedCoordinate {
-            distanceFromLast = CLLocation(latitude: last.latitude, longitude: last.longitude)
-                .distance(from: CLLocation(latitude: gcjCoordinate.latitude, longitude: gcjCoordinate.longitude))
-        } else {
-            distanceFromLast = .greatestFiniteMagnitude
+        if vehicleAddress.isEmpty {
+            vehicleAddress = LocationResolver.shared.cachedAddress ?? ""
         }
 
-        let elapsed = lastReverseGeocodedDate.map { now.timeIntervalSince($0) } ?? .greatestFiniteMagnitude
-        let needsUpdate = force || distanceFromLast >= 50 || elapsed >= 60
-        guard needsUpdate else { return }
-
-        reverseGeocodeInFlight = true
-        geocoder.reverseGeocodeLocation(CLLocation(latitude: gcjCoordinate.latitude, longitude: gcjCoordinate.longitude)) { [weak self] placemarks, _ in
+        LocationResolver.shared.getAddress(wgs84Lat: lat, wgs84Lng: lng) { [weak self] resolved in
             guard let self else { return }
-            self.reverseGeocodeInFlight = false
-            self.lastReverseGeocodedCoordinate = gcjCoordinate
-            self.lastReverseGeocodedDate = Date()
-
-            var finalAddress: String?
-            if let placemark = placemarks?.first {
-                finalAddress = Self.formattedAddress(from: placemark)
-            }
-
-            if finalAddress == nil {
-                finalAddress = self.externalFallbackAddress
-            }
-
-            if finalAddress == nil {
-                finalAddress = String(format: "%.5f, %.5f", gcjCoordinate.latitude, gcjCoordinate.longitude)
-            }
-
-            DispatchQueue.main.async {
-                self.vehicleAddress = finalAddress ?? ""
+            if let resolved {
+                self.vehicleAddress = resolved
             }
         }
-    }
-
-    static func formattedAddress(from placemark: CLPlacemark) -> String? {
-        var parts: [String] = []
-
-        if let locality = placemark.locality {
-            parts.append(locality)
-        }
-
-        if let subLocality = placemark.subLocality, subLocality != parts.last {
-            parts.append(subLocality)
-        }
-
-        if let thoroughfare = placemark.thoroughfare, thoroughfare != parts.last {
-            parts.append(thoroughfare)
-        }
-
-        if let subThoroughfare = placemark.subThoroughfare, subThoroughfare != parts.last {
-            parts.append(subThoroughfare)
-        }
-
-        if let name = placemark.name, !name.isEmpty, name != parts.last {
-            parts.append(name)
-        }
-
-        let address = parts.joined(separator: "")
-        return address.isEmpty ? nil : address
     }
 
     // MARK: - CLLocationManagerDelegate
@@ -216,43 +142,5 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     deinit {
         manager.stopUpdatingLocation()
         manager.stopUpdatingHeading()
-    }
-
-    // MARK: - WGS-84 → GCJ-02
-    static func wgs84ToGcj02(_ wgs: CLLocationCoordinate2D) -> CLLocationCoordinate2D {
-        let a = 6378245.0
-        let ee = 0.00669342162296594323
-
-        let dLat = transformLat(x: wgs.longitude - 105.0, y: wgs.latitude - 35.0)
-        let dLng = transformLng(x: wgs.longitude - 105.0, y: wgs.latitude - 35.0)
-
-        let radLat = wgs.latitude / 180.0 * .pi
-        let magic = sin(radLat)
-        let magicSquare = 1 - ee * magic * magic
-        let sqrtMagic = sqrt(magicSquare)
-
-        let finalLat = (dLat * 180.0) / ((a * (1 - ee)) / (magicSquare * sqrtMagic) * .pi)
-        let finalLng = (dLng * 180.0) / (a / sqrtMagic * cos(radLat) * .pi)
-
-        return CLLocationCoordinate2D(
-            latitude: wgs.latitude + finalLat,
-            longitude: wgs.longitude + finalLng
-        )
-    }
-
-    private static func transformLat(x: Double, y: Double) -> Double {
-        var ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * sqrt(abs(x))
-        ret += (20.0 * sin(6.0 * x * .pi) + 20.0 * sin(2.0 * x * .pi)) * 2.0 / 3.0
-        ret += (20.0 * sin(y * .pi) + 40.0 * sin(y / 3.0 * .pi)) * 2.0 / 3.0
-        ret += (160.0 * sin(y / 12.0 * .pi) + 320.0 * sin(y * .pi / 30.0)) * 2.0 / 3.0
-        return ret
-    }
-
-    private static func transformLng(x: Double, y: Double) -> Double {
-        var ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * sqrt(abs(x))
-        ret += (20.0 * sin(6.0 * x * .pi) + 20.0 * sin(2.0 * x * .pi)) * 2.0 / 3.0
-        ret += (20.0 * sin(x * .pi) + 40.0 * sin(x / 3.0 * .pi)) * 2.0 / 3.0
-        ret += (150.0 * sin(x / 12.0 * .pi) + 300.0 * sin(x / 30.0 * .pi)) * 2.0 / 3.0
-        return ret
     }
 }
