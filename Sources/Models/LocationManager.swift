@@ -95,7 +95,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             }
 
             DispatchQueue.main.async {
-                self.vehicleAddress = finalAddress
+                self.vehicleAddress = finalAddress ?? ""
             }
         }
     }
@@ -107,46 +107,20 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             parts.append(locality)
         }
 
-        if let subLocality = placemark.subLocality {
-            if let locality = placemark.locality, subLocality == locality {
-                // same as locality, don't duplicate
-            } else {
-                parts.append(subLocality)
-            }
+        if let subLocality = placemark.subLocality, subLocality != parts.last {
+            parts.append(subLocality)
         }
 
-        if let thoroughfare = placemark.thoroughfare {
-            if parts.last != thoroughfare {
-                parts.append(thoroughfare)
-            }
+        if let thoroughfare = placemark.thoroughfare, thoroughfare != parts.last {
+            parts.append(thoroughfare)
         }
 
-        if let subThoroughfare = placemark.subThoroughfare {
-            if parts.last != subThoroughfare {
-                parts.append(subThoroughfare)
-            }
+        if let subThoroughfare = placemark.subThoroughfare, subThoroughfare != parts.last {
+            parts.append(subThoroughfare)
         }
 
-        if let rawName = placemark.name, !rawName.isEmpty {
-            let name = rawName
-            let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            let nameIsAllDigits = !trimmedName.isEmpty && trimmedName.unicodeScalars.allSatisfy { CharacterSet.decimalDigits.contains($0) }
-
-            if nameIsAllDigits {
-                if parts.last != name {
-                    parts.append(name)
-                }
-            } else if let last = parts.last, last.unicodeScalars.allSatisfy({ CharacterSet.decimalDigits.contains($0) }), let range = name.rangeOfCharacter(from: .decimalDigits) {
-                let tail = String(name[range.lowerBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !tail.isEmpty, parts.last != tail {
-                    parts.append(tail)
-                }
-            } else {
-                if parts.last != name {
-                    parts.append(name)
-                }
-            }
+        if let name = placemark.name, !name.isEmpty, name != parts.last {
+            parts.append(name)
         }
 
         let address = parts.joined(separator: "")
