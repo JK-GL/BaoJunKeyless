@@ -19,6 +19,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     // UI 文字只需要低频更新。
     @Published private(set) var distance: CLLocationDistance = 0
+    @Published private(set) var vehicleAddress: String = ""
 
     private var lastRadarDistance: CLLocationDistance = -1
     private var lastRadarRelativeAngle: CLLocationDirection = -1
@@ -36,9 +37,12 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 
     // MARK: - 设置车辆坐标
-    func setCarLocation(lat: Double, lng: Double) {
+    func setCarLocation(lat: Double, lng: Double, address: String? = nil) {
         carLatitude = lat
         carLongitude = lng
+        if let address, !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            vehicleAddress = address
+        }
         recalculate()
     }
 

@@ -482,6 +482,7 @@ struct RadarCardView: View {
     @State private var bleConnected = false
     private let carLat = 22.635842
     private let carLng = 114.129604
+    private let carAddress = "广东省深圳市龙岗区企生活创新科技园"
 
     var body: some View {
         VStack(spacing: 12) {
@@ -515,14 +516,27 @@ struct RadarCardView: View {
             }
 
             if locationManager.distance > 0 {
-                Text(String(format: "距车辆 %.0f 米", locationManager.distance))
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.5))
+                VStack(spacing: 5) {
+                    Text(String(format: "距车辆 %.0f 米", locationManager.distance))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.5))
+
+                    if !locationManager.vehicleAddress.isEmpty {
+                        (Text(Image(systemName: "mappin.and.ellipse")) + Text(" \(locationManager.vehicleAddress)"))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.42))
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.82)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
             }
         }
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
-        .onAppear { locationManager.setCarLocation(lat: carLat, lng: carLng) }
+        .onAppear { locationManager.setCarLocation(lat: carLat, lng: carLng, address: carAddress) }
     }
 }
