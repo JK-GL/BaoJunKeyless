@@ -9,6 +9,7 @@ struct StatusView: View {
     @State private var isRefreshing = false
     @State private var refreshScale: CGFloat = 1.0
     @State private var isAddressFloatingPresented = false
+    @State private var addressFloatingToastText: String?
 
     private var modeText: String {
         guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
@@ -180,6 +181,13 @@ struct StatusView: View {
                             .foregroundStyle(.red.opacity(0.9))
                     }
                 }
+            }
+
+            if let toast = addressFloatingToastText, !toast.isEmpty {
+                Text(toast)
+                    .font(.caption)
+                    .foregroundStyle(Color.white.opacity(0.45))
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
 
             VStack(spacing: 10) {
