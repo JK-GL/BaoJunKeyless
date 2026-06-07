@@ -95,26 +95,12 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     static func formattedAddress(from placemark: CLPlacemark) -> String? {
         var parts: [String] = []
 
-        if let administrativeArea = placemark.administrativeArea {
-            parts.append(administrativeArea)
-        }
-
-        if let locality = placemark.locality {
-            if parts.last != locality {
-                parts.append(locality)
-            }
-        }
-
         if let subLocality = placemark.subLocality {
-            if parts.last != subLocality {
-                parts.append(subLocality)
-            }
+            parts.append(subLocality)
         }
 
         if let thoroughfare = placemark.thoroughfare {
-            if parts.last != thoroughfare {
-                parts.append(thoroughfare)
-            }
+            parts.append(thoroughfare)
         }
 
         if let subThoroughfare = placemark.subThoroughfare {
@@ -129,7 +115,19 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             }
         }
 
-        let address = parts.joined()
+        if parts.count < 2, let locality = placemark.locality {
+            if parts.last != locality {
+                parts.append(locality)
+            }
+        }
+
+        if parts.count < 2, let administrativeArea = placemark.administrativeArea {
+            if parts.last != administrativeArea {
+                parts.append(administrativeArea)
+            }
+        }
+
+        let address = parts.joined(separator: "")
         return address.isEmpty ? nil : address
     }
 
