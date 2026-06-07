@@ -91,16 +91,15 @@ struct StatusView: View {
             }
 
             if isAddressFloatingPresented {
-                Color.black.opacity(0.4)
-                    .ignoresSafeArea()
-                    .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { isAddressFloatingPresented = false } }
-
                 VStack(spacing: 0) {
-                    Spacer()
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { isAddressFloatingPresented = false } }
+
                     addressFloatingWindow()
+                        .padding(.bottom, 8)
                 }
                 .transition(.move(edge: .bottom))
-                .padding(.horizontal, 0)
                 .zIndex(10)
             }
         }
@@ -212,6 +211,7 @@ struct StatusView: View {
                 .stroke(Color.white.opacity(0.12), lineWidth: 1)
         )
         .padding(.horizontal, 0)
+        .background(Color.black)
     }
 
     private func handleRefresh() {
