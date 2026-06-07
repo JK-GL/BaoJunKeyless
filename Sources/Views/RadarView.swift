@@ -481,9 +481,7 @@ struct RadarCardView: View {
     @EnvironmentObject var addressSettings: AddressServiceSettings
     @ObservedObject var locationManager: LocationManager
     @State private var bleConnected = false
-    @State private var isAddressActionSheetPresented = false
     @State private var isAddressSettingsPresented = false
-    @State private var addressSettingsToastText: String?
     private let carLat = 22.635842
     private let carLng = 114.129604
 
@@ -526,14 +524,15 @@ struct RadarCardView: View {
 
                     if !locationManager.vehicleAddress.isEmpty {
                         Button {
-                            isAddressActionSheetPresented = true
+                            isAddressSettingsPresented = true
                         } label: {
                             (Text(Image(systemName: "mappin.and.ellipse")) + Text(" \(locationManager.vehicleAddress)"))
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(Color.white.opacity(0.42))
                                 .multilineTextAlignment(.center)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.82)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.65)
+                                .layoutPriority(1)
                                 .frame(maxWidth: .infinity, alignment: .center)
                         }
                         .buttonStyle(.plain)
@@ -545,24 +544,113 @@ struct RadarCardView: View {
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
-        .confirmationDialog("地址操作", isPresented: $isAddressActionSheetPresented, titleVisibility: .visible) {
-            Button("复制地址") {
-                UIPasteboard.general.string = locationManager.vehicleAddress
-            }
-            Button("设置地址服务") { isAddressSettingsPresented = true }
-            Button("取消", role: .cancel) {}
-        }
         .sheet(isPresented: $isAddressSettingsPresented) {
-            NavigationView {
-                SettingsAddressServiceSection(toastText: $addressSettingsToastText)
-                    .environmentObject(addressSettings)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("完成") { isAddressSettingsPresented = false }
-                        }
-                    }
-            }
+            addressSettingsFloatingSheet()
         }
         .onAppear { locationManager.setCarLocation(lat: carLat, lng: carLng) }
+    }
+
+    private func currentSearchedAddress() -> String {
+        let address = locationManager.vehicleAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        return address.isEmpty ? String(format: "%.5f, %.5f", carLat, carLng) : address
+    }
+
+    private func openAmapSearch() {
+        guard let url = Self.amapSearchURL(for: currentSearchedAddress()) else { return }
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
+    }
+
+    private func refreshAddress() {
+        locationManager.setCarLocation(lat: carLat, lng: carLng)
+    }
+
+    static func amapSearchURL(for keyword: String) -> URL? {
+        var components = URLComponents()
+        components.scheme = "amap"
+        components.host = "search"
+        components.queryItems = [URLQueryItem(name: "keyword", value: keyword)]
+        return components.url
+    }
+
+    @ViewBuilder
+    private func addressSettingsFloatingSheet() -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color.white.opacity(0.2))
+                .frame(width: 40, height: 5)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 6)
+
+            Text("地址服务")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("车辆地址")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.45))
+
+                HStack(spacing: 8) {
+                    Image(systemName: "mappin.and.ellipse")
+                        .font(.system(size: 14))
+                        .foregroundStyle(AppTheme.accent)
+                    Text(currentSearchedAddress())
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.62)
+                        .layoutPriority(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+            )
+
+            SettingsAddressServiceSection(toastText: nil)
+                .environmentObject(addressSettings)
+
+            Spacer(minLength: 8)
+
+            VStack(spacing: 10) {
+                Button {
+                    refreshAddress()
+                    isAddressSettingsPresented = false
+                } label: {
+                    Text("确定")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(RoundedRectangle(cornerRadius: 14).fill(AppTheme.accent))
+                }
+
+                Button {
+                    openAmapSearch()
+                } label: {
+                    Text("高德")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.18), lineWidth: 1))
+                }
+
+                Button {
+                    isAddressSettingsPresented = false
+                } label: {
+                    Text("完成")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.55))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.black)
+        .ignoresSafeArea(edges: .bottom)
     }
 }
