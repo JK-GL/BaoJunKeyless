@@ -482,6 +482,7 @@ struct RadarCardView: View {
     @ObservedObject var locationManager: LocationManager
     @State private var bleConnected = false
     @State private var isAddressSettingsPresented = false
+    @State private var addressSheetToastText: String?
     private let carLat = 22.635842
     private let carLng = 114.129604
 
@@ -609,7 +610,7 @@ struct RadarCardView: View {
                     .fill(Color.white.opacity(0.06))
             )
 
-            SettingsAddressServiceSection(toastText: nil)
+            SettingsAddressServiceSection(toastText: $addressSheetToastText)
                 .environmentObject(addressSettings)
 
             Spacer(minLength: 8)
