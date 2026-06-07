@@ -210,7 +210,8 @@ struct StatusView: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(Color.white.opacity(0.12), lineWidth: 1)
         )
-        .padding(.horizontal, 0)
+        .frame(maxWidth: 520)
+        .padding(.horizontal, 20)
         .background(Color.black)
     }
 
