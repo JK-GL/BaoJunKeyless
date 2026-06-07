@@ -107,8 +107,12 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             parts.append(locality)
         }
 
-        if let subLocality = placemark.subLocality, subLocality != placemark.locality {
-            parts.append(subLocality)
+        if let subLocality = placemark.subLocality {
+            if let locality = placemark.locality, subLocality == locality {
+                // same as locality, don't duplicate
+            } else {
+                parts.append(subLocality)
+            }
         }
 
         if let thoroughfare = placemark.thoroughfare {
