@@ -36,8 +36,6 @@ struct SettingsView: View {
                     themeConfig: themeConfig
                 )
 
-                SettingsAddressServiceSection(toastText: $toastText)
-
                 SettingsAboutSection()
 
                 SettingsCrashLogSection(

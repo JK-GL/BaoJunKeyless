@@ -482,7 +482,6 @@ struct RadarCardView: View {
     @ObservedObject var locationManager: LocationManager
     @State private var bleConnected = false
     @State private var isAddressSettingsPresented = false
-    @State private var addressSheetToastText: String?
     private let carLat = 22.635842
     private let carLng = 114.129604
 
@@ -545,10 +544,10 @@ struct RadarCardView: View {
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
-        .sheet(isPresented: $isAddressSettingsPresented) {
-            addressSettingsFloatingSheet()
-        }
         .onAppear { locationManager.setCarLocation(lat: carLat, lng: carLng) }
+        .onReceive(NotificationCenter.default.publisher(for: .init("OpenAddressFloatingWindow"))) { _ in
+            isAddressSettingsPresented = true
+        }
     }
 
     private func currentSearchedAddress() -> String {
