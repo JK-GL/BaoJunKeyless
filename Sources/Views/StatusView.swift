@@ -8,6 +8,7 @@ struct StatusView: View {
     @StateObject private var locationManager = LocationManager()
     @State private var isRefreshing = false
     @State private var refreshScale: CGFloat = 1.0
+    @State private var isAddressFloatingPresented = false
 
     private var modeText: String {
         guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
