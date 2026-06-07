@@ -483,6 +483,7 @@ struct RadarCardView: View {
     @State private var bleConnected = false
     @State private var isAddressActionSheetPresented = false
     @State private var isAddressSettingsPresented = false
+    @State private var addressSettingsToastText: String?
     private let carLat = 22.635842
     private let carLng = 114.129604
 
@@ -553,7 +554,7 @@ struct RadarCardView: View {
         }
         .sheet(isPresented: $isAddressSettingsPresented) {
             NavigationView {
-                SettingsAddressServiceSection(toastText: nil)
+                SettingsAddressServiceSection(toastText: $addressSettingsToastText)
                     .environmentObject(addressSettings)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {

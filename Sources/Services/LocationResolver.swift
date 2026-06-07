@@ -84,8 +84,9 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
 
         if provider == .amap, let key = amapWebKey, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let gcj = Self.wgs84ToGcj02(lat: wgs84Lat, lng: wgs84Lng)
-            reverseGeocodeAmap(gcjLat: gcj.lat, gcjLng: gcj.lng, key: key) { [weak self] address in
-                applyResult(coordinate, address ?? self?.cachedAddress)
+            reverseGeocodeAmap(gcjLat: gcj.lat, gcjLng: gcj.lng, key: key) { [weak self] resolved in
+                let finalAddress = resolved ?? self?.cachedAddress
+                applyResult(coordinate, finalAddress)
             }
         } else {
             let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
@@ -94,8 +95,8 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
                     applyResult(coordinate, self?.cachedAddress)
                     return
                 }
-                let address = self?.buildAddress(from: p) ?? ""
-                applyResult(coordinate, address.isEmpty ? nil : address)
+                let finalAddress = self?.buildAddress(from: p)
+                applyResult(coordinate, finalAddress?.isEmpty == true ? nil : finalAddress)
             }
         }
     }
