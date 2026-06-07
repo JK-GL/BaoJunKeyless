@@ -3,6 +3,7 @@ import SwiftUI
 struct StatusView: View {
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var settingsStore: KeylessSettingsStore
+    @EnvironmentObject var addressSettings: AddressServiceSettings
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
     @StateObject private var locationManager = LocationManager()
     @State private var isRefreshing = false
@@ -55,6 +56,7 @@ struct StatusView: View {
                     }
                 } else {
                     RadarCardView(locationManager: locationManager)
+                        .environmentObject(addressSettings)
                 }
                 QuickActionsView()
                 RangeCardView()

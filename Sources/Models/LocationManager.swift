@@ -46,7 +46,13 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             vehicleAddress = LocationResolver.shared.cachedAddress ?? ""
         }
 
-        LocationResolver.shared.getAddress(wgs84Lat: lat, wgs84Lng: lng) { [weak self] resolved in
+        let addressSettings = AddressServiceSettings()
+        LocationResolver.shared.getAddress(
+            wgs84Lat: lat,
+            wgs84Lng: lng,
+            provider: addressSettings.provider,
+            amapWebKey: addressSettings.amapWebKey
+        ) { [weak self] resolved in
             guard let self else { return }
             if let resolved {
                 self.vehicleAddress = resolved

@@ -11,6 +11,8 @@ import CoreLocation
 final class LocationResolver: NSObject, CLLocationManagerDelegate {
     static let shared = LocationResolver()
     private let geocoder = CLGeocoder()
+    private var lastResolvedCoordinate: CLLocationCoordinate2D?
+    private var lastResolvedDate: Date?
 
     private override init() {
         super.init()
@@ -51,25 +53,83 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
         return ret
     }
 
-    // MARK: - 逆地理编码
-    func getAddress(wgs84Lat: Double, wgs84Lng: Double, completion: @escaping (String?) -> Void) {
-        let gcj = Self.wgs84ToGcj02(lat: wgs84Lat, lng: wgs84Lng)
-        let location = CLLocation(latitude: gcj.lat, longitude: gcj.lng)
+    func getAddress(wgs84Lat: Double, wgs84Lng: Double, provider: AddressServiceType = .apple, amapWebKey: String? = nil, completion: @escaping (String?) -> Void) {
+        let coordinate = CLLocationCoordinate2D(latitude: wgs84Lat, longitude: wgs84Lng)
 
-        geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
-            guard let p = placemarks?.first else {
+        let applyResult: (CLLocationCoordinate2D, String?) -> Void = { [weak self] resolvedCoordinate, address in
+            guard let self else { return }
+            self.lastResolvedCoordinate = resolvedCoordinate
+            self.lastResolvedDate = Date()
+
+            UserDefaults.standard.set(address ?? "", forKey: "LastAddress")
+            UserDefaults.standard.set(resolvedCoordinate.latitude, forKey: "LastLatitude")
+            UserDefaults.standard.set(resolvedCoordinate.longitude, forKey: "LastLongitude")
+
+            completion(address)
+        }
+
+        let lastCoordinate = lastResolvedCoordinate
+        let lastDate = lastResolvedDate
+        let now = Date()
+        let distanceFromLast: Double
+        if let lastCoordinate {
+            distanceFromLast = CLLocation(latitude: lastCoordinate.latitude, longitude: lastCoordinate.longitude)
+                .distance(from: CLLocation(latitude: wgs84Lat, longitude: wgs84Lng))
+        } else {
+            distanceFromLast = .greatestFiniteMagnitude
+        }
+        let elapsed = lastDate.map { now.timeIntervalSince($0) } ?? .greatestFiniteMagnitude
+        let needsUpdate = distanceFromLast >= 50 || elapsed >= 60 || (address ?? "").isEmpty
+        guard needsUpdate else { return }
+
+        if provider == .amap, let key = amapWebKey, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let gcj = Self.wgs84ToGcj02(lat: wgs84Lat, lng: wgs84Lng)
+            reverseGeocodeAmap(gcjLat: gcj.lat, gcjLng: gcj.lng, key: key) { [weak self] address in
+                applyResult(coordinate, address ?? self?.cachedAddress)
+            }
+        } else {
+            let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+            geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
+                guard let p = placemarks?.first else {
+                    applyResult(coordinate, self?.cachedAddress)
+                    return
+                }
+                let address = self?.buildAddress(from: p) ?? ""
+                applyResult(coordinate, address.isEmpty ? nil : address)
+            }
+        }
+    }
+
+    private func reverseGeocodeAmap(gcjLat: Double, gcjLng: Double, key: String, completion: @escaping (String?) -> Void) {
+        var components = URLComponents(string: "https://restapi.amap.com/v3/geocode/regeo")
+        components?.queryItems = [
+            URLQueryItem(name: "key", value: key),
+            URLQueryItem(name: "location", value: "\(gcjLng),\(gcjLat)"),
+            URLQueryItem(name: "extensions", value: "base")
+        ]
+
+        guard let url = components?.url else {
+            completion(cachedAddress)
+            return
+        }
+
+        URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
+            guard let data, error == nil else {
                 completion(self?.cachedAddress)
                 return
             }
 
-            let address = self?.buildAddress(from: p) ?? ""
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let regeocode = json["regeocode"] as? [String: Any],
+                  let formattedAddress = regeocode["formatted_address"] as? String else {
+                completion(self?.cachedAddress)
+                return
+            }
 
-            UserDefaults.standard.set(address, forKey: "LastAddress")
-            UserDefaults.standard.set(gcj.lat, forKey: "LastLatitude")
-            UserDefaults.standard.set(gcj.lng, forKey: "LastLongitude")
-
-            completion(address.isEmpty ? nil : address)
-        }
+            DispatchQueue.main.async {
+                completion(formattedAddress.isEmpty ? self?.cachedAddress : formattedAddress)
+            }
+        }.resume()
     }
 
     // MARK: - 地址拼接

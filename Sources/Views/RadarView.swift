@@ -478,8 +478,11 @@ struct RadarRepresentable: UIViewRepresentable {
 // MARK: - Radar Card（文字全部用 SwiftUI Text）
 struct RadarCardView: View {
     @EnvironmentObject var theme: ThemeManager
+    @EnvironmentObject var addressSettings: AddressServiceSettings
     @ObservedObject var locationManager: LocationManager
     @State private var bleConnected = false
+    @State private var isAddressActionSheetPresented = false
+    @State private var isAddressSettingsPresented = false
     private let carLat = 22.635842
     private let carLng = 114.129604
 
@@ -521,13 +524,18 @@ struct RadarCardView: View {
                         .foregroundStyle(Color.white.opacity(0.5))
 
                     if !locationManager.vehicleAddress.isEmpty {
-                        (Text(Image(systemName: "mappin.and.ellipse")) + Text(" \(locationManager.vehicleAddress)"))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color.white.opacity(0.42))
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.82)
-                            .frame(maxWidth: .infinity, alignment: .center)
+                        Button {
+                            isAddressActionSheetPresented = true
+                        } label: {
+                            (Text(Image(systemName: "mappin.and.ellipse")) + Text(" \(locationManager.vehicleAddress)"))
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.42))
+                                .multilineTextAlignment(.center)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.82)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -536,6 +544,24 @@ struct RadarCardView: View {
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
+        .confirmationDialog("地址操作", isPresented: $isAddressActionSheetPresented, titleVisibility: .visible) {
+            Button("复制地址") {
+                UIPasteboard.general.string = locationManager.vehicleAddress
+            }
+            Button("设置地址服务") { isAddressSettingsPresented = true }
+            Button("取消", role: .cancel) {}
+        }
+        .sheet(isPresented: $isAddressSettingsPresented) {
+            NavigationView {
+                SettingsAddressServiceSection(toastText: nil)
+                    .environmentObject(addressSettings)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完成") { isAddressSettingsPresented = false }
+                        }
+                    }
+            }
+        }
         .onAppear { locationManager.setCarLocation(lat: carLat, lng: carLng) }
     }
 }

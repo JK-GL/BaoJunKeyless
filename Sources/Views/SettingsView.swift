@@ -8,6 +8,7 @@ struct SettingsView: View {
     @EnvironmentObject var keylessSettings: KeylessSettingsStore
     @EnvironmentObject var customVibrationStore: CustomVibrationStore
     @EnvironmentObject var vehicleLog: VehicleEventLogStore
+    @EnvironmentObject var addressSettings: AddressServiceSettings
 
     @State private var showingResetAlert = false
     @State private var toastText: String?
@@ -34,6 +35,8 @@ struct SettingsView: View {
                     backgroundBlurBinding: backgroundBlurBinding,
                     themeConfig: themeConfig
                 )
+
+                SettingsAddressServiceSection(toastText: $toastText)
 
                 SettingsAboutSection()
 
@@ -123,6 +126,7 @@ struct SettingsView: View {
         customVibrationStore.reset()
         theme.resetAppearance()
         AppDiagnosticsSettings.resetHiddenDiagnosticsToggles()
+        addressSettings.reset()
         vehicleLog.add(.system, "重置全部设置", detail: "错误日志保留")
         CrashLogger.shared.logCurrentStatus(tag: "reset")
         withAnimation { toastText = "设置已重置" }
