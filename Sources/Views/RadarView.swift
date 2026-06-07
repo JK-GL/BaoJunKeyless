@@ -481,7 +481,6 @@ struct RadarCardView: View {
     @EnvironmentObject var addressSettings: AddressServiceSettings
     @ObservedObject var locationManager: LocationManager
     @State private var bleConnected = false
-    @State private var isAddressSettingsPresented = false
     private let carLat = 22.635842
     private let carLng = 114.129604
 
@@ -524,7 +523,7 @@ struct RadarCardView: View {
 
                     if !locationManager.vehicleAddress.isEmpty {
                         Button {
-                            isAddressSettingsPresented = true
+                            NotificationCenter.default.post(name: .init("OpenAddressFloatingWindow"), object: nil)
                         } label: {
                             (Text(Image(systemName: "mappin.and.ellipse")) + Text(" \(locationManager.vehicleAddress)"))
                                 .font(.system(size: 11, weight: .medium))
@@ -545,9 +544,6 @@ struct RadarCardView: View {
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
         .onAppear { locationManager.setCarLocation(lat: carLat, lng: carLng) }
-        .onReceive(NotificationCenter.default.publisher(for: .init("OpenAddressFloatingWindow"))) { _ in
-            isAddressSettingsPresented = true
-        }
     }
 
     private func currentSearchedAddress() -> String {
