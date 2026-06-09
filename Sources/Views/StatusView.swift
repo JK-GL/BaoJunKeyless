@@ -92,13 +92,16 @@ struct StatusView: View {
 
             if isAddressFloatingPresented {
                 VStack(spacing: 0) {
-                    Color.black.opacity(0.4)
-                        .ignoresSafeArea()
-                        .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { isAddressFloatingPresented = false } }
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.easeInOut(duration: 0.2)) { isAddressFloatingPresented = false }
+                        }
 
                     addressFloatingWindow()
                         .padding(.bottom, 8)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .transition(.move(edge: .bottom))
                 .zIndex(10)
             }
