@@ -212,7 +212,6 @@ struct StatusView: View {
         )
         .frame(maxWidth: 520)
         .padding(.horizontal, 20)
-        .background(Color.black)
     }
 
     private func handleRefresh() {
