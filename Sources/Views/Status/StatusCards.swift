@@ -93,18 +93,10 @@ struct VehicleHeaderSummaryView: View {
     var updatedAt: String = "17:59:34"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .bottom, spacing: 12) {
-                HStack(alignment: .firstTextBaseline, spacing: 1) {
-                    Text("\(totalRangeKm)")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                    Text("km")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.white.opacity(0.72))
-                }
-                .frame(minWidth: 76, alignment: .leading)
-                .padding(.bottom, 2)
+                totalRangeBlock
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack(alignment: .bottom, spacing: 10) {
                     summaryColumn(
@@ -155,6 +147,24 @@ struct VehicleHeaderSummaryView: View {
                 .foregroundStyle(Color.white.opacity(0.42))
         }
         .padding(.horizontal, 20)
+    }
+
+    private var totalRangeBlock: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 1) {
+                Text("\(totalRangeKm)")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                Text("km")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.72))
+            }
+
+            Text("综合续航")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.45))
+        }
+        .padding(.bottom, 1)
     }
 
     private func summaryColumn(title: String, rangeText: String, percentText: String, percent: Double, color: Color) -> some View {
