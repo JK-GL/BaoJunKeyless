@@ -94,33 +94,39 @@ struct VehicleHeaderSummaryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                Text("\(totalRangeKm)")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                Text("km")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.72))
-                    .padding(.leading, 2)
+            HStack(alignment: .top, spacing: 14) {
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text("\(totalRangeKm)")
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text("km")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.72))
+                }
+                .frame(width: 92, alignment: .leading)
 
-                Text(" | ")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.18))
-                    .padding(.horizontal, 8)
+                Rectangle()
+                    .fill(Color.white.opacity(0.10))
+                    .frame(width: 1, height: 34)
+                    .padding(.top, 2)
 
-                summaryPill(
-                    title: "电量",
-                    rangeText: "\(electricRangeKm)km",
-                    percent: electricPercent,
-                    color: AppTheme.accent
-                )
+                HStack(alignment: .top, spacing: 12) {
+                    summaryColumn(
+                        title: "电量",
+                        rangeText: "\(electricRangeKm)km",
+                        percentText: "\(Int(electricPercent * 100))%",
+                        percent: electricPercent,
+                        color: AppTheme.accent
+                    )
 
-                summaryPill(
-                    title: "油量",
-                    rangeText: "\(fuelRangeKm)km",
-                    percent: fuelPercent,
-                    color: AppTheme.orange
-                )
+                    summaryColumn(
+                        title: "油量",
+                        rangeText: "\(fuelRangeKm)km",
+                        percentText: "\(Int(fuelPercent * 100))%",
+                        percent: fuelPercent,
+                        color: AppTheme.orange
+                    )
+                }
             }
 
             if isCharging {
@@ -154,27 +160,32 @@ struct VehicleHeaderSummaryView: View {
         .padding(.horizontal, 20)
     }
 
-    private func summaryPill(title: String, rangeText: String, percent: Double, color: Color) -> some View {
+    private func summaryColumn(title: String, rangeText: String, percentText: String, percent: Double, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(title)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.62))
                 Text(rangeText)
                     .font(.system(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(color)
+                Text(percentText)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.white.opacity(0.55))
             }
+            .lineLimit(1)
 
             HStack(spacing: 0) {
-                RoundedRectangle(cornerRadius: 2)
+                Capsule()
                     .fill(color)
-                    .frame(width: max(0, min(1, percent)) * 64, height: 3)
-                RoundedRectangle(cornerRadius: 2)
+                    .frame(width: max(0, min(1, percent)) * 88, height: 4)
+                Capsule()
                     .fill(Color.white.opacity(0.08))
-                    .frame(height: 3)
+                    .frame(height: 4)
             }
-            .frame(width: 64, height: 3)
+            .frame(width: 88, height: 4)
         }
+        .frame(width: 88, alignment: .leading)
     }
 }
 

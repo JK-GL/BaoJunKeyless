@@ -13,6 +13,8 @@ struct StatusView: View {
     @State private var isEditingAmapKey = false
     @State private var amapKeyDraft = ""
 
+    private var vehicleName: String { "宝骏云海" }
+
     private var modeText: String {
         guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
         if settingsStore.settings.pluginTakeover { return "插件托管" }
@@ -40,8 +42,9 @@ struct StatusView: View {
     var body: some View {
         ZStack {
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 16) {
                     StatusTopBarSection(
+                        vehicleName: vehicleName,
                         isRefreshing: isRefreshing,
                         refreshScale: refreshScale,
                         onRefresh: handleRefresh
