@@ -93,24 +93,24 @@ struct VehicleHeaderSummaryView: View {
     var updatedAt: String = "17:59:34"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 14) {
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 1) {
                     Text("\(totalRangeKm)")
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                     Text("km")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.72))
                 }
-                .frame(width: 92, alignment: .leading)
+                .frame(width: 82, alignment: .leading)
 
                 Rectangle()
                     .fill(Color.white.opacity(0.10))
-                    .frame(width: 1, height: 34)
+                    .frame(width: 1, height: 30)
                     .padding(.top, 2)
 
-                HStack(alignment: .top, spacing: 12) {
+                HStack(alignment: .top, spacing: 8) {
                     summaryColumn(
                         title: "电量",
                         rangeText: "\(electricRangeKm)km",
@@ -130,19 +130,19 @@ struct VehicleHeaderSummaryView: View {
             }
 
             if isCharging {
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     Image(systemName: "bolt.fill")
                         .foregroundStyle(AppTheme.orange)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                     Text("充电中")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.white)
                     Text(chargingPowerText)
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .foregroundStyle(AppTheme.orange)
                 }
                 .padding(.horizontal, 8)
-                .padding(.vertical, 5)
+                .padding(.vertical, 4)
                 .background(
                     Capsule()
                         .fill(AppTheme.orange.opacity(0.12))
@@ -155,37 +155,39 @@ struct VehicleHeaderSummaryView: View {
 
             Text("更新时间：\(updatedAt)")
                 .font(.system(size: 11))
-                .foregroundStyle(Color.white.opacity(0.45))
+                .foregroundStyle(Color.white.opacity(0.42))
         }
         .padding(.horizontal, 20)
     }
 
     private func summaryColumn(title: String, rangeText: String, percentText: String, percent: Double, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(title)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.62))
                 Text(rangeText)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(color)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.9)
+                Spacer(minLength: 2)
                 Text(percentText)
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.white.opacity(0.55))
             }
-            .lineLimit(1)
 
             HStack(spacing: 0) {
                 Capsule()
                     .fill(color)
-                    .frame(width: max(0, min(1, percent)) * 88, height: 4)
+                    .frame(width: max(0, min(1, percent)) * 104, height: 4)
                 Capsule()
                     .fill(Color.white.opacity(0.08))
                     .frame(height: 4)
             }
-            .frame(width: 88, height: 4)
+            .frame(width: 104, height: 4)
         }
-        .frame(width: 88, alignment: .leading)
+        .frame(width: 104, alignment: .leading)
     }
 }
 

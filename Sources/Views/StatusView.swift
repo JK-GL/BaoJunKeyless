@@ -42,21 +42,23 @@ struct StatusView: View {
     var body: some View {
         ZStack {
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 16) {
-                    StatusTopBarSection(
-                        vehicleName: vehicleName,
-                        isRefreshing: isRefreshing,
-                        refreshScale: refreshScale,
-                        onRefresh: handleRefresh
-                    )
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        StatusTopBarSection(
+                            vehicleName: vehicleName,
+                            isRefreshing: isRefreshing,
+                            refreshScale: refreshScale,
+                            onRefresh: handleRefresh
+                        )
 
-                    VehicleHeaderSummaryView()
+                        VehicleHeaderSummaryView()
 
-                    StatusPillsSection(
-                        modeIcon: modeIcon,
-                        modeText: modeText,
-                        modeColor: modeColor
-                    )
+                        StatusPillsSection(
+                            modeIcon: modeIcon,
+                            modeText: modeText,
+                            modeColor: modeColor
+                        )
+                    }
 
                     if disableRadar {
                         CardView(title: "雷达已禁用（诊断模式）", icon: "wave.3.slash", iconColor: AppTheme.orange) {
@@ -67,25 +69,28 @@ struct StatusView: View {
                     } else {
                         RadarCardView(locationManager: locationManager)
                     }
+
                     QuickActionsView { command in
                         activeCommand = command
                     }
 
-                    BodyStatusView()
-                    StatusDashboardPair {
-                        DrivingStatusView()
-                    } right: {
-                        BatteryGaugesView()
-                    }
-                    StatusDashboardPair {
-                        TemperatureView()
-                    } right: {
-                        ChargingStatusView()
-                    }
-                    LightingStatusView()
-                    VehicleInfoMergedCard()
+                    LazyVStack(alignment: .leading, spacing: 16) {
+                        BodyStatusView()
+                        StatusDashboardPair {
+                            DrivingStatusView()
+                        } right: {
+                            BatteryGaugesView()
+                        }
+                        StatusDashboardPair {
+                            TemperatureView()
+                        } right: {
+                            ChargingStatusView()
+                        }
+                        LightingStatusView()
+                        VehicleInfoMergedCard()
 
-                    Spacer(minLength: 100)
+                        Spacer(minLength: 100)
+                    }
                 }
             }
             .modifier(ChromeScrollTrackingModifier(scrollState: scrollState))

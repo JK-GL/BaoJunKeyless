@@ -160,9 +160,9 @@ struct StatusTopBarSection: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
+        HStack(alignment: .center, spacing: 12) {
             Text(vehicleName)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.system(size: 21, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.9)
@@ -181,7 +181,7 @@ struct StatusTopBarSection: View {
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 20)
-        .padding(.top, 6)
+        .padding(.top, 4)
     }
 }
 
