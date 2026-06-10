@@ -93,20 +93,20 @@ struct VehicleHeaderSummaryView: View {
     var updatedAt: String = "17:59:34"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 0) {
                 Text("\(totalRangeKm)")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                 Text("km")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.72))
                     .padding(.leading, 2)
 
                 Text(" | ")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.18))
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, 8)
 
                 summaryPill(
                     title: "电量",
@@ -127,16 +127,16 @@ struct VehicleHeaderSummaryView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "bolt.fill")
                         .foregroundStyle(AppTheme.orange)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                     Text("充电中")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.white)
                     Text(chargingPowerText)
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
                         .foregroundStyle(AppTheme.orange)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
                 .background(
                     Capsule()
                         .fill(AppTheme.orange.opacity(0.12))
@@ -148,7 +148,7 @@ struct VehicleHeaderSummaryView: View {
             }
 
             Text("更新时间：\(updatedAt)")
-                .font(.system(size: 12))
+                .font(.system(size: 11))
                 .foregroundStyle(Color.white.opacity(0.45))
         }
         .padding(.horizontal, 20)
@@ -158,24 +158,22 @@ struct VehicleHeaderSummaryView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Text(title)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.62))
                 Text(rangeText)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(color)
             }
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.08))
-                        .frame(height: 4)
-                    Capsule()
-                        .fill(color)
-                        .frame(width: geo.size.width * percent, height: 4)
-                }
+            HStack(spacing: 0) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(color)
+                    .frame(width: max(0, min(1, percent)) * 64, height: 3)
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.white.opacity(0.08))
+                    .frame(height: 3)
             }
-            .frame(height: 4)
+            .frame(width: 64, height: 3)
         }
     }
 }

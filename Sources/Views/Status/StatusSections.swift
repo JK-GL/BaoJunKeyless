@@ -139,17 +139,20 @@ enum StatusGearState {
 }
 
 struct StatusTopBarSection: View {
+    let vehicleName: String
     let isRefreshing: Bool
     let refreshScale: CGFloat
     let authStatus: StatusAuthState
     let onRefresh: () -> Void
 
     init(
+        vehicleName: String = "宝骏云海",
         isRefreshing: Bool,
         refreshScale: CGFloat,
         authStatus: StatusAuthState = .valid,
         onRefresh: @escaping () -> Void
     ) {
+        self.vehicleName = vehicleName
         self.isRefreshing = isRefreshing
         self.refreshScale = refreshScale
         self.authStatus = authStatus
@@ -157,11 +160,12 @@ struct StatusTopBarSection: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 16) {
-            Text("宝骏云海")
-                .font(.system(size: 28, weight: .bold, design: .rounded))
+        HStack(alignment: .center, spacing: 14) {
+            Text(vehicleName)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1)
+                .minimumScaleFactor(0.9)
 
             AuthStatusBadge(authStatus: authStatus)
 
@@ -169,15 +173,15 @@ struct StatusTopBarSection: View {
 
             Button(action: onRefresh) {
                 Image(systemName: isRefreshing ? "hourglass" : "arrow.triangle.2.circlepath")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.55))
-                    .frame(width: 22, height: 22)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.52))
+                    .frame(width: 20, height: 20)
                     .scaleEffect(refreshScale)
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 20)
-        .padding(.top, 8)
+        .padding(.top, 6)
     }
 }
 
