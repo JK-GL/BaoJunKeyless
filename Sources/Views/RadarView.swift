@@ -418,12 +418,10 @@ final class PsychicScanUIView: UIView {
             ring.fillColor = UIColor.clear.cgColor
             ring.strokeColor = UIColor.cyan.withAlphaComponent(0.24).cgColor
             ring.lineWidth = 1.0
-            let cx = size / 2
-            let cy = size / 2
-            let r: CGFloat = 12
             ring.frame = CGRect(x: 0, y: 0, width: size, height: size)
-            ring.path = UIBezierPath(ovalIn: CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)).cgPath
-            ring.transform = CATransform3DMakeScale(0.2, 0.2, 1)
+            ring.position = CGPoint(x: size / 2, y: size / 2)
+            ring.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+            ring.path = UIBezierPath(arcCenter: CGPoint(x: size / 2, y: size / 2), radius: 12, startAngle: 0, endAngle: .pi * 2, clockwise: true).cgPath
             ring.opacity = 0.45
             layer.addSublayer(ring)
             ringLayers.append(ring)
@@ -431,12 +429,12 @@ final class PsychicScanUIView: UIView {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 1.8) { [weak ring] in
                 guard let ring else { return }
 
-                let scaleAnim = CABasicAnimation(keyPath: "transform.scale")
-                scaleAnim.fromValue = 0.2
-                scaleAnim.toValue = 9.0
-                scaleAnim.duration = 3.6
-                scaleAnim.repeatCount = .infinity
-                scaleAnim.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                let radiusAnim = CABasicAnimation(keyPath: "path")
+                radiusAnim.fromValue = UIBezierPath(arcCenter: CGPoint(x: size / 2, y: size / 2), radius: 12, startAngle: 0, endAngle: .pi * 2, clockwise: true).cgPath
+                radiusAnim.toValue = UIBezierPath(arcCenter: CGPoint(x: size / 2, y: size / 2), radius: size * 0.48, startAngle: 0, endAngle: .pi * 2, clockwise: true).cgPath
+                radiusAnim.duration = 3.6
+                radiusAnim.repeatCount = .infinity
+                radiusAnim.timingFunction = CAMediaTimingFunction(name: .easeOut)
 
                 let opacityAnim = CABasicAnimation(keyPath: "opacity")
                 opacityAnim.fromValue = 0.45
@@ -446,7 +444,7 @@ final class PsychicScanUIView: UIView {
                 opacityAnim.timingFunction = CAMediaTimingFunction(name: .easeOut)
 
                 let group = CAAnimationGroup()
-                group.animations = [scaleAnim, opacityAnim]
+                group.animations = [radiusAnim, opacityAnim]
                 group.duration = 3.6
                 group.repeatCount = .infinity
 
