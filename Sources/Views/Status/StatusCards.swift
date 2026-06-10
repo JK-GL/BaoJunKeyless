@@ -306,7 +306,6 @@ private struct VehicleStatusMetricList: View {
 }
 
 private struct VehicleStatusMetricCard: View {
-    @EnvironmentObject var theme: ThemeManager
     let metric: VehicleStatusMetric
 
     var body: some View {

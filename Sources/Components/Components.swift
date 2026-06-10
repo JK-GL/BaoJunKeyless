@@ -95,7 +95,6 @@ extension CollapsibleCard where Header == EmptyView {
 
 // MARK: - StatusPill
 struct StatusPill: View {
-    @EnvironmentObject var theme: ThemeManager
     let icon: String; let text: String; let color: Color
     var body: some View {
         HStack(spacing: 4) {
