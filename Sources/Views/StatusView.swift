@@ -9,6 +9,7 @@ struct StatusView: View {
     @State private var isRefreshing = false
     @State private var refreshScale: CGFloat = 1.0
     @State private var isAddressFloatingPresented = false
+    @State private var activeCommand: CommandAction? = nil
 
     private var modeText: String {
         guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
@@ -59,7 +60,9 @@ struct StatusView: View {
                     } else {
                         RadarCardView(locationManager: locationManager)
                     }
-                    QuickActionsView()
+                    QuickActionsView { command in
+                        activeCommand = command
+                    }
                     RangeCardView()
                     BodyStatusView()
                     StatusDashboardPair {
@@ -104,10 +107,28 @@ struct StatusView: View {
                 .transition(.move(edge: .bottom))
                 .zIndex(10)
             }
+
+            // 快捷操作居中弹窗
+            if let command = activeCommand {
+                CommandConfirmPopup(
+                    action: command,
+                    vehicleState: .placeholder,
+                    isPresented: Binding(
+                        get: { activeCommand != nil },
+                        set: { if !$0 { activeCommand = nil } }
+                    )
+                ) { cmd, temp in
+                    // 指令执行后的回调
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .transition(.scale.combined(with: .opacity))
+                .zIndex(20)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenAddressFloatingWindow"))) { _ in
             withAnimation { isAddressFloatingPresented = true }
         }
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: activeCommand != nil)
     }
 
     @ViewBuilder
