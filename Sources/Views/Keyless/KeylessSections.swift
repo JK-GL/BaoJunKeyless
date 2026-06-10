@@ -30,13 +30,6 @@ struct KeylessMainSection: View {
                         set: { if $0 { setMode(.manual) } else { settingsStore.settings.appManual = false; vehicleLog.add(.keyless, "关闭 App 手动") } }
                     ))
 
-                    ToggleRow(icon: "exclamationmark.triangle.fill", label: "D/R 挡禁止", isOn: Binding(
-                        get: { settingsStore.settings.drBlock },
-                        set: { enabled in
-                            settingsStore.settings.drBlock = enabled
-                            vehicleLog.add(.keyless, enabled ? "开启 D/R 挡禁止" : "关闭 D/R 挡禁止")
-                        }
-                    ))
                     SliderRow(icon: "gauge.medium", label: "重复指令间隔",
                               value: $settingsStore.settings.cmdInterval, range: 1...15, step: 1,
                               format: "\(Int(settingsStore.settings.cmdInterval))s", tint: AppTheme.purple) { value in
