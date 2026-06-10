@@ -15,6 +15,8 @@ final class RadarUIView: UIView {
 
     private let backgroundImageView = UIImageView()
     private let carImageView = UIImageView()
+    private let scanRing1 = CAShapeLayer()
+    private let scanRing2 = CAShapeLayer()
     private var memoryWarningObserver: NSObjectProtocol?
     private var stars: [StarParticle] = []
     private var displayedCarCenter: CGPoint = .zero
@@ -77,6 +79,8 @@ final class RadarUIView: UIView {
         layer.cornerRadius = min(bounds.width, bounds.height) / 2
         layer.masksToBounds = true
         backgroundImageView.frame = bounds
+        layoutScanRing(scanRing1)
+        layoutScanRing(scanRing2)
 
         if backgroundImageView.image == nil || lastBackgroundSize != bounds.size {
             rebuildStaticBackground(bounds.size)
@@ -106,21 +110,65 @@ final class RadarUIView: UIView {
         backgroundImageView.isUserInteractionEnabled = false
         addSubview(backgroundImageView)
 
+        configureScanRing(scanRing1, delay: 0)
+        configureScanRing(scanRing2, delay: 1.8)
+
         carImageView.contentMode = .scaleAspectFit
         carImageView.isUserInteractionEnabled = false
         addSubview(carImageView)
 
         restoreDynamicResourcesIfNeeded()
 
-        memoryWarningObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            CrashLogger.shared.mark("Radar", "memoryWarning")
-            Self.staticBackgroundCache.removeAll()
-            self?.releaseHeavyResources()
+    private func configureScanRing(_ ring: CAShapeLayer, delay: Double) {
+        ring.fillColor = UIColor.clear.cgColor
+        ring.strokeColor = UIColor.cyan.withAlphaComponent(0.24).cgColor
+        ring.lineWidth = 1.0
+        ring.opacity = 0.45
+        layer.addSublayer(ring)
+        startScanRingAnimation(ring, delay: delay)
+    }
+
+    private func startScanRingAnimation(_ ring: CAShapeLayer, delay: Double) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak ring] in
+            guard let ring else { return }
+
+            let scaleAnim = CABasicAnimation(keyPath: "transform.scale")
+            scaleAnim.fromValue = 0.2
+            scaleAnim.toValue = 9.0
+            scaleAnim.duration = 3.6
+            scaleAnim.repeatCount = .infinity
+            scaleAnim.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+            let opacityAnim = CABasicAnimation(keyPath: "opacity")
+            opacityAnim.fromValue = 0.45
+            opacityAnim.toValue = 0.0
+            opacityAnim.duration = 3.6
+            opacityAnim.repeatCount = .infinity
+            opacityAnim.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+            let group = CAAnimationGroup()
+            group.animations = [scaleAnim, opacityAnim]
+            group.duration = 3.6
+            group.repeatCount = .infinity
+
+            ring.add(group, forKey: "scanPulse")
         }
+    }
+
+    private func resumeScanRingAnimationsIfNeeded() {
+        if scanRing1.animation(forKey: "scanPulse") == nil {
+            startScanRingAnimation(scanRing1, delay: 0)
+        }
+        if scanRing2.animation(forKey: "scanPulse") == nil {
+            startScanRingAnimation(scanRing2, delay: 1.8)
+        }
+    }
+
+    private func layoutScanRing(_ ring: CAShapeLayer) {
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        ring.frame = CGRect(origin: center, size: .zero)
+        ring.path = UIBezierPath(ovalIn: CGRect(x: -12, y: -12, width: 24, height: 24)).cgPath
+        ring.cornerRadius = 12
     }
 
     func updateGyro(pitch: Double, roll: Double) {
@@ -138,12 +186,15 @@ final class RadarUIView: UIView {
 
     func releaseHeavyResources() {
         backgroundImageView.image = nil
+        scanRing1.removeAllAnimations()
+        scanRing2.removeAllAnimations()
         carImageView.layer.removeAllAnimations()
         lastBackgroundSize = .zero
         lastDisplayLinkTimestamp = 0
     }
 
     private func restoreDynamicResourcesIfNeeded() {
+        resumeScanRingAnimationsIfNeeded()
         let useSFSymbol = AppDiagnosticsSettings.shouldUseSFRadarCarIcon
         if useSFSymbol {
             if !isUsingSFSymbolCar || carImageView.image == nil {
@@ -390,78 +441,6 @@ final class RadarUIView: UIView {
     }
 }
 
-// MARK: - 扫描波纹（Core Animation，不经过 SwiftUI diff）
-struct PsychicScanView: UIViewRepresentable {
-    let size: CGFloat
-
-    func makeUIView(context: Context) -> PsychicScanUIView {
-        let view = PsychicScanUIView(frame: .zero)
-        view.configure(size: size)
-        return view
-    }
-
-    func updateUIView(_ uiView: PsychicScanUIView, context: Context) {}
-}
-
-final class PsychicScanUIView: UIView {
-    private var ringLayers: [CAShapeLayer] = []
-
-    func configure(size: CGFloat) {
-        backgroundColor = .clear
-        isUserInteractionEnabled = false
-
-        ringLayers.forEach { $0.removeFromSuperlayer() }
-        ringLayers.removeAll()
-
-        let center = CGPoint(x: size / 2, y: size / 2)
-
-        for i in 0..<2 {
-            let ring = CAShapeLayer()
-            ring.fillColor = UIColor.clear.cgColor
-            ring.strokeColor = UIColor.cyan.withAlphaComponent(0.24).cgColor
-            ring.lineWidth = 1.0
-            ring.frame = CGRect(origin: center, size: .zero)
-            ring.path = UIBezierPath(ovalIn: CGRect(x: -12, y: -12, width: 24, height: 24)).cgPath
-            ring.transform = CATransform3DMakeScale(0.2, 0.2, 1)
-            ring.opacity = 0.45
-            layer.addSublayer(ring)
-            ringLayers.append(ring)
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 1.8) { [weak ring] in
-                guard let ring else { return }
-
-                let scaleAnim = CABasicAnimation(keyPath: "transform.scale")
-                scaleAnim.fromValue = 0.2
-                scaleAnim.toValue = 9.0
-                scaleAnim.duration = 3.6
-                scaleAnim.repeatCount = .infinity
-                scaleAnim.timingFunction = CAMediaTimingFunction(name: .easeOut)
-
-                let opacityAnim = CABasicAnimation(keyPath: "opacity")
-                opacityAnim.fromValue = 0.45
-                opacityAnim.toValue = 0.0
-                opacityAnim.duration = 3.6
-                opacityAnim.repeatCount = .infinity
-                opacityAnim.timingFunction = CAMediaTimingFunction(name: .easeOut)
-
-                let group = CAAnimationGroup()
-                group.animations = [scaleAnim, opacityAnim]
-                group.duration = 3.6
-                group.repeatCount = .infinity
-
-                ring.add(group, forKey: "scanPulse")
-            }
-        }
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        for ring in ringLayers {
-            ring.cornerRadius = bounds.width / 2
-        }
-    }
-}
-
 // MARK: - SwiftUI 封装
 struct RadarRepresentable: UIViewRepresentable {
     let locationManager: LocationManager
@@ -523,8 +502,6 @@ struct RadarCardView: View {
             ZStack {
                 RadarRepresentable(locationManager: locationManager, bleConnected: bleConnected)
                     .frame(width: 280, height: 280)
-
-                PsychicScanView(size: 280)
 
                 if bleConnected {
                     Text("-42 dBm")
