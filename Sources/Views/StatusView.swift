@@ -97,14 +97,13 @@ struct StatusView: View {
                     Color.clear
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            withAnimation(.easeInOut(duration: 0.2)) { isAddressFloatingPresented = false }
+                            withAnimation(.easeOut(duration: 0.2)) { isAddressFloatingPresented = false }
                         }
 
                     addressFloatingWindow()
-                        .padding(.bottom, 8)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .transition(.move(edge: .bottom))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .transition(.scale.combined(with: .opacity))
                 .zIndex(10)
             }
 
@@ -134,28 +133,46 @@ struct StatusView: View {
     @ViewBuilder
     private func addressFloatingWindow() -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color.white.opacity(0.2))
-                .frame(width: 40, height: 5)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 8)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("车辆地址")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.55))
-
-                HStack(spacing: 8) {
-                    Image(systemName: "mappin.and.ellipse")
-                        .font(.system(size: 14))
-                        .foregroundStyle(AppTheme.accent)
-                    Text(locationManager.vehicleAddress)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.62)
-                        .layoutPriority(1)
+            // 关闭按钮
+            HStack {
+                Spacer()
+                Button(action: { withAnimation(.easeOut(duration: 0.2)) { isAddressFloatingPresented = false } }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(Color.white.opacity(0.3))
                 }
+            }
+            .padding(.bottom, -4)
+
+            // 图标
+            ZStack {
+                Circle()
+                    .fill(AppTheme.accent.opacity(0.15))
+                    .frame(width: 56, height: 56)
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(AppTheme.accent)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 10)
+
+            // 标题
+            Text("车辆地址")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 4)
+
+            HStack(spacing: 8) {
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.system(size: 14))
+                    .foregroundStyle(AppTheme.accent)
+                Text(locationManager.vehicleAddress)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.62)
+                    .layoutPriority(1)
             }
 
             VStack(alignment: .leading, spacing: 10) {
@@ -223,7 +240,7 @@ struct StatusView: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 20)
         .padding(.bottom, 16)
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -238,8 +255,8 @@ struct StatusView: View {
                 )
         )
         .shadow(color: Color.black.opacity(0.4), radius: 40, x: 0, y: 20)
-        .frame(maxWidth: 520)
-        .padding(.horizontal, 20)
+        .frame(maxWidth: 320)
+        .padding(.horizontal, 32)
     }
 
     private func handleRefresh() {
