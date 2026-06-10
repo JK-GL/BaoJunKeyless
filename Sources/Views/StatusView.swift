@@ -10,6 +10,8 @@ struct StatusView: View {
     @State private var refreshScale: CGFloat = 1.0
     @State private var isAddressFloatingPresented = false
     @State private var activeCommand: CommandAction? = nil
+    @State private var isEditingAmapKey = false
+    @State private var amapKeyDraft = ""
 
     private var modeText: String {
         guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
@@ -93,18 +95,17 @@ struct StatusView: View {
             }
 
             if isAddressFloatingPresented {
-                VStack(spacing: 0) {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.easeOut(duration: 0.2)) { isAddressFloatingPresented = false }
-                        }
+                Color.clear
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.2)) { isAddressFloatingPresented = false }
+                    }
 
-                    addressFloatingWindow()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .transition(.scale.combined(with: .opacity))
-                .zIndex(10)
+                addressFloatingWindow()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .transition(.scale.combined(with: .opacity))
+                    .zIndex(10)
             }
 
             // 快捷操作居中弹窗
@@ -125,9 +126,12 @@ struct StatusView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenAddressFloatingWindow"))) { _ in
-            withAnimation { isAddressFloatingPresented = true }
+            isEditingAmapKey = false
+            amapKeyDraft = addressSettings.amapWebKey
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { isAddressFloatingPresented = true }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: activeCommand != nil)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isAddressFloatingPresented)
     }
 
     @ViewBuilder
@@ -140,16 +144,23 @@ struct StatusView: View {
             onClose: { withAnimation(.easeOut(duration: 0.2)) { isAddressFloatingPresented = false } }
         ) {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: "mappin.and.ellipse")
-                        .font(.system(size: 14))
-                        .foregroundStyle(AppTheme.accent)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "mappin.and.ellipse")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(AppTheme.accent)
+                        Text("当前定位")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.45))
+                        Spacer()
+                    }
+
                     Text(locationManager.vehicleAddress)
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.62)
-                        .layoutPriority(1)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(5)
+                        .minimumScaleFactor(0.85)
                 }
                 .padding(12)
                 .background(
@@ -169,8 +180,8 @@ struct StatusView: View {
                     }
 
                     TextField("填写高德 Web 服务 Key", text: Binding(
-                        get: { addressSettings.amapWebKey },
-                        set: { addressSettings.setAmapWebKey($0) }
+                        get: { isEditingAmapKey ? amapKeyDraft : maskedAmapKey },
+                        set: { amapKeyDraft = $0 }
                     ))
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
@@ -179,11 +190,21 @@ struct StatusView: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(Color.white.opacity(0.06))
                     )
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            isEditingAmapKey = true
+                            amapKeyDraft = addressSettings.amapWebKey
+                        }
+                    }
 
-                    HStack {
+                    HStack(spacing: 10) {
                         Spacer()
                         Button {
-                            addressSettings.clearAmapWebKey()
+                            withAnimation(.easeOut(duration: 0.15)) {
+                                addressSettings.clearAmapWebKey()
+                                amapKeyDraft = ""
+                                isEditingAmapKey = false
+                            }
                         } label: {
                             Text("清除高德 Key")
                                 .font(.caption.weight(.medium))
@@ -199,6 +220,10 @@ struct StatusView: View {
                     color: AppTheme.accent
                 ) {
                     withAnimation(.easeOut(duration: 0.2)) { isAddressFloatingPresented = false }
+                    if isEditingAmapKey {
+                        addressSettings.setAmapWebKey(amapKeyDraft)
+                    }
+                    isEditingAmapKey = false
                     locationManager.setCarLocation(lat: 22.635842, lng: 114.129604)
                 }
 
@@ -206,6 +231,11 @@ struct StatusView: View {
                     title: "高德",
                     textColor: .white
                 ) {
+                    withAnimation(.easeOut(duration: 0.2)) { isAddressFloatingPresented = false }
+                    if isEditingAmapKey {
+                        addressSettings.setAmapWebKey(amapKeyDraft)
+                    }
+                    isEditingAmapKey = false
                     let keyword = locationManager.vehicleAddress.trimmingCharacters(in: .whitespacesAndNewlines)
                     let address = keyword.isEmpty ? "22.635842,114.129604" : keyword
                     let encoded = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? address
@@ -215,6 +245,17 @@ struct StatusView: View {
                 }
             }
         }
+    }
+
+    private var maskedAmapKey: String {
+        let key = addressSettings.amapWebKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return "" }
+        if key.count <= 8 {
+            return String(repeating: "•", count: 6)
+        }
+        let prefix = key.prefix(4)
+        let suffix = key.suffix(4)
+        return "\(prefix)******\(suffix)"
     }
 
     private func handleRefresh() {

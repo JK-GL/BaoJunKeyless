@@ -41,22 +41,31 @@ struct FloatingPopupCard<Content: View, Actions: View>: View {
                 .font(.system(size: 20, weight: .bold))
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
+                .fixedSize(horizontal: false, vertical: true)
+                .minimumScaleFactor(0.85)
 
             if !subtitle.isEmpty {
                 Text(subtitle)
                     .font(.system(size: 13))
                     .foregroundColor(Color.white.opacity(0.52))
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .minimumScaleFactor(0.8)
                     .padding(.top, 4)
                     .padding(.bottom, 16)
             } else {
                 Spacer().frame(height: 12)
             }
 
-            content()
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    content()
 
-            actions()
-                .padding(.top, 12)
+                    actions()
+                        .padding(.top, 12)
+                }
+            }
+            .frame(maxHeight: 380)
         }
         .padding(20)
         .background(
@@ -72,6 +81,7 @@ struct FloatingPopupCard<Content: View, Actions: View>: View {
                 )
         )
         .shadow(color: Color.black.opacity(0.38), radius: 40, x: 0, y: 20)
+        .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: maxWidth)
         .padding(.horizontal, 32)
     }
