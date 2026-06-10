@@ -413,16 +413,13 @@ final class PsychicScanUIView: UIView {
         ringLayers.forEach { $0.removeFromSuperlayer() }
         ringLayers.removeAll()
 
-        let pathSize: CGFloat = 24
-        let pathRect = CGRect(x: -pathSize / 2, y: -pathSize / 2, width: pathSize, height: pathSize)
-
         for i in 0..<2 {
             let ring = CAShapeLayer()
             ring.fillColor = UIColor.clear.cgColor
             ring.strokeColor = UIColor.cyan.withAlphaComponent(0.24).cgColor
             ring.lineWidth = 1.0
-            ring.frame = CGRect(x: size / 2, y: size / 2, width: 0, height: 0)
-            ring.path = UIBezierPath(ovalIn: pathRect).cgPath
+            ring.frame = CGRect(x: 0, y: 0, width: size, height: size)
+            ring.path = UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: 24, height: 24)).cgPath
             ring.transform = CATransform3DMakeScale(0.2, 0.2, 1)
             ring.opacity = 0.45
             layer.addSublayer(ring)
