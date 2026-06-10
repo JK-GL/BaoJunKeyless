@@ -37,7 +37,7 @@ struct StatusView: View {
     var body: some View {
         ZStack {
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 16) {
+                LazyVStack(alignment: .leading, spacing: 16) {
                     StatusTopBarSection(
                         isRefreshing: isRefreshing,
                         refreshScale: refreshScale,

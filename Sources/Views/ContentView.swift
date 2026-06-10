@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct ContentView: View {
-    private static let tabSwitchAnimation = Animation.spring(response: 0.34, dampingFraction: 0.86)
-
     @State private var selectedTab: AppTab = .status
     @StateObject private var scrollState = AppScrollState()
     @Namespace private var tabAnimation
@@ -16,7 +14,6 @@ struct ContentView: View {
                 .environmentObject(scrollState)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .animation(Self.tabSwitchAnimation, value: selectedTab)
         .appOnChange(of: selectedTab) {
             scrollState.reset()
         }
