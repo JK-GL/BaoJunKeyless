@@ -69,6 +69,23 @@ struct SettingsView: View {
         .sheet(item: $sharePayload) { payload in
             ShareSheet(activityItems: payload.activityItems)
         }
+        .overlay {
+            if showingResetAlert {
+                CustomAlertView(
+                    title: "重置插件",
+                    message: "将重置主题、背景图、无感车控和自定义震动。错误日志不会清空。",
+                    confirmTitle: "确认重置",
+                    confirmColor: .red,
+                    onCancel: { withAnimation(.easeOut(duration: 0.2)) { showingResetAlert = false } },
+                    onConfirm: {
+                        withAnimation(.easeOut(duration: 0.2)) { showingResetAlert = false }
+                        resetAllSettings()
+                    }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
         .overlay(alignment: .bottom) {
             if let text = toastText {
                 ToastView(text: text)
@@ -81,6 +98,7 @@ struct SettingsView: View {
                     }
             }
         }
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showingResetAlert)
     }
 
     private var accentBinding: Binding<Color> {

@@ -140,13 +140,6 @@ struct SettingsResetSection: View {
                         .stroke(Color.red.opacity(0.3), lineWidth: 1)
                 )
             }
-            .darkAlert(
-                isPresented: $showingResetAlert,
-                title: "重置插件",
-                message: "将重置主题、背景图、无感车控和自定义震动。错误日志不会清空。",
-                confirmTitle: "确认重置",
-                confirmColor: .red
-            ) { onReset() }
         }
         .padding(.horizontal, 16)
     }

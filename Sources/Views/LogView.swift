@@ -88,16 +88,6 @@ struct LogView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .darkAlert(
-                    isPresented: $showingClearAlert,
-                    title: "清除日志",
-                    message: "确定要清除今日所有车辆事件日志吗？错误日志不会清空。",
-                    confirmTitle: "确认清除",
-                    confirmColor: .red
-                ) {
-                    withAnimation { vehicleLog.clearToday() }
-                    vehicleLog.add(.action, "清除今日日志", detail: "filter=\(selectedFilter.title)")
-                }
 
                 Spacer(minLength: 100)
             }
@@ -105,6 +95,24 @@ struct LogView: View {
         .modifier(ChromeScrollTrackingModifier(scrollState: scrollState))
         .sheet(item: $sharePayload) { payload in
             ShareSheet(activityItems: payload.activityItems)
+        }
+        .overlay {
+            if showingClearAlert {
+                CustomAlertView(
+                    title: "清除日志",
+                    message: "确定要清除今日所有车辆事件日志吗？错误日志不会清空。",
+                    confirmTitle: "确认清除",
+                    confirmColor: .red,
+                    onCancel: { withAnimation(.easeOut(duration: 0.2)) { showingClearAlert = false } },
+                    onConfirm: {
+                        withAnimation(.easeOut(duration: 0.2)) { showingClearAlert = false }
+                        withAnimation { vehicleLog.clearToday() }
+                        vehicleLog.add(.action, "清除今日日志", detail: "filter=\(selectedFilter.title)")
+                    }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .transition(.scale.combined(with: .opacity))
+            }
         }
         .overlay(alignment: .bottom) {
             if let text = toastText {
@@ -118,6 +126,7 @@ struct LogView: View {
                     }
             }
         }
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showingClearAlert)
         .onDisappear {
             scrollState.reset()
         }
