@@ -341,7 +341,7 @@ private struct VehicleStatusMetricCard: View {
             Spacer(minLength: 0)
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(theme.cardBg))
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.white.opacity(0.06)))
     }
 }
 
