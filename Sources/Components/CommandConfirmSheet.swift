@@ -97,18 +97,18 @@ enum CommandAction: String, Identifiable {
     }
 }
 
-// MARK: - 车控指令确认弹窗
-struct CommandConfirmSheet: View {
+// MARK: - 车控指令确认弹窗（居中卡片）
+struct CommandConfirmPopup: View {
     @EnvironmentObject var vehicleLog: VehicleEventLogStore
 
     let action: CommandAction
     let vehicleState: VehicleState
+    @Binding var isPresented: Bool
     let onConfirm: (CommandAction, Double?) -> Void
 
     @State private var temperature: Double = 22
     @State private var isExecuting = false
     @State private var executionResult: CommandResult? = nil
-    @Environment(\.dismiss) private var dismiss
 
     enum CommandResult {
         case success
@@ -121,55 +121,59 @@ struct CommandConfirmSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 顶部拖拽条
-            RoundedRectangle(cornerRadius: 3)
-                .fill(Color.white.opacity(0.2))
-                .frame(width: 40, height: 5)
-                .padding(.top, 10)
-                .padding(.bottom, 20)
+            // 关闭按钮
+            HStack {
+                Spacer()
+                Button(action: { withAnimation(.easeOut(duration: 0.2)) { isPresented = false } }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(Color.white.opacity(0.3))
+                }
+            }
+            .padding(.bottom, 4)
 
             // 图标
             ZStack {
                 Circle()
                     .fill(accentColor.opacity(0.15))
-                    .frame(width: 64, height: 64)
+                    .frame(width: 56, height: 56)
                 Image(systemName: action.icon(state: vehicleState))
-                    .font(.system(size: 28, weight: .semibold))
+                    .font(.system(size: 24, weight: .semibold))
                     .foregroundColor(accentColor)
             }
-            .padding(.bottom, 12)
+            .padding(.bottom, 10)
 
             // 标题
             Text(action.label(state: vehicleState))
-                .font(.system(size: 22, weight: .bold))
+                .font(.system(size: 20, weight: .bold))
                 .foregroundColor(.white)
-                .padding(.bottom, 6)
+                .padding(.bottom, 4)
 
             // 说明
             Text(action.confirmMessage(state: vehicleState))
-                .font(.system(size: 14))
+                .font(.system(size: 13))
                 .foregroundColor(Color.white.opacity(0.55))
                 .multilineTextAlignment(.center)
-                .padding(.bottom, 20)
+                .padding(.bottom, 16)
 
             // 车辆状态摘要
             stateSummary
-                .padding(.bottom, 16)
+                .padding(.bottom, 12)
 
             // 温度滑块（仅温度调节）
             if action.needsTemperatureSlider {
                 temperatureSlider
-                    .padding(.bottom, 16)
+                    .padding(.bottom, 12)
             }
 
             // 执行结果
             if let result = executionResult {
                 resultBanner(result)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 10)
             }
 
             // 按钮
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 Button(action: executeCommand) {
                     HStack(spacing: 8) {
                         if isExecuting {
@@ -178,31 +182,39 @@ struct CommandConfirmSheet: View {
                                 .scaleEffect(0.8)
                         }
                         Text(isExecuting ? "执行中…" : action.confirmTitle(state: vehicleState))
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.system(size: 15, weight: .semibold))
                     }
                     .foregroundColor(.black)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 12)
                     .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(isExecuting ? Color.white.opacity(0.5) : accentColor)
                     )
                 }
                 .disabled(isExecuting)
 
-                Button(action: { dismiss() }) {
+                Button(action: { withAnimation(.easeOut(duration: 0.2)) { isPresented = false } }) {
                     Text("取消")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.6))
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Color.white.opacity(0.5))
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 10)
                 }
             }
-            .padding(.horizontal, 4)
-            .padding(.bottom, 8)
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 20)
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color(red: 0.12, green: 0.12, blue: 0.14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.4), radius: 24, y: 8)
+        )
+        .frame(maxWidth: 320)
+        .padding(.horizontal, 32)
     }
 
     // MARK: - 状态摘要
@@ -372,7 +384,7 @@ struct CommandConfirmSheet: View {
 
             // 1.5 秒后自动关闭
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                dismiss()
+                withAnimation(.easeOut(duration: 0.2)) { isPresented = false }
             }
 
             onConfirm(action, temp)
@@ -381,7 +393,7 @@ struct CommandConfirmSheet: View {
 }
 
 // MARK: - CommandResult 辅助
-private extension CommandConfirmSheet.CommandResult {
+private extension CommandConfirmPopup.CommandResult {
     var isSuccess: Bool {
         if case .success = self { return true }
         return false

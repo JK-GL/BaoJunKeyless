@@ -16,28 +16,42 @@ struct QuickActionsView: View {
     ]
 
     var body: some View {
-        CardView(title: "快捷操作", icon: "bolt.fill", iconColor: AppTheme.orange) {
-            LazyVGrid(columns: gridColumns, spacing: 8) {
-                ForEach(orderedActions) { action in
-                    CommandGridButton(
-                        action: action,
-                        state: vehicleState.state
-                    ) {
-                        activeCommand = action
-                        let impact = UIImpactFeedbackGenerator(style: .light)
-                        impact.impactOccurred()
+        ZStack {
+            CardView(title: "快捷操作", icon: "bolt.fill", iconColor: AppTheme.orange) {
+                LazyVGrid(columns: gridColumns, spacing: 8) {
+                    ForEach(orderedActions) { action in
+                        CommandGridButton(
+                            action: action,
+                            state: vehicleState.state
+                        ) {
+                            activeCommand = action
+                            let impact = UIImpactFeedbackGenerator(style: .light)
+                            impact.impactOccurred()
+                        }
                     }
                 }
             }
-        }
-        .sheet(item: $activeCommand) { action in
-            CommandConfirmSheet(
-                action: action,
-                vehicleState: vehicleState.state
-            ) { cmd, temp in
-                // 指令执行后的回调（后续接入真实指令发送）
+
+            // 居中弹窗覆盖
+            if let action = activeCommand {
+                Color.black.opacity(0.35)
+                    .ignoresSafeArea()
+                    .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { activeCommand = nil } }
+
+                CommandConfirmPopup(
+                    action: action,
+                    vehicleState: vehicleState.state,
+                    isPresented: Binding(
+                        get: { activeCommand != nil },
+                        set: { if !$0 { activeCommand = nil } }
+                    )
+                ) { cmd, temp in
+                    // 指令执行后的回调
+                }
+                .transition(.scale.combined(with: .opacity))
             }
         }
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: activeCommand != nil)
     }
 }
 
