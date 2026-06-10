@@ -418,8 +418,11 @@ final class PsychicScanUIView: UIView {
             ring.fillColor = UIColor.clear.cgColor
             ring.strokeColor = UIColor.cyan.withAlphaComponent(0.24).cgColor
             ring.lineWidth = 1.0
+            let cx = size / 2
+            let cy = size / 2
+            let r: CGFloat = 12
             ring.frame = CGRect(x: 0, y: 0, width: size, height: size)
-            ring.path = UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: 24, height: 24)).cgPath
+            ring.path = UIBezierPath(ovalIn: CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)).cgPath
             ring.transform = CATransform3DMakeScale(0.2, 0.2, 1)
             ring.opacity = 0.45
             layer.addSublayer(ring)
