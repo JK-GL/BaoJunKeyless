@@ -94,7 +94,7 @@ struct VehicleHeaderSummaryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .bottom, spacing: 12) {
                 HStack(alignment: .firstTextBaseline, spacing: 1) {
                     Text("\(totalRangeKm)")
                         .font(.system(size: 24, weight: .bold, design: .rounded))
@@ -103,14 +103,10 @@ struct VehicleHeaderSummaryView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.72))
                 }
-                .frame(width: 82, alignment: .leading)
+                .frame(minWidth: 76, alignment: .leading)
+                .padding(.bottom, 2)
 
-                Rectangle()
-                    .fill(Color.white.opacity(0.10))
-                    .frame(width: 1, height: 30)
-                    .padding(.top, 2)
-
-                HStack(alignment: .top, spacing: 8) {
+                HStack(alignment: .bottom, spacing: 10) {
                     summaryColumn(
                         title: "电量",
                         rangeText: "\(electricRangeKm)km",
@@ -127,6 +123,7 @@ struct VehicleHeaderSummaryView: View {
                         color: AppTheme.orange
                     )
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             if isCharging {
@@ -161,33 +158,41 @@ struct VehicleHeaderSummaryView: View {
     }
 
     private func summaryColumn(title: String, rangeText: String, percentText: String, percent: Double, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(alignment: .firstTextBaseline, spacing: 3) {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(title)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.62))
+
                 Text(rangeText)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(color)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.9)
-                Spacer(minLength: 2)
+                    .minimumScaleFactor(0.8)
+
+                Spacer(minLength: 4)
+
                 Text(percentText)
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.white.opacity(0.55))
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 0) {
-                Capsule()
-                    .fill(color)
-                    .frame(width: max(0, min(1, percent)) * 104, height: 4)
+            ZStack(alignment: .leading) {
                 Capsule()
                     .fill(Color.white.opacity(0.08))
                     .frame(height: 4)
+
+                Capsule()
+                    .fill(color)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 4)
+                    .scaleEffect(x: max(0, min(1, percent)), y: 1, anchor: .leading)
             }
-            .frame(width: 104, height: 4)
+            .frame(maxWidth: .infinity)
+            .frame(height: 4)
         }
-        .frame(width: 104, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
