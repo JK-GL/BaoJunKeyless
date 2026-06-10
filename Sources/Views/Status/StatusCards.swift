@@ -5,19 +5,19 @@ struct QuickActionsView: View {
     @State private var activeCommand: CommandAction? = nil
 
     private let gridColumns = [
-        GridItem(.flexible(), spacing: 10),
-        GridItem(.flexible(), spacing: 10)
+        GridItem(.flexible(), spacing: 8),
+        GridItem(.flexible(), spacing: 8),
+        GridItem(.flexible(), spacing: 8)
     ]
 
     private let orderedActions: [CommandAction] = [
-        .lockUnlock, .remoteStart,
-        .findCar,    .acToggle,
-        .tempAdjust, .quickCool
+        .lockUnlock, .remoteStart, .findCar,
+        .acToggle,   .tempAdjust,  .quickCool
     ]
 
     var body: some View {
         CardView(title: "快捷操作", icon: "bolt.fill", iconColor: AppTheme.orange) {
-            LazyVGrid(columns: gridColumns, spacing: 10) {
+            LazyVGrid(columns: gridColumns, spacing: 8) {
                 ForEach(orderedActions) { action in
                     CommandGridButton(
                         action: action,
@@ -58,27 +58,27 @@ private struct CommandGridButton: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: 10) {
+            VStack(spacing: 6) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(color.opacity(0.12))
-                        .frame(width: 44, height: 44)
+                        .frame(width: 36, height: 36)
                     Image(systemName: icon)
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(color)
                 }
                 Text(label)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.white)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
+            .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(Color.white.opacity(0.06))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .stroke(Color.white.opacity(0.08), lineWidth: 1)
                     )
             )
