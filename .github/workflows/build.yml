@@ -33,6 +33,7 @@ jobs:
             -sdk iphoneos \
             -configuration Release \
             -derivedDataPath build \
+            CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             COPY_PHASE_STRIP=NO \
@@ -43,6 +44,7 @@ jobs:
           APP=build/Build/Products/Release-iphoneos/BaoJunKeyless.app
           find "$APP" -maxdepth 1 -ls
           file "$APP/BaoJunKeyless" || echo "NO BINARY"
+          ls -lh "$APP" || echo "NO APP DIR"
 
       - name: Package IPA
         run: |
