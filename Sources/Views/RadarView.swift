@@ -119,6 +119,17 @@ final class RadarUIView: UIView {
 
         restoreDynamicResourcesIfNeeded()
 
+        memoryWarningObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            CrashLogger.shared.mark("Radar", "memoryWarning")
+            Self.staticBackgroundCache.removeAll()
+            self?.releaseHeavyResources()
+        }
+    }
+
     private func configureScanRing(_ ring: CAShapeLayer, delay: Double) {
         ring.fillColor = UIColor.clear.cgColor
         ring.strokeColor = UIColor.cyan.withAlphaComponent(0.24).cgColor
