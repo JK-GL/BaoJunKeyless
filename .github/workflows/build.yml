@@ -37,7 +37,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             COPY_PHASE_STRIP=NO \
-            CURRENT_PROJECT_VERSION="$BUILD_DATE" 2>&1 | tail -30
+            CURRENT_PROJECT_VERSION="$BUILD_DATE"
 
       - name: Inspect .app
         run: |
