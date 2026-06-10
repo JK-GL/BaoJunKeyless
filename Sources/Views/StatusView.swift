@@ -228,11 +228,16 @@ struct StatusView: View {
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(Color.white.opacity(0.06))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-        )
+        .shadow(color: Color.black.opacity(0.4), radius: 40, x: 0, y: 20)
         .frame(maxWidth: 520)
         .padding(.horizontal, 20)
     }
