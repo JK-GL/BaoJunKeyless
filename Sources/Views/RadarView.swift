@@ -390,40 +390,73 @@ final class RadarUIView: UIView {
     }
 }
 
-// MARK: - SwiftUI 波纹动画
-struct PsychicScanView: View {
+// MARK: - 扫描波纹（Core Animation，不经过 SwiftUI diff）
+struct PsychicScanView: UIViewRepresentable {
     let size: CGFloat
 
-    var body: some View {
-        ZStack {
-            ForEach(0..<2, id: \.self) { i in
-                ScanRing(index: i, size: size)
-            }
-        }
-        .frame(width: size, height: size)
-        .allowsHitTesting(false)
+    func makeUIView(context: Context) -> PsychicScanUIView {
+        let view = PsychicScanUIView(frame: .zero)
+        view.configure(size: size)
+        return view
     }
+
+    func updateUIView(_ uiView: PsychicScanUIView, context: Context) {}
 }
 
-struct ScanRing: View {
-    let index: Int
-    let size: CGFloat
-    @State private var expand = false
+final class PsychicScanUIView: UIView {
+    private var ringLayers: [CAShapeLayer] = []
 
-    var body: some View {
-        Circle()
-            .stroke(Color.cyan.opacity(0.24), lineWidth: 1.0)
-            .frame(width: 24, height: 24)
-            .scaleEffect(expand ? 9.0 : 0.2)
-            .opacity(expand ? 0.0 : 0.45)
-            .blur(radius: 0.5)
-            .onAppear {
-                DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 1.8) {
-                    withAnimation(.easeOut(duration: 3.6).repeatForever(autoreverses: false)) {
-                        expand = true
-                    }
-                }
+    func configure(size: CGFloat) {
+        backgroundColor = .clear
+        isUserInteractionEnabled = false
+
+        ringLayers.forEach { $0.removeFromSuperlayer() }
+        ringLayers.removeAll()
+
+        for i in 0..<2 {
+            let ring = CAShapeLayer()
+            ring.fillColor = UIColor.clear.cgColor
+            ring.strokeColor = UIColor.cyan.withAlphaComponent(0.24).cgColor
+            ring.lineWidth = 1.0
+            ring.frame = CGRect(x: 0, y: 0, width: size, height: size)
+            ring.path = UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: 24, height: 24)).cgPath
+            ring.transform = CATransform3DMakeScale(0.2, 0.2, 1)
+            ring.opacity = 0.45
+            layer.addSublayer(ring)
+            ringLayers.append(ring)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 1.8) { [weak ring] in
+                guard let ring else { return }
+
+                let scaleAnim = CABasicAnimation(keyPath: "transform.scale")
+                scaleAnim.fromValue = 0.2
+                scaleAnim.toValue = 9.0
+                scaleAnim.duration = 3.6
+                scaleAnim.repeatCount = .infinity
+                scaleAnim.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+                let opacityAnim = CABasicAnimation(keyPath: "opacity")
+                opacityAnim.fromValue = 0.45
+                opacityAnim.toValue = 0.0
+                opacityAnim.duration = 3.6
+                opacityAnim.repeatCount = .infinity
+                opacityAnim.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+                let group = CAAnimationGroup()
+                group.animations = [scaleAnim, opacityAnim]
+                group.duration = 3.6
+                group.repeatCount = .infinity
+
+                ring.add(group, forKey: "scanPulse")
             }
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        for ring in ringLayers {
+            ring.cornerRadius = bounds.width / 2
+        }
     }
 }
 
@@ -478,7 +511,6 @@ struct RadarRepresentable: UIViewRepresentable {
 // MARK: - Radar Card（文字全部用 SwiftUI Text）
 struct RadarCardView: View {
     @EnvironmentObject var theme: ThemeManager
-    @EnvironmentObject var addressSettings: AddressServiceSettings
     @ObservedObject var locationManager: LocationManager
     @State private var bleConnected = false
     private let carLat = 22.635842

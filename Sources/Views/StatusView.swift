@@ -58,7 +58,6 @@ struct StatusView: View {
                         }
                     } else {
                         RadarCardView(locationManager: locationManager)
-                            .environmentObject(addressSettings)
                     }
                     QuickActionsView()
                     RangeCardView()
