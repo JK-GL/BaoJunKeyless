@@ -1,52 +1,89 @@
 import SwiftUI
 
 struct QuickActionsView: View {
-    @State private var showingCmdAlert = false
-    @State private var cmdTitle = ""
+    @StateObject private var vehicleState = VehicleStateHolder()
+    @State private var activeCommand: CommandAction? = nil
 
-    private let actions: [(icon: String, label: String, gradient: [Color])] = [
-        ("lock.fill",      "锁车", [Color(red:1,green:0.3,blue:0.3),  Color(red:0.9,green:0.1,blue:0.15)]),
-        ("lock.open.fill", "解锁", [Color(red:0.2,green:0.8,blue:0.4), Color(red:0.1,green:0.6,blue:0.3)]),
-        ("dot.radiowaves.left.and.right", "启动", [Color(red:1,green:0.6,blue:0.1),   Color(red:1,green:0.4,blue:0.0)]),
-        ("location.fill",  "寻车", [Color(red:0.7,green:0.3,blue:0.9), Color(red:0.5,green:0.2,blue:0.8)])
+    private let gridColumns = [
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10)
+    ]
+
+    private let orderedActions: [CommandAction] = [
+        .lockUnlock, .remoteStart,
+        .findCar,    .acToggle,
+        .tempAdjust, .quickCool
     ]
 
     var body: some View {
-        HStack(spacing: 12) {
-            ForEach(actions, id: \.label) { action in
-                Button(action: {
-                    cmdTitle = action.label
-                    showingCmdAlert = true
-                }) {
-                    VStack(spacing: 8) {
-                        ZStack {
-                            Circle()
-                                .fill(LinearGradient(colors: action.gradient,
-                                                     startPoint: .topLeading,
-                                                     endPoint: .bottomTrailing))
-                                .frame(width: 50, height: 50)
-                                .shadow(color: action.gradient[0].opacity(0.3),
-                                        radius: 6, x: 0, y: 3)
-                            Image(systemName: action.icon)
-                                .font(.system(size: 20, weight: .semibold))
-                                .foregroundColor(.white)
-                        }
-                        Text(action.label)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.primary)
+        CardView(title: "快捷操作", icon: "bolt.fill", iconColor: AppTheme.orange) {
+            LazyVGrid(columns: gridColumns, spacing: 10) {
+                ForEach(orderedActions) { action in
+                    CommandGridButton(
+                        action: action,
+                        state: vehicleState.state
+                    ) {
+                        activeCommand = action
+                        let impact = UIImpactFeedbackGenerator(style: .light)
+                        impact.impactOccurred()
                     }
                 }
-                .frame(maxWidth: .infinity)
             }
         }
-        .padding(.horizontal, 16)
-        .darkAlert(
-            isPresented: $showingCmdAlert,
-            title: cmdTitle,
-            message: "确定要\(cmdTitle)吗？",
-            confirmTitle: "确认执行",
-            confirmColor: AppTheme.accent
-        ) { }
+        .sheet(item: $activeCommand) { action in
+            CommandConfirmSheet(
+                action: action,
+                vehicleState: vehicleState.state
+            ) { cmd, temp in
+                // 指令执行后的回调（后续接入真实指令发送）
+            }
+        }
+    }
+}
+
+// MARK: - 车辆状态占位（MQTT 接入前使用）
+private class VehicleStateHolder: ObservableObject {
+    @Published var state: VehicleState = .placeholder
+}
+
+// MARK: - 网格按钮
+private struct CommandGridButton: View {
+    let action: CommandAction
+    let state: VehicleState
+    let onTap: () -> Void
+
+    private var color: Color { action.resolvedColor(state: state) }
+    private var icon: String { action.icon(state: state) }
+    private var label: String { action.label(state: state) }
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(color.opacity(0.12))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: icon)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(color)
+                }
+                Text(label)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
