@@ -157,30 +157,21 @@ struct StatusTopBarSection: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(Date(), format: .dateTime.month(.abbreviated).day())
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.white.opacity(0.45))
+        HStack(alignment: .center, spacing: 16) {
+            Text("宝骏云海")
+                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
 
-                HStack(alignment: .lastTextBaseline, spacing: 8) {
-                    Text("宝骏云海")
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-
-                    AuthStatusBadge(authStatus: authStatus)
-                        .padding(.bottom, 3)
-                }
-            }
-            .layoutPriority(1)
+            AuthStatusBadge(authStatus: authStatus)
 
             Spacer()
 
             Button(action: onRefresh) {
                 Image(systemName: isRefreshing ? "hourglass" : "arrow.triangle.2.circlepath")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.62))
-                    .frame(width: 24, height: 24)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.55))
+                    .frame(width: 22, height: 22)
                     .scaleEffect(refreshScale)
             }
             .buttonStyle(.plain)

@@ -82,36 +82,107 @@ private struct CommandGridButton: View {
     }
 }
 
+struct VehicleHeaderSummaryView: View {
+    var totalRangeKm: Int = 795
+    var electricRangeKm: Int = 115
+    var electricPercent: Double = 0.52
+    var fuelRangeKm: Int = 680
+    var fuelPercent: Double = 0.78
+    var isCharging: Bool = false
+    var chargingPowerText: String = "3.2 kW"
+    var updatedAt: String = "17:59:34"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text("\(totalRangeKm)")
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                Text("km")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.72))
+                    .padding(.leading, 2)
+
+                Text(" | ")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.18))
+                    .padding(.horizontal, 10)
+
+                summaryPill(
+                    title: "电量",
+                    rangeText: "\(electricRangeKm)km",
+                    percent: electricPercent,
+                    color: AppTheme.accent
+                )
+
+                summaryPill(
+                    title: "油量",
+                    rangeText: "\(fuelRangeKm)km",
+                    percent: fuelPercent,
+                    color: AppTheme.orange
+                )
+            }
+
+            if isCharging {
+                HStack(spacing: 6) {
+                    Image(systemName: "bolt.fill")
+                        .foregroundStyle(AppTheme.orange)
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("充电中")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white)
+                    Text(chargingPowerText)
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(AppTheme.orange)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(AppTheme.orange.opacity(0.12))
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                )
+            }
+
+            Text("更新时间：\(updatedAt)")
+                .font(.system(size: 12))
+                .foregroundStyle(Color.white.opacity(0.45))
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private func summaryPill(title: String, rangeText: String, percent: Double, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.62))
+                Text(rangeText)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(color)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.08))
+                        .frame(height: 4)
+                    Capsule()
+                        .fill(color)
+                        .frame(width: geo.size.width * percent, height: 4)
+                }
+            }
+            .frame(height: 4)
+        }
+    }
+}
+
 struct RangeCardView: View {
     var body: some View {
-        CardView {
-            HStack(spacing: 6) {
-                Image(systemName: "bolt.fill")
-                    .foregroundColor(AppTheme.orange).font(.caption)
-                Text("充电中").font(.caption).foregroundColor(.secondary)
-                Spacer()
-                Text("3.2 kW").font(.caption.bold()).foregroundColor(AppTheme.orange)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 12).fill(AppTheme.orange.opacity(0.1)))
-
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Image(systemName: "gauge.medium").foregroundColor(.secondary)
-                Text("802").font(.system(size: 38, weight: .bold, design: .rounded))
-                Text("km").font(.system(size: 16, weight: .medium)).foregroundColor(.secondary)
-            }
-            .padding(.top, 4)
-
-            RangeRow(icon: "battery.100.bolt", iconColor: AppTheme.accent,
-                     iconBg: AppTheme.accent.opacity(0.12),
-                     label: "电量", percent: "52%", percentColor: AppTheme.accent,
-                     range: "122 km", barPercent: 0.52, barColor: AppTheme.accent)
-
-            RangeRow(icon: "fuelpump.fill", iconColor: AppTheme.orange,
-                     iconBg: AppTheme.orange.opacity(0.12),
-                     label: "油量", percent: "78%", percentColor: AppTheme.orange,
-                     range: "680 km", barPercent: 0.78, barColor: AppTheme.orange)
-        }
+        EmptyView()
     }
 }
 

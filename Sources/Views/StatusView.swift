@@ -47,6 +47,8 @@ struct StatusView: View {
                         onRefresh: handleRefresh
                     )
 
+                    VehicleHeaderSummaryView()
+
                     StatusPillsSection(
                         modeIcon: modeIcon,
                         modeText: modeText,
@@ -65,7 +67,7 @@ struct StatusView: View {
                     QuickActionsView { command in
                         activeCommand = command
                     }
-                    RangeCardView()
+
                     BodyStatusView()
                     StatusDashboardPair {
                         DrivingStatusView()
