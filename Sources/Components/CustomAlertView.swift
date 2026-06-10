@@ -14,31 +14,30 @@ struct DarkAlertModifier: ViewModifier {
         content
             .overlay {
                 if isPresented {
-                    // 点击空白区域关闭
                     Color.clear
                         .ignoresSafeArea()
                         .contentShape(Rectangle())
-                        .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { isPresented = false } }
+                        .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { isPresented = false } }
 
                     CustomAlertView(
                         title: title,
                         message: message,
                         confirmTitle: confirmTitle,
                         confirmColor: confirmColor,
-                        onCancel: { withAnimation(.easeInOut(duration: 0.2)) { isPresented = false } },
+                        onCancel: { withAnimation(.easeOut(duration: 0.2)) { isPresented = false } },
                         onConfirm: {
-                            withAnimation(.easeInOut(duration: 0.2)) { isPresented = false }
+                            withAnimation(.easeOut(duration: 0.2)) { isPresented = false }
                             onConfirm()
                         }
                     )
-                    .transition(.scale(scale: 0.92).combined(with: .opacity))
+                    .transition(.scale.combined(with: .opacity))
                 }
             }
-            .animation(.easeInOut(duration: 0.2), value: isPresented)
+            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isPresented)
     }
 }
 
-// MARK: - 自定义深色弹窗视图
+// MARK: - 自定义统一悬浮弹窗视图
 struct CustomAlertView: View {
     let title: String
     let message: String
@@ -48,63 +47,29 @@ struct CustomAlertView: View {
     let onConfirm: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            // 标题
-            Text(title)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-                .padding(.top, 24)
+        FloatingPopupCard(
+            icon: "exclamationmark.triangle.fill",
+            iconColor: confirmColor,
+            title: title,
+            subtitle: message,
+            onClose: onCancel
+        ) {
+            EmptyView()
+        } actions: {
+            VStack(spacing: 8) {
+                FloatingPopupPrimaryButton(
+                    title: confirmTitle,
+                    color: confirmColor,
+                    action: onConfirm
+                )
 
-            // 消息
-            Text(message)
-                .font(.system(size: 15))
-                .foregroundStyle(Color.white.opacity(0.62))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-                .padding(.bottom, 24)
-
-            Divider()
-                .background(Color.white.opacity(0.08))
-
-            // 按钮
-            HStack(spacing: 0) {
-                Button(action: onCancel) {
-                    Text("取消")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.62))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                }
-
-                Divider()
-                    .background(Color.white.opacity(0.08))
-                    .frame(height: 28)
-
-                Button(action: onConfirm) {
-                    Text(confirmTitle)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(confirmColor)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                }
+                FloatingPopupSecondaryButton(
+                    title: "取消",
+                    textColor: Color.white.opacity(0.62),
+                    action: onCancel
+                )
             }
         }
-        .frame(maxWidth: min(UIScreen.main.bounds.width - 48, 320))
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                )
-        )
-        .shadow(color: Color.black.opacity(0.4), radius: 40, x: 0, y: 20)
     }
 }
 

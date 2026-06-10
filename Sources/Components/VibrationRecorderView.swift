@@ -203,18 +203,18 @@ struct VibrationRecorderView: View {
         .interactiveDismissDisabled()
         .overlay {
             if showSaveDialog {
-                Color.black.opacity(0.5)
+                Color.clear
                     .ignoresSafeArea()
                     .onTapGesture { showSaveDialog = false }
 
-                VStack(spacing: 0) {
-                    // 标题
-                    Text("保存震动模式")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .padding(.top, 24)
-
-                    // 输入框
+                FloatingPopupCard(
+                    icon: "waveform",
+                    iconColor: AppTheme.accent,
+                    title: "保存震动模式",
+                    subtitle: "为你的自定义震动模式命名",
+                    maxWidth: 320,
+                    onClose: { showSaveDialog = false }
+                ) {
                     TextField("输入名称", text: $patternName)
                         .textFieldStyle(.plain)
                         .font(.system(size: 16))
@@ -222,41 +222,20 @@ struct VibrationRecorderView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
                         .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
                                 .fill(Color.white.opacity(0.08))
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.white.opacity(0.10), lineWidth: 1)
                         )
-                        .padding(.horizontal, 20)
-                        .padding(.top, 16)
-
-                    // 提示
-                    Text("为你的自定义震动模式命名")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color.white.opacity(0.45))
-                        .padding(.top, 8)
-
-                    Divider()
-                        .background(Color.white.opacity(0.08))
-                        .padding(.top, 16)
-
-                    // 按钮
-                    HStack(spacing: 0) {
-                        Button(action: { showSaveDialog = false }) {
-                            Text("取消")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundStyle(Color.white.opacity(0.62))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                        }
-
-                        Divider()
-                            .background(Color.white.opacity(0.08))
-                            .frame(height: 28)
-
-                        Button(action: {
+                } actions: {
+                    VStack(spacing: 8) {
+                        FloatingPopupPrimaryButton(
+                            title: "保存",
+                            color: AppTheme.accent,
+                            isDisabled: patternName.isEmpty
+                        ) {
                             guard !patternName.isEmpty else { return }
                             let pattern = CustomVibrationPattern(
                                 name: patternName,
@@ -264,32 +243,18 @@ struct VibrationRecorderView: View {
                             )
                             onSave(pattern)
                             dismiss()
-                        }) {
-                            Text("保存")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(patternName.isEmpty ? Color.white.opacity(0.3) : AppTheme.accent)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
                         }
-                        .disabled(patternName.isEmpty)
+
+                        FloatingPopupSecondaryButton(
+                            title: "取消",
+                            textColor: Color.white.opacity(0.62)
+                        ) {
+                            showSaveDialog = false
+                        }
                     }
                 }
-                .frame(width: 280)
-                .background(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                .fill(Color.white.opacity(0.06))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                        )
-                )
-                .shadow(color: Color.black.opacity(0.4), radius: 40, x: 0, y: 20)
-                .transition(.scale(scale: 0.92).combined(with: .opacity))
-                .animation(.easeInOut(duration: 0.2), value: showSaveDialog)
+                .transition(.scale.combined(with: .opacity))
+                .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showSaveDialog)
             }
         }
     }

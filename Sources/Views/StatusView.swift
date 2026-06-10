@@ -132,131 +132,89 @@ struct StatusView: View {
 
     @ViewBuilder
     private func addressFloatingWindow() -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // 关闭按钮
-            HStack {
-                Spacer()
-                Button(action: { withAnimation(.easeOut(duration: 0.2)) { isAddressFloatingPresented = false } }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundColor(Color.white.opacity(0.3))
-                }
-            }
-            .padding(.bottom, -4)
-
-            // 图标
-            ZStack {
-                Circle()
-                    .fill(AppTheme.accent.opacity(0.15))
-                    .frame(width: 56, height: 56)
-                Image(systemName: "mappin.and.ellipse")
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundColor(AppTheme.accent)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.bottom, 10)
-
-            // 标题
-            Text("车辆地址")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.bottom, 4)
-
-            HStack(spacing: 8) {
-                Image(systemName: "mappin.and.ellipse")
-                    .font(.system(size: 14))
-                    .foregroundStyle(AppTheme.accent)
-                Text(locationManager.vehicleAddress)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.62)
-                    .layoutPriority(1)
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
-                    Image(systemName: "key.fill")
-                        .foregroundStyle(AppTheme.orange)
-                        .frame(width: 20)
-                    Text(addressSettings.hasAmapWebKey ? "高德 Key 已填写" : "填写后自动使用高德 API")
-                        .font(.subheadline)
+        FloatingPopupCard(
+            icon: "mappin.and.ellipse",
+            iconColor: AppTheme.accent,
+            title: "车辆地址",
+            subtitle: "查看当前定位并配置高德服务 Key",
+            onClose: { withAnimation(.easeOut(duration: 0.2)) { isAddressFloatingPresented = false } }
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "mappin.and.ellipse")
+                        .font(.system(size: 14))
+                        .foregroundStyle(AppTheme.accent)
+                    Text(locationManager.vehicleAddress)
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.white)
-                    Spacer()
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.62)
+                        .layoutPriority(1)
                 }
-
-                TextField("填写高德 Web 服务 Key", text: Binding(
-                    get: { addressSettings.amapWebKey },
-                    set: { addressSettings.setAmapWebKey($0) }
-                ))
-                .textInputAutocapitalization(.never)
-                .disableAutocorrection(true)
-                .padding(10)
+                .padding(12)
                 .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color.white.opacity(0.04))
                 )
 
-                HStack {
-                    Spacer()
-                    Button {
-                        addressSettings.clearAmapWebKey()
-                    } label: {
-                        Text("清除高德 Key")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.red.opacity(0.9))
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "key.fill")
+                            .foregroundStyle(AppTheme.orange)
+                            .frame(width: 20)
+                        Text(addressSettings.hasAmapWebKey ? "高德 Key 已填写" : "填写后自动使用高德 API")
+                            .font(.subheadline)
+                            .foregroundStyle(.white)
+                        Spacer()
+                    }
+
+                    TextField("填写高德 Web 服务 Key", text: Binding(
+                        get: { addressSettings.amapWebKey },
+                        set: { addressSettings.setAmapWebKey($0) }
+                    ))
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.white.opacity(0.06))
+                    )
+
+                    HStack {
+                        Spacer()
+                        Button {
+                            addressSettings.clearAmapWebKey()
+                        } label: {
+                            Text("清除高德 Key")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.red.opacity(0.9))
+                        }
                     }
                 }
             }
-
-            VStack(spacing: 10) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { isAddressFloatingPresented = false }
+        } actions: {
+            VStack(spacing: 8) {
+                FloatingPopupPrimaryButton(
+                    title: "确定",
+                    color: AppTheme.accent
+                ) {
+                    withAnimation(.easeOut(duration: 0.2)) { isAddressFloatingPresented = false }
                     locationManager.setCarLocation(lat: 22.635842, lng: 114.129604)
-                } label: {
-                    Text("确定")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.black)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(RoundedRectangle(cornerRadius: 14).fill(AppTheme.accent))
                 }
 
-                Button {
+                FloatingPopupSecondaryButton(
+                    title: "高德",
+                    textColor: .white
+                ) {
                     let keyword = locationManager.vehicleAddress.trimmingCharacters(in: .whitespacesAndNewlines)
                     let address = keyword.isEmpty ? "22.635842,114.129604" : keyword
                     let encoded = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? address
                     if let url = URL(string: "amap://search?keyword=\(encoded)"), UIApplication.shared.canOpenURL(url) {
                         UIApplication.shared.open(url)
                     }
-                } label: {
-                    Text("高德")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 11)
-                        .background(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.18), lineWidth: 1))
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 16)
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                )
-        )
-        .shadow(color: Color.black.opacity(0.4), radius: 40, x: 0, y: 20)
-        .frame(maxWidth: 320)
-        .padding(.horizontal, 32)
     }
 
     private func handleRefresh() {

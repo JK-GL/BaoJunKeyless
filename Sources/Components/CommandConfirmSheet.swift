@@ -120,105 +120,44 @@ struct CommandConfirmPopup: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // 关闭按钮
-            HStack {
-                Spacer()
-                Button(action: { withAnimation(.easeOut(duration: 0.2)) { isPresented = false } }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundColor(Color.white.opacity(0.3))
+        FloatingPopupCard(
+            icon: action.icon(state: vehicleState),
+            iconColor: accentColor,
+            title: action.label(state: vehicleState),
+            subtitle: action.confirmMessage(state: vehicleState),
+            onClose: { withAnimation(.easeOut(duration: 0.2)) { isPresented = false } }
+        ) {
+            VStack(spacing: 0) {
+                stateSummary
+
+                if action.needsTemperatureSlider {
+                    temperatureSlider
+                        .padding(.top, 12)
+                }
+
+                if let result = executionResult {
+                    resultBanner(result)
+                        .padding(.top, 12)
                 }
             }
-            .padding(.bottom, 4)
-
-            // 图标
-            ZStack {
-                Circle()
-                    .fill(accentColor.opacity(0.15))
-                    .frame(width: 56, height: 56)
-                Image(systemName: action.icon(state: vehicleState))
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundColor(accentColor)
-            }
-            .padding(.bottom, 10)
-
-            // 标题
-            Text(action.label(state: vehicleState))
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(.white)
-                .padding(.bottom, 4)
-
-            // 说明
-            Text(action.confirmMessage(state: vehicleState))
-                .font(.system(size: 13))
-                .foregroundColor(Color.white.opacity(0.55))
-                .multilineTextAlignment(.center)
-                .padding(.bottom, 16)
-
-            // 车辆状态摘要
-            stateSummary
-                .padding(.bottom, 12)
-
-            // 温度滑块（仅温度调节）
-            if action.needsTemperatureSlider {
-                temperatureSlider
-                    .padding(.bottom, 12)
-            }
-
-            // 执行结果
-            if let result = executionResult {
-                resultBanner(result)
-                    .padding(.bottom, 10)
-            }
-
-            // 按钮
+        } actions: {
             VStack(spacing: 8) {
-                Button(action: executeCommand) {
-                    HStack(spacing: 8) {
-                        if isExecuting {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .black))
-                                .scaleEffect(0.8)
-                        }
-                        Text(isExecuting ? "执行中…" : action.confirmTitle(state: vehicleState))
-                            .font(.system(size: 15, weight: .semibold))
-                    }
-                    .foregroundColor(.black)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(isExecuting ? Color.white.opacity(0.5) : accentColor)
-                    )
-                }
-                .disabled(isExecuting)
+                FloatingPopupPrimaryButton(
+                    title: isExecuting ? "执行中…" : action.confirmTitle(state: vehicleState),
+                    color: accentColor,
+                    isLoading: isExecuting,
+                    isDisabled: isExecuting,
+                    action: executeCommand
+                )
 
-                Button(action: { withAnimation(.easeOut(duration: 0.2)) { isPresented = false } }) {
-                    Text("取消")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.5))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                FloatingPopupSecondaryButton(
+                    title: "取消",
+                    textColor: Color.white.opacity(0.6)
+                ) {
+                    withAnimation(.easeOut(duration: 0.2)) { isPresented = false }
                 }
             }
         }
-        .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                )
-        )
-        .shadow(color: Color.black.opacity(0.4), radius: 40, x: 0, y: 20)
-        .frame(maxWidth: 320)
-        .padding(.horizontal, 32)
     }
 
     // MARK: - 状态摘要
