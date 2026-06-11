@@ -4,6 +4,7 @@ import Foundation
 final class MockVehicleStateStore: ObservableObject {
     @Published private(set) var state: VehicleState = .mockSnapshot
     @Published private(set) var dashboard: VehicleDashboardState = VehicleDashboardState()
+    @Published private(set) var cachedDashboardMetrics: VehicleDashboardMetrics = VehicleDashboardState().metrics
 
     func apply(_ newState: VehicleState) {
         state = newState
@@ -11,6 +12,7 @@ final class MockVehicleStateStore: ObservableObject {
 
     func applyDashboard(_ newDashboard: VehicleDashboardState) {
         dashboard = newDashboard
+        cachedDashboardMetrics = newDashboard.metrics
     }
 
     func simulateUnlock() {

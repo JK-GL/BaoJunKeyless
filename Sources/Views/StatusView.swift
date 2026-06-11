@@ -113,19 +113,19 @@ struct StatusView: View {
                         activeCommand = command
                     }, vehicleState: mockVehicleState.state)
 
-                    LazyVStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 16) {
                         BodyStatusView(dashboard: mockVehicleState.dashboard)
                         StatusDashboardPair {
-                            DrivingStatusView(metrics: mockVehicleState.dashboard.metrics.driving)
+                            DrivingStatusView(metrics: mockVehicleState.cachedDashboardMetrics.driving)
                         } right: {
-                            BatteryGaugesView(metrics: mockVehicleState.dashboard.metrics.battery)
+                            BatteryGaugesView(metrics: mockVehicleState.cachedDashboardMetrics.battery)
                         }
                         StatusDashboardPair {
-                            TemperatureView(metrics: mockVehicleState.dashboard.metrics.temperature)
+                            TemperatureView(metrics: mockVehicleState.cachedDashboardMetrics.temperature)
                         } right: {
-                            ChargingStatusView(metrics: mockVehicleState.dashboard.metrics.charging)
+                            ChargingStatusView(metrics: mockVehicleState.cachedDashboardMetrics.charging)
                         }
-                        LightingStatusView(metrics: mockVehicleState.dashboard.metrics.lighting)
+                        LightingStatusView(metrics: mockVehicleState.cachedDashboardMetrics.lighting)
                         VehicleInfoMergedCard()
 
                         Spacer(minLength: 100)
