@@ -94,7 +94,23 @@ struct VehicleHeaderSummaryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            gridSummary
+            HStack(alignment: .top, spacing: 12) {
+                totalRangeBlock
+                    .frame(minWidth: 72, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    energyColumn(title: "电量", rangeKm: electricRangeKm, percent: electricPercent, color: AppTheme.accent)
+                    energyBar(percent: electricPercent, color: AppTheme.accent)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    energyColumn(title: "油量", rangeKm: fuelRangeKm, percent: fuelPercent, color: AppTheme.orange)
+                    energyBar(percent: fuelPercent, color: AppTheme.orange)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if isCharging {
                 HStack(spacing: 5) {
@@ -127,22 +143,6 @@ struct VehicleHeaderSummaryView: View {
         .padding(.horizontal, 20)
     }
 
-    private var gridSummary: some View {
-        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
-            GridRow(alignment: .lastTextBaseline) {
-                totalRangeBlock
-                energyRangeBlock(title: "电量", rangeKm: electricRangeKm, percent: electricPercent, color: AppTheme.accent)
-                energyRangeBlock(title: "油量", rangeKm: fuelRangeKm, percent: fuelPercent, color: AppTheme.orange)
-            }
-
-            GridRow(alignment: .top) {
-                summaryFooter
-                energyBarBlock(percent: electricPercent, color: AppTheme.accent)
-                energyBarBlock(percent: fuelPercent, color: AppTheme.orange)
-            }
-        }
-    }
-
     private var totalRangeBlock: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: 1) {
@@ -158,14 +158,9 @@ struct VehicleHeaderSummaryView: View {
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.45))
         }
-        .frame(minWidth: 72, alignment: .leading)
     }
 
-    private func summaryFooter(title: String, rangeKm: Int, percent: Double, color: Color) -> some View {
-        EmptyView()
-    }
-
-    private func energyRangeBlock(title: String, rangeKm: Int, percent: Double, color: Color) -> some View {
+    private func energyColumn(title: String, rangeKm: Int, percent: Double, color: Color) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(title)
                 .font(.system(size: 11, weight: .medium))
@@ -182,7 +177,7 @@ struct VehicleHeaderSummaryView: View {
         }
     }
 
-    private func energyBarBlock(percent: Double, color: Color) -> some View {
+    private func energyBar(percent: Double, color: Color) -> some View {
         ZStack(alignment: .leading) {
             Capsule()
                 .fill(Color.white.opacity(0.08))
