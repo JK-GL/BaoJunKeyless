@@ -21,7 +21,7 @@ final class MockVehicleStateStore: ObservableObject {
         apply(next)
 
         var dash = dashboard
-        dash.lockStatusText = "已解锁"
+        dash.lockStatusText = "未锁"
         applyDashboard(dash)
     }
 

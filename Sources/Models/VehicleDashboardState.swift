@@ -39,7 +39,14 @@ struct VehicleDashboardState {
     var windowStatusText: String = "全关"
     var tailgateStatusText: String = "已锁"
 
-    var bodyStatusNormalText: String { "正常" }
+    var bodyStatusNormalText: String {
+        let badStatuses: [String] = ["未关", "未锁", "已开", "打开", "异常", "故障"]
+        let statuses = [lockStatusText, doorStatusText, windowStatusText, tailgateStatusText]
+        if statuses.contains(where: { badStatuses.contains($0) }) {
+            return "异常"
+        }
+        return "正常"
+    }
 
     var warningMessages: [String] {
         var warnings: [String] = []
@@ -83,7 +90,20 @@ struct VehicleDashboardMetrics {
 
 extension VehicleDashboardState {
     var metrics: VehicleDashboardMetrics {
-        VehicleDashboardMetrics(
+        let closedColors = ["全关", "已锁", "已锁车"]
+        let openColors = ["未关", "未锁", "已开", "打开", "异常", "故障"]
+
+        func colorForStatus(_ status: String) -> Color {
+            if closedColors.contains(status) {
+                return AppTheme.green
+            }
+            if openColors.contains(status) {
+                return AppTheme.red
+            }
+            return Color.white.opacity(0.45)
+        }
+
+        return VehicleDashboardMetrics(
             battery: [
                 PopupStatusItem(icon: "battery.100.bolt", label: "剩余", value: batteryRemainingText, color: AppTheme.accent),
                 PopupStatusItem(icon: "checkmark.seal.fill", label: "健康", value: batteryHealthPercentText, color: AppTheme.green),
@@ -105,10 +125,10 @@ extension VehicleDashboardState {
                 PopupStatusItem(icon: "bolt.circle.fill", label: "状态", value: chargingStateText, color: Color.white.opacity(0.45))
             ],
             bodyStatus: [
-                PopupStatusItem(icon: "lock.fill", label: "车锁", value: lockStatusText, color: AppTheme.green),
-                PopupStatusItem(icon: "car.fill", label: "车门", value: doorStatusText, color: AppTheme.green),
-                PopupStatusItem(icon: "rectangle.fill", label: "车窗", value: windowStatusText, color: AppTheme.green),
-                PopupStatusItem(icon: "lock.fill", label: "尾门", value: tailgateStatusText, color: AppTheme.green)
+                PopupStatusItem(icon: "lock.fill", label: "车锁", value: lockStatusText, color: colorForStatus(lockStatusText)),
+                PopupStatusItem(icon: "car.fill", label: "车门", value: doorStatusText, color: colorForStatus(doorStatusText)),
+                PopupStatusItem(icon: "rectangle.fill", label: "车窗", value: windowStatusText, color: colorForStatus(windowStatusText)),
+                PopupStatusItem(icon: "lock.fill", label: "尾门", value: tailgateStatusText, color: colorForStatus(tailgateStatusText))
             ],
             driving: [
                 PopupStatusItem(icon: "scope", label: "方向盘", value: steeringAngleText, color: AppTheme.accent),
