@@ -46,6 +46,7 @@ struct VehicleState: Equatable {
     var doorsClosed: Bool?
     var driverDoorOpen: Bool?
     var trunkOpen: Bool?
+    var windowsClosed: Bool?
     var gear: VehicleGear
     var power: VehiclePowerState
     var speed: Double?
@@ -53,7 +54,6 @@ struct VehicleState: Equatable {
     var bleRssi: Int?
     var phoneNearby: Bool
 
-    // 默认占位（MQTT 未接入时）
     static var placeholder: VehicleState {
         VehicleState(
             timestamp: Date(),
@@ -62,6 +62,7 @@ struct VehicleState: Equatable {
             doorsClosed: nil,
             driverDoorOpen: nil,
             trunkOpen: nil,
+            windowsClosed: nil,
             gear: .unknown,
             power: .unknown,
             speed: nil,

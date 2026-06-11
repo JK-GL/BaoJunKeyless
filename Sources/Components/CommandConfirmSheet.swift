@@ -6,7 +6,7 @@ enum CommandAction: String, Identifiable {
     case remoteStart    // 远程启动
     case findCar        // 寻车
     case acToggle       // 空调开关（状态联动）
-    case tempAdjust     // 温度调节
+    case windowToggle   // 车窗开关（状态联动）
     case quickCool      // 快速降温
 
     var id: String { rawValue }
@@ -20,7 +20,8 @@ enum CommandAction: String, Identifiable {
         case .findCar:       return "location.fill"
         case .acToggle:
             return state.power == .unknown ? "snowflake" : (state.power == .off ? "snowflake" : "fan")
-        case .tempAdjust:    return "thermometer"
+        case .windowToggle:
+            return state.windowsClosed == false ? "window.horizontal.open" : "window.horizontal.closed"
         case .quickCool:     return "snowflake"
         }
     }
@@ -35,7 +36,8 @@ enum CommandAction: String, Identifiable {
         case .acToggle:
             // TODO: 接入 MQTT 后根据 acStatus 联动
             return "空调"
-        case .tempAdjust:    return "温度"
+        case .windowToggle:
+            return state.windowsClosed == false ? "关窗" : "开窗"
         case .quickCool:     return "快冷"
         }
     }
@@ -43,23 +45,23 @@ enum CommandAction: String, Identifiable {
     /// 主题色
     var color: Color {
         switch self {
-        case .lockUnlock:    return AppTheme.green   // 默认绿，运行时根据 locked 切换
+        case .lockUnlock:    return AppTheme.green
         case .remoteStart:   return AppTheme.orange
         case .findCar:       return AppTheme.purple
         case .acToggle:      return AppTheme.accent
-        case .tempAdjust:    return AppTheme.orange
+        case .windowToggle:  return Color(red: 0.22, green: 0.74, blue: 1.0)
         case .quickCool:     return Color(red: 0.3, green: 0.8, blue: 0.95)
         }
     }
 
-    /// 运行时颜色（根据状态）
     func resolvedColor(state: VehicleState) -> Color {
         switch self {
         case .lockUnlock:
             return state.locked == true ? AppTheme.green : AppTheme.red
         case .acToggle:
-            // TODO: 接入 MQTT 后根据 acStatus 切换
             return AppTheme.accent
+        case .windowToggle:
+            return Color(red: 0.22, green: 0.74, blue: 1.0)
         default:
             return color
         }
@@ -73,27 +75,28 @@ enum CommandAction: String, Identifiable {
         case .remoteStart:   return "确认启动"
         case .findCar:       return "确认寻车"
         case .acToggle:      return "确认操作"
-        case .tempAdjust:    return "确认设定"
+        case .windowToggle:
+            return state.windowsClosed == false ? "确认关窗" : "确认开窗"
         case .quickCool:     return "确认快速降温"
         }
     }
 
-    /// 确认弹窗说明
     func confirmMessage(state: VehicleState) -> String {
         switch self {
         case .lockUnlock:
             return state.locked == true ? "将发送解锁指令到车辆" : "将发送锁车指令到车辆"
         case .remoteStart:   return "需要 PEPS 鉴权，将通过蓝牙发送启动指令"
         case .findCar:       return "车辆将双闪鸣笛，方便定位"
-        case .acToggle:      return "将发送空调开关指令"
-        case .tempAdjust:    return "拖动滑块设定空调温度"
+        case .acToggle:      return "将发送空调控制指令，可调节设定温度"
+        case .windowToggle:
+            return state.windowsClosed == false ? "将发送关闭车窗指令" : "将发送打开车窗指令"
         case .quickCool:     return "17°C · 风量 7 · 10 分钟"
         }
     }
 
     /// 是否需要温度滑块
     var needsTemperatureSlider: Bool {
-        self == .tempAdjust
+        self == .acToggle || self == .quickCool
     }
 }
 
@@ -106,13 +109,21 @@ struct CommandConfirmPopup: View {
     @Binding var isPresented: Bool
     let onConfirm: (CommandAction, Double?) -> Void
 
-    @State private var temperature: Double = 22
+    @State private var temperature: Double
     @State private var isExecuting = false
     @State private var executionResult: CommandResult? = nil
 
     enum CommandResult {
         case success
         case failure(String)
+    }
+
+    init(action: CommandAction, vehicleState: VehicleState, isPresented: Binding<Bool>, onConfirm: @escaping (CommandAction, Double?) -> Void) {
+        self.action = action
+        self.vehicleState = vehicleState
+        self._isPresented = isPresented
+        self.onConfirm = onConfirm
+        self._temperature = State(initialValue: action == .quickCool ? 17 : 22)
     }
 
     private var accentColor: Color {
@@ -226,24 +237,27 @@ struct CommandConfirmPopup: View {
             return []
         case .acToggle:
             return [
-                StateItem(icon: "thermometer", label: "车内",
-                          value: "22°C", color: AppTheme.accent),
+                StateItem(icon: "thermometer", label: "设定温度",
+                          value: "\(Int(temperature))°C", color: AppTheme.accent),
                 StateItem(icon: "snowflake", label: "空调",
-                          value: "关闭", color: Color.white.opacity(0.45))
+                          value: "待控制", color: Color.white.opacity(0.6))
             ]
-        case .tempAdjust:
+        case .windowToggle:
             return [
-                StateItem(icon: "thermometer", label: "车内",
-                          value: "22°C", color: AppTheme.accent),
-                StateItem(icon: "snowflake", label: "空调",
-                          value: "关闭", color: Color.white.opacity(0.45))
+                StateItem(icon: vehicleState.windowsClosed == false ? "window.horizontal.open" : "window.horizontal.closed",
+                          label: "车窗",
+                          value: vehicleState.windowsClosed == true ? "已关" : "未关",
+                          color: vehicleState.windowsClosed == true ? AppTheme.green : AppTheme.orange),
+                StateItem(icon: "car.fill", label: "车门",
+                          value: vehicleState.doorsClosed == true ? "全关" : "未关",
+                          color: vehicleState.doorsClosed == true ? AppTheme.green : AppTheme.orange)
             ]
         case .quickCool:
             return [
-                StateItem(icon: "thermometer", label: "车内",
-                          value: "22°C", color: AppTheme.accent),
-                StateItem(icon: "snowflake", label: "空调",
-                          value: "关闭", color: Color.white.opacity(0.45))
+                StateItem(icon: "thermometer", label: "设定温度",
+                          value: "\(Int(temperature))°C", color: AppTheme.accent),
+                StateItem(icon: "snowflake", label: "风量",
+                          value: "7", color: AppTheme.accent)
             ]
         }
     }
@@ -312,7 +326,7 @@ struct CommandConfirmPopup: View {
         let temp = action.needsTemperatureSlider ? temperature : nil
 
         // 记录日志
-        vehicleLog.add(.action, "发送指令", detail: "\(action.label(state: vehicleState))")
+        vehicleLog.add(.action, "发送指令", detail: "\(action.label(state: vehicleState)) \(Int(temperature))°C")
 
         // TODO: 接入真正的指令发送（BLE / MQTT / 云端 API）
         // 模拟延迟
@@ -323,7 +337,7 @@ struct CommandConfirmPopup: View {
             executionResult = .success
             VibrationPattern.longShortDouble.play(intensity: 0.7)
 
-            vehicleLog.add(.action, "指令成功", detail: "\(action.label(state: vehicleState))")
+            vehicleLog.add(.action, "指令成功", detail: "\(action.label(state: vehicleState)) \(Int(temperature))°C")
 
             // 1.5 秒后自动关闭
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {

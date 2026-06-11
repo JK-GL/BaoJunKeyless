@@ -13,7 +13,7 @@ struct QuickActionsView: View {
 
     private let orderedActions: [CommandAction] = [
         .lockUnlock, .remoteStart, .findCar,
-        .acToggle,   .tempAdjust,  .quickCool
+        .acToggle,   .quickCool,   .windowToggle
     ]
 
     var body: some View {
