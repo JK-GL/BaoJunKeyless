@@ -97,6 +97,7 @@ struct VehicleHeaderSummaryView: View {
             HStack(alignment: .bottom, spacing: 12) {
                 totalRangeBlock
                     .frame(minWidth: 72, alignment: .leading)
+                    .offset(y: 2)
 
                 energyBlock(
                     title: "电量",
@@ -175,7 +176,7 @@ struct VehicleHeaderSummaryView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.62))
                 Text("\(rangeKm)km")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundStyle(color)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
