@@ -83,9 +83,9 @@ private struct CommandGridButton: View {
 }
 
 struct VehicleHeaderSummaryView: View {
-    var electricRangeKm: Int = 115
+    var electricRangeKm: Int = 140
     var electricFullRangeKm: Int = 140
-    var fuelRangeKm: Int = 680
+    var fuelRangeKm: Int = 1000
     var fuelFullRangeKm: Int = 1000
     var isCharging: Bool = false
     var chargingPowerText: String = "3.2 kW"
