@@ -19,9 +19,9 @@ enum CommandAction: String, Identifiable {
         case .remoteStart:   return "dot.radiowaves.left.and.right"
         case .findCar:       return "location.fill"
         case .acToggle:
-            return state.acOn == true ? "fan" : "snowflake"
+            return state.acOn == true ? "thermometer.medium" : "snowflake"
         case .windowToggle:
-            return state.windowsClosed == false ? "window.horizontal.open" : "window.horizontal.closed"
+            return state.windowsClosed == false ? "rectangle.split.2x2" : "rectangle.split.2x2.fill"
         case .quickCool:     return "snowflake"
         }
     }
@@ -188,9 +188,24 @@ struct CommandConfirmPopup: View {
                                 color: vehicleState.doorsClosed == true ? AppTheme.green : AppTheme.orange)
             ]
         case .remoteStart:
+            let startStatusText: String
+            let startStatusColor: Color
+            switch vehicleState.power {
+            case .off, .acc:
+                startStatusText = "待启动"
+                startStatusColor = AppTheme.orange
+            case .on, .ready:
+                startStatusText = "已启动"
+                startStatusColor = AppTheme.green
+            case .unknown:
+                startStatusText = "未知"
+                startStatusColor = Color.white.opacity(0.45)
+            }
             return [
                 PopupStatusItem(icon: "key.fill", label: "电源",
                                 value: vehicleState.power.title, color: AppTheme.orange),
+                PopupStatusItem(icon: "dot.radiowaves.left.and.right", label: "启动",
+                                value: startStatusText, color: startStatusColor),
                 PopupStatusItem(icon: "gearshape.fill", label: "档位",
                                 value: vehicleState.gear.title, color: AppTheme.accent)
             ]
@@ -198,7 +213,7 @@ struct CommandConfirmPopup: View {
             return []
         case .acToggle:
             return [
-                PopupStatusItem(icon: vehicleState.acOn == true ? "fan" : "snowflake",
+                PopupStatusItem(icon: vehicleState.acOn == true ? "thermometer.medium" : "snowflake",
                                 label: "空调",
                                 value: vehicleState.acOn == true ? "已开" : "已关",
                                 color: vehicleState.acOn == true ? AppTheme.green : AppTheme.accent),
@@ -207,7 +222,7 @@ struct CommandConfirmPopup: View {
             ]
         case .windowToggle:
             return [
-                PopupStatusItem(icon: vehicleState.windowsClosed == false ? "window.horizontal.open" : "window.horizontal.closed",
+                PopupStatusItem(icon: vehicleState.windowsClosed == false ? "rectangle.split.2x2" : "rectangle.split.2x2.fill",
                                 label: "车窗",
                                 value: vehicleState.windowsClosed == true ? "已关" : "未关",
                                 color: vehicleState.windowsClosed == true ? AppTheme.green : AppTheme.orange),
