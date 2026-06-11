@@ -6,6 +6,7 @@ struct StatusView: View {
     @EnvironmentObject var addressSettings: AddressServiceSettings
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
     @StateObject private var locationManager = LocationManager()
+    @StateObject private var mockVehicleState = MockVehicleStateStore()
     @State private var isRefreshing = false
     @State private var refreshScale: CGFloat = 1.0
     @State private var isAddressFloatingPresented = false
@@ -70,9 +71,9 @@ struct StatusView: View {
                         RadarCardView(locationManager: locationManager)
                     }
 
-                    QuickActionsView { command in
+                    QuickActionsView(onCommand: { command in
                         activeCommand = command
-                    }
+                    }, vehicleState: mockVehicleState.state)
 
                     LazyVStack(alignment: .leading, spacing: 16) {
                         BodyStatusView()
@@ -122,13 +123,13 @@ struct StatusView: View {
             if let command = activeCommand {
                 CommandConfirmPopup(
                     action: command,
-                    vehicleState: .placeholder,
+                    vehicleState: mockVehicleState.state,
                     isPresented: Binding(
                         get: { activeCommand != nil },
                         set: { if !$0 { activeCommand = nil } }
                     )
                 ) { cmd, temp in
-                    // 指令执行后的回调
+                    handleQuickActionConfirm(action: cmd, temperature: temp)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .transition(.scale.combined(with: .opacity))
@@ -280,6 +281,29 @@ struct StatusView: View {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             isRefreshing = false
+        }
+    }
+
+    private func handleQuickActionConfirm(action: CommandAction, temperature: Double?) {
+        switch action {
+        case .lockUnlock:
+            if mockVehicleState.state.locked == true {
+                mockVehicleState.simulateUnlock()
+            } else {
+                mockVehicleState.simulateLock()
+            }
+        case .acToggle:
+            mockVehicleState.simulateToggleAC()
+            if let temperature {
+                mockVehicleState.simulateSetACTemperature(temperature)
+            }
+        case .windowToggle:
+            mockVehicleState.simulateToggleWindows()
+        case .remoteStart, .findCar:
+            break
+        case .quickCool:
+            mockVehicleState.simulateToggleAC()
+            mockVehicleState.simulateSetACTemperature(temperature ?? 17)
         }
     }
 }

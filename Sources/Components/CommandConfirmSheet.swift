@@ -48,7 +48,7 @@ enum CommandAction: String, Identifiable {
         case .findCar:       return AppTheme.purple
         case .acToggle:      return AppTheme.accent
         case .windowToggle:  return Color(red: 0.22, green: 0.74, blue: 1.0)
-        case .quickCool:     return Color(red: 0.3, green: 0.8, blue: 0.95)
+        case .quickCool:     return Color(red: 0.16, green: 0.88, blue: 0.96)
         }
     }
 
@@ -57,9 +57,9 @@ enum CommandAction: String, Identifiable {
         case .lockUnlock:
             return state.locked == true ? AppTheme.green : AppTheme.red
         case .acToggle:
-            return AppTheme.accent
+            return state.acOn == true ? AppTheme.accent : Color(red: 0.55, green: 0.58, blue: 0.62)
         case .windowToggle:
-            return Color(red: 0.22, green: 0.74, blue: 1.0)
+            return state.windowsClosed == true ? AppTheme.green : Color(red: 0.22, green: 0.74, blue: 1.0)
         default:
             return color
         }

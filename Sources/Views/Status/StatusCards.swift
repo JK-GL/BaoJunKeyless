@@ -1,9 +1,8 @@
 import SwiftUI
 
 struct QuickActionsView: View {
-    @StateObject private var vehicleState = VehicleStateHolder()
-
     let onCommand: (CommandAction) -> Void
+    let vehicleState: VehicleState
 
     private let gridColumns = [
         GridItem(.flexible(), spacing: 8),
@@ -22,7 +21,7 @@ struct QuickActionsView: View {
                 ForEach(orderedActions) { action in
                     CommandGridButton(
                         action: action,
-                        state: vehicleState.state
+                        state: vehicleState
                     ) {
                         let impact = UIImpactFeedbackGenerator(style: .light)
                         impact.impactOccurred()
@@ -32,13 +31,6 @@ struct QuickActionsView: View {
             }
         }
     }
-
-    var vehicleStateValue: VehicleState { vehicleState.state }
-}
-
-// MARK: - 车辆状态占位（MQTT 接入前使用）
-private class VehicleStateHolder: ObservableObject {
-    @Published var state: VehicleState = .placeholder
 }
 
 // MARK: - 网格按钮

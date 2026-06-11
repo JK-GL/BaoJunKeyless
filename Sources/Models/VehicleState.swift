@@ -76,6 +76,26 @@ struct VehicleState: Equatable {
         )
     }
 
+    static var mockSnapshot: VehicleState {
+        VehicleState(
+            timestamp: Date(),
+            online: true,
+            locked: true,
+            doorsClosed: true,
+            driverDoorOpen: false,
+            trunkOpen: false,
+            windowsClosed: false,
+            acOn: false,
+            acTemperature: 22,
+            gear: .p,
+            power: .off,
+            speed: 0,
+            physicalKeyInside: false,
+            bleRssi: -52,
+            phoneNearby: true
+        )
+    }
+
     /// 状态是否新鲜（默认 10 秒有效）
     func isFresh(maxAge: TimeInterval = 10) -> Bool {
         Date().timeIntervalSince(timestamp) <= maxAge
