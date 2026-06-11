@@ -94,36 +94,7 @@ struct VehicleHeaderSummaryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .bottom, spacing: 12) {
-                HStack(alignment: .firstTextBaseline, spacing: 1) {
-                    Text("\(totalRangeKm)")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                    Text("km")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.white.opacity(0.72))
-                }
-                .frame(minWidth: 76, alignment: .leading)
-
-                HStack(alignment: .bottom, spacing: 10) {
-                    summaryColumn(
-                        title: "电量",
-                        rangeText: "\(electricRangeKm)km",
-                        percentText: "\(Int(electricPercent * 100))%",
-                        percent: electricPercent,
-                        color: AppTheme.accent
-                    )
-
-                    summaryColumn(
-                        title: "油量",
-                        rangeText: "\(fuelRangeKm)km",
-                        percentText: "\(Int(fuelPercent * 100))%",
-                        percent: fuelPercent,
-                        color: AppTheme.orange
-                    )
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            gridSummary
 
             if isCharging {
                 HStack(spacing: 5) {
@@ -156,42 +127,75 @@ struct VehicleHeaderSummaryView: View {
         .padding(.horizontal, 20)
     }
 
-    private func summaryColumn(title: String, rangeText: String, percentText: String, percent: Double, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(title)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.62))
-
-                Text(rangeText)
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(color)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-
-                Spacer(minLength: 4)
-
-                Text(percentText)
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.white.opacity(0.55))
+    private var gridSummary: some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
+            GridRow(alignment: .lastTextBaseline) {
+                totalRangeBlock
+                energyRangeBlock(title: "电量", rangeKm: electricRangeKm, percent: electricPercent, color: AppTheme.accent)
+                energyRangeBlock(title: "油量", rangeKm: fuelRangeKm, percent: fuelPercent, color: AppTheme.orange)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
 
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color.white.opacity(0.08))
-                    .frame(height: 4)
-
-                Capsule()
-                    .fill(color)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 4)
-                    .scaleEffect(x: max(0, min(1, percent)), y: 1, anchor: .leading)
+            GridRow(alignment: .top) {
+                summaryFooter
+                energyBarBlock(percent: electricPercent, color: AppTheme.accent)
+                energyBarBlock(percent: fuelPercent, color: AppTheme.orange)
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 4)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var totalRangeBlock: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 1) {
+                Text("\(totalRangeKm)")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                Text("km")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.72))
+            }
+
+            Text("综合续航")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.45))
+        }
+        .frame(minWidth: 72, alignment: .leading)
+    }
+
+    private func summaryFooter(title: String, rangeKm: Int, percent: Double, color: Color) -> some View {
+        EmptyView()
+    }
+
+    private func energyRangeBlock(title: String, rangeKm: Int, percent: Double, color: Color) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.62))
+            Text("\(rangeKm)km")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Spacer(minLength: 4)
+            Text("\(Int(percent * 100))%")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.white.opacity(0.55))
+        }
+    }
+
+    private func energyBarBlock(percent: Double, color: Color) -> some View {
+        ZStack(alignment: .leading) {
+            Capsule()
+                .fill(Color.white.opacity(0.08))
+                .frame(height: 4)
+
+            Capsule()
+                .fill(color)
+                .frame(maxWidth: .infinity)
+                .frame(height: 4)
+                .scaleEffect(x: max(0, min(1, percent)), y: 1, anchor: .leading)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 4)
     }
 }
 
