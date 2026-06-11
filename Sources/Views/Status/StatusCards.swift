@@ -98,13 +98,13 @@ struct VehicleHeaderSummaryView: View {
                 totalRangeBlock
                     .frame(minWidth: 72, alignment: .leading)
 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 3) {
                     energyColumn(title: "电量", rangeKm: electricRangeKm, percent: electricPercent, color: AppTheme.accent)
                     energyBar(percent: electricPercent, color: AppTheme.accent)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 3) {
                     energyColumn(title: "油量", rangeKm: fuelRangeKm, percent: fuelPercent, color: AppTheme.orange)
                     energyBar(percent: fuelPercent, color: AppTheme.orange)
                 }
@@ -144,19 +144,13 @@ struct VehicleHeaderSummaryView: View {
     }
 
     private var totalRangeBlock: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(alignment: .firstTextBaseline, spacing: 1) {
-                Text("\(totalRangeKm)")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                Text("km")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.72))
-            }
-
-            Text("综合续航")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.45))
+        HStack(alignment: .firstTextBaseline, spacing: 1) {
+            Text("\(totalRangeKm)")
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+            Text("km")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.72))
         }
     }
 
