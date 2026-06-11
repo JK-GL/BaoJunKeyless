@@ -169,19 +169,22 @@ struct VehicleHeaderSummaryView: View {
     }
 
     private func energyColumn(title: String, rangeKm: Int, percent: Double, color: Color) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Text(title)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.62))
-            Text("\(rangeKm)km")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(color)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            Spacer(minLength: 4)
-            Text("\(Int(percent * 100))%")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.55))
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.62))
+                Text("\(rangeKm)km")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(color)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 0)
+                Text("\(Int(percent * 100))%")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.white.opacity(0.55))
+            }
+            .frame(maxWidth: .infinity)
         }
     }
 
