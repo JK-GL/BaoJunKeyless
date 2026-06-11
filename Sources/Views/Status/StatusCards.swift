@@ -83,37 +83,55 @@ private struct CommandGridButton: View {
 }
 
 struct VehicleHeaderSummaryView: View {
-    var totalRangeKm: Int = 795
     var electricRangeKm: Int = 115
-    var electricPercent: Double = 0.52
+    var electricFullRangeKm: Int = 140
     var fuelRangeKm: Int = 680
-    var fuelPercent: Double = 0.78
+    var fuelFullRangeKm: Int = 1000
     var isCharging: Bool = false
     var chargingPowerText: String = "3.2 kW"
     var updatedAt: String = "17:59:34"
 
+    private let totalBlockWidth: CGFloat = 86
+    private let topRowHeight: CGFloat = 30
+    private let barHeight: CGFloat = 4
+    private let rowSpacing: CGFloat = 3
+
+    private var totalRangeKm: Int {
+        electricRangeKm + fuelRangeKm
+    }
+
+    private var electricPercent: Double {
+        guard electricFullRangeKm > 0 else { return 0 }
+        return min(max(Double(electricRangeKm) / Double(electricFullRangeKm), 0), 1)
+    }
+
+    private var fuelPercent: Double {
+        guard fuelFullRangeKm > 0 else { return 0 }
+        return min(max(Double(fuelRangeKm) / Double(fuelFullRangeKm), 0), 1)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .bottom, spacing: 12) {
-                totalRangeBlock
-                    .frame(minWidth: 72, alignment: .leading)
-                    .offset(y: 2)
+            VStack(alignment: .leading, spacing: rowSpacing) {
+                HStack(alignment: .bottom, spacing: 12) {
+                    totalRangeTextRow
+                        .frame(width: totalBlockWidth, height: topRowHeight, alignment: .bottomLeading)
 
-                energyBlock(
-                    title: "电量",
-                    rangeKm: electricRangeKm,
-                    percent: electricPercent,
-                    color: AppTheme.accent
-                )
+                    energyHeader(title: "电量", rangeKm: electricRangeKm, percent: electricPercent, color: AppTheme.accent)
+                        .frame(maxWidth: .infinity, minHeight: topRowHeight, alignment: .bottomLeading)
 
-                energyBlock(
-                    title: "油量",
-                    rangeKm: fuelRangeKm,
-                    percent: fuelPercent,
-                    color: AppTheme.orange
-                )
+                    energyHeader(title: "油量", rangeKm: fuelRangeKm, percent: fuelPercent, color: AppTheme.orange)
+                        .frame(maxWidth: .infinity, minHeight: topRowHeight, alignment: .bottomLeading)
+                }
+
+                HStack(alignment: .center, spacing: 12) {
+                    Color.clear
+                        .frame(width: totalBlockWidth, height: barHeight)
+
+                    energyBar(percent: electricPercent, color: AppTheme.accent)
+                    energyBar(percent: fuelPercent, color: AppTheme.orange)
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
 
             if isCharging {
                 HStack(spacing: 5) {
@@ -146,46 +164,34 @@ struct VehicleHeaderSummaryView: View {
         .padding(.horizontal, 20)
     }
 
-    private var totalRangeBlock: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 1) {
-                Text("\(totalRangeKm)")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                Text("km")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.72))
-            }
-
-            Spacer(minLength: 0)
+    private var totalRangeTextRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 1) {
+            Text("\(totalRangeKm)")
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+            Text("km")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.72))
         }
     }
 
-    private func energyBlock(title: String, rangeKm: Int, percent: Double, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            energyColumn(title: title, rangeKm: rangeKm, percent: percent, color: color)
-            energyBar(percent: percent, color: color)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
+    private func energyHeader(title: String, rangeKm: Int, percent: Double, color: Color) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.62))
 
-    private func energyColumn(title: String, rangeKm: Int, percent: Double, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(title)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.62))
-                Text("\(rangeKm)km")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(color)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Spacer(minLength: 0)
-                Text("\(Int(percent * 100))%")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.white.opacity(0.55))
-            }
-            .frame(maxWidth: .infinity)
+            Text("\(rangeKm)km")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            Spacer(minLength: 2)
+
+            Text("\(Int(percent * 100))%")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.white.opacity(0.55))
         }
     }
 
@@ -193,16 +199,16 @@ struct VehicleHeaderSummaryView: View {
         ZStack(alignment: .leading) {
             Capsule()
                 .fill(Color.white.opacity(0.08))
-                .frame(height: 4)
+                .frame(height: barHeight)
 
             Capsule()
                 .fill(color)
                 .frame(maxWidth: .infinity)
-                .frame(height: 4)
+                .frame(height: barHeight)
                 .scaleEffect(x: max(0, min(1, percent)), y: 1, anchor: .leading)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 4)
+        .frame(height: barHeight)
     }
 }
 
