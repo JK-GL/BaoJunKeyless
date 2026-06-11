@@ -247,87 +247,53 @@ struct RangeRow: View {
 }
 
 struct BatteryGaugesView: View {
-    private let metrics: [VehicleStatusMetric] = [
-        VehicleStatusMetric(icon: "battery.100.bolt", label: "剩余", value: "17.8kWh", color: AppTheme.accent),
-        VehicleStatusMetric(icon: "checkmark.seal.fill", label: "健康", value: "99%", color: AppTheme.green),
-        VehicleStatusMetric(icon: "bolt.fill", label: "电压", value: "109.5V", color: AppTheme.accent),
-        VehicleStatusMetric(icon: "car.fill", label: "小电瓶", value: "12.4V", color: AppTheme.accent)
-    ]
+    let metrics: [PopupStatusItem]
 
     var body: some View {
         CardView(title: "电池系统", icon: "battery.100.bolt", iconColor: AppTheme.accent) {
-            VehicleStatusMetricList(metrics: metrics)
+            VehicleStatusMetricList(items: metrics)
         }
     }
 }
 
 struct TemperatureView: View {
-    private let metrics: [VehicleStatusMetric] = [
-        VehicleStatusMetric(icon: "thermometer", label: "车内", value: "22°C", color: AppTheme.accent),
-        VehicleStatusMetric(icon: "snowflake", label: "空调", value: "17°C", color: AppTheme.orange),
-        VehicleStatusMetric(icon: "thermometer.medium", label: "电池", value: "25°C", color: AppTheme.green),
-        VehicleStatusMetric(icon: "gearshape.fill", label: "电机", value: "27°C", color: AppTheme.green),
-        VehicleStatusMetric(icon: "cpu.fill", label: "逆变", value: "27°C", color: AppTheme.green)
-    ]
+    let metrics: [PopupStatusItem]
 
     var body: some View {
         CardView(title: "温度监控", icon: "thermometer.medium", iconColor: AppTheme.orange) {
-            VehicleStatusMetricList(metrics: metrics)
+            VehicleStatusMetricList(items: metrics)
         }
     }
 }
 
 struct ChargingStatusView: View {
-    private let metrics: [VehicleStatusMetric] = [
-        VehicleStatusMetric(icon: "bolt.fill", label: "充电中", value: "否", color: AppTheme.orange),
-        VehicleStatusMetric(icon: "gauge.medium", label: "功率", value: "--", color: Color.white.opacity(0.45)),
-        VehicleStatusMetric(icon: "bolt.fill", label: "OBC电流", value: "0A", color: AppTheme.orange),
-        VehicleStatusMetric(icon: "thermometer", label: "OBC温度", value: "--", color: Color.white.opacity(0.45)),
-        VehicleStatusMetric(icon: "bolt.circle.fill", label: "状态", value: "--", color: Color.white.opacity(0.45))
-    ]
+    let metrics: [PopupStatusItem]
 
     var body: some View {
         CardView(title: "充电状态", icon: "bolt.circle.fill", iconColor: AppTheme.orange) {
-            VehicleStatusMetricList(metrics: metrics)
+            VehicleStatusMetricList(items: metrics)
         }
     }
 }
 
 struct BodyStatusView: View {
-    private let coreMetrics: [VehicleStatusMetric] = [
-        VehicleStatusMetric(icon: "lock.fill", label: "车锁", value: "已锁车", color: AppTheme.green),
-        VehicleStatusMetric(icon: "car.fill", label: "车门", value: "全关", color: AppTheme.green),
-        VehicleStatusMetric(icon: "rectangle.fill", label: "车窗", value: "全关", color: AppTheme.green),
-        VehicleStatusMetric(icon: "lock.fill", label: "尾门", value: "已锁", color: AppTheme.green)
-    ]
-
-    private var warningMessages: [String] {
-        var warnings: [String] = []
-        for metric in coreMetrics {
-            if metric.color == AppTheme.orange || metric.color == AppTheme.red {
-                if metric.value != "全关" && metric.value != "已锁车" && metric.value != "已锁" && metric.value != "关闭" && metric.value != "--" {
-                    warnings.append("\(metric.label)\(metric.value)")
-                }
-            }
-        }
-        return warnings
-    }
+    let dashboard: VehicleDashboardState
 
     var body: some View {
         CardView(title: "车身状态", icon: "car.fill", iconColor: AppTheme.green) {
             VStack(spacing: 10) {
                 HStack {
                     Spacer()
-                    Text("正常")
+                    Text(dashboard.bodyStatusNormalText)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(AppTheme.green)
+                        .foregroundColor(dashboard.warningMessages.isEmpty ? AppTheme.green : AppTheme.orange)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(Capsule().fill(AppTheme.green.opacity(0.12)))
+                        .background(Capsule().fill((dashboard.warningMessages.isEmpty ? AppTheme.green : AppTheme.orange).opacity(0.12)))
                 }
-                VehicleStatusMetricGrid(metrics: coreMetrics)
+                VehicleStatusMetricGrid(items: dashboard.metrics.bodyStatus)
 
-                let warnings = warningMessages
+                let warnings = dashboard.warningMessages
                 if !warnings.isEmpty {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -348,33 +314,21 @@ struct BodyStatusView: View {
 }
 
 struct DrivingStatusView: View {
-    private let metrics: [VehicleStatusMetric] = [
-        VehicleStatusMetric(icon: "scope", label: "方向盘", value: "0.0°", color: AppTheme.accent),
-        VehicleStatusMetric(icon: "arrow.up.circle.fill", label: "油门", value: "0%", color: AppTheme.green),
-        VehicleStatusMetric(icon: "stop.circle.fill", label: "刹车", value: "0%", color: AppTheme.green),
-        VehicleStatusMetric(icon: "speedometer", label: "车速", value: "--", status: "km/h", color: Color.white.opacity(0.45))
-    ]
+    let metrics: [PopupStatusItem]
 
     var body: some View {
         CardView(title: "驾驶状态", icon: "scope", iconColor: AppTheme.accent) {
-            VehicleStatusMetricList(metrics: metrics)
+            VehicleStatusMetricList(items: metrics)
         }
     }
 }
 
 struct LightingStatusView: View {
-    private let metrics: [VehicleStatusMetric] = [
-        VehicleStatusMetric(icon: "lightbulb.fill", label: "近光灯", value: "关闭", color: AppTheme.orange),
-        VehicleStatusMetric(icon: "sun.max.fill", label: "远光灯", value: "关闭", color: AppTheme.orange),
-        VehicleStatusMetric(icon: "arrow.left.arrow.right", label: "左转向", value: "关闭", color: AppTheme.accent),
-        VehicleStatusMetric(icon: "arrow.left.arrow.right", label: "右转向", value: "关闭", color: AppTheme.accent),
-        VehicleStatusMetric(icon: "sun.min.fill", label: "示宽灯", value: "关闭", color: AppTheme.orange),
-        VehicleStatusMetric(icon: "cloud.fog", label: "前雾灯", value: "关闭", color: AppTheme.orange)
-    ]
+    let metrics: [PopupStatusItem]
 
     var body: some View {
         CardView(title: "灯光状态", icon: "lightbulb.fill", iconColor: AppTheme.orange) {
-            VehicleStatusMetricGrid(metrics: metrics)
+            VehicleStatusMetricGrid(items: metrics)
         }
     }
 }
@@ -396,7 +350,7 @@ struct StatusDashboardPair<Left: View, Right: View>: View {
     }
 }
 
-private struct VehicleStatusMetric: Identifiable {
+struct VehicleStatusMetric: Identifiable {
     let id = UUID()
     let icon: String
     let label: String
@@ -411,10 +365,21 @@ private struct VehicleStatusMetric: Identifiable {
         self.status = status
         self.color = color
     }
+
+    init(item: PopupStatusItem) {
+        self.icon = item.icon
+        self.label = item.label
+        self.value = item.value
+        self.status = nil
+        self.color = item.color
+    }
 }
 
-private struct VehicleStatusMetricGrid: View {
+struct VehicleStatusMetricGrid: View {
     let metrics: [VehicleStatusMetric]
+
+    init(metrics: [VehicleStatusMetric]) { self.metrics = metrics }
+    init(items: [PopupStatusItem]) { self.metrics = items.map { VehicleStatusMetric(item: $0) } }
 
     var body: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
@@ -425,8 +390,11 @@ private struct VehicleStatusMetricGrid: View {
     }
 }
 
-private struct VehicleStatusMetricList: View {
+struct VehicleStatusMetricList: View {
     let metrics: [VehicleStatusMetric]
+
+    init(metrics: [VehicleStatusMetric]) { self.metrics = metrics }
+    init(items: [PopupStatusItem]) { self.metrics = items.map { VehicleStatusMetric(item: $0) } }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -437,7 +405,7 @@ private struct VehicleStatusMetricList: View {
     }
 }
 
-private struct VehicleStatusMetricCard: View {
+struct VehicleStatusMetricCard: View {
     let metric: VehicleStatusMetric
 
     var body: some View {

@@ -76,18 +76,18 @@ struct StatusView: View {
                     }, vehicleState: mockVehicleState.state)
 
                     LazyVStack(alignment: .leading, spacing: 16) {
-                        BodyStatusView()
+                        BodyStatusView(dashboard: mockVehicleState.dashboard)
                         StatusDashboardPair {
-                            DrivingStatusView()
+                            DrivingStatusView(metrics: mockVehicleState.dashboard.metrics.driving)
                         } right: {
-                            BatteryGaugesView()
+                            BatteryGaugesView(metrics: mockVehicleState.dashboard.metrics.battery)
                         }
                         StatusDashboardPair {
-                            TemperatureView()
+                            TemperatureView(metrics: mockVehicleState.dashboard.metrics.temperature)
                         } right: {
-                            ChargingStatusView()
+                            ChargingStatusView(metrics: mockVehicleState.dashboard.metrics.charging)
                         }
-                        LightingStatusView()
+                        LightingStatusView(metrics: mockVehicleState.dashboard.metrics.lighting)
                         VehicleInfoMergedCard()
 
                         Spacer(minLength: 100)
@@ -305,5 +305,6 @@ struct StatusView: View {
             mockVehicleState.simulateToggleAC()
             mockVehicleState.simulateSetACTemperature(temperature ?? 17)
         }
+        withAnimation(.easeInOut(duration: 0.2)) {}
     }
 }
