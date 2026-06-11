@@ -5,6 +5,7 @@ struct StatusView: View {
     @EnvironmentObject var settingsStore: KeylessSettingsStore
     @EnvironmentObject var addressSettings: AddressServiceSettings
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
+    @AppStorage(AppDiagnosticsSettings.quickActionsDebugModeKey) private var quickActionsDebugMode = false
     @StateObject private var locationManager = LocationManager()
     @StateObject private var mockVehicleState = MockVehicleStateStore()
     @State private var isRefreshing = false
@@ -52,7 +53,15 @@ struct StatusView: View {
                             onRefresh: handleRefresh
                         )
 
-                        VehicleHeaderSummaryView()
+                        VehicleHeaderSummaryView(
+                            electricRangeKm: mockVehicleState.dashboard.electricRangeKm,
+                            electricFullRangeKm: mockVehicleState.dashboard.electricFullRangeKm,
+                            fuelRangeKm: mockVehicleState.dashboard.fuelRangeKm,
+                            fuelFullRangeKm: mockVehicleState.dashboard.fuelFullRangeKm,
+                            isCharging: mockVehicleState.dashboard.isCharging,
+                            chargingPowerText: mockVehicleState.dashboard.chargingPowerText,
+                            updatedAt: mockVehicleState.dashboard.updatedAtText
+                        )
 
                         StatusPillsSection(
                             modeIcon: modeIcon,
@@ -69,6 +78,35 @@ struct StatusView: View {
                         }
                     } else {
                         RadarCardView(locationManager: locationManager)
+                    }
+
+                    if quickActionsDebugMode {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Toggle(isOn: $quickActionsDebugMode) {
+                                Label("快捷操作调试模式", systemImage: "wrench.and.screwdriver")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.white)
+                            }
+                            .tint(AppTheme.orange)
+
+                            Text("打开后，快捷操作会同步切换状态页卡片，便于 UI 联调。")
+                                .font(.caption)
+                                .foregroundStyle(Color.white.opacity(0.55))
+                        }
+                        .padding(14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                        .fill(Color.white.opacity(0.035))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                )
+                        )
+                        .padding(.horizontal, 18)
                     }
 
                     QuickActionsView(onCommand: { command in
@@ -285,6 +323,8 @@ struct StatusView: View {
     }
 
     private func handleQuickActionConfirm(action: CommandAction, temperature: Double?) {
+        guard quickActionsDebugMode else { return }
+
         switch action {
         case .lockUnlock:
             if mockVehicleState.state.locked == true {
@@ -305,6 +345,5 @@ struct StatusView: View {
             mockVehicleState.simulateToggleAC()
             mockVehicleState.simulateSetACTemperature(temperature ?? 17)
         }
-        withAnimation(.easeInOut(duration: 0.2)) {}
     }
 }

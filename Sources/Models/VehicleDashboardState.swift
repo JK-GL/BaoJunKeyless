@@ -11,6 +11,7 @@ struct VehicleDashboardState {
     var fuelFullRangeKm: Int = 800
     var isCharging: Bool = false
     var chargingPowerText: String = "3.2 kW"
+    var updatedAtText: String = "17:59:34"
 
     // 电池
     var batteryRemainingText: String = "17.8kWh"
