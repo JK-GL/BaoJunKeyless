@@ -95,6 +95,7 @@ struct VehicleHeaderSummaryView: View {
     private let topRowHeight: CGFloat = 30
     private let barHeight: CGFloat = 4
     private let rowSpacing: CGFloat = 3
+    private let columnSpacing: CGFloat = 12
 
     private var totalRangeKm: Int {
         electricRangeKm + fuelRangeKm
@@ -112,25 +113,29 @@ struct VehicleHeaderSummaryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            VStack(alignment: .leading, spacing: rowSpacing) {
-                HStack(alignment: .bottom, spacing: 12) {
-                    totalRangeTextRow
-                        .frame(width: totalBlockWidth, height: topRowHeight, alignment: .bottomLeading)
+            HStack(alignment: .bottom, spacing: columnSpacing) {
+                totalRangeTextRow
+                    .frame(
+                        width: totalBlockWidth,
+                        height: topRowHeight + rowSpacing + barHeight,
+                        alignment: .bottomLeading
+                    )
 
-                    energyHeader(title: "电量", rangeKm: electricRangeKm, percent: electricPercent, color: AppTheme.accent)
-                        .frame(maxWidth: .infinity, minHeight: topRowHeight, alignment: .bottomLeading)
+                VStack(alignment: .leading, spacing: rowSpacing) {
+                    HStack(alignment: .bottom, spacing: columnSpacing) {
+                        energyHeader(title: "电量", rangeKm: electricRangeKm, percent: electricPercent, color: AppTheme.accent)
+                            .frame(maxWidth: .infinity, minHeight: topRowHeight, alignment: .bottomLeading)
 
-                    energyHeader(title: "油量", rangeKm: fuelRangeKm, percent: fuelPercent, color: AppTheme.orange)
-                        .frame(maxWidth: .infinity, minHeight: topRowHeight, alignment: .bottomLeading)
+                        energyHeader(title: "油量", rangeKm: fuelRangeKm, percent: fuelPercent, color: AppTheme.orange)
+                            .frame(maxWidth: .infinity, minHeight: topRowHeight, alignment: .bottomLeading)
+                    }
+
+                    HStack(alignment: .center, spacing: columnSpacing) {
+                        energyBar(percent: electricPercent, color: AppTheme.accent)
+                        energyBar(percent: fuelPercent, color: AppTheme.orange)
+                    }
                 }
-
-                HStack(alignment: .center, spacing: 12) {
-                    Color.clear
-                        .frame(width: totalBlockWidth, height: barHeight)
-
-                    energyBar(percent: electricPercent, color: AppTheme.accent)
-                    energyBar(percent: fuelPercent, color: AppTheme.orange)
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             if isCharging {
