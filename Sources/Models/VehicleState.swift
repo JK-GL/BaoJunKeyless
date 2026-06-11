@@ -47,6 +47,8 @@ struct VehicleState: Equatable {
     var driverDoorOpen: Bool?
     var trunkOpen: Bool?
     var windowsClosed: Bool?
+    var acOn: Bool?
+    var acTemperature: Double?
     var gear: VehicleGear
     var power: VehiclePowerState
     var speed: Double?
@@ -63,6 +65,8 @@ struct VehicleState: Equatable {
             driverDoorOpen: nil,
             trunkOpen: nil,
             windowsClosed: nil,
+            acOn: nil,
+            acTemperature: nil,
             gear: .unknown,
             power: .unknown,
             speed: nil,
