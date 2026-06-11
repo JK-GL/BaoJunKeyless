@@ -28,7 +28,7 @@ enum AppDiagnosticsSettings {
     }
 
     static var isQuickActionsDebugModeEnabled: Bool {
-        UserDefaults.standard.object(forKey: quickActionsDebugModeKey) as? Bool ?? false
+        UserDefaults.standard.object(forKey: quickActionsDebugModeKey) as? Bool ?? true
     }
 
     static func setQuickActionsDebugMode(_ enabled: Bool) {
