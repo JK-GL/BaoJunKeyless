@@ -1,13 +1,21 @@
 import Foundation
 import Combine
 
+// MARK: - 车辆状态读取协议
+/// StatusView 只认这个协议，不关心具体实现。
+protocol VehicleStateReader: ObservableObject {
+    var state: VehicleState { get }
+    var dashboard: VehicleDashboardState { get }
+    var cachedDashboardMetrics: VehicleDashboardMetrics { get }
+}
+
 // MARK: - 统一车辆状态 Store
 /// 所有车辆状态数据的唯一来源。
 /// 子类化以接入真实数据源（MQTT / BLE），StatusView 无需改动。
-class VehicleStateStore: ObservableObject {
-    @Published private(set) var state: VehicleState = .placeholder
-    @Published private(set) var dashboard: VehicleDashboardState = VehicleDashboardState()
-    @Published private(set) var cachedDashboardMetrics: VehicleDashboardMetrics = VehicleDashboardState().metrics
+class VehicleStateStore: ObservableObject, VehicleStateReader {
+    @Published internal(set) var state: VehicleState = .placeholder
+    @Published internal(set) var dashboard: VehicleDashboardState = VehicleDashboardState()
+    @Published internal(set) var cachedDashboardMetrics: VehicleDashboardMetrics = VehicleDashboardState().metrics
 
     func apply(_ newState: VehicleState) {
         state = newState

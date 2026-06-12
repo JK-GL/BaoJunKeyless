@@ -7,67 +7,70 @@ final class MockVehicleStateStore: VehicleStateStore {
 
     override init() {
         super.init()
-        apply(.mockSnapshot)
-        applyDashboard(VehicleDashboardState())
+        // 直接赋值，不在 init 中通过 apply() 触发 @Published 更新
+        state = .mockSnapshot
+        let dash = VehicleDashboardState()
+        dashboard = dash
+        cachedDashboardMetrics = dash.metrics
     }
 
-    override func simulateUnlock() {
+    func simulateUnlock() {
         var next = state
         next.locked = false
-        super.apply(next)
+        apply(next)
 
         var dash = dashboard
         dash.lockStatusText = "未锁"
-        super.applyDashboard(dash)
+        applyDashboard(dash)
     }
 
-    override func simulateLock() {
+    func simulateLock() {
         var next = state
         next.locked = true
-        super.apply(next)
+        apply(next)
 
         var dash = dashboard
         dash.lockStatusText = "已锁车"
-        super.applyDashboard(dash)
+        applyDashboard(dash)
     }
 
-    override func simulateToggleAC() {
+    func simulateToggleAC() {
         var next = state
         next.acOn = !(state.acOn ?? false)
-        super.apply(next)
+        apply(next)
 
         var dash = dashboard
         dash.acTemperatureText = "\(Int(next.acTemperature ?? 22))°C"
-        super.applyDashboard(dash)
+        applyDashboard(dash)
     }
 
-    override func simulateSetACTemperature(_ temperature: Double) {
+    func simulateSetACTemperature(_ temperature: Double) {
         var next = state
         next.acTemperature = temperature
-        super.apply(next)
+        apply(next)
 
         var dash = dashboard
         dash.acTemperatureText = "\(Int(temperature))°C"
-        super.applyDashboard(dash)
+        applyDashboard(dash)
     }
 
-    override func simulateRemoteStart() {
+    func simulateRemoteStart() {
         var next = state
         next.power = next.power == .off ? .ready : .off
-        super.apply(next)
+        apply(next)
 
         var dash = dashboard
         dash.updatedAtText = "刚刚"
-        super.applyDashboard(dash)
+        applyDashboard(dash)
     }
 
-    override func simulateToggleWindows() {
+    func simulateToggleWindows() {
         var next = state
         next.windowsClosed = !(state.windowsClosed ?? false)
-        super.apply(next)
+        apply(next)
 
         var dash = dashboard
         dash.windowStatusText = next.windowsClosed == true ? "全关" : "未关"
-        super.applyDashboard(dash)
+        applyDashboard(dash)
     }
 }
