@@ -337,7 +337,9 @@ struct StatusView: View {
             }
         case .windowToggle:
             mockVehicleState.simulateToggleWindows()
-        case .remoteStart, .findCar:
+        case .remoteStart:
+            mockVehicleState.simulateRemoteStart()
+        case .findCar:
             break
         case .quickCool:
             mockVehicleState.simulateToggleAC()

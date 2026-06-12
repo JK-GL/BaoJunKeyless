@@ -55,6 +55,16 @@ final class MockVehicleStateStore: ObservableObject {
         applyDashboard(dash)
     }
 
+    func simulateRemoteStart() {
+        var next = state
+        next.power = next.power == .off ? .ready : .off
+        apply(next)
+
+        var dash = dashboard
+        dash.updatedAtText = "刚刚"
+        applyDashboard(dash)
+    }
+
     func simulateToggleWindows() {
         var next = state
         next.windowsClosed = !(state.windowsClosed ?? false)
