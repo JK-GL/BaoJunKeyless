@@ -223,3 +223,15 @@ struct StatusPillsSection: View {
         }
     }
 }
+
+extension StatusGearState {
+    init(gear: VehicleGear) {
+        switch gear {
+        case .p: self = .park
+        case .r: self = .reverse
+        case .n: self = .neutral
+        case .d: self = .drive
+        case .unknown: self = .unknown
+        }
+    }
+}

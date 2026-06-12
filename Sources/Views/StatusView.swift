@@ -14,6 +14,7 @@ struct StatusView: View {
     @State private var activeCommand: CommandAction? = nil
     @State private var isEditingAmapKey = false
     @State private var amapKeyDraft = ""
+    @State private var toastText: String? = nil
 
     private var vehicleName: String { "宝骏云海" }
 
@@ -66,7 +67,11 @@ struct StatusView: View {
                         StatusPillsSection(
                             modeIcon: modeIcon,
                             modeText: modeText,
-                            modeColor: modeColor
+                            modeColor: modeColor,
+                            bleStatus: .connected,
+                            doorLockState: mockVehicleState.state.locked == true ? .locked : (mockVehicleState.state.locked == false ? .unlocked : .unknown),
+                            physicalKeyState: mockVehicleState.state.physicalKeyInside == true ? .inCar : (mockVehicleState.state.physicalKeyInside == false ? .normal : .unknown),
+                            gearState: StatusGearState(gear: mockVehicleState.state.gear)
                         )
                     }
 
@@ -179,6 +184,23 @@ struct StatusView: View {
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: activeCommand != nil)
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isAddressFloatingPresented)
+        .overlay(alignment: .bottom) {
+            if let text = toastText {
+                ToastView(text: text)
+                    .padding(.bottom, 100)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            withAnimation { toastText = nil }
+                        }
+                    }
+            }
+        }
+        .onChange(of: quickActionsDebugMode) { enabled in
+            withAnimation {
+                toastText = enabled ? "调试模式已开启" : "调试模式已关闭"
+            }
+        }
     }
 
     @ViewBuilder
@@ -321,29 +343,33 @@ struct StatusView: View {
     }
 
     private func handleQuickActionConfirm(action: CommandAction, temperature: Double?) {
-        guard quickActionsDebugMode else { return }
+        if quickActionsDebugMode {
+            switch action {
+            case .lockUnlock:
+                if mockVehicleState.state.locked == true {
+                    mockVehicleState.simulateUnlock()
+                } else {
+                    mockVehicleState.simulateLock()
+                }
+            case .acToggle:
+                mockVehicleState.simulateToggleAC()
+                if let temperature {
+                    mockVehicleState.simulateSetACTemperature(temperature)
+                }
+            case .windowToggle:
+                mockVehicleState.simulateToggleWindows()
+            case .remoteStart:
+                mockVehicleState.simulateRemoteStart()
+            case .findCar:
+                break
+            case .quickCool:
+                mockVehicleState.simulateToggleAC()
+                mockVehicleState.simulateSetACTemperature(temperature ?? 17)
+            }
+        }
 
-        switch action {
-        case .lockUnlock:
-            if mockVehicleState.state.locked == true {
-                mockVehicleState.simulateUnlock()
-            } else {
-                mockVehicleState.simulateLock()
-            }
-        case .acToggle:
-            mockVehicleState.simulateToggleAC()
-            if let temperature {
-                mockVehicleState.simulateSetACTemperature(temperature)
-            }
-        case .windowToggle:
-            mockVehicleState.simulateToggleWindows()
-        case .remoteStart:
-            mockVehicleState.simulateRemoteStart()
-        case .findCar:
-            break
-        case .quickCool:
-            mockVehicleState.simulateToggleAC()
-            mockVehicleState.simulateSetACTemperature(temperature ?? 17)
+        withAnimation {
+            toastText = "✅ \(action.label(state: mockVehicleState.state))已执行"
         }
     }
 }

@@ -115,7 +115,7 @@ struct CommandConfirmPopup: View {
     @State private var isExecuting = false
     @State private var executionResult: CommandResult? = nil
 
-    enum CommandResult {
+    enum CommandResult: Equatable {
         case success
         case failure(String)
     }
@@ -272,7 +272,7 @@ struct CommandConfirmPopup: View {
 }
 
 // MARK: - 指令结果横幅组件
-private struct PopupCommandResultBanner: View {
+struct PopupCommandResultBanner: View {
     let result: CommandConfirmPopup.CommandResult
 
     var body: some View {
@@ -281,12 +281,14 @@ private struct PopupCommandResultBanner: View {
             case .success:
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundColor(AppTheme.green)
+                    .transition(.scale.combined(with: .opacity))
                 Text("指令已发送")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(AppTheme.green)
             case .failure(let reason):
                 Image(systemName: "xmark.circle.fill")
                     .foregroundColor(AppTheme.red)
+                    .transition(.scale.combined(with: .opacity))
                 Text(reason)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(AppTheme.red)
@@ -299,6 +301,8 @@ private struct PopupCommandResultBanner: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill((result.isSuccess ? AppTheme.green : AppTheme.red).opacity(0.1))
         )
+        .transition(.scale.combined(with: .opacity))
+        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: result)
     }
 }
 
