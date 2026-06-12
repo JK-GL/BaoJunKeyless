@@ -16,7 +16,7 @@ enum CommandAction: String, Identifiable {
         switch self {
         case .lockUnlock:
             return state.locked == true ? "lock.open.fill" : "lock.fill"
-        case .remoteStart:   return "dot.radiowaves.left.and.right"
+        case .remoteStart:   return state.power == .off ? "dot.radiowaves.left.and.right" : "power"
         case .findCar:       return "location.fill"
         case .acToggle:
             return state.acOn == true ? "thermometer.medium" : "snowflake"
@@ -30,7 +30,7 @@ enum CommandAction: String, Identifiable {
         switch self {
         case .lockUnlock:
             return state.locked == true ? "解锁" : "锁车"
-        case .remoteStart:   return "启动"
+        case .remoteStart:   return state.power == .off ? "启动" : "已启动"
         case .findCar:       return "寻车"
         case .acToggle:
             return state.acOn == true ? "关闭空调" : "打开空调"
@@ -56,6 +56,8 @@ enum CommandAction: String, Identifiable {
         switch self {
         case .lockUnlock:
             return state.locked == true ? AppTheme.green : AppTheme.red
+        case .remoteStart:
+            return state.power == .off ? AppTheme.orange : AppTheme.green
         case .acToggle:
             return state.acOn == true ? AppTheme.accent : Color(red: 0.55, green: 0.58, blue: 0.62)
         case .windowToggle:
@@ -70,7 +72,7 @@ enum CommandAction: String, Identifiable {
         switch self {
         case .lockUnlock:
             return state.locked == true ? "确认解锁" : "确认锁车"
-        case .remoteStart:   return "确认启动"
+        case .remoteStart:   return state.power == .off ? "确认启动" : "确认熄火"
         case .findCar:       return "确认寻车"
         case .acToggle:
             return state.acOn == true ? "确认关闭空调" : "确认打开空调"
@@ -84,7 +86,7 @@ enum CommandAction: String, Identifiable {
         switch self {
         case .lockUnlock:
             return state.locked == true ? "将发送解锁指令到车辆" : "将发送锁车指令到车辆"
-        case .remoteStart:   return "需要 PEPS 鉴权，将通过蓝牙发送启动指令"
+        case .remoteStart:   return state.power == .off ? "需要 PEPS 鉴权，将通过蓝牙发送启动指令" : "将发送远程熄火指令"
         case .findCar:       return "车辆将双闪鸣笛，方便定位"
         case .acToggle:
             return state.acOn == true ? "将发送关闭空调指令" : "将发送打开空调指令，可调节设定温度"
