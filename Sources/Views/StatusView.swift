@@ -7,7 +7,7 @@ struct StatusView: View {
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
     @AppStorage(AppDiagnosticsSettings.quickActionsDebugModeKey) private var quickActionsDebugMode = true
     @StateObject private var locationManager = LocationManager()
-    @StateObject private var mockVehicleState = MockVehicleStateStore()
+    @EnvironmentObject var vehicleStore: VehicleStateStore
     @State private var isRefreshing = false
     @State private var refreshScale: CGFloat = 1.0
     @State private var isAddressFloatingPresented = false
@@ -55,13 +55,13 @@ struct StatusView: View {
                         )
 
                         VehicleHeaderSummaryView(
-                            electricRangeKm: mockVehicleState.dashboard.electricRangeKm,
-                            electricFullRangeKm: mockVehicleState.dashboard.electricFullRangeKm,
-                            fuelRangeKm: mockVehicleState.dashboard.fuelRangeKm,
-                            fuelFullRangeKm: mockVehicleState.dashboard.fuelFullRangeKm,
-                            isCharging: mockVehicleState.dashboard.isCharging,
-                            chargingPowerText: mockVehicleState.dashboard.chargingPowerText,
-                            updatedAt: mockVehicleState.dashboard.updatedAtText
+                            electricRangeKm: vehicleStore.dashboard.electricRangeKm,
+                            electricFullRangeKm: vehicleStore.dashboard.electricFullRangeKm,
+                            fuelRangeKm: vehicleStore.dashboard.fuelRangeKm,
+                            fuelFullRangeKm: vehicleStore.dashboard.fuelFullRangeKm,
+                            isCharging: vehicleStore.dashboard.isCharging,
+                            chargingPowerText: vehicleStore.dashboard.chargingPowerText,
+                            updatedAt: vehicleStore.dashboard.updatedAtText
                         )
 
                         StatusPillsSection(
@@ -69,9 +69,9 @@ struct StatusView: View {
                             modeText: modeText,
                             modeColor: modeColor,
                             bleStatus: .connected,
-                            doorLockState: mockVehicleState.state.locked == true ? .locked : (mockVehicleState.state.locked == false ? .unlocked : .unknown),
-                            physicalKeyState: mockVehicleState.state.physicalKeyInside == true ? .inCar : (mockVehicleState.state.physicalKeyInside == false ? .normal : .unknown),
-                            gearState: StatusGearState(gear: mockVehicleState.state.gear)
+                            doorLockState: vehicleStore.state.locked == true ? .locked : (vehicleStore.state.locked == false ? .unlocked : .unknown),
+                            physicalKeyState: vehicleStore.state.physicalKeyInside == true ? .inCar : (vehicleStore.state.physicalKeyInside == false ? .normal : .unknown),
+                            gearState: StatusGearState(gear: vehicleStore.state.gear)
                         )
                     }
 
@@ -87,21 +87,21 @@ struct StatusView: View {
 
                     QuickActionsView(onCommand: { command in
                         activeCommand = command
-                    }, vehicleState: mockVehicleState.state)
+                    }, vehicleState: vehicleStore.state)
 
                     VStack(alignment: .leading, spacing: 16) {
-                        BodyStatusView(dashboard: mockVehicleState.dashboard)
+                        BodyStatusView(dashboard: vehicleStore.dashboard)
                         StatusDashboardPair {
-                            DrivingStatusView(metrics: mockVehicleState.cachedDashboardMetrics.driving)
+                            DrivingStatusView(metrics: vehicleStore.cachedDashboardMetrics.driving)
                         } right: {
-                            BatteryGaugesView(metrics: mockVehicleState.cachedDashboardMetrics.battery)
+                            BatteryGaugesView(metrics: vehicleStore.cachedDashboardMetrics.battery)
                         }
                         StatusDashboardPair {
-                            TemperatureView(metrics: mockVehicleState.cachedDashboardMetrics.temperature)
+                            TemperatureView(metrics: vehicleStore.cachedDashboardMetrics.temperature)
                         } right: {
-                            ChargingStatusView(metrics: mockVehicleState.cachedDashboardMetrics.charging)
+                            ChargingStatusView(metrics: vehicleStore.cachedDashboardMetrics.charging)
                         }
-                        LightingStatusView(metrics: mockVehicleState.cachedDashboardMetrics.lighting)
+                        LightingStatusView(metrics: vehicleStore.cachedDashboardMetrics.lighting)
                         VehicleInfoMergedCard()
 
                         Spacer(minLength: 100)
@@ -137,7 +137,7 @@ struct StatusView: View {
             if let command = activeCommand {
                 CommandConfirmPopup(
                     action: command,
-                    vehicleState: mockVehicleState.state,
+                    vehicleState: vehicleStore.state,
                     isPresented: Binding(
                         get: { activeCommand != nil },
                         set: { if !$0 { activeCommand = nil } }
@@ -302,25 +302,25 @@ struct StatusView: View {
         if quickActionsDebugMode {
             switch action {
             case .lockUnlock:
-                if mockVehicleState.state.locked == true {
-                    mockVehicleState.simulateUnlock()
+                if vehicleStore.state.locked == true {
+                    vehicleStore.simulateUnlock()
                 } else {
-                    mockVehicleState.simulateLock()
+                    vehicleStore.simulateLock()
                 }
             case .acToggle:
-                mockVehicleState.simulateToggleAC()
+                vehicleStore.simulateToggleAC()
                 if let temperature {
-                    mockVehicleState.simulateSetACTemperature(temperature)
+                    vehicleStore.simulateSetACTemperature(temperature)
                 }
             case .windowToggle:
-                mockVehicleState.simulateToggleWindows()
+                vehicleStore.simulateToggleWindows()
             case .remoteStart:
-                mockVehicleState.simulateRemoteStart()
+                vehicleStore.simulateRemoteStart()
             case .findCar:
                 break
             case .quickCool:
-                mockVehicleState.simulateToggleAC()
-                mockVehicleState.simulateSetACTemperature(temperature ?? 17)
+                vehicleStore.simulateToggleAC()
+                vehicleStore.simulateSetACTemperature(temperature ?? 17)
             }
         }
     }

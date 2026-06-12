@@ -1,77 +1,73 @@
 import Foundation
 
 // MARK: - Mock 车辆状态 store（用于 UI 联调）
-final class MockVehicleStateStore: ObservableObject {
-    @Published private(set) var state: VehicleState = .mockSnapshot
-    @Published private(set) var dashboard: VehicleDashboardState = VehicleDashboardState()
-    @Published private(set) var cachedDashboardMetrics: VehicleDashboardMetrics = VehicleDashboardState().metrics
+/// 继承自 VehicleStateStore，添加 mock 模拟方法。
+/// 未来接入真实数据源时，只需替换为 MQTTVehicleStateStore 等子类。
+final class MockVehicleStateStore: VehicleStateStore {
 
-    func apply(_ newState: VehicleState) {
-        state = newState
+    override init() {
+        super.init()
+        apply(.mockSnapshot)
+        applyDashboard(VehicleDashboardState())
     }
 
-    func applyDashboard(_ newDashboard: VehicleDashboardState) {
-        dashboard = newDashboard
-        cachedDashboardMetrics = newDashboard.metrics
-    }
-
-    func simulateUnlock() {
+    override func simulateUnlock() {
         var next = state
         next.locked = false
-        apply(next)
+        super.apply(next)
 
         var dash = dashboard
         dash.lockStatusText = "未锁"
-        applyDashboard(dash)
+        super.applyDashboard(dash)
     }
 
-    func simulateLock() {
+    override func simulateLock() {
         var next = state
         next.locked = true
-        apply(next)
+        super.apply(next)
 
         var dash = dashboard
         dash.lockStatusText = "已锁车"
-        applyDashboard(dash)
+        super.applyDashboard(dash)
     }
 
-    func simulateToggleAC() {
+    override func simulateToggleAC() {
         var next = state
         next.acOn = !(state.acOn ?? false)
-        apply(next)
+        super.apply(next)
 
         var dash = dashboard
         dash.acTemperatureText = "\(Int(next.acTemperature ?? 22))°C"
-        applyDashboard(dash)
+        super.applyDashboard(dash)
     }
 
-    func simulateSetACTemperature(_ temperature: Double) {
+    override func simulateSetACTemperature(_ temperature: Double) {
         var next = state
         next.acTemperature = temperature
-        apply(next)
+        super.apply(next)
 
         var dash = dashboard
         dash.acTemperatureText = "\(Int(temperature))°C"
-        applyDashboard(dash)
+        super.applyDashboard(dash)
     }
 
-    func simulateRemoteStart() {
+    override func simulateRemoteStart() {
         var next = state
         next.power = next.power == .off ? .ready : .off
-        apply(next)
+        super.apply(next)
 
         var dash = dashboard
         dash.updatedAtText = "刚刚"
-        applyDashboard(dash)
+        super.applyDashboard(dash)
     }
 
-    func simulateToggleWindows() {
+    override func simulateToggleWindows() {
         var next = state
         next.windowsClosed = !(state.windowsClosed ?? false)
-        apply(next)
+        super.apply(next)
 
         var dash = dashboard
         dash.windowStatusText = next.windowsClosed == true ? "全关" : "未关"
-        applyDashboard(dash)
+        super.applyDashboard(dash)
     }
 }
