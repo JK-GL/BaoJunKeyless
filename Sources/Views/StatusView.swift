@@ -14,7 +14,7 @@ struct StatusView: View {
     @State private var activeCommand: CommandAction? = nil
     @State private var isEditingAmapKey = false
     @State private var amapKeyDraft = ""
-    @State private var toastText: String? = nil
+
 
     private var vehicleName: String { "宝骏云海" }
 
@@ -184,23 +184,6 @@ struct StatusView: View {
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: activeCommand != nil)
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isAddressFloatingPresented)
-        .overlay(alignment: .bottom) {
-            if let text = toastText {
-                ToastView(text: text)
-                    .padding(.bottom, 100)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                            withAnimation { toastText = nil }
-                        }
-                    }
-            }
-        }
-        .onChange(of: quickActionsDebugMode) { enabled in
-            withAnimation {
-                toastText = enabled ? "调试模式已开启" : "调试模式已关闭"
-            }
-        }
     }
 
     @ViewBuilder
@@ -366,10 +349,6 @@ struct StatusView: View {
                 mockVehicleState.simulateToggleAC()
                 mockVehicleState.simulateSetACTemperature(temperature ?? 17)
             }
-        }
-
-        withAnimation {
-            toastText = "✅ \(action.label(state: mockVehicleState.state))已执行"
         }
     }
 }

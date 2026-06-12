@@ -153,29 +153,8 @@ struct CommandConfirmPopup: View {
                 }
             }
         } actions: {
-            VStack(spacing: 8) {
-                if executedState != nil {
-                    // 执行完成：显示完成提示
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 15))
-                            .foregroundColor(AppTheme.green)
-                        Text("已执行")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(.white)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(
-                        Capsule()
-                            .fill(AppTheme.green.opacity(0.15))
-                            .overlay(
-                                Capsule()
-                                    .stroke(AppTheme.green.opacity(0.25), lineWidth: 1)
-                            )
-                    )
-                } else {
-                    // 执行前：显示确认按钮
+            if executedState == nil {
+                VStack(spacing: 8) {
                     FloatingPopupPrimaryButton(
                         title: isExecuting ? "执行中…" : action.confirmTitle(state: vehicleState),
                         color: accentColor,
