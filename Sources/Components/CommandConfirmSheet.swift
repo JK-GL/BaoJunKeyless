@@ -11,21 +11,21 @@ enum CommandAction: String, Identifiable {
 
     var id: String { rawValue }
 
-    /// 执行成功后按钮标题（绿色 ✓）
+    /// 执行成功后按钮标题（官方风格）
     func successTitle(state: VehicleState) -> String {
         switch self {
         case .lockUnlock:
-            return state.locked == true ? "已锁车 ✓" : "已解锁 ✓"
+            return state.locked == true ? "车辆已锁车 ✓" : "车辆已解锁 ✓"
         case .remoteStart:
-            return state.power == .off ? "已熄火 ✓" : "已启动 ✓"
+            return state.power == .off ? "已远程熄火 ✓" : "车辆已启动 ✓"
         case .findCar:
-            return "已寻车 ✓"
+            return "已触发寻车 ✓"
         case .acToggle:
-            return state.acOn == true ? "空调已开 ✓" : "空调已关 ✓"
+            return state.acOn == true ? "空调已关闭 ✓" : "空调已开启 ✓"
         case .windowToggle:
-            return state.windowsClosed == true ? "车窗已关 ✓" : "车窗已开 ✓"
+            return state.windowsClosed == true ? "车窗已关闭 ✓" : "车窗已打开 ✓"
         case .quickCool:
-            return "快速降温已开 ✓"
+            return "快速降温已开启 ✓"
         }
     }
 
@@ -85,32 +85,33 @@ enum CommandAction: String, Identifiable {
         }
     }
 
-    /// 确认弹窗标题
+    /// 确认弹窗标题（官方风格）
     func confirmTitle(state: VehicleState) -> String {
         switch self {
         case .lockUnlock:
-            return state.locked == true ? "确认解锁" : "确认锁车"
-        case .remoteStart:   return state.power == .off ? "确认启动" : "确认熄火"
-        case .findCar:       return "确认寻车"
+            return state.locked == true ? "解锁车辆" : "锁车"
+        case .remoteStart:   return state.power == .off ? "远程启动" : "远程熄火"
+        case .findCar:       return "寻车"
         case .acToggle:
-            return state.acOn == true ? "确认关闭空调" : "确认打开空调"
+            return state.acOn == true ? "关闭空调" : "开启空调"
         case .windowToggle:
-            return state.windowsClosed == false ? "确认关窗" : "确认开窗"
-        case .quickCool:     return "确认快速降温"
+            return state.windowsClosed == false ? "关闭车窗" : "打开车窗"
+        case .quickCool:     return "快速降温"
         }
     }
 
+    /// 确认弹窗副标题（官方风格）
     func confirmMessage(state: VehicleState) -> String {
         switch self {
         case .lockUnlock:
-            return state.locked == true ? "将发送解锁指令到车辆" : "将发送锁车指令到车辆"
-        case .remoteStart:   return state.power == .off ? "需要 PEPS 鉴权，将通过蓝牙发送启动指令" : "将发送远程熄火指令"
-        case .findCar:       return "车辆将双闪鸣笛，方便定位"
+            return state.locked == true ? "车辆将远程解锁，车门锁会解除" : "车辆将远程上锁，确保车门已关闭"
+        case .remoteStart:   return state.power == .off ? "通过蓝牙鉴权，远程启动发动机" : "车辆将远程熄火，发动机停止运转"
+        case .findCar:       return "车辆将双闪鸣笛，方便您定位"
         case .acToggle:
-            return state.acOn == true ? "将发送关闭空调指令" : "将发送打开空调指令，可调节设定温度"
+            return state.acOn == true ? "关闭空调压缩机，停止送风" : "开启空调，可调节设定温度"
         case .windowToggle:
-            return state.windowsClosed == false ? "将发送关闭车窗指令" : "将发送打开车窗指令"
-        case .quickCool:     return "17°C · 风量 7 · 10 分钟"
+            return state.windowsClosed == false ? "关闭全部车窗，确保安全" : "打开全部车窗，便于通风"
+        case .quickCool:     return "一键降温至 17°C · 风量 7 · 持续 10 分钟"
         }
     }
 
