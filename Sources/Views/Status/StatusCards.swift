@@ -89,6 +89,7 @@ struct VehicleHeaderSummaryView: View {
 
     private let totalBlockWidth: CGFloat = 86
     private let barHeight: CGFloat = 4
+    private let rowSpacing: CGFloat = 3
     private let columnSpacing: CGFloat = 12
 
     private var totalRangeKm: Int {
@@ -107,25 +108,27 @@ struct VehicleHeaderSummaryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // 第 1 行：电量/油量文字 + 右侧留空
-            HStack(alignment: .bottom, spacing: columnSpacing) {
+            ZStack(alignment: .bottomLeading) {
+                // 底层：文字行 + 进度条行，左列留空
+                VStack(alignment: .leading, spacing: rowSpacing) {
+                    HStack(alignment: .bottom, spacing: columnSpacing) {
+                        Spacer().frame(width: totalBlockWidth)
+                        energyHeader(title: "电量", rangeKm: electricRangeKm, percent: electricPercent, color: AppTheme.accent)
+                            .frame(maxWidth: .infinity, alignment: .bottomLeading)
+                        energyHeader(title: "油量", rangeKm: fuelRangeKm, percent: fuelPercent, color: AppTheme.orange)
+                            .frame(maxWidth: .infinity, alignment: .bottomLeading)
+                    }
+
+                    HStack(alignment: .bottom, spacing: columnSpacing) {
+                        Spacer().frame(width: totalBlockWidth)
+                        energyBar(percent: electricPercent, color: AppTheme.accent)
+                        energyBar(percent: fuelPercent, color: AppTheme.orange)
+                    }
+                }
+
+                // 上层：综合续航数字，底部与进度条行对齐
                 totalRangeTextRow
-                    .frame(width: totalBlockWidth)
-
-                energyHeader(title: "电量", rangeKm: electricRangeKm, percent: electricPercent, color: AppTheme.accent)
-                    .frame(maxWidth: .infinity, alignment: .bottomLeading)
-
-                energyHeader(title: "油量", rangeKm: fuelRangeKm, percent: fuelPercent, color: AppTheme.orange)
-                    .frame(maxWidth: .infinity, alignment: .bottomLeading)
-            }
-
-            // 第 2 行：综合续航底部 = 进度条底部
-            HStack(alignment: .bottom, spacing: columnSpacing) {
-                totalRangeTextRow
-                    .frame(width: totalBlockWidth)
-
-                energyBar(percent: electricPercent, color: AppTheme.accent)
-                energyBar(percent: fuelPercent, color: AppTheme.orange)
+                    .frame(width: totalBlockWidth, alignment: .bottomLeading)
             }
 
             if isCharging {
