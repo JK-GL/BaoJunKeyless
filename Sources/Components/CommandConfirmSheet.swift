@@ -113,12 +113,7 @@ struct CommandConfirmPopup: View {
 
     @State private var temperature: Double
     @State private var isExecuting = false
-    @State private var executionResult: CommandResult? = nil
-
-    enum CommandResult: Equatable {
-        case success
-        case failure(String)
-    }
+    @State private var executedState: VehicleState? = nil
 
     init(action: CommandAction, vehicleState: VehicleState, isPresented: Binding<Bool>, onConfirm: @escaping (CommandAction, Double?) -> Void) {
         self.action = action
@@ -128,22 +123,27 @@ struct CommandConfirmPopup: View {
         self._temperature = State(initialValue: vehicleState.acTemperature ?? (action == .quickCool ? 17 : 22))
     }
 
+    /// 执行后显示新状态，否则显示原始状态
+    private var displayState: VehicleState {
+        executedState ?? vehicleState
+    }
+
     private var accentColor: Color {
-        action.resolvedColor(state: vehicleState)
+        action.resolvedColor(state: displayState)
     }
 
     var body: some View {
         FloatingPopupCard(
-            icon: action.icon(state: vehicleState),
+            icon: action.icon(state: displayState),
             iconColor: accentColor,
-            title: action.label(state: vehicleState),
-            subtitle: action.confirmMessage(state: vehicleState),
+            title: action.label(state: displayState),
+            subtitle: executedState != nil ? "状态已更新" : action.confirmMessage(state: vehicleState),
             onClose: { withAnimation(.easeOut(duration: 0.2)) { isPresented = false } }
         ) {
             VStack(spacing: 12) {
                 PopupStatusSummaryView(items: statusItemsForCurrentAction)
 
-                if action.needsTemperatureSlider {
+                if action.needsTemperatureSlider && executedState == nil {
                     PopupTemperatureSlider(
                         title: "设定温度",
                         temperature: $temperature,
@@ -151,48 +151,68 @@ struct CommandConfirmPopup: View {
                         tint: accentColor
                     )
                 }
-
-                if let result = executionResult {
-                    PopupCommandResultBanner(result: result)
-                }
             }
         } actions: {
             VStack(spacing: 8) {
-                FloatingPopupPrimaryButton(
-                    title: isExecuting ? "执行中…" : action.confirmTitle(state: vehicleState),
-                    color: accentColor,
-                    isLoading: isExecuting,
-                    isDisabled: isExecuting,
-                    action: executeCommand
-                )
+                if executedState != nil {
+                    // 执行完成：显示完成提示
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 15))
+                            .foregroundColor(AppTheme.green)
+                        Text("已执行")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        Capsule()
+                            .fill(AppTheme.green.opacity(0.15))
+                            .overlay(
+                                Capsule()
+                                    .stroke(AppTheme.green.opacity(0.25), lineWidth: 1)
+                            )
+                    )
+                } else {
+                    // 执行前：显示确认按钮
+                    FloatingPopupPrimaryButton(
+                        title: isExecuting ? "执行中…" : action.confirmTitle(state: vehicleState),
+                        color: accentColor,
+                        isLoading: isExecuting,
+                        isDisabled: isExecuting,
+                        action: executeCommand
+                    )
 
-                FloatingPopupSecondaryButton(
-                    title: "取消",
-                    textColor: Color.white.opacity(0.6)
-                ) {
-                    withAnimation(.easeOut(duration: 0.2)) { isPresented = false }
+                    FloatingPopupSecondaryButton(
+                        title: "取消",
+                        textColor: Color.white.opacity(0.6)
+                    ) {
+                        withAnimation(.easeOut(duration: 0.2)) { isPresented = false }
+                    }
                 }
             }
         }
     }
 
     private var statusItemsForCurrentAction: [PopupStatusItem] {
+        let state = displayState
         switch action {
         case .lockUnlock:
             return [
-                PopupStatusItem(icon: vehicleState.locked == true ? "lock.fill" : "lock.open.fill",
-                                label: "车锁", value: vehicleState.locked == true ? "已锁" : "未锁",
-                                color: vehicleState.locked == true ? AppTheme.green : AppTheme.red),
+                PopupStatusItem(icon: state.locked == true ? "lock.fill" : "lock.open.fill",
+                                label: "车锁", value: state.locked == true ? "已锁" : "未锁",
+                                color: state.locked == true ? AppTheme.green : AppTheme.red),
                 PopupStatusItem(icon: "gearshape.fill", label: "档位",
-                                value: vehicleState.gear.title, color: AppTheme.accent),
+                                value: state.gear.title, color: AppTheme.accent),
                 PopupStatusItem(icon: "car.fill", label: "车门",
-                                value: vehicleState.doorsClosed == true ? "全关" : "未关",
-                                color: vehicleState.doorsClosed == true ? AppTheme.green : AppTheme.orange)
+                                value: state.doorsClosed == true ? "全关" : "未关",
+                                color: state.doorsClosed == true ? AppTheme.green : AppTheme.orange)
             ]
         case .remoteStart:
             let startStatusText: String
             let startStatusColor: Color
-            switch vehicleState.power {
+            switch state.power {
             case .off, .acc:
                 startStatusText = "待启动"
                 startStatusColor = AppTheme.orange
@@ -205,32 +225,32 @@ struct CommandConfirmPopup: View {
             }
             return [
                 PopupStatusItem(icon: "key.fill", label: "电源",
-                                value: vehicleState.power.title, color: AppTheme.orange),
+                                value: state.power.title, color: AppTheme.orange),
                 PopupStatusItem(icon: "dot.radiowaves.left.and.right", label: "启动",
                                 value: startStatusText, color: startStatusColor),
                 PopupStatusItem(icon: "gearshape.fill", label: "档位",
-                                value: vehicleState.gear.title, color: AppTheme.accent)
+                                value: state.gear.title, color: AppTheme.accent)
             ]
         case .findCar:
             return []
         case .acToggle:
             return [
-                PopupStatusItem(icon: vehicleState.acOn == true ? "thermometer.medium" : "snowflake",
+                PopupStatusItem(icon: state.acOn == true ? "thermometer.medium" : "snowflake",
                                 label: "空调",
-                                value: vehicleState.acOn == true ? "已开" : "已关",
-                                color: vehicleState.acOn == true ? AppTheme.green : AppTheme.accent),
+                                value: state.acOn == true ? "已开" : "已关",
+                                color: state.acOn == true ? AppTheme.green : AppTheme.accent),
                 PopupStatusItem(icon: "thermometer", label: "设定温度",
                                 value: "\(Int(temperature))°C", color: AppTheme.accent)
             ]
         case .windowToggle:
             return [
-                PopupStatusItem(icon: vehicleState.windowsClosed == false ? "rectangle.split.2x2" : "rectangle.split.2x2.fill",
+                PopupStatusItem(icon: state.windowsClosed == false ? "rectangle.split.2x2" : "rectangle.split.2x2.fill",
                                 label: "车窗",
-                                value: vehicleState.windowsClosed == true ? "已关" : "未关",
-                                color: vehicleState.windowsClosed == true ? AppTheme.green : AppTheme.orange),
+                                value: state.windowsClosed == true ? "已关" : "未关",
+                                color: state.windowsClosed == true ? AppTheme.green : AppTheme.orange),
                 PopupStatusItem(icon: "car.fill", label: "车门",
-                                value: vehicleState.doorsClosed == true ? "全关" : "未关",
-                                color: vehicleState.doorsClosed == true ? AppTheme.green : AppTheme.orange)
+                                value: state.doorsClosed == true ? "全关" : "未关",
+                                color: state.doorsClosed == true ? AppTheme.green : AppTheme.orange)
             ]
         case .quickCool:
             return [
@@ -242,6 +262,28 @@ struct CommandConfirmPopup: View {
         }
     }
 
+    /// 根据动作类型，模拟执行后的车辆状态
+    private func vehicleStateAfterAction(_ action: CommandAction, temperature: Double?) -> VehicleState {
+        var newState = vehicleState
+        switch action {
+        case .lockUnlock:
+            newState.locked = !(vehicleState.locked ?? true)
+        case .remoteStart:
+            newState.power = vehicleState.power == .off ? .ready : .off
+        case .acToggle:
+            newState.acOn = !(vehicleState.acOn ?? false)
+            if let t = temperature { newState.acTemperature = t }
+        case .windowToggle:
+            newState.windowsClosed = !(vehicleState.windowsClosed ?? true)
+        case .quickCool:
+            newState.acOn = true
+            newState.acTemperature = temperature ?? 17
+        case .findCar:
+            break
+        }
+        return newState
+    }
+
     private func executeCommand() {
         guard !isExecuting else { return }
 
@@ -249,66 +291,26 @@ struct CommandConfirmPopup: View {
         impact.impactOccurred()
 
         isExecuting = true
-        executionResult = nil
-
         let temperatureToUse = temperature
         let label = action.label(state: vehicleState)
 
         vehicleLog.add(.action, "发送指令", detail: "\(label) \(action.needsTemperatureSlider ? "\(Int(temperatureToUse))°C" : "")")
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             isExecuting = false
-            executionResult = .success
+            // 执行完成，切换到新状态
+            executedState = vehicleStateAfterAction(action, temperature: temperatureToUse)
             VibrationPattern.longShortDouble.play(intensity: 0.7)
-            vehicleLog.add(.action, "指令成功", detail: "\(label) \(action.needsTemperatureSlider ? "\(Int(temperatureToUse))°C" : "")")
+            vehicleLog.add(.action, "指令成功", detail: "\(action.label(state: vehicleStateAfterAction(action, temperature: temperatureToUse)))")
 
+            onConfirm(action, action.needsTemperatureSlider ? temperatureToUse : nil)
+
+            // 1.5 秒后自动关闭
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 withAnimation(.easeOut(duration: 0.2)) { isPresented = false }
             }
-
-            onConfirm(action, action.needsTemperatureSlider ? temperatureToUse : nil)
         }
     }
 }
 
-// MARK: - 指令结果横幅组件
-struct PopupCommandResultBanner: View {
-    let result: CommandConfirmPopup.CommandResult
 
-    var body: some View {
-        HStack(spacing: 8) {
-            switch result {
-            case .success:
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(AppTheme.green)
-                    .transition(.scale.combined(with: .opacity))
-                Text("指令已发送")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(AppTheme.green)
-            case .failure(let reason):
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(AppTheme.red)
-                    .transition(.scale.combined(with: .opacity))
-                Text(reason)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(AppTheme.red)
-                    .lineLimit(2)
-            }
-            Spacer()
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill((result.isSuccess ? AppTheme.green : AppTheme.red).opacity(0.1))
-        )
-        .transition(.scale.combined(with: .opacity))
-        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: result)
-    }
-}
-
-private extension CommandConfirmPopup.CommandResult {
-    var isSuccess: Bool {
-        if case .success = self { return true }
-        return false
-    }
-}
