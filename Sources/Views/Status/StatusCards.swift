@@ -110,12 +110,7 @@ struct VehicleHeaderSummaryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .bottom, spacing: columnSpacing) {
-                totalRangeTextRow
-                    .frame(
-                        width: totalBlockWidth,
-                        height: topRowHeight + rowSpacing + barHeight,
-                        alignment: .bottomLeading
-                    )
+                totalRangeColumn
 
                 VStack(alignment: .leading, spacing: rowSpacing) {
                     HStack(alignment: .bottom, spacing: columnSpacing) {
@@ -163,6 +158,17 @@ struct VehicleHeaderSummaryView: View {
                 .foregroundStyle(Color.white.opacity(0.42))
         }
         .padding(.horizontal, 20)
+    }
+
+    private var totalRangeColumn: some View {
+        VStack(alignment: .leading, spacing: rowSpacing) {
+            totalRangeTextRow
+                .frame(height: topRowHeight, alignment: .bottomLeading)
+
+            Color.clear
+                .frame(height: barHeight)
+        }
+        .frame(width: totalBlockWidth, alignment: .bottomLeading)
     }
 
     private var totalRangeTextRow: some View {
