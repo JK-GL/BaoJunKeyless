@@ -4,7 +4,7 @@ import Combine
 // MARK: - 统一车辆状态 Store
 /// 所有车辆状态数据的唯一来源。
 /// 子类化以接入真实数据源（MQTT / BLE），StatusView 无需改动。
-final class VehicleStateStore: ObservableObject {
+class VehicleStateStore: ObservableObject {
     @Published private(set) var state: VehicleState = .placeholder
     @Published private(set) var dashboard: VehicleDashboardState = VehicleDashboardState()
     @Published private(set) var cachedDashboardMetrics: VehicleDashboardMetrics = VehicleDashboardState().metrics
