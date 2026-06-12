@@ -89,7 +89,7 @@ struct VehicleHeaderSummaryView: View {
 
     private let totalBlockWidth: CGFloat = 86
     private let barHeight: CGFloat = 4
-    private let rowSpacing: CGFloat = 3
+    private let rowSpacing: CGFloat = 1
     private let columnSpacing: CGFloat = 12
 
     private var totalRangeKm: Int {
