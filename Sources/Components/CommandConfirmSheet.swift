@@ -1,5 +1,36 @@
 import SwiftUI
 
+// MARK: - 执行结果
+enum CommandResult {
+    case success
+    case failure
+    case timeout
+
+    var color: Color {
+        switch self {
+        case .success:  return AppTheme.green
+        case .failure:  return AppTheme.red
+        case .timeout:  return AppTheme.orange
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .success:  return "执行成功"
+        case .failure:  return "执行失败"
+        case .timeout:  return "连接超时"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .success:  return "状态已更新"
+        case .failure:  return "指令未成功，请稍后重试"
+        case .timeout:  return "车辆未响应，请检查网络后重试"
+        }
+    }
+}
+
 // MARK: - 车控指令类型
 enum CommandAction: String, Identifiable {
     case lockUnlock     // 解锁/锁车（状态联动）
@@ -10,6 +41,15 @@ enum CommandAction: String, Identifiable {
     case quickCool      // 快速降温
 
     var id: String { rawValue }
+
+    /// 执行失败按钮标题
+    func failureTitle(result: CommandResult) -> String {
+        switch result {
+        case .failure:  return "执行失败"
+        case .timeout:  return "连接超时"
+        default:        return "执行失败"
+        }
+    }
 
     /// 执行成功后按钮标题（官方风格）
     func successTitle(state: VehicleState) -> String {
@@ -133,6 +173,7 @@ struct CommandConfirmPopup: View {
     @State private var temperature: Double
     @State private var isExecuting = false
     @State private var executedState: VehicleState? = nil
+    @State private var commandResult: CommandResult? = nil
 
     init(action: CommandAction, vehicleState: VehicleState, isPresented: Binding<Bool>, onConfirm: @escaping (CommandAction, Double?) -> Void) {
         self.action = action
@@ -151,18 +192,43 @@ struct CommandConfirmPopup: View {
         action.resolvedColor(state: displayState)
     }
 
+    private var resultSubtitle: String {
+        if let result = commandResult {
+            return result.message
+        }
+        return action.confirmMessage(state: vehicleState)
+    }
+
+    private var resultIcon: String {
+        if let result = commandResult {
+            switch result {
+            case .success:  return "checkmark.circle.fill"
+            case .failure:  return "xmark.circle.fill"
+            case .timeout:  return "wifi.slash"
+            }
+        }
+        return action.icon(state: displayState)
+    }
+
+    private var resultColor: Color {
+        if let result = commandResult {
+            return result.color
+        }
+        return accentColor
+    }
+
     var body: some View {
         FloatingPopupCard(
-            icon: action.icon(state: displayState),
-            iconColor: accentColor,
+            icon: resultIcon,
+            iconColor: resultColor,
             title: action.label(state: displayState),
-            subtitle: executedState != nil ? "状态已更新" : action.confirmMessage(state: vehicleState),
+            subtitle: resultSubtitle,
             onClose: { withAnimation(.easeOut(duration: 0.2)) { isPresented = false } }
         ) {
             VStack(spacing: 12) {
                 PopupStatusSummaryView(items: statusItemsForCurrentAction)
 
-                if action.needsTemperatureSlider && executedState == nil {
+                if action.needsTemperatureSlider && commandResult == nil {
                     PopupTemperatureSlider(
                         title: "设定温度",
                         temperature: $temperature,
@@ -172,11 +238,11 @@ struct CommandConfirmPopup: View {
                 }
             }
         } actions: {
-            if let result = executedState {
-                // 执行后：绿色成功按钮（disabled，不可再点）
+            if let result = commandResult {
+                // 执行后：结果按钮（disabled）
                 FloatingPopupPrimaryButton(
-                    title: action.successTitle(state: result),
-                    color: AppTheme.green,
+                    title: result == .success ? action.successTitle(state: executedState ?? vehicleState) : action.failureTitle(result: result),
+                    color: result.color,
                     isLoading: false,
                     isDisabled: true,
                     action: {}
@@ -305,14 +371,24 @@ struct CommandConfirmPopup: View {
 
         vehicleLog.add(.action, "发送指令", detail: "\(label) \(action.needsTemperatureSlider ? "\(Int(temperatureToUse))°C" : "")")
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        // Mock: 模拟执行延迟 + 随机成功/失败/超时
+        let delay: Double = Double.random(in: 0.8...1.5)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             isExecuting = false
-            // 执行完成，切换到新状态
-            executedState = vehicleStateAfterAction(action, temperature: temperatureToUse)
-            VibrationPattern.longShortDouble.play(intensity: 0.7)
-            vehicleLog.add(.action, "指令成功", detail: "\(action.label(state: vehicleStateAfterAction(action, temperature: temperatureToUse)))")
 
-            onConfirm(action, action.needsTemperatureSlider ? temperatureToUse : nil)
+            // Mock 结果：90% 成功，10% 失败
+            let mockResult: CommandResult = Bool.random() && Int.random(in: 0...9) == 0 ? .failure : .success
+            commandResult = mockResult
+
+            if mockResult == .success {
+                executedState = vehicleStateAfterAction(action, temperature: temperatureToUse)
+                VibrationPattern.longShortDouble.play(intensity: 0.7)
+                vehicleLog.add(.action, "指令成功", detail: "\(action.label(state: vehicleStateAfterAction(action, temperature: temperatureToUse)))")
+                onConfirm(action, action.needsTemperatureSlider ? temperatureToUse : nil)
+            } else {
+                VibrationPattern.shortSingle.play(intensity: 0.5)
+                vehicleLog.add(.error, "指令失败", detail: "\(label) \(mockResult == .timeout ? "连接超时" : "执行失败")")
+            }
 
             // 2.5 秒后自动关闭
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
