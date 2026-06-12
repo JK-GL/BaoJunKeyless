@@ -108,27 +108,28 @@ struct VehicleHeaderSummaryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            ZStack(alignment: .bottomLeading) {
-                // 底层：文字行 + 进度条行，左列留空
+            HStack(alignment: .firstTextBaseline, spacing: columnSpacing) {
+                totalRangeTextRow
+                    .frame(width: totalBlockWidth, alignment: .leading)
+
                 VStack(alignment: .leading, spacing: rowSpacing) {
-                    HStack(alignment: .bottom, spacing: columnSpacing) {
-                        Spacer().frame(width: totalBlockWidth)
+                    HStack(alignment: .firstTextBaseline, spacing: columnSpacing) {
                         energyHeader(title: "电量", rangeKm: electricRangeKm, percent: electricPercent, color: AppTheme.accent)
-                            .frame(maxWidth: .infinity, alignment: .bottomLeading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         energyHeader(title: "油量", rangeKm: fuelRangeKm, percent: fuelPercent, color: AppTheme.orange)
-                            .frame(maxWidth: .infinity, alignment: .bottomLeading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
                     HStack(alignment: .bottom, spacing: columnSpacing) {
-                        Spacer().frame(width: totalBlockWidth)
                         energyBar(percent: electricPercent, color: AppTheme.accent)
                         energyBar(percent: fuelPercent, color: AppTheme.orange)
                     }
                 }
-
-                // 上层：综合续航数字，底部与进度条行对齐
-                totalRangeTextRow
-                    .frame(width: totalBlockWidth, alignment: .bottomLeading)
+                // 让右侧能量块的“底部”（进度条底部）参与 firstTextBaseline 对齐。
+                // 这样 820km 的文字基线/视觉底部 ≈ 进度条底部。
+                .alignmentGuide(.firstTextBaseline) { dimension in
+                    dimension[VerticalAlignment.bottom]
+                }
             }
 
             if isCharging {

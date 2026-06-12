@@ -46,7 +46,7 @@ struct StatusView: View {
         ZStack {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 6) {
                         StatusTopBarSection(
                             vehicleName: vehicleName,
                             isRefreshing: isRefreshing,
