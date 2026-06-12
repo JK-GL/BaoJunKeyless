@@ -5,13 +5,8 @@ import Foundation
 /// 未来接入真实数据源时，只需替换为 MQTTVehicleStateStore 等子类。
 final class MockVehicleStateStore: VehicleStateStore {
 
-    override init() {
-        super.init()
-        // 直接赋值，不在 init 中通过 apply() 触发 @Published 更新
-        state = .mockSnapshot
-        let dash = VehicleDashboardState()
-        dashboard = dash
-        cachedDashboardMetrics = dash.metrics
+    init(initialDashboard: VehicleDashboardState = VehicleDashboardState()) {
+        super.init(state: .mockSnapshot, dashboard: initialDashboard)
     }
 
     override func simulateUnlock() {

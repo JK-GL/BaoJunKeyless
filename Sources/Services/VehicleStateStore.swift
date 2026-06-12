@@ -13,9 +13,18 @@ protocol VehicleStateReader: ObservableObject {
 /// 所有车辆状态数据的唯一来源。
 /// 子类化以接入真实数据源（MQTT / BLE），StatusView 无需改动。
 class VehicleStateStore: ObservableObject, VehicleStateReader {
-    @Published internal(set) var state: VehicleState = .placeholder
-    @Published internal(set) var dashboard: VehicleDashboardState = VehicleDashboardState()
-    @Published internal(set) var cachedDashboardMetrics: VehicleDashboardMetrics = VehicleDashboardState().metrics
+    @Published internal(set) var state: VehicleState
+    @Published internal(set) var dashboard: VehicleDashboardState
+    @Published internal(set) var cachedDashboardMetrics: VehicleDashboardMetrics
+
+    init(
+        state: VehicleState = .placeholder,
+        dashboard: VehicleDashboardState = VehicleDashboardState()
+    ) {
+        self.state = state
+        self.dashboard = dashboard
+        self.cachedDashboardMetrics = dashboard.metrics
+    }
 
     func apply(_ newState: VehicleState) {
         state = newState
