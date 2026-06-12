@@ -1,0 +1,241 @@
+﻿2026-06-07T13:04:09.2588600Z Current runner version: '2.334.0'
+2026-06-07T13:04:09.2609630Z ##[group]Runner Image Provisioner
+2026-06-07T13:04:09.2610270Z Hosted Compute Agent
+2026-06-07T13:04:09.2610650Z Version: 20260520.533
+2026-06-07T13:04:09.2611050Z Commit: 189110e25284a9812c124fd27b339e2fb4f2f9db
+2026-06-07T13:04:09.2611520Z Build Date: 2026-05-20T17:44:04Z
+2026-06-07T13:04:09.2611950Z Worker ID: {31e95d88-1aac-44f7-9328-0534e27a7653}
+2026-06-07T13:04:09.2612450Z Azure Region: westus
+2026-06-07T13:04:09.2612810Z ##[endgroup]
+2026-06-07T13:04:09.2613880Z ##[group]Operating System
+2026-06-07T13:04:09.2614260Z macOS
+2026-06-07T13:04:09.2614580Z 15.7.7
+2026-06-07T13:04:09.2614920Z 24G720
+2026-06-07T13:04:09.2615280Z ##[endgroup]
+2026-06-07T13:04:09.2615620Z ##[group]Runner Image
+2026-06-07T13:04:09.2616080Z Image: macos-15-arm64
+2026-06-07T13:04:09.2616450Z Version: 20260527.0100.1
+2026-06-07T13:04:09.2617330Z Included Software: https://github.com/actions/runner-images/blob/macos-15-arm64/20260527.0100/images/macos/macos-15-arm64-Readme.md
+2026-06-07T13:04:09.2618330Z Image Release: https://github.com/actions/runner-images/releases/tag/macos-15-arm64%2F20260527.0100
+2026-06-07T13:04:09.2618960Z ##[endgroup]
+2026-06-07T13:04:09.2619770Z ##[group]GITHUB_TOKEN Permissions
+2026-06-07T13:04:09.2621150Z Contents: read
+2026-06-07T13:04:09.2621530Z Metadata: read
+2026-06-07T13:04:09.2621890Z Packages: read
+2026-06-07T13:04:09.2622270Z ##[endgroup]
+2026-06-07T13:04:09.2624170Z Secret source: Actions
+2026-06-07T13:04:09.2624640Z Prepare workflow directory
+2026-06-07T13:04:09.2972550Z Prepare all required actions
+2026-06-07T13:04:09.3005260Z Getting action download info
+2026-06-07T13:04:09.8801740Z Download action repository 'actions/checkout@v4' (SHA:34e114876b0b11c390a56381ad16ebd13914f8d5)
+2026-06-07T13:04:10.1562020Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-06-07T13:04:10.4529540Z Complete job name: build
+2026-06-07T13:04:10.5166920Z ##[group]Run actions/checkout@v4
+2026-06-07T13:04:10.5167750Z with:
+2026-06-07T13:04:10.5168110Z   repository: JK-GL/BaoJunKeyless
+2026-06-07T13:04:10.5171920Z   token: ***
+2026-06-07T13:04:10.5172280Z   ssh-strict: true
+2026-06-07T13:04:10.5172620Z   ssh-user: git
+2026-06-07T13:04:10.5172950Z   persist-credentials: true
+2026-06-07T13:04:10.5173300Z   clean: true
+2026-06-07T13:04:10.5173640Z   sparse-checkout-cone-mode: true
+2026-06-07T13:04:10.5174020Z   fetch-depth: 1
+2026-06-07T13:04:10.5174360Z   fetch-tags: false
+2026-06-07T13:04:10.5174680Z   show-progress: true
+2026-06-07T13:04:10.5175180Z   lfs: false
+2026-06-07T13:04:10.5175490Z   submodules: false
+2026-06-07T13:04:10.5175850Z   set-safe-directory: true
+2026-06-07T13:04:10.5176630Z ##[endgroup]
+2026-06-07T13:04:11.1621560Z Syncing repository: JK-GL/BaoJunKeyless
+2026-06-07T13:04:11.1623400Z ##[group]Getting Git version info
+2026-06-07T13:04:11.1624070Z Working directory is '/Users/runner/work/BaoJunKeyless/BaoJunKeyless'
+2026-06-07T13:04:11.1625920Z [command]/opt/homebrew/bin/git version
+2026-06-07T13:04:11.2090360Z git version 2.54.0
+2026-06-07T13:04:11.2149050Z ##[endgroup]
+2026-06-07T13:04:11.2163310Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/8d4e1395-e4e9-4492-8672-8c5f977724fa/.gitconfig'
+2026-06-07T13:04:11.2183530Z Temporarily overriding HOME='/Users/runner/work/_temp/8d4e1395-e4e9-4492-8672-8c5f977724fa' before making global git config changes
+2026-06-07T13:04:11.2196080Z Adding repository directory to the temporary git global config as a safe directory
+2026-06-07T13:04:11.2203390Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/BaoJunKeyless/BaoJunKeyless
+2026-06-07T13:04:11.2376640Z Deleting the contents of '/Users/runner/work/BaoJunKeyless/BaoJunKeyless'
+2026-06-07T13:04:11.2381490Z ##[group]Initializing the repository
+2026-06-07T13:04:11.2386300Z [command]/opt/homebrew/bin/git init /Users/runner/work/BaoJunKeyless/BaoJunKeyless
+2026-06-07T13:04:11.2754630Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-06-07T13:04:11.2756690Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-06-07T13:04:11.2757810Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-06-07T13:04:11.2758610Z hint: call:
+2026-06-07T13:04:11.2759140Z hint:
+2026-06-07T13:04:11.2759910Z hint: 	git config --global init.defaultBranch <name>
+2026-06-07T13:04:11.2760530Z hint:
+2026-06-07T13:04:11.2761200Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-06-07T13:04:11.2765440Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-06-07T13:04:11.2791350Z hint:
+2026-06-07T13:04:11.2792060Z hint: 	git branch -m <name>
+2026-06-07T13:04:11.2792730Z hint:
+2026-06-07T13:04:11.2793520Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-06-07T13:04:11.2794980Z Initialized empty Git repository in /Users/runner/work/BaoJunKeyless/BaoJunKeyless/.git/
+2026-06-07T13:04:11.2815760Z [command]/opt/homebrew/bin/git remote add origin https://github.com/JK-GL/BaoJunKeyless
+2026-06-07T13:04:11.2905490Z ##[endgroup]
+2026-06-07T13:04:11.2907690Z ##[group]Disabling automatic garbage collection
+2026-06-07T13:04:11.2909860Z [command]/opt/homebrew/bin/git config --local gc.auto 0
+2026-06-07T13:04:11.2984010Z ##[endgroup]
+2026-06-07T13:04:11.2984730Z ##[group]Setting up auth
+2026-06-07T13:04:11.2994490Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-06-07T13:04:11.3137200Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-06-07T13:04:11.4866930Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-06-07T13:04:11.4990550Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-06-07T13:04:11.6623930Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-06-07T13:04:11.6627100Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-06-07T13:04:11.7782280Z [command]/opt/homebrew/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-06-07T13:04:11.7954810Z ##[endgroup]
+2026-06-07T13:04:11.7955720Z ##[group]Fetching the repository
+2026-06-07T13:04:11.7957140Z [command]/opt/homebrew/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +591e1bfc940737f93fc2a66949243b93d975613e:refs/remotes/origin/main
+2026-06-07T13:04:12.3569220Z From https://github.com/JK-GL/BaoJunKeyless
+2026-06-07T13:04:12.3570870Z  * [new ref]         591e1bfc940737f93fc2a66949243b93d975613e -> origin/main
+2026-06-07T13:04:12.3670810Z ##[endgroup]
+2026-06-07T13:04:12.3673800Z ##[group]Determining the checkout info
+2026-06-07T13:04:12.3676410Z ##[endgroup]
+2026-06-07T13:04:12.3681350Z [command]/opt/homebrew/bin/git sparse-checkout disable
+2026-06-07T13:04:12.3766670Z [command]/opt/homebrew/bin/git config --local --unset-all extensions.worktreeConfig
+2026-06-07T13:04:12.3853070Z ##[group]Checking out the ref
+2026-06-07T13:04:12.3856760Z [command]/opt/homebrew/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-06-07T13:04:12.4066190Z Switched to a new branch 'main'
+2026-06-07T13:04:12.4077390Z branch 'main' set up to track 'origin/main'.
+2026-06-07T13:04:12.4086880Z ##[endgroup]
+2026-06-07T13:04:12.4184800Z [command]/opt/homebrew/bin/git log -1 --format=%H
+2026-06-07T13:04:12.4252820Z 591e1bfc940737f93fc2a66949243b93d975613e
+2026-06-07T13:04:12.4648680Z ##[group]Run sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+2026-06-07T13:04:12.4650690Z [36;1msudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer[0m
+2026-06-07T13:04:12.4741890Z shell: /bin/bash -e {0}
+2026-06-07T13:04:12.4742830Z ##[endgroup]
+2026-06-07T13:04:12.5660220Z ##[group]Run brew install xcodegen
+2026-06-07T13:04:12.5661180Z [36;1mbrew install xcodegen[0m
+2026-06-07T13:04:12.5702590Z shell: /bin/bash -e {0}
+2026-06-07T13:04:12.5703420Z ##[endgroup]
+2026-06-07T13:04:18.5671850Z ✔︎ JSON API formula_tap_migrations.jws.json
+2026-06-07T13:04:18.5774510Z ✔︎ JSON API cask_tap_migrations.jws.json
+2026-06-07T13:04:20.6204390Z Inspect the formula dependency plan before installing with `brew install --ask`.
+2026-06-07T13:04:20.6205180Z Enable ask mode by setting `HOMEBREW_ASK=1`.
+2026-06-07T13:04:20.6206480Z Hide these hints with `HOMEBREW_NO_ENV_HINTS=1` (see `man brew`).
+2026-06-07T13:04:20.6210210Z [32m==>[0m [1mFetching downloads for: [32mxcodegen[39m[0m
+2026-06-07T13:04:20.9140550Z ✔︎ Bottle Manifest xcodegen (2.45.4)
+2026-06-07T13:04:21.4919740Z ✔︎ Bottle xcodegen (2.45.4)
+2026-06-07T13:04:21.6155970Z [34m==>[0m [1mPouring xcodegen--2.45.4.arm64_sequoia.bottle.tar.gz[0m
+2026-06-07T13:04:21.8598700Z 🍺  /opt/homebrew/Cellar/xcodegen/2.45.4: 38 files, 7.4MB
+2026-06-07T13:04:21.9034510Z ##[group]Run echo "BUILD_DATE=$(TZ=Asia/Shanghai date +'%Y%m%d.%H%M')" >> "$GITHUB_ENV"
+2026-06-07T13:04:21.9035250Z [36;1mecho "BUILD_DATE=$(TZ=Asia/Shanghai date +'%Y%m%d.%H%M')" >> "$GITHUB_ENV"[0m
+2026-06-07T13:04:21.9109500Z shell: /bin/bash -e {0}
+2026-06-07T13:04:21.9110400Z ##[endgroup]
+2026-06-07T13:04:21.9836780Z ##[group]Run xcodegen generate
+2026-06-07T13:04:21.9837230Z [36;1mxcodegen generate[0m
+2026-06-07T13:04:21.9872850Z shell: /bin/bash -e {0}
+2026-06-07T13:04:21.9873150Z env:
+2026-06-07T13:04:21.9873320Z   BUILD_DATE: 20260607.2104
+2026-06-07T13:04:21.9873600Z ##[endgroup]
+2026-06-07T13:04:22.0376090Z ⚙️  Generating plists...
+2026-06-07T13:04:22.0376480Z ⚙️  Generating project...
+2026-06-07T13:04:22.0591340Z ⚙️  Writing project...
+2026-06-07T13:04:22.0662930Z Created project at /Users/runner/work/BaoJunKeyless/BaoJunKeyless/BaoJunKeyless.xcodeproj
+2026-06-07T13:04:22.0714180Z ##[group]Run xcodebuild \
+2026-06-07T13:04:22.0714470Z [36;1mxcodebuild \[0m
+2026-06-07T13:04:22.0714850Z [36;1m  -project BaoJunKeyless.xcodeproj \[0m
+2026-06-07T13:04:22.0715170Z [36;1m  -scheme BaoJunKeyless \[0m
+2026-06-07T13:04:22.0715490Z [36;1m  -sdk iphoneos \[0m
+2026-06-07T13:04:22.0715780Z [36;1m  -configuration Release \[0m
+2026-06-07T13:04:22.0716040Z [36;1m  -derivedDataPath build \[0m
+2026-06-07T13:04:22.0716260Z [36;1m  CODE_SIGNING_ALLOWED=NO \[0m
+2026-06-07T13:04:22.0716480Z [36;1m  CODE_SIGNING_REQUIRED=NO \[0m
+2026-06-07T13:04:22.0716700Z [36;1m  COPY_PHASE_STRIP=NO \[0m
+2026-06-07T13:04:22.0717030Z [36;1m  CURRENT_PROJECT_VERSION="$BUILD_DATE" 2>&1 | tail -30[0m
+2026-06-07T13:04:22.0748950Z shell: /bin/bash -e {0}
+2026-06-07T13:04:22.0749290Z env:
+2026-06-07T13:04:22.0749460Z   BUILD_DATE: 20260607.2104
+2026-06-07T13:04:22.0749660Z ##[endgroup]
+2026-06-07T13:04:47.3887510Z                ^~~~~~~~~~~~~~~~~~~~~~~~~~
+2026-06-07T13:04:47.3897280Z /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Views/StatusView.swift:95:80: error: cannot find 'isAddressFloatingPresented' in scope
+2026-06-07T13:04:47.4070730Z                     .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { isAddressFloatingPresented = false } }
+2026-06-07T13:04:47.4086070Z                                                                                ^~~~~~~~~~~~~~~~~~~~~~~~~~
+2026-06-07T13:04:47.4103090Z /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Views/StatusView.swift:106:55: error: cannot find 'isAddressFloatingPresented' in scope
+2026-06-07T13:04:47.4104630Z         .animation(.easeInOut(duration: 0.22), value: isAddressFloatingPresented)
+2026-06-07T13:04:47.4105220Z                                                       ^~~~~~~~~~~~~~~~~~~~~~~~~~
+2026-06-07T13:04:47.4106010Z /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Views/StatusView.swift:108:29: error: cannot find 'isAddressFloatingPresented' in scope
+2026-06-07T13:04:47.4115490Z             withAnimation { isAddressFloatingPresented = true }
+2026-06-07T13:04:47.4115810Z                             ^~~~~~~~~~~~~~~~~~~~~~~~~~
+2026-06-07T13:04:47.4116340Z /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Views/StatusView.swift:186:64: error: cannot find 'isAddressFloatingPresented' in scope
+2026-06-07T13:04:47.4117110Z                     withAnimation(.easeInOut(duration: 0.2)) { isAddressFloatingPresented = false }
+2026-06-07T13:04:47.4117570Z                                                                ^~~~~~~~~~~~~~~~~~~~~~~~~~
+2026-06-07T13:04:47.4118290Z /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Views/StatusView.swift:213:64: error: cannot find 'isAddressFloatingPresented' in scope
+2026-06-07T13:04:47.4118960Z                     withAnimation(.easeInOut(duration: 0.2)) { isAddressFloatingPresented = false }
+2026-06-07T13:04:47.4119530Z                                                                ^~~~~~~~~~~~~~~~~~~~~~~~~~
+2026-06-07T13:04:47.4119750Z 
+2026-06-07T13:04:47.4120140Z SwiftDriver\ Compilation BaoJunKeyless normal arm64 com.apple.xcode.tools.swift.compiler (in target 'BaoJunKeyless' from project 'BaoJunKeyless')
+2026-06-07T13:04:47.4120690Z     cd /Users/runner/work/BaoJunKeyless/BaoJunKeyless
+2026-06-07T13:04:47.4135030Z     builtin-Swift-Compilation -- /Applications/Xcode_16.2.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name BaoJunKeyless -O -whole-module-optimization -enforce-exclusivity\=checked @/Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/Build/Intermediates.noindex/BaoJunKeyless.build/Release-iphoneos/BaoJunKeyless.build/Objects-normal/arm64/BaoJunKeyless.SwiftFileList -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode_16.2.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.2.sdk -target arm64-apple-ios15.0 -g -module-cache-path /Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/ModuleCache.noindex -Xfrontend -serialize-debugging-options -swift-version 5 -I /Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/Build/Products/Release-iphoneos -F /Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/Build/Products/Release-iphoneos -c -num-threads 3 -Xcc -ivfsstatcache -Xcc /Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/SDKStatCaches.noindex/iphoneos18.2-22C146-6f6929c68f51360d5ca70a73a7e0c2f9.sdkstatcache -output-file-map /Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/Build/Intermediates.noindex/BaoJunKeyless.build/Release-iphoneos/BaoJunKeyless.build/Objects-normal/arm64/BaoJunKeyless-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/Build/Intermediates.noindex/BaoJunKeyless.build/Release-iphoneos/BaoJunKeyless.build/Objects-normal/arm64/BaoJunKeyless.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/Build/Intermediates.noindex/BaoJunKeyless.build/Release-iphoneos/BaoJunKeyless.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/Build/Intermediates.noindex/BaoJunKeyless.build/Release-iphoneos/BaoJunKeyless.build/Objects-normal/arm64/BaoJunKeyless_const_extract_protocols.json -Xcc -iquote -Xcc /Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/Build/Intermediates.noindex/BaoJunKeyless.build/Release-iphoneos/BaoJunKeyless.build/BaoJunKeyless-generated-files.hmap -Xcc -I/Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/Build/Intermediates.noindex/BaoJunKeyless.build/Release-iphoneos/BaoJunKeyless.build/BaoJunKeyless-own-target-headers.hmap -Xcc -I/Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/Build/Intermediates.noindex/BaoJunKeyless.build/Release-iphoneos/BaoJunKeyless.build/BaoJunKeyless-all-target-headers.hmap -Xcc -iquote -Xcc /Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/Build/Intermediates.noindex/BaoJunKeyless.build/Release-iphoneos/BaoJunKeyless.build/BaoJunKeyless-project-headers.hmap -Xcc -I/Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/Build/Products/Release-iphoneos/include -Xcc -I/Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/Build/Intermediates.noindex/BaoJunKeyless.build/Release-iphoneos/BaoJunKeyless.build/DerivedSources-normal/arm64 -Xcc -I/Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/Build/Intermediates.noindex/BaoJunKeyless.build/Release-iphoneos/BaoJunKeyless.build/DerivedSources/arm64 -Xcc -I/Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/Build/Intermediates.noindex/BaoJunKeyless.build/Release-iphoneos/BaoJunKeyless.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/runner/work/BaoJunKeyless/BaoJunKeyless/build/Build/Intermediates.noindex/BaoJunKeyless.build/Release-iphoneos/BaoJunKeyless.build/Objects-normal/arm64/BaoJunKeyless-Swift.h -working-directory /Users/runner/work/BaoJunKeyless/BaoJunKeyless -no-emit-module-separately-wmo
+2026-06-07T13:04:47.4148080Z 
+2026-06-07T13:04:47.4148610Z note: Disabling previews because SWIFT_VERSION is set and SWIFT_OPTIMIZATION_LEVEL=-O, expected -Onone (in target 'BaoJunKeyless' from project 'BaoJunKeyless')
+2026-06-07T13:04:47.4149230Z ** BUILD FAILED **
+2026-06-07T13:04:47.4149370Z 
+2026-06-07T13:04:47.4149380Z 
+2026-06-07T13:04:47.4149470Z The following build commands failed:
+2026-06-07T13:04:47.4149910Z 	CompileSwift normal arm64 (in target 'BaoJunKeyless' from project 'BaoJunKeyless')
+2026-06-07T13:04:47.4166990Z 	SwiftCompile normal arm64 Compiling\ AddressServiceSettings.swift,\ AppBackgroundView.swift,\ AppDiagnosticsSettings.swift,\ AppInfo.swift,\ AppNavigationContainerView.swift,\ AppScrollState.swift,\ AppTheme.swift,\ AppViewCompatibility.swift,\ BaoJunKeylessApp.swift,\ ChromeBarMetrics.swift,\ Components.swift,\ ContentView.swift,\ CrashLogger.swift,\ CustomAlertView.swift,\ CustomVibrationPattern.swift,\ KeylessSections.swift,\ KeylessSettingsStore.swift,\ KeylessView.swift,\ LocationManager.swift,\ LocationResolver.swift,\ LogView.swift,\ MenuBarView.swift,\ Models.swift,\ MotionManager.swift,\ PageHeaderView.swift,\ PhotoPicker.swift,\ RadarView.swift,\ RowDividerView.swift,\ SectionHeadingView.swift,\ SettingsEntryButtonView.swift,\ SettingsInlineActionRowView.swift,\ SettingsPanelView.swift,\ SettingsSections.swift,\ SettingsStatusRowView.swift,\ SettingsView.swift,\ ShareSheet.swift,\ StatusCards.swift,\ StatusSections.swift,\ StatusView.swift,\ ThemeImageSupport.swift,\ ThemeManager.swift,\ ThemeOptionCardView.swift,\ VehicleEventLogStore.swift,\ VibrationRecorderView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Services/AddressServiceSettings.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Theme/AppBackgroundView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Models/AppDiagnosticsSettings.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Models/AppInfo.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Theme/AppNavigationContainerView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Theme/AppScrollState.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Theme/AppTheme.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Theme/AppViewCompatibility.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/App/BaoJunKeylessApp.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Theme/ChromeBarMetrics.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Components/Components.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Views/ContentView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Models/CrashLogger.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Components/CustomAlertView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Models/CustomVibrationPattern.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Views/Keyless/KeylessSections.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Models/KeylessSettingsStore.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Views/KeylessView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Models/LocationManager.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Services/LocationResolver.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Views/LogView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Theme/MenuBarView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Models/Models.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Services/MotionManager.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Theme/PageHeaderView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Views/Settings/PhotoPicker.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Views/RadarView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Theme/RowDividerView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Theme/SectionHeadingView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Theme/SettingsEntryButtonView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Theme/SettingsInlineActionRowView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Theme/SettingsPanelView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Views/Settings/SettingsSections.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Theme/SettingsStatusRowView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Views/SettingsView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Components/ShareSheet.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Views/Status/StatusCards.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Views/Status/StatusSections.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Views/StatusView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Theme/ThemeImageSupport.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Theme/ThemeManager.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Theme/ThemeOptionCardView.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Models/VehicleEventLogStore.swift /Users/runner/work/BaoJunKeyless/BaoJunKeyless/Sources/Components/VibrationRecorderView.swift (in target 'BaoJunKeyless' from project 'BaoJunKeyless')
+2026-06-07T13:04:47.4183210Z 	Building project BaoJunKeyless with scheme BaoJunKeyless and configuration Release
+2026-06-07T13:04:47.4183570Z (3 failures)
+2026-06-07T13:04:47.4273950Z ##[group]Run APP=build/Build/Products/Release-iphoneos/BaoJunKeyless.app
+2026-06-07T13:04:47.4274890Z [36;1mAPP=build/Build/Products/Release-iphoneos/BaoJunKeyless.app[0m
+2026-06-07T13:04:47.4275220Z [36;1mfind "$APP" -maxdepth 1 -ls[0m
+2026-06-07T13:04:47.4275580Z [36;1mfile "$APP/BaoJunKeyless" || echo "NO BINARY"[0m
+2026-06-07T13:04:47.5785220Z shell: /bin/bash -e {0}
+2026-06-07T13:04:47.5785550Z env:
+2026-06-07T13:04:47.5786480Z   BUILD_DATE: 20260607.2104
+2026-06-07T13:04:47.5786750Z ##[endgroup]
+2026-06-07T13:04:47.6691150Z 3413966        0 drwxr-xr-x    5 runner           staff                 160 Jun  7 13:04 build/Build/Products/Release-iphoneos/BaoJunKeyless.app
+2026-06-07T13:04:47.6793680Z 3413967        0 drwxr-xr-x    5 runner           staff                 160 Jun  7 13:04 build/Build/Products/Release-iphoneos/BaoJunKeyless.app/Assets.xcassets
+2026-06-07T13:04:47.6894460Z 3413973        8 -rw-r--r--    1 runner           staff                1307 Jun  7 13:04 build/Build/Products/Release-iphoneos/BaoJunKeyless.app/Info.plist
+2026-06-07T13:04:47.6996490Z 3413974        8 -rw-r--r--    1 runner           staff                   8 Jun  7 13:04 build/Build/Products/Release-iphoneos/BaoJunKeyless.app/PkgInfo
+2026-06-07T13:04:47.7097300Z build/Build/Products/Release-iphoneos/BaoJunKeyless.app/BaoJunKeyless: cannot open `build/Build/Products/Release-iphoneos/BaoJunKeyless.app/BaoJunKeyless' (No such file or directory)
+2026-06-07T13:04:47.7226410Z ##[group]Run APP=build/Build/Products/Release-iphoneos/BaoJunKeyless.app
+2026-06-07T13:04:47.7226980Z [36;1mAPP=build/Build/Products/Release-iphoneos/BaoJunKeyless.app[0m
+2026-06-07T13:04:47.7227440Z [36;1mcodesign --force --deep --sign - "$APP" || true[0m
+2026-06-07T13:04:47.7227800Z [36;1mmkdir -p Payload && cp -R "$APP" Payload/[0m
+2026-06-07T13:04:47.7228110Z [36;1mzip -r -y BaoJunKeyless.ipa Payload[0m
+2026-06-07T13:04:47.7228390Z [36;1mls -lh BaoJunKeyless.ipa[0m
+2026-06-07T13:04:47.7228850Z [36;1munzip -l BaoJunKeyless.ipa | grep "BaoJunKeyless.app/BaoJunKeyless"[0m
+2026-06-07T13:04:47.7270400Z shell: /bin/bash -e {0}
+2026-06-07T13:04:47.7270660Z env:
+2026-06-07T13:04:47.7270980Z   BUILD_DATE: 20260607.2104
+2026-06-07T13:04:47.7271220Z ##[endgroup]
+2026-06-07T13:04:47.8072100Z   adding: Payload/ (stored 0%)
+2026-06-07T13:04:47.8081500Z   adding: Payload/BaoJunKeyless.app/ (stored 0%)
+2026-06-07T13:04:47.8094430Z   adding: Payload/BaoJunKeyless.app/_CodeSignature/ (stored 0%)
+2026-06-07T13:04:47.8105200Z   adding: Payload/BaoJunKeyless.app/_CodeSignature/CodeResources (deflated 75%)
+2026-06-07T13:04:47.8129660Z   adding: Payload/BaoJunKeyless.app/_CodeSignature/CodeDirectory (deflated 20%)
+2026-06-07T13:04:47.8138460Z   adding: Payload/BaoJunKeyless.app/_CodeSignature/CodeRequirements-1 (deflated 20%)
+2026-06-07T13:04:47.8151060Z   adding: Payload/BaoJunKeyless.app/_CodeSignature/CodeSignature (stored 0%)
+2026-06-07T13:04:47.8158720Z   adding: Payload/BaoJunKeyless.app/_CodeSignature/CodeRequirements (stored 0%)
+2026-06-07T13:04:47.8167230Z   adding: Payload/BaoJunKeyless.app/Assets.xcassets/ (stored 0%)
+2026-06-07T13:04:47.8174590Z   adding: Payload/BaoJunKeyless.app/Assets.xcassets/AppIcon.appiconset/ (stored 0%)
+2026-06-07T13:04:47.8175940Z   adding: Payload/BaoJunKeyless.app/Assets.xcassets/AppIcon.appiconset/Contents.json (deflated 34%)
+2026-06-07T13:04:47.8177470Z   adding: Payload/BaoJunKeyless.app/Assets.xcassets/AccentColor.colorset/ (stored 0%)
+2026-06-07T13:04:47.8178130Z   adding: Payload/BaoJunKeyless.app/Assets.xcassets/AccentColor.colorset/Contents.json (deflated 27%)
+2026-06-07T13:04:47.8179710Z   adding: Payload/BaoJunKeyless.app/Assets.xcassets/Contents.json (deflated 16%)
+2026-06-07T13:04:47.8180340Z   adding: Payload/BaoJunKeyless.app/Info.plist (deflated 32%)
+2026-06-07T13:04:47.8180770Z   adding: Payload/BaoJunKeyless.app/PkgInfo (deflated 38%)
+2026-06-07T13:04:47.8181380Z -rw-r--r--  1 runner  staff   5.7K Jun  7 13:04 BaoJunKeyless.ipa
+2026-06-07T13:04:47.8245390Z ##[error]Process completed with exit code 1.
+2026-06-07T13:04:47.8366810Z Post job cleanup.
+2026-06-07T13:04:48.1923980Z [command]/opt/homebrew/bin/git version
+2026-06-07T13:04:48.2255850Z git version 2.54.0
+2026-06-07T13:04:48.2320560Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/938d2fdf-6752-462f-8ed8-04fead1c9935/.gitconfig'
+2026-06-07T13:04:48.2337700Z Temporarily overriding HOME='/Users/runner/work/_temp/938d2fdf-6752-462f-8ed8-04fead1c9935' before making global git config changes
+2026-06-07T13:04:48.2353510Z Adding repository directory to the temporary git global config as a safe directory
+2026-06-07T13:04:48.2355180Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/BaoJunKeyless/BaoJunKeyless
+2026-06-07T13:04:48.2512350Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-06-07T13:04:48.2589080Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-06-07T13:04:48.3985130Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-06-07T13:04:48.4072900Z http.https://github.com/.extraheader
+2026-06-07T13:04:48.4094630Z [command]/opt/homebrew/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-06-07T13:04:48.4253640Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-06-07T13:04:48.5418750Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-06-07T13:04:48.5554310Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-06-07T13:04:48.6732670Z Cleaning up orphan processes
+2026-06-07T13:04:49.4944340Z ##[warning]Node.js 20 actions are deprecated. The following actions are running on Node.js 20 and may not work as expected: actions/checkout@v4. Actions will be forced to run with Node.js 24 by default starting June 16th, 2026. Node.js 20 will be removed from the runner on September 16th, 2026. Please check if updated versions of these actions are available that support Node.js 24. To opt into Node.js 24 now, set the FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true environment variable on the runner or in your workflow file. Once Node.js 24 becomes the default, you can temporarily opt out by setting ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

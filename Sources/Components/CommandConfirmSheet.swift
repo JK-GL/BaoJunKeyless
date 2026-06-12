@@ -11,6 +11,24 @@ enum CommandAction: String, Identifiable {
 
     var id: String { rawValue }
 
+    /// 执行成功后按钮标题（绿色 ✓）
+    func successTitle(state: VehicleState) -> String {
+        switch self {
+        case .lockUnlock:
+            return state.locked == true ? "已锁车 ✓" : "已解锁 ✓"
+        case .remoteStart:
+            return state.power == .off ? "已熄火 ✓" : "已启动 ✓"
+        case .findCar:
+            return "已寻车 ✓"
+        case .acToggle:
+            return state.acOn == true ? "空调已开 ✓" : "空调已关 ✓"
+        case .windowToggle:
+            return state.windowsClosed == true ? "车窗已关 ✓" : "车窗已开 ✓"
+        case .quickCool:
+            return "快速降温已开 ✓"
+        }
+    }
+
     /// 根据车辆状态动态返回图标
     func icon(state: VehicleState) -> String {
         switch self {
@@ -153,7 +171,18 @@ struct CommandConfirmPopup: View {
                 }
             }
         } actions: {
-            if executedState == nil {
+            if let result = executedState {
+                // 执行后：绿色成功按钮（disabled，不可再点）
+                FloatingPopupPrimaryButton(
+                    title: action.successTitle(state: result),
+                    color: AppTheme.green,
+                    isLoading: false,
+                    isDisabled: true,
+                    action: {}
+                )
+                .transition(.opacity)
+            } else {
+                // 执行前：确认 + 取消
                 VStack(spacing: 8) {
                     FloatingPopupPrimaryButton(
                         title: isExecuting ? "执行中…" : action.confirmTitle(state: vehicleState),
@@ -284,8 +313,8 @@ struct CommandConfirmPopup: View {
 
             onConfirm(action, action.needsTemperatureSlider ? temperatureToUse : nil)
 
-            // 1.5 秒后自动关闭
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            // 2.5 秒后自动关闭
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                 withAnimation(.easeOut(duration: 0.2)) { isPresented = false }
             }
         }
