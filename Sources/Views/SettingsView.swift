@@ -47,6 +47,8 @@ struct SettingsView: View {
                     exportCrashLog: exportCrashLog
                 )
 
+                SettingsDiagnosticsSection()
+
                 SettingsResetSection(
                     showingResetAlert: $showingResetAlert,
                     onReset: resetAllSettings

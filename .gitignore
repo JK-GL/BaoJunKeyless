@@ -17,6 +17,12 @@ DerivedData/
 *.dSYM
 build/
 
+# Local build / debug artifacts
+*.zip
+*.log
+job-logs.txt
+.git-askpass.sh
+
 # macOS
 .DS_Store
 *.swp

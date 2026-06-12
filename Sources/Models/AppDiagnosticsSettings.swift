@@ -45,6 +45,6 @@ enum AppDiagnosticsSettings {
         defaults.set(false, forKey: useSFRadarCarIconKey)
         defaults.set(false, forKey: enableRadarScanKey)
         defaults.set(false, forKey: enableRadarGradientKey)
-        defaults.set(false, forKey: quickActionsDebugModeKey)
+        defaults.set(true, forKey: quickActionsDebugModeKey)
     }
 }
