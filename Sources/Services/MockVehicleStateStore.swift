@@ -14,7 +14,7 @@ final class MockVehicleStateStore: VehicleStateStore {
         cachedDashboardMetrics = dash.metrics
     }
 
-    func simulateUnlock() {
+    override func simulateUnlock() {
         var next = state
         next.locked = false
         apply(next)
@@ -24,7 +24,7 @@ final class MockVehicleStateStore: VehicleStateStore {
         applyDashboard(dash)
     }
 
-    func simulateLock() {
+    override func simulateLock() {
         var next = state
         next.locked = true
         apply(next)
@@ -34,7 +34,7 @@ final class MockVehicleStateStore: VehicleStateStore {
         applyDashboard(dash)
     }
 
-    func simulateToggleAC() {
+    override func simulateToggleAC() {
         var next = state
         next.acOn = !(state.acOn ?? false)
         apply(next)
@@ -44,7 +44,7 @@ final class MockVehicleStateStore: VehicleStateStore {
         applyDashboard(dash)
     }
 
-    func simulateSetACTemperature(_ temperature: Double) {
+    override func simulateSetACTemperature(_ temperature: Double) {
         var next = state
         next.acTemperature = temperature
         apply(next)
@@ -54,7 +54,7 @@ final class MockVehicleStateStore: VehicleStateStore {
         applyDashboard(dash)
     }
 
-    func simulateRemoteStart() {
+    override func simulateRemoteStart() {
         var next = state
         next.power = next.power == .off ? .ready : .off
         apply(next)
@@ -64,7 +64,7 @@ final class MockVehicleStateStore: VehicleStateStore {
         applyDashboard(dash)
     }
 
-    func simulateToggleWindows() {
+    override func simulateToggleWindows() {
         var next = state
         next.windowsClosed = !(state.windowsClosed ?? false)
         apply(next)
