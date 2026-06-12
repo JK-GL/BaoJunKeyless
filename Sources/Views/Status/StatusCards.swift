@@ -126,7 +126,7 @@ struct VehicleHeaderSummaryView: View {
                             .frame(maxWidth: .infinity, minHeight: topRowHeight, alignment: .bottomLeading)
                     }
 
-                    HStack(alignment: .center, spacing: columnSpacing) {
+                    HStack(alignment: .bottom, spacing: columnSpacing) {
                         energyBar(percent: electricPercent, color: AppTheme.accent)
                         energyBar(percent: fuelPercent, color: AppTheme.orange)
                     }
