@@ -87,10 +87,9 @@ struct VehicleHeaderSummaryView: View {
     var chargingPowerText: String = "3.2 kW"
     var updatedAt: String = "17:59:34"
 
-    private let totalBlockWidth: CGFloat = 86
     private let barHeight: CGFloat = 4
     private let rowSpacing: CGFloat = 1
-    private let columnSpacing: CGFloat = 12
+    private let columnSpacing: CGFloat = 10
 
     private var totalRangeKm: Int {
         electricRangeKm + fuelRangeKm
@@ -110,7 +109,8 @@ struct VehicleHeaderSummaryView: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: columnSpacing) {
                 totalRangeTextRow
-                    .frame(width: totalBlockWidth, alignment: .leading)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(2)
 
                 VStack(alignment: .leading, spacing: rowSpacing) {
                     HStack(alignment: .firstTextBaseline, spacing: columnSpacing) {
@@ -125,6 +125,8 @@ struct VehicleHeaderSummaryView: View {
                         energyBar(percent: fuelPercent, color: AppTheme.orange)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
                 // 让右侧能量块的“底部”（进度条底部）参与 firstTextBaseline 对齐。
                 // 这样 820km 的文字基线/视觉底部 ≈ 进度条底部。
                 .alignmentGuide(.firstTextBaseline) { dimension in
