@@ -181,7 +181,6 @@ struct StatusTopBarSection: View {
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 20)
-        .padding(.top, 4)
     }
 }
 

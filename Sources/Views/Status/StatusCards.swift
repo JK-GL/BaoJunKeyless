@@ -107,7 +107,7 @@ struct VehicleHeaderSummaryView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 3) {
             ZStack(alignment: .bottomLeading) {
                 // 底层：文字行 + 进度条行，左列留空
                 VStack(alignment: .leading, spacing: rowSpacing) {
@@ -154,10 +154,6 @@ struct VehicleHeaderSummaryView: View {
                         )
                 )
             }
-
-            Text("更新时间：\(updatedAt)")
-                .font(.system(size: 11))
-                .foregroundStyle(Color.white.opacity(0.42))
         }
         .padding(.horizontal, 20)
     }
