@@ -1,10 +1,16 @@
 import Foundation
 import SwiftUI
 
+enum VehicleEnergyType {
+    case plugInHybrid
+    case pureElectric
+}
+
 struct VehicleDashboardState {
     var updatedAt: Date = Date()
 
     // 能源
+    var energyType: VehicleEnergyType = .plugInHybrid
     var electricRangeKm: Int = 140
     var electricFullRangeKm: Int = 140
     var fuelRangeKm: Int = 680

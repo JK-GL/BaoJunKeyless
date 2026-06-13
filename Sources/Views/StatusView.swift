@@ -55,6 +55,7 @@ struct StatusView: View {
                         )
 
                         VehicleHeaderSummaryView(
+                            energyType: vehicleStore.dashboard.energyType,
                             electricRangeKm: vehicleStore.dashboard.electricRangeKm,
                             electricFullRangeKm: vehicleStore.dashboard.electricFullRangeKm,
                             fuelRangeKm: vehicleStore.dashboard.fuelRangeKm,

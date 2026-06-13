@@ -79,6 +79,7 @@ private struct CommandGridButton: View {
 }
 
 struct VehicleHeaderSummaryView: View {
+    var energyType: VehicleEnergyType = .plugInHybrid
     var electricRangeKm: Int = 140
     var electricFullRangeKm: Int = 140
     var fuelRangeKm: Int = 1000
@@ -92,7 +93,12 @@ struct VehicleHeaderSummaryView: View {
     private let columnSpacing: CGFloat = 10
 
     private var totalRangeKm: Int {
-        electricRangeKm + fuelRangeKm
+        switch energyType {
+        case .plugInHybrid:
+            return electricRangeKm + fuelRangeKm
+        case .pureElectric:
+            return electricRangeKm
+        }
     }
 
     private var electricPercent: Double {
@@ -112,19 +118,7 @@ struct VehicleHeaderSummaryView: View {
                     .fixedSize(horizontal: true, vertical: false)
                     .layoutPriority(2)
 
-                VStack(alignment: .leading, spacing: rowSpacing) {
-                    HStack(alignment: .firstTextBaseline, spacing: columnSpacing) {
-                        energyHeader(title: "电量", rangeKm: electricRangeKm, percent: electricPercent, color: AppTheme.accent)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        energyHeader(title: "油量", rangeKm: fuelRangeKm, percent: fuelPercent, color: AppTheme.orange)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
-                    HStack(alignment: .bottom, spacing: columnSpacing) {
-                        energyBar(percent: electricPercent, color: AppTheme.accent)
-                        energyBar(percent: fuelPercent, color: AppTheme.orange)
-                    }
-                }
+                energySummaryBlock
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .layoutPriority(1)
                 // 让右侧能量块的“底部”（进度条底部）参与 firstTextBaseline 对齐。
@@ -159,6 +153,34 @@ struct VehicleHeaderSummaryView: View {
             }
         }
         .padding(.horizontal, 20)
+    }
+
+    @ViewBuilder
+    private var energySummaryBlock: some View {
+        switch energyType {
+        case .plugInHybrid:
+            VStack(alignment: .leading, spacing: rowSpacing) {
+                HStack(alignment: .firstTextBaseline, spacing: columnSpacing) {
+                    energyHeader(title: "电量", rangeKm: electricRangeKm, percent: electricPercent, color: AppTheme.accent)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    energyHeader(title: "油量", rangeKm: fuelRangeKm, percent: fuelPercent, color: AppTheme.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                HStack(alignment: .bottom, spacing: columnSpacing) {
+                    energyBar(percent: electricPercent, color: AppTheme.accent)
+                    energyBar(percent: fuelPercent, color: AppTheme.orange)
+                }
+            }
+
+        case .pureElectric:
+            VStack(alignment: .leading, spacing: rowSpacing) {
+                energyHeader(title: "电量", rangeKm: electricRangeKm, percent: electricPercent, color: AppTheme.accent)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                energyBar(percent: electricPercent, color: AppTheme.accent)
+            }
+        }
     }
 
     private var totalRangeTextRow: some View {
