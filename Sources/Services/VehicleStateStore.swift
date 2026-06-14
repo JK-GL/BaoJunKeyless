@@ -17,6 +17,14 @@ class VehicleStateStore: ObservableObject, VehicleStateReader {
     @Published internal(set) var dashboard: VehicleDashboardState
     @Published internal(set) var cachedDashboardMetrics: VehicleDashboardMetrics
 
+    /// 车辆配置（登录后填充）
+    @Published internal(set) var profile: VehicleProfile = VehicleProfile()
+
+    /// 油量栏显示模式
+    @Published var fuelBarMode: FuelBarMode = .auto
+
+    private var cancellables = Set<AnyCancellable>()
+
     init(
         state: VehicleState = .placeholder,
         dashboard: VehicleDashboardState = VehicleDashboardState()
@@ -24,15 +32,49 @@ class VehicleStateStore: ObservableObject, VehicleStateReader {
         self.state = state
         self.dashboard = dashboard
         self.cachedDashboardMetrics = dashboard.metrics
+        setupEnergyTypeObservers()
+    }
+
+    private func setupEnergyTypeObservers() {
+        // 当 profile 或 fuelBarMode 变化时，重算能源类型
+        $profile
+            .combineLatest($fuelBarMode)
+            .dropFirst() // 跳过 init 的初始值
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _, _ in
+                self?.recomputeEnergyType()
+            }
+            .store(in: &cancellables)
     }
 
     func apply(_ newState: VehicleState) {
         state = newState
+        recomputeEnergyType()
     }
 
     func applyDashboard(_ newDashboard: VehicleDashboardState) {
         dashboard = newDashboard
         cachedDashboardMetrics = newDashboard.metrics
+    }
+
+    func applyProfile(_ newProfile: VehicleProfile) {
+        profile = newProfile
+        recomputeEnergyType()
+    }
+
+    func setFuelBarMode(_ mode: FuelBarMode) {
+        fuelBarMode = mode
+        recomputeEnergyType()
+    }
+
+    /// 根据 profile + 状态 + 模式，重算能源类型
+    private func recomputeEnergyType() {
+        let detected = profile.detectEnergyType(fuelBarMode: fuelBarMode, status: state)
+        let newType: VehicleEnergyType = (detected == .pureElectric) ? .pureElectric : .plugInHybrid
+        if dashboard.energyType != newType {
+            dashboard.energyType = newType
+            cachedDashboardMetrics = dashboard.metrics
+        }
     }
 
     // MARK: - Mock 模拟接口（基类空实现，子类可覆盖）

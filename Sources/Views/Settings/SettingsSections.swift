@@ -120,6 +120,7 @@ struct SettingsAboutSection: View {
 }
 
 struct SettingsDiagnosticsSection: View {
+    @EnvironmentObject var vehicleStore: VehicleStateStore
     @AppStorage(AppDiagnosticsSettings.quickActionsDebugModeKey) private var quickActionsDebugMode = true
 
     var body: some View {
@@ -135,6 +136,29 @@ struct SettingsDiagnosticsSection: View {
                 )
 
                 Text("开启后，快捷操作会同步切换模拟车辆状态，用于 UI 联调；关闭后仅展示指令弹窗，不改动状态页。")
+                    .font(.caption)
+                    .foregroundStyle(Color.white.opacity(0.55))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Divider().background(Color.white.opacity(0.1))
+
+                HStack {
+                    Label("油量栏显示", systemImage: "fuelpump")
+                        .font(.subheadline)
+                        .foregroundStyle(.white)
+
+                    Spacer()
+
+                    Picker("", selection: $vehicleStore.fuelBarMode) {
+                        ForEach(FuelBarMode.allCases, id: \.self) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 180)
+                }
+
+                Text("自动：根据车辆配置识别插混/纯电；强制显示/隐藏：手动覆盖识别结果。")
                     .font(.caption)
                     .foregroundStyle(Color.white.opacity(0.55))
                     .fixedSize(horizontal: false, vertical: true)

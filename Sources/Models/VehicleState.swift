@@ -47,6 +47,12 @@ struct VehicleState: Equatable {
     var driverDoorOpen: Bool?
     var trunkOpen: Bool?
     var windowsClosed: Bool?
+
+    // 油量信号字段（用于能源类型检测）
+    var fuelRange: Double? = nil
+    var fuelLevel: Double? = nil
+    var oilRange: Double? = nil
+
     var acOn: Bool?
     var acTemperature: Double?
     var gear: VehicleGear
@@ -65,6 +71,9 @@ struct VehicleState: Equatable {
             driverDoorOpen: nil,
             trunkOpen: nil,
             windowsClosed: nil,
+            fuelRange: nil,
+            fuelLevel: nil,
+            oilRange: nil,
             acOn: nil,
             acTemperature: nil,
             gear: .unknown,
@@ -85,6 +94,9 @@ struct VehicleState: Equatable {
             driverDoorOpen: false,
             trunkOpen: false,
             windowsClosed: false,
+            fuelRange: 680,
+            fuelLevel: 85,
+            oilRange: 680,
             acOn: false,
             acTemperature: 22,
             gear: .p,
