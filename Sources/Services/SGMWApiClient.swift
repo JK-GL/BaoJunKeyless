@@ -20,23 +20,28 @@ final class SGMWApiClient {
     /// 从本地读取 access_token
     /// TrollStore 侧载 App 有文件系统权限，可直接读取 App Group 容器
     func readLocalToken() -> String? {
-        // 方案1: 五菱 App Group 容器
-        // TrollStore App 可以直接访问 /private/var/mobile/Containers/Shared/AppGroup/
+        // 方案1: 搜索所有 App Group 容器
         let appGroupBase = "/private/var/mobile/Containers/Shared/AppGroup"
+        CrashLogger.shared.mark("SGMW", "searching \(appGroupBase)")
+
         if let containers = try? FileManager.default.contentsOfDirectory(atPath: appGroupBase) {
+            CrashLogger.shared.mark("SGMW", "found \(containers.count) App Group containers")
             for container in containers {
                 let savedPath = "\(appGroupBase)/\(container)/SavedOAuthModel"
-                if let data = FileManager.default.contents(atPath: savedPath),
+                if FileManager.default.fileExists(atPath: savedPath),
+                   let data = FileManager.default.contents(atPath: savedPath),
                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let token = json["access_token"] as? String,
                    !token.isEmpty {
-                    CrashLogger.shared.mark("SGMW", "token found from App Group: \(container)")
+                    CrashLogger.shared.mark("SGMW", "token found from \(container)")
                     return token
                 }
             }
+        } else {
+            CrashLogger.shared.mark("SGMW", "cannot read \(appGroupBase)")
         }
 
-        // 方案2: 标准 App Group API（可能在 TrollStore 下也能用）
+        // 方案2: 标准 App Group API
         if let url = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: "group.com.cloudy.LingLingBang"
         ) {
@@ -52,7 +57,8 @@ final class SGMWApiClient {
 
         // 方案3: 宝骏 App plist
         let baojunPath = "/var/mobile/Library/Preferences/com.sgmw.baojunplus.plist"
-        if let prefs = NSDictionary(contentsOfFile: baojunPath),
+        if FileManager.default.fileExists(atPath: baojunPath),
+           let prefs = NSDictionary(contentsOfFile: baojunPath),
            let oauthStr = prefs["flutter.user_oauth"] as? String,
            let oauthData = oauthStr.data(using: .utf8),
            let oauth = try? JSONSerialization.jsonObject(with: oauthData) as? [String: Any],
