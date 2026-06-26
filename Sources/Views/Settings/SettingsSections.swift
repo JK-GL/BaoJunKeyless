@@ -127,8 +127,10 @@ struct SettingsVehicleConfigSection: View {
     @State private var vinDraft: String = ""
     @State private var phoneDraft: String = ""
     @State private var isEditing = false
+    @State private var isFetching = false
     @State private var showingImportGuide = false
     @Binding var toastText: String?
+    let onSave: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -186,27 +188,37 @@ struct SettingsVehicleConfigSection: View {
 
                     credentialField(
                         label: "Access Token",
-                        placeholder: "五菱/宝骏 App 的 access_token",
+                        placeholder: "从五菱/宝骏 App 的 SavedOAuthModel 获取",
                         text: $accessTokenDraft,
                         isSecure: true
                     )
-                    credentialField(
-                        label: "VIN",
-                        placeholder: "车辆识别号 (如 LK6ADAH92RB765125)",
-                        text: $vinDraft
-                    )
-                    credentialField(
-                        label: "手机号",
-                        placeholder: "绑定手机号",
-                        text: $phoneDraft
-                    )
+
+                    if !vinDraft.isEmpty {
+                        credentialField(label: "VIN", placeholder: "", text: .constant(vinDraft))
+                            .disabled(true)
+                        credentialField(label: "手机号", placeholder: "", text: .constant(phoneDraft))
+                            .disabled(true)
+                    }
+
+                    Button {
+                        fetchVehicleInfo()
+                    } label: {
+                        HStack(spacing: 6) {
+                            if isFetching { ProgressView().scaleEffect(0.7) }
+                            Text(isFetching ? "查询中…" : "填入 Token 后点这里查询车辆")
+                                .font(.system(size: 13, weight: .medium))
+                        }
+                        .foregroundStyle(AppTheme.accent)
+                    }
+                    .disabled(accessTokenDraft.isEmpty || isFetching)
 
                     HStack(spacing: 12) {
                         Button {
                             vehicleCredentials.accessToken = accessTokenDraft
                             vehicleCredentials.vin = vinDraft
                             vehicleCredentials.phone = phoneDraft
-                            toastText = "配置已保存"
+                            toastText = "配置已保存，正在连接…"
+                            onSave()
                         } label: {
                             Text("保存")
                                 .font(.system(size: 14, weight: .semibold))
@@ -236,7 +248,7 @@ struct SettingsVehicleConfigSection: View {
                     }
 
                     if !vehicleCredentials.isConfigured {
-                        Text("填入 access_token 和 VIN 后可连接 MQTT 获取实时车辆状态。")
+                        Text("只需填入 access_token，VIN 和手机号会自动查询获取。")
                             .font(.caption)
                             .foregroundStyle(Color.white.opacity(0.45))
                             .fixedSize(horizontal: false, vertical: true)
@@ -270,6 +282,24 @@ struct SettingsVehicleConfigSection: View {
         }
         .sheet(isPresented: $showingImportGuide) {
             ImportGuideSheet()
+        }
+    }
+
+    private func fetchVehicleInfo() {
+        let token = accessTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { return }
+        isFetching = true
+        SGMWApiClient.shared.queryDefaultCar(accessToken: token) { result in
+            DispatchQueue.main.async {
+                isFetching = false
+                if let result {
+                    vinDraft = result.vin
+                    phoneDraft = result.phone
+                    toastText = "车辆信息已获取"
+                } else {
+                    toastText = "查询失败，请检查 Token"
+                }
+            }
         }
     }
 
