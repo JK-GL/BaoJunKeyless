@@ -504,9 +504,9 @@ struct RadarRepresentable: UIViewRepresentable {
 struct RadarCardView: View {
     @EnvironmentObject var theme: ThemeManager
     @ObservedObject var locationManager: LocationManager
-    @State private var bleConnected = false
-    var carLat: Double = 22.635842
-    var carLng: Double = 114.129604
+    var bleConnected: Bool = false
+    var carLat: Double = 0
+    var carLng: Double = 0
 
     var body: some View {
         VStack(spacing: 12) {
@@ -565,12 +565,28 @@ struct RadarCardView: View {
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
-        .onAppear { locationManager.setCarLocation(lat: carLat, lng: carLng) }
+        .onAppear {
+            if carLat != 0, carLng != 0 {
+                locationManager.setCarLocation(lat: carLat, lng: carLng)
+            }
+        }
+        .onChange(of: carLat) { _ in
+            if carLat != 0, carLng != 0 {
+                locationManager.setCarLocation(lat: carLat, lng: carLng)
+            }
+        }
+        .onChange(of: carLng) { _ in
+            if carLat != 0, carLng != 0 {
+                locationManager.setCarLocation(lat: carLat, lng: carLng)
+            }
+        }
     }
 
     private func currentSearchedAddress() -> String {
         let address = locationManager.vehicleAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        return address.isEmpty ? String(format: "%.5f, %.5f", carLat, carLng) : address
+        if !address.isEmpty { return address }
+        guard carLat != 0, carLng != 0 else { return "" }
+        return String(format: "%.5f, %.5f", carLat, carLng)
     }
 
     private func openAmapSearch() {
@@ -579,6 +595,7 @@ struct RadarCardView: View {
     }
 
     private func refreshAddress() {
+        guard carLat != 0, carLng != 0 else { return }
         locationManager.setCarLocation(lat: carLat, lng: carLng)
     }
 

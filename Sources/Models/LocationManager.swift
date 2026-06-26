@@ -74,6 +74,13 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     // MARK: - 计算距离、方位、相对角度
     private func recalculate() {
         guard let phone = phoneLocation else { return }
+        guard carLatitude != 0 || carLongitude != 0 else {
+            if lastPublishedDistance != 0 {
+                distance = 0
+                lastPublishedDistance = 0
+            }
+            return
+        }
 
         let carLoc = CLLocation(latitude: carLatitude, longitude: carLongitude)
         let nextDistance = phone.distance(from: carLoc)

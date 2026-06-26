@@ -19,7 +19,7 @@ enum StatusAuthState {
     }
 }
 
-enum StatusBLEState {
+enum StatusBLEState: Equatable {
     case disconnected
     case scanning
     case connected

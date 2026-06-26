@@ -8,6 +8,15 @@ enum VehicleEnergyType {
 
 struct VehicleDashboardState {
     var updatedAt: Date = Date()
+    var vehicleName: String = "宝骏云海"
+    var vinText: String = "--"
+    var userIdText: String = "--"
+    var bleMacText: String = "--"
+    var keyIdText: String = "--"
+    var masterKeyMaskedText: String = "--"
+    var randomMaskedText: String = "--"
+    var keyTypeText: String = "--"
+    var keyExpiryText: String = "--"
 
     // 能源
     var energyType: VehicleEnergyType = .plugInHybrid

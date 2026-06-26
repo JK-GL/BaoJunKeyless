@@ -294,7 +294,16 @@ struct SettingsVehicleConfigSection: View {
             phoneDraft = vehicleCredentials.phone
         }
         .sheet(isPresented: $showingImportGuide) {
-            ImportGuideSheet()
+            ImportGuideSheet(onImported: {
+                accessTokenDraft = vehicleCredentials.accessToken
+                vinDraft = vehicleCredentials.vin
+                phoneDraft = vehicleCredentials.phone
+                toastText = vehicleCredentials.accessToken.isEmpty ? "未读取到 Token" : "已从文件读取 Token"
+                if !vehicleCredentials.accessToken.isEmpty {
+                    fetchVehicleInfo()
+                }
+            })
+            .environmentObject(vehicleCredentials)
         }
     }
 
@@ -344,6 +353,8 @@ struct SettingsVehicleConfigSection: View {
 // MARK: - 导入凭据指引
 struct ImportGuideSheet: View {
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
+    let onImported: () -> Void
     @State private var tokenDraft = ""
     @State private var vinDraft = ""
     @State private var phoneDraft = ""
@@ -427,16 +438,26 @@ struct ImportGuideSheet: View {
     }
 
     private func readFromDisk() {
-        // 尝试从 /var/mobile/ 读取
-        let path = "/var/mobile/SavedOAuthModel"
-        guard let data = FileManager.default.contents(atPath: path),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let token = json["access_token"] as? String else { return }
+        let searchPaths = [
+            "/var/mobile/SavedOAuthModel",
+            "/private/var/mobile/SavedOAuthModel",
+            "/var/mobile/Containers/Shared/AppGroup/group.com.cloudy.LingLingBang/SavedOAuthModel",
+            "/private/var/mobile/Containers/Shared/AppGroup/group.com.cloudy.LingLingBang/SavedOAuthModel"
+        ]
 
-        let store = VehicleCredentialsStore()
-        store.accessToken = token
-        store.vin = vinDraft
-        store.phone = phoneDraft
+        for path in searchPaths {
+            guard let data = FileManager.default.contents(atPath: path),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+
+            let token = (json["access_token"] as? String)
+                ?? ((json["data"] as? [String: Any])?["access_token"] as? String)
+
+            if let token, !token.isEmpty {
+                vehicleCredentials.accessToken = token
+                onImported()
+                return
+            }
+        }
     }
 }
 

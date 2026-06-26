@@ -16,7 +16,26 @@ struct StatusView: View {
     @State private var amapKeyDraft = ""
 
 
-    private var vehicleName: String { "宝骏云海" }
+    private var mqttStore: MQTTVehicleStateStore? {
+        vehicleStore as? MQTTVehicleStateStore
+    }
+
+    private var mqttAuthStatus: StatusAuthState {
+        mqttStore?.authStatus ?? .expired("未配置")
+    }
+
+    private var liveBLEStatus: StatusBLEState {
+        switch mqttStore?.bleStatus {
+        case .connected:
+            return .connected
+        case .connecting:
+            return .scanning
+        case .error:
+            return .error
+        case .disconnected, .none:
+            return .disconnected
+        }
+    }
 
     private var modeText: String {
         guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
@@ -48,9 +67,10 @@ struct StatusView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     VStack(alignment: .leading, spacing: 6) {
                         StatusTopBarSection(
-                            vehicleName: vehicleName,
+                            vehicleName: vehicleStore.dashboard.vehicleName,
                             isRefreshing: isRefreshing,
                             refreshScale: refreshScale,
+                            authStatus: mqttAuthStatus,
                             onRefresh: handleRefresh
                         )
 
@@ -69,7 +89,7 @@ struct StatusView: View {
                             modeIcon: modeIcon,
                             modeText: modeText,
                             modeColor: modeColor,
-                            bleStatus: .connected,
+                            bleStatus: liveBLEStatus,
                             doorLockState: vehicleStore.state.locked == true ? .locked : (vehicleStore.state.locked == false ? .unlocked : .unknown),
                             physicalKeyState: vehicleStore.state.physicalKeyInside == true ? .inCar : (vehicleStore.state.physicalKeyInside == false ? .normal : .unknown),
                             gearState: StatusGearState(gear: vehicleStore.state.gear)
@@ -85,8 +105,9 @@ struct StatusView: View {
                     } else {
                         RadarCardView(
                             locationManager: locationManager,
-                            carLat: (vehicleStore as? MQTTVehicleStateStore)?.latestLatitude ?? 22.635842,
-                            carLng: (vehicleStore as? MQTTVehicleStateStore)?.latestLongitude ?? 114.129604
+                            bleConnected: liveBLEStatus == .connected,
+                            carLat: mqttStore?.latestLatitude ?? 0,
+                            carLng: mqttStore?.latestLongitude ?? 0
                         )
                     }
 
@@ -107,7 +128,7 @@ struct StatusView: View {
                             ChargingStatusView(metrics: vehicleStore.cachedDashboardMetrics.charging)
                         }
                         LightingStatusView(metrics: vehicleStore.cachedDashboardMetrics.lighting)
-                        VehicleInfoMergedCard()
+                        VehicleInfoMergedCard(dashboard: vehicleStore.dashboard)
 
                         Spacer(minLength: 100)
                     }
@@ -254,9 +275,11 @@ struct StatusView: View {
                         addressSettings.setAmapWebKey(amapKeyDraft)
                     }
                     isEditingAmapKey = false
-                    let lat = (vehicleStore as? MQTTVehicleStateStore)?.latestLatitude ?? 22.635842
-                    let lng = (vehicleStore as? MQTTVehicleStateStore)?.latestLongitude ?? 114.129604
-                    locationManager.setCarLocation(lat: lat, lng: lng)
+                    let lat = mqttStore?.latestLatitude ?? 0
+                    let lng = mqttStore?.latestLongitude ?? 0
+                    if lat != 0, lng != 0 {
+                        locationManager.setCarLocation(lat: lat, lng: lng)
+                    }
                 }
 
                 FloatingPopupSecondaryButton(
@@ -269,9 +292,10 @@ struct StatusView: View {
                     }
                     isEditingAmapKey = false
                     let keyword = locationManager.vehicleAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let fallbackLat = (vehicleStore as? MQTTVehicleStateStore)?.latestLatitude ?? 22.635842
-                    let fallbackLng = (vehicleStore as? MQTTVehicleStateStore)?.latestLongitude ?? 114.129604
-                    let address = keyword.isEmpty ? "\(fallbackLat),\(fallbackLng)" : keyword
+                    let fallbackLat = mqttStore?.latestLatitude ?? 0
+                    let fallbackLng = mqttStore?.latestLongitude ?? 0
+                    let address = keyword.isEmpty ? (fallbackLat != 0 && fallbackLng != 0 ? "\(fallbackLat),\(fallbackLng)" : "") : keyword
+                    guard !address.isEmpty else { return }
                     let encoded = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? address
                     if let url = URL(string: "amap://search?keyword=\(encoded)"), UIApplication.shared.canOpenURL(url) {
                         UIApplication.shared.open(url)

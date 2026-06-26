@@ -468,6 +468,7 @@ struct VehicleStatusMetricCard: View {
 }
 
 struct VehicleInfoMergedCard: View {
+    let dashboard: VehicleDashboardState
     @State private var isExpanded = false
     @State private var showCopiedToast = false
 
@@ -482,29 +483,31 @@ struct VehicleInfoMergedCard: View {
         }
     }
 
-    private let rows: [RowData] = [
-        RowData("car.fill",       "车型",       "宝骏云海 140km PHEV"),
-        RowData("info.circle",    "VIN",        "LK6ADAH92RB765125", mono: true),
-        RowData("person.fill",    "用户ID",     "17277894456", mono: true),
-        RowData("key.fill",       "钥匙类型",   "owner（车主钥匙）", color: AppTheme.green),
-        RowData("bolt.fill",      "BLE MAC",    "CC:45:A5:DA:B5:C3", mono: true, color: AppTheme.accent),
-        RowData("number",         "Key ID",     "1123037", mono: true, color: AppTheme.accent),
-        RowData("lock.fill",      "MasterKey",  "CED6...FB78", mono: true),
-        RowData("dice.fill",      "Random",     "627E...7FA2", mono: true),
-        RowData("clock.fill",     "有效期至",   "2038-01-01（永久）", color: AppTheme.green),
-    ]
+    private var rows: [RowData] {
+        [
+            RowData("car.fill",       "车型",       dashboard.vehicleName),
+            RowData("info.circle",    "VIN",        dashboard.vinText, mono: true),
+            RowData("person.fill",    "用户ID",     dashboard.userIdText, mono: true),
+            RowData("key.fill",       "钥匙类型",   dashboard.keyTypeText, color: AppTheme.green),
+            RowData("bolt.fill",      "BLE MAC",    dashboard.bleMacText, mono: true, color: AppTheme.accent),
+            RowData("number",         "Key ID",     dashboard.keyIdText, mono: true, color: AppTheme.accent),
+            RowData("lock.fill",      "MasterKey",  dashboard.masterKeyMaskedText, mono: true),
+            RowData("dice.fill",      "Random",     dashboard.randomMaskedText, mono: true),
+            RowData("clock.fill",     "有效期至",   dashboard.keyExpiryText, color: AppTheme.green),
+        ]
+    }
 
     private var fullText: String {
         """
-        车型: 宝骏云海 140km PHEV
-        VIN: LK6ADAH92RB765125
-        用户ID: 17277894456
-        钥匙类型: owner（车主钥匙）
-        BLE MAC: CC:45:A5:DA:B5:C3
-        Key ID: 1123037
-        MasterKey: CED6CA88AF34726F43486E6D0040FB78
-        Random: 627E346190C934150CBF795897A47FA2
-        有效期至: 2038-01-01（永久）
+        车型: \(dashboard.vehicleName)
+        VIN: \(dashboard.vinText)
+        用户ID: \(dashboard.userIdText)
+        钥匙类型: \(dashboard.keyTypeText)
+        BLE MAC: \(dashboard.bleMacText)
+        Key ID: \(dashboard.keyIdText)
+        MasterKey: \(dashboard.masterKeyMaskedText)
+        Random: \(dashboard.randomMaskedText)
+        有效期至: \(dashboard.keyExpiryText)
         """
     }
 

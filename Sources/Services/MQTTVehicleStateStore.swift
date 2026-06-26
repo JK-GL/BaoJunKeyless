@@ -1,176 +1,196 @@
 import Foundation
 import CocoaMQTT
 
-// MARK: - MQTT 车辆状态 Store
-// 接入真实 MQTT 数据源，解析 Protobuf VehicleStatus
-// 控制类操作仍走 mock（simulate 方法保持基类空实现）
+// MARK: - MQTT + HTTP 车辆状态 Store
+// 双通道：
+// - HTTP：电量/续航/位置/档位/温度等基础状态（稳定兜底）
+// - MQTT：门锁/车窗/空调/控制结果等实时变化
+// 控制和无感暂不接入真实执行
 
 final class MQTTVehicleStateStore: VehicleStateStore {
 
-    // MQTT 连接
-    private var mqtt: CocoaMQTT?
-    private var credentials: SGMWApiClient.MQTTCredentials?
-    private var isConnected = false
+    // MARK: - 连接状态
 
-    // 上次 MQTT 推送的原始字段（用于去重）
-    private var lastMqttFields: [Int: String] = [:]
+    enum LiveBLEStatus {
+        case disconnected
+        case connecting
+        case connected
+        case error
+    }
 
-    // 最新经纬度（供 RadarCardView 使用）
+    @Published private(set) var bleStatus: LiveBLEStatus = .disconnected
+    @Published private(set) var authStatus: StatusAuthState = .expired("未登录")
     @Published private(set) var latestLatitude: Double = 0
     @Published private(set) var latestLongitude: Double = 0
+    @Published private(set) var latestBleKeyInfo: [String: String] = [:]
 
-    // 定时器：token 过期自动刷新
-    private var tokenRefreshTimer: Timer?
-
-    // 地址解析
-    private let locationResolver = LocationResolver.shared
-
+    private var mqtt: CocoaMQTT?
+    private var credentials: SGMWApiClient.MQTTCredentials?
     private var credentialsStore: VehicleCredentialsStore?
+
+    private var lastMqttFields: [String: String] = [:]
+    private var httpTimer: Timer?
+    private var lastMQTTUpdate: Date?
+    private var lastHTTPUpdate: Date?
+    private var isConnecting = false
+
+    private let locationResolver = LocationResolver.shared
 
     init() {
         super.init(state: .placeholder, dashboard: VehicleDashboardState())
-
-        // 延迟到 CrashLogger 初始化后再尝试连接
         DispatchQueue.main.async { [weak self] in
             self?.autoConnect()
         }
     }
 
-    /// 自动读取本地 token 并连接 MQTT
-    private func autoConnect() {
-        print("[MQTT] autoConnect started")
+    deinit {
+        httpTimer?.invalidate()
+        mqtt?.disconnect()
+    }
 
-        // 先检查是否有手动保存的凭据
-        let savedStore = VehicleCredentialsStore()
-        if savedStore.isConfigured {
-            print("[MQTT] using saved credentials: vin=\(savedStore.vin)")
-            self.credentialsStore = savedStore
-            CrashLogger.shared.mark("MQTT", "using saved credentials: vin=\(savedStore.vin)")
-            fetchMqttTokenAndConnect(
-                token: savedStore.accessToken,
-                vin: savedStore.vin,
-                phone: savedStore.phone
-            )
+    // MARK: - 启动 / 重连
+
+    private func autoConnect() {
+        let saved = VehicleCredentialsStore()
+        if saved.isConfigured {
+            start(with: saved)
             return
         }
 
-        // 没有保存的凭据，尝试从本地文件读取
-        print("[MQTT] no saved credentials, searching for local token...")
         guard let token = SGMWApiClient.shared.readLocalToken() else {
-            print("[MQTT] no local token found")
+            bleStatus = .disconnected
+            authStatus = .expired("未读取到Token")
             CrashLogger.shared.mark("MQTT", "no local token found")
             return
         }
 
-        print("[MQTT] local token found, length=\(token.count)")
-        CrashLogger.shared.mark("MQTT", "local token found, querying vehicle info")
-
-        SGMWApiClient.shared.readLocalVehicleInfo(token: token) { [weak self] result in
-            guard let self else {
-                print("[MQTT] self is nil in completion")
-                return
-            }
-            guard let result else {
-                print("[MQTT] failed to get vehicle info")
-                CrashLogger.shared.mark("MQTT", "failed to get vehicle info")
-                return
-            }
-
-            print("[MQTT] vehicle: \(result.vin), phone: \(result.phone)")
-            CrashLogger.shared.mark("MQTT", "vehicle: \(result.vin), phone: \(result.phone)")
-
-            // 保存到 UserDefaults 方便下次启动
-            let store = VehicleCredentialsStore()
-            store.accessToken = token
-            store.vin = result.vin
-            store.phone = result.phone
-            self.credentialsStore = store
-
+        authStatus = .valid
+        SGMWApiClient.shared.queryDefaultCar(accessToken: token) { [weak self] result in
+            guard let self else { return }
             DispatchQueue.main.async {
-                self.fetchMqttTokenAndConnect(
-                    token: token,
-                    vin: result.vin,
-                    phone: result.phone
-                )
+                guard let result else {
+                    self.authStatus = .expired("车辆查询失败")
+                    CrashLogger.shared.mark("HTTP", "queryDefaultCar failed")
+                    return
+                }
+                let store = VehicleCredentialsStore()
+                store.accessToken = token
+                store.vin = result.vin
+                store.phone = result.phone
+                self.start(with: store)
             }
         }
     }
 
-    /// 从手动配置的凭据启动连接
     func start(with credentialsStore: VehicleCredentialsStore) {
         self.credentialsStore = credentialsStore
-        guard credentialsStore.isConfigured else {
-            CrashLogger.shared.mark("MQTT", "not configured (no token/vin)")
+        guard !isConnecting else { return }
+        guard !credentialsStore.accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            authStatus = .expired("Token为空")
+            bleStatus = .disconnected
             return
         }
-        CrashLogger.shared.mark("MQTT", "starting with configured credentials")
-        fetchMqttTokenAndConnect(
-            token: credentialsStore.accessToken,
-            vin: credentialsStore.vin,
-            phone: credentialsStore.phone
-        )
+        guard !credentialsStore.vin.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            authStatus = .expired("VIN为空")
+            bleStatus = .disconnected
+            return
+        }
+
+        isConnecting = true
+        authStatus = .valid
+        bleStatus = .connecting
+
+        // 先走 HTTP，拿到基础状态/经纬度/电量等
+        startHTTPPolling(immediate: true)
+        fetchBleKeyInfo()
+
+        SGMWApiClient.shared.fetchMqttToken(accessToken: credentialsStore.accessToken, vin: credentialsStore.vin) { [weak self] mqttToken in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                self.isConnecting = false
+                guard let mqttToken, !mqttToken.isEmpty else {
+                    self.bleStatus = .error
+                    CrashLogger.shared.mark("MQTT", "mqtt token fetch failed")
+                    return
+                }
+                let creds = SGMWApiClient.shared.generateMQTTCredentials(vin: credentialsStore.vin, phone: credentialsStore.phone, mqttToken: mqttToken)
+                self.credentials = creds
+                self.connectMQTT(creds)
+            }
+        }
     }
 
-    /// 断开当前连接并重新连接
     func reconnect() {
         mqtt?.disconnect()
         mqtt = nil
-        isConnected = false
+        credentials = nil
         lastMqttFields.removeAll()
-        if let store = credentialsStore, store.isConfigured {
-            fetchMqttTokenAndConnect(
-                token: store.accessToken,
-                vin: store.vin,
-                phone: store.phone
-            )
+        lastMQTTUpdate = nil
+        if let store = credentialsStore {
+            start(with: store)
         }
     }
 
-    // MARK: - 认证流程
+    // MARK: - HTTP 轮询
 
-    private func fetchMqttTokenAndConnect(token: String, vin: String, phone: String) {
-        print("[MQTT] fetchMqttTokenAndConnect: vin=\(vin), phone=\(phone), token length=\(token.count)")
-        CrashLogger.shared.mark("MQTT", "fetching mqttToken for vin=\(vin)")
+    private func startHTTPPolling(immediate: Bool) {
+        httpTimer?.invalidate()
+        let timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.pollHTTPOnce()
+        }
+        httpTimer = timer
+        if immediate { pollHTTPOnce() }
+    }
 
-        SGMWApiClient.shared.fetchMqttToken(
-            accessToken: token,
-            vin: vin,
-            phone: phone
-        ) { [weak self] mqttToken in
-            guard let self else {
-                print("[MQTT] self is nil after fetchMqttToken")
-                return
-            }
-            guard let mqttToken else {
-                print("[MQTT] mqttToken is nil - API call failed")
-                CrashLogger.shared.mark("MQTT", "failed to get mqttToken")
-                return
-            }
+    private func pollHTTPOnce() {
+        guard let store = credentialsStore else { return }
+        let token = store.accessToken
+        guard !token.isEmpty else { return }
 
-            print("[MQTT] mqttToken received: \(mqttToken)")
-            CrashLogger.shared.mark("MQTT", "mqttToken received")
-
-            let creds = SGMWApiClient.shared.generateMQTTCredentials(
-                vin: vin,
-                phone: phone,
-                mqttToken: mqttToken
-            )
-
-            print("[MQTT] credentials: username=\(creds.username), clientId=\(creds.clientId)")
-            CrashLogger.shared.mark("MQTT", "credentials: clientId=\(creds.clientId)")
-
+        SGMWApiClient.shared.queryVehicleStatus(accessToken: token) { [weak self] payload in
+            guard let self, let payload else { return }
             DispatchQueue.main.async {
-                self.credentials = creds
-                self.connect()
+                self.lastHTTPUpdate = Date()
+                let newState = self.mapHTTPToVehicleState(payload.carStatus)
+                let newDashboard = self.mapHTTPToDashboard(payload.carStatus)
+                let shouldUseHTTP = self.lastMQTTUpdate == nil || Date().timeIntervalSince(self.lastMQTTUpdate!) >= 60
+
+                // 基础状态永远以 HTTP 回填（特别是经纬度/电量/续航/档位）
+                self.mergeHTTPBaseState(newState: newState, dashboard: newDashboard)
+
+                if shouldUseHTTP {
+                    self.apply(newState)
+                    self.applyDashboard(newDashboard)
+                }
+
+                self.applyHTTPMeta(payload.carInfo: payload.carInfo, carStatus: payload.carStatus)
+                CrashLogger.shared.mark("HTTP", "status updated")
             }
         }
     }
 
-    // MARK: - MQTT 连接
+    private func fetchBleKeyInfo() {
+        guard let store = credentialsStore else { return }
+        guard !store.accessToken.isEmpty, !store.vin.isEmpty, !store.phone.isEmpty else { return }
+        SGMWApiClient.shared.queryBleKey(accessToken: store.accessToken, vin: store.vin, phone: store.phone) { [weak self] info in
+            guard let self, let info else { return }
+            DispatchQueue.main.async {
+                self.latestBleKeyInfo = info
+                var dash = self.dashboard
+                dash.bleMacText = info["bleMac"] ?? info["macAddress"] ?? dash.bleMacText
+                dash.keyIdText = info["keyId"] ?? dash.keyIdText
+                dash.keyTypeText = info["keyType"] ?? dash.keyTypeText
+                dash.masterKeyMaskedText = self.maskHex(info["masterKey"], visiblePrefix: 4, visibleSuffix: 4)
+                dash.randomMaskedText = self.maskHex(info["keyMasterRandom"] ?? info["random"], visiblePrefix: 4, visibleSuffix: 4)
+                dash.keyExpiryText = info["expiredTime"] ?? info["expireTime"] ?? info["endTime"] ?? dash.keyExpiryText
+                self.applyDashboard(dash)
+            }
+        }
+    }
 
-    private func connect() {
-        guard let creds = credentials else { return }
+    // MARK: - MQTT
 
+    private func connectMQTT(_ creds: SGMWApiClient.MQTTCredentials) {
         let mqtt = CocoaMQTT(clientID: creds.clientId, host: creds.broker, port: creds.port)
         mqtt.username = creds.username
         mqtt.password = creds.password
@@ -178,186 +198,382 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         mqtt.cleanSession = true
         mqtt.autoReconnect = true
         mqtt.delegate = self
-
         self.mqtt = mqtt
-
-        CrashLogger.shared.mark("MQTT", "connecting to \(creds.broker):\(creds.port)")
-
-        if mqtt.connect() {
-            CrashLogger.shared.mark("MQTT", "connect initiated")
-        } else {
-            CrashLogger.shared.mark("MQTT", "connect failed to initiate")
+        CrashLogger.shared.mark("MQTT", "connecting clientId=\(creds.clientId)")
+        if !mqtt.connect() {
+            bleStatus = .error
+            CrashLogger.shared.mark("MQTT", "connect initiate failed")
         }
     }
-
-    // MARK: - Protobuf 解析
 
     private func handleVehicleStatus(_ data: Data) {
-        let fields = ProtobufDecoder.decode(data)
+        let fields = decodeMQTTFields(data)
+        guard !fields.isEmpty else { return }
 
-        // 建立 fieldNumber → value 的字典
-        var fieldMap: [Int: String] = [:]
-        for field in fields {
-            switch field.wireType {
-            case .varint:
-                if let val = ProtobufDecoder.int64(field) {
-                    fieldMap[field.fieldNumber] = String(val)
-                }
-            case .lengthDelimited:
-                if let val = ProtobufDecoder.string(field) {
-                    fieldMap[field.fieldNumber] = val
-                }
-            }
+        var changedKeys: [String] = []
+        for (k, v) in fields where lastMqttFields[k] != v {
+            changedKeys.append("\(k):\(lastMqttFields[k] ?? "?")→\(v)")
         }
+        guard !changedKeys.isEmpty else { return }
 
-        // 只有字段值变化时才更新
-        var changed = false
-        for (num, val) in fieldMap {
-            if lastMqttFields[num] != val {
-                changed = true
-                break
-            }
-        }
+        lastMqttFields.merge(fields) { _, new in new }
+        let newState = mapMQTTToVehicleState(fields)
+        let newDashboard = mapMQTTToDashboard(fields)
 
-        guard changed else { return }
-
-        // 记录变化
-        let changedKeys = fieldMap.compactMap { num, val -> String? in
-            guard lastMqttFields[num] != val else { return nil }
-            return "f\(num):\(lastMqttFields[num] ?? "?")→\(val)"
-        }
-        lastMqttFields = fieldMap
-
-        // 映射到 VehicleState
-        let newState = mapToVehicleState(fieldMap)
-
-        // 映射到 VehicleDashboardState
-        let newDashboard = mapToDashboard(fieldMap)
-
-        // 主线程更新
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.apply(newState)
-            self.applyDashboard(newDashboard)
-
-            // 更新地址（经纬度变化时）
-            if let lat = Double(fieldMap[27] ?? ""), let lng = Double(fieldMap[28] ?? ""), lat != 0, lng != 0 {
-                self.latestLatitude = lat
-                self.latestLongitude = lng
-                let addressSettings = AddressServiceSettings()
-                self.locationResolver.getAddress(
-                    wgs84Lat: lat,
-                    wgs84Lng: lng,
-                    amapWebKey: addressSettings.amapWebKey
-                ) { _ in }
-            }
-
-            // 日志只写关键变化
-            if !changedKeys.isEmpty {
-                let summary = changedKeys.prefix(5).joined(separator: ", ")
-                CrashLogger.shared.mark("MQTT", "state changed: \(summary)")
-            }
+            self.lastMQTTUpdate = Date()
+            self.bleStatus = .connected
+            self.mergeRealtimeState(newState: newState, dashboard: newDashboard)
+            let summary = changedKeys.prefix(6).joined(separator: ", ")
+            CrashLogger.shared.mark("MQTT", "state changed: \(summary)")
         }
     }
 
-    // MARK: - 字段映射
-
-    private func mapToVehicleState(_ f: [Int: String]) -> VehicleState {
-        var s = state
-        s.timestamp = Date()
-        s.online = true
-
-        // 门锁 (field 3: doorLockStatus "0"=锁 "1"=解锁)
-        s.locked = f[3] == "0"
-
-        // 门开闭 (field 9-12: door1-4OpenStatus, 13: tailDoorOpenStatus)
-        let door1Open = f[9] == "1"
-        let door2Open = f[10] == "1"
-        let door3Open = f[11] == "1"
-        let door4Open = f[12] == "1"
-        let tailOpen = f[13] == "1"
-        s.doorsClosed = !(door1Open || door2Open || door3Open || door4Open)
-        s.driverDoorOpen = door1Open
-        s.trunkOpen = tailOpen
-
-        // 车窗 (field 14-17: window1-4Status "0"=关 "1"=开)
-        let w1 = f[14] == "1"
-        let w2 = f[15] == "1"
-        let w3 = f[16] == "1"
-        let w4 = f[17] == "1"
-        s.windowsClosed = !(w1 || w2 || w3 || w4)
-
-        // 空调 (field 2: acStatus "0"=关 "1"=开)
-        s.acOn = f[2] == "1"
-
-        // 档位 (field 23: autoGearStatus 10=P 12=D 13=N 14=R)
-        s.gear = parseGear(f[23])
-
-        // 钥匙 (field 22: keyStatus 0=远离 1=车外 2=车内)
-        s.physicalKeyInside = f[22] == "2"
-        s.phoneNearby = f[22] != "0"
-
-        // 电量 (field 24: batterySoc)
-        // 里程 (field 25: leftMileage, 26: mileage)
-        // 这些用于 dashboard，不直接放 state
-
-        // 车速 (field 未确认)
-        // s.speed = ...
-
-        return s
+    private func decodeMQTTFields(_ data: Data) -> [String: String] {
+        let decoded = ProtobufDecoder.decode(data)
+        let nameMap: [Int: String] = [
+            1: "collectTime", 2: "acStatus", 3: "doorLockStatus",
+            4: "door1LockStatus", 5: "door2LockStatus", 6: "door3LockStatus", 7: "door4LockStatus", 8: "tailDoorLockStatus",
+            9: "door1OpenStatus", 10: "door2OpenStatus", 11: "door3OpenStatus", 12: "door4OpenStatus", 13: "tailDoorOpenStatus",
+            14: "window1Status", 15: "window2Status", 16: "window3Status", 17: "window4Status",
+            18: "window1OpenDegree", 19: "window2OpenDegree", 20: "window3OpenDegree", 21: "window4OpenDegree"
+        ]
+        var result: [String: String] = [:]
+        for field in decoded {
+            guard let name = nameMap[field.fieldNumber] else { continue }
+            switch field.wireType {
+            case .varint:
+                if let val = ProtobufDecoder.int64(field) { result[name] = String(val) }
+            case .lengthDelimited:
+                if let val = ProtobufDecoder.string(field) { result[name] = val }
+            }
+        }
+        return result
     }
 
-    private func mapToDashboard(_ f: [Int: String]) -> VehicleDashboardState {
+    // MARK: - HTTP/MQTT 映射
+
+    private func mapHTTPToVehicleState(_ s: [String: String]) -> VehicleState {
+        var next = state
+        next.timestamp = parseTimestamp(s["collectTime"]) ?? Date()
+        next.online = true
+
+        if let locked = parseLocked(s["doorLockStatus"]) { next.locked = locked }
+        if let doorsClosed = parseDoorClosed(s) { next.doorsClosed = doorsClosed }
+        if let driverOpen = parseOpen(s["door1OpenStatus"]) { next.driverDoorOpen = driverOpen }
+        if let trunkOpen = parseOpen(s["tailDoorOpenStatus"]) { next.trunkOpen = trunkOpen }
+        if let windowsClosed = parseWindowsClosed(s) { next.windowsClosed = windowsClosed }
+
+        if let batterySoc = parseDouble(s["batterySoc"]) { next.fuelLevel = batterySoc }
+        if let leftMileage = parseDouble(s["leftMileage"]) { next.fuelRange = leftMileage }
+        if let leftFuel = parseDouble(s["leftFuel"]) { next.oilRange = parseDouble(s["oilLeftMileage"]) ?? next.oilRange; next.fuelLevel = next.fuelLevel ?? leftFuel }
+        if let oilMileage = parseDouble(s["oilLeftMileage"]) { next.oilRange = oilMileage }
+
+        if let ac = parseACStatus(s["acStatus"]) { next.acOn = ac }
+        if let temp = parseDouble(s["accCntTemp"] ?? s["interiorTemperature"]) { next.acTemperature = temp }
+        if let gear = parseGear(s["autoGearStatus"]) { next.gear = gear }
+        if let speed = parseDouble(s["vehSpdAvgDrvn"] ?? s["speed"]) { next.speed = speed }
+        if let keyInside = parseKeyInside(s["keyStatus"]) { next.physicalKeyInside = keyInside }
+        if let phoneNearby = parsePhoneNearby(s["keyStatus"]) { next.phoneNearby = phoneNearby }
+        if let rssi = parseInt(s["bleRssi"]) { next.bleRssi = rssi }
+        if let power = parsePowerState(s) { next.power = power }
+        return next
+    }
+
+    private func mapHTTPToDashboard(_ s: [String: String]) -> VehicleDashboardState {
         var d = dashboard
+        d.updatedAt = parseTimestamp(s["collectTime"]) ?? Date()
+        d.updatedAtText = formatTime(d.updatedAt)
 
-        // 电量/续航
-        if let socStr = f[24], let soc = Int(socStr) {
-            d.electricRangeKm = Int(f[25] ?? "0") ?? 0
-        }
+        let electricRange = parseInt(s["leftMileage"]) ?? d.electricRangeKm
+        let fuelRange = parseInt(s["oilLeftMileage"]) ?? d.fuelRangeKm
+        d.electricRangeKm = electricRange
+        d.fuelRangeKm = fuelRange
+        if let batterySoc = parseInt(s["batterySoc"]) { d.electricFullRangeKm = max(electricRange, Int(Double(electricRange) / max(Double(batterySoc), 1) * 100)) }
+        if let leftFuel = parseDouble(s["leftFuel"]), leftFuel > 0 { d.fuelFullRangeKm = max(fuelRange, Int(fuelRange / max(min(leftFuel / leftFuel, 1), 0.01))) }
 
-        // 门锁状态文字
-        d.lockStatusText = f[3] == "0" ? "已锁车" : "未锁"
+        d.batteryRemainingText = displayBatteryRemaining(s)
+        d.batteryHealthPercentText = displayBatteryHealth(s)
+        d.batteryVoltageText = displayValue(s["voltage"], suffix: "V")
+        d.batteryAuxText = displayValue(s["lowBatVol"], suffix: "V")
 
-        // 门开闭
-        let doors = [f[9], f[10], f[11], f[12]]
-        d.doorStatusText = doors.contains("1") ? "未关" : "全关"
+        d.cabinTemperatureText = displayValue(s["interiorTemperature"], suffix: "°C")
+        d.acTemperatureText = displayACTemperature(s)
+        d.batteryTemperatureText = displayValue(s["batAvgTemp"] ?? s["batMinTemp"], suffix: "°C")
+        d.motorTemperatureText = displayValue(s["tmActTemp"], suffix: "°C")
+        d.inverterTemperatureText = displayValue(s["invActTemp"], suffix: "°C")
 
-        // 车窗
-        let windows = [f[14], f[15], f[16], f[17]]
-        d.windowStatusText = windows.contains("1") ? "未关" : "全关"
+        let charging = s["charging"] == "1"
+        d.isCharging = charging
+        d.chargingStatusText = charging ? "是" : "否"
+        d.chargingPowerText = displayValue(s["chargePower"], suffix: " kW")
+        d.chargingPowerValueText = displayValue(s["chargePower"], suffix: " kW")
+        d.obcCurrentText = displayValue(s["obcOtpCur"], suffix: "A")
+        d.obcTemperatureText = displayValue(s["obcTemp"], suffix: "°C")
+        d.chargingStateText = displayText(s["rechargeStatus"]) ?? displayText(s["vecChrgingSts"]) ?? "--"
 
-        // 尾门
-        d.tailgateStatusText = f[13] == "1" ? "已开" : "已锁"
+        d.lockStatusText = (parseLocked(s["doorLockStatus"]) == true) ? "已锁车" : ((parseLocked(s["doorLockStatus"]) == false) ? "未锁" : "未知")
+        d.doorStatusText = (parseDoorClosed(s) == true) ? "全关" : ((parseDoorClosed(s) == false) ? "未关" : "未知")
+        d.windowStatusText = (parseWindowsClosed(s) == true) ? "全关" : ((parseWindowsClosed(s) == false) ? "未关" : "未知")
+        d.tailgateStatusText = (parseOpen(s["tailDoorOpenStatus"]) == true) ? "已开" : ((parseOpen(s["tailDoorOpenStatus"]) == false) ? "已锁" : "未知")
 
-        // 空调
-        d.acTemperatureText = f[2] == "1" ? "开启" : "关闭"
+        d.speedText = displayValue(s["vehSpdAvgDrvn"] ?? s["speed"], suffix: "km/h")
+        d.steeringAngleText = displayValue(s["strWhAng"], suffix: "°")
+        d.throttlePercentText = displayValue(s["accActPos"], suffix: "%")
+        d.brakePercentText = displayValue(s["brakPedalPos"], suffix: "%")
 
-        // 档位
-        let gear = parseGear(f[23])
-        // 不直接改 dashboard 的 gear 字段（如果有的话）
-
-        // 更新时间
-        d.updatedAt = Date()
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        d.updatedAtText = formatter.string(from: Date())
-
+        d.lowBeamText = boolText(s["dipHeadLight"])
+        d.highBeamText = boolText(s["lowBeamLight"])
+        d.leftTurnText = boolText(s["leftTurnLight"])
+        d.rightTurnText = boolText(s["rightTurnLight"])
+        d.positionLightText = boolText(s["positionLight"])
+        d.frontFogText = boolText(s["frontFogLight"])
         return d
     }
 
-    private func parseGear(_ value: String?) -> VehicleGear {
-        switch value {
+    private func mapMQTTToVehicleState(_ s: [String: String]) -> VehicleState {
+        var next = state
+        next.timestamp = parseTimestamp(s["collectTime"]) ?? Date()
+        next.online = true
+        if let locked = parseLocked(s["doorLockStatus"]) { next.locked = locked }
+        if let doorsClosed = parseDoorClosed(s) { next.doorsClosed = doorsClosed }
+        if let driverOpen = parseOpen(s["door1OpenStatus"]) { next.driverDoorOpen = driverOpen }
+        if let trunkOpen = parseOpen(s["tailDoorOpenStatus"]) { next.trunkOpen = trunkOpen }
+        if let windowsClosed = parseWindowsClosed(s) { next.windowsClosed = windowsClosed }
+        if let ac = parseACStatus(s["acStatus"]) { next.acOn = ac }
+        return next
+    }
+
+    private func mapMQTTToDashboard(_ s: [String: String]) -> VehicleDashboardState {
+        var d = dashboard
+        if let locked = parseLocked(s["doorLockStatus"]) { d.lockStatusText = locked ? "已锁车" : "未锁" }
+        if let doorsClosed = parseDoorClosed(s) { d.doorStatusText = doorsClosed ? "全关" : "未关" }
+        if let windowsClosed = parseWindowsClosed(s) { d.windowStatusText = windowsClosed ? "全关" : "未关" }
+        if let tailOpen = parseOpen(s["tailDoorOpenStatus"]) { d.tailgateStatusText = tailOpen ? "已开" : "已锁" }
+        if let ac = parseACStatus(s["acStatus"]) { d.acTemperatureText = ac ? "开启" : "关闭" }
+        d.updatedAt = parseTimestamp(s["collectTime"]) ?? Date()
+        d.updatedAtText = formatTime(d.updatedAt)
+        return d
+    }
+
+    private func mergeHTTPBaseState(newState: VehicleState, dashboard newDashboard: VehicleDashboardState) {
+        var merged = state
+        merged.timestamp = newState.timestamp
+        merged.online = newState.online
+        merged.gear = newState.gear
+        merged.power = newState.power
+        merged.speed = newState.speed
+        merged.physicalKeyInside = newState.physicalKeyInside
+        merged.phoneNearby = newState.phoneNearby
+        merged.fuelLevel = newState.fuelLevel
+        merged.fuelRange = newState.fuelRange
+        merged.oilRange = newState.oilRange
+        if merged.locked == nil { merged.locked = newState.locked }
+        if merged.doorsClosed == nil { merged.doorsClosed = newState.doorsClosed }
+        if merged.driverDoorOpen == nil { merged.driverDoorOpen = newState.driverDoorOpen }
+        if merged.trunkOpen == nil { merged.trunkOpen = newState.trunkOpen }
+        if merged.windowsClosed == nil { merged.windowsClosed = newState.windowsClosed }
+        if merged.acOn == nil { merged.acOn = newState.acOn }
+        if merged.acTemperature == nil { merged.acTemperature = newState.acTemperature }
+        apply(merged)
+        applyDashboard(newDashboard)
+    }
+
+    private func mergeRealtimeState(newState: VehicleState, dashboard newDashboard: VehicleDashboardState) {
+        var merged = state
+        merged.timestamp = newState.timestamp
+        merged.online = newState.online
+        if newState.locked != nil { merged.locked = newState.locked }
+        if newState.doorsClosed != nil { merged.doorsClosed = newState.doorsClosed }
+        if newState.driverDoorOpen != nil { merged.driverDoorOpen = newState.driverDoorOpen }
+        if newState.trunkOpen != nil { merged.trunkOpen = newState.trunkOpen }
+        if newState.windowsClosed != nil { merged.windowsClosed = newState.windowsClosed }
+        if newState.acOn != nil { merged.acOn = newState.acOn }
+        apply(merged)
+
+        var dash = dashboard
+        dash.lockStatusText = newDashboard.lockStatusText
+        dash.doorStatusText = newDashboard.doorStatusText
+        dash.windowStatusText = newDashboard.windowStatusText
+        dash.tailgateStatusText = newDashboard.tailgateStatusText
+        dash.acTemperatureText = newDashboard.acTemperatureText
+        dash.updatedAt = newDashboard.updatedAt
+        dash.updatedAtText = newDashboard.updatedAtText
+        applyDashboard(dash)
+    }
+
+    private func applyHTTPMeta(carInfo: [String: String], carStatus: [String: String]) {
+        if let lat = parseDouble(carStatus["latitude"]), let lng = parseDouble(carStatus["longitude"]), lat != 0, lng != 0 {
+            latestLatitude = lat
+            latestLongitude = lng
+            let addressHint = carStatus["address"]
+            let addressSettings = AddressServiceSettings()
+            locationResolver.getAddress(wgs84Lat: lat, wgs84Lng: lng, address: addressHint, amapWebKey: addressSettings.amapWebKey) { _ in }
+        }
+
+        var dash = dashboard
+        let model = [carInfo["carSeriesName"], carInfo["carModelName"], carInfo["carTypeName"], carInfo["carName"]]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        if !model.isEmpty { dash.vehicleName = model }
+        dash.vinText = carInfo["vin"] ?? dash.vinText
+        dash.userIdText = carInfo["bindCarUserMobile"] ?? carInfo["userId"] ?? dash.userIdText
+        if let supportMqtt = carInfo["supportMqtt"], supportMqtt == "1" {
+            authStatus = .valid
+        }
+        if let connectMark = carStatus["bluetoothKeyConnectMark"] {
+            if connectMark == "1" {
+                bleStatus = .connected
+            } else if connectMark == "0", bleStatus == .connected {
+                bleStatus = .disconnected
+            }
+        }
+        applyDashboard(dash)
+        applyProfile(VehicleProfile())
+    }
+
+    // MARK: - 解析工具
+
+    private func parseLocked(_ raw: String?) -> Bool? {
+        guard let raw else { return nil }
+        if raw == "0" { return true }
+        if raw == "1" { return false }
+        return nil
+    }
+
+    private func parseOpen(_ raw: String?) -> Bool? {
+        guard let raw else { return nil }
+        if raw == "0" { return false }
+        if raw == "1" { return true }
+        return nil
+    }
+
+    private func parseDoorClosed(_ s: [String: String]) -> Bool? {
+        if let total = parseOpen(s["doorOpenStatus"]) { return !total }
+        let values = [s["door1OpenStatus"], s["door2OpenStatus"], s["door3OpenStatus"], s["door4OpenStatus"]]
+        let parsed = values.compactMap(parseOpen)
+        guard !parsed.isEmpty else { return nil }
+        return !parsed.contains(true)
+    }
+
+    private func parseWindowsClosed(_ s: [String: String]) -> Bool? {
+        if let total = parseOpen(s["windowStatus"]) { return !total }
+        let values = [s["window1Status"], s["window2Status"], s["window3Status"], s["window4Status"]]
+        let parsed = values.compactMap(parseOpen)
+        guard !parsed.isEmpty else { return nil }
+        return !parsed.contains(true)
+    }
+
+    private func parseACStatus(_ raw: String?) -> Bool? {
+        guard let raw else { return nil }
+        switch raw {
+        case "0": return false
+        case "1", "2": return true
+        default: return nil
+        }
+    }
+
+    private func parseGear(_ raw: String?) -> VehicleGear? {
+        guard let raw else { return nil }
+        switch raw {
         case "10": return .p
         case "14": return .r
         case "13": return .n
         case "12": return .d
-        default:   return .unknown
+        default: return .unknown
         }
     }
 
-    // MARK: - 控制类（保持 mock 空实现，不覆盖基类）
+    private func parsePowerState(_ s: [String: String]) -> VehiclePowerState? {
+        if let engine = s["engineStatus"] {
+            if engine == "1" { return .ready }
+            if engine == "0" { return .off }
+        }
+        return nil
+    }
 
-    // MARK: - 临时 Mock 控制（真实车控接入前，保持 UI 联动）
+    private func parseKeyInside(_ raw: String?) -> Bool? {
+        guard let raw else { return nil }
+        switch raw {
+        case "2": return true
+        case "0", "1": return false
+        default: return nil
+        }
+    }
+
+    private func parsePhoneNearby(_ raw: String?) -> Bool? {
+        guard let raw else { return nil }
+        return raw != "0"
+    }
+
+    private func maskHex(_ raw: String?, visiblePrefix: Int, visibleSuffix: Int) -> String {
+        guard let raw, !raw.isEmpty else { return "--" }
+        guard raw.count > visiblePrefix + visibleSuffix else { return raw }
+        let prefix = raw.prefix(visiblePrefix)
+        let suffix = raw.suffix(visibleSuffix)
+        return "\(prefix)...\(suffix)"
+    }
+
+    private func parseInt(_ raw: String?) -> Int? {
+        guard let raw, !raw.isEmpty else { return nil }
+        return Int(Double(raw) ?? .nan)
+    }
+
+    private func parseDouble(_ raw: String?) -> Double? {
+        guard let raw, !raw.isEmpty else { return nil }
+        return Double(raw)
+    }
+
+    private func parseTimestamp(_ raw: String?) -> Date? {
+        guard let raw, !raw.isEmpty else { return nil }
+        if let ms = Double(raw), ms > 1000000000000 { return Date(timeIntervalSince1970: ms / 1000) }
+        if let sec = Double(raw), sec > 1000000000 { return Date(timeIntervalSince1970: sec) }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        return formatter.date(from: raw)
+    }
+
+    private func formatTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter.string(from: date)
+    }
+
+    private func displayValue(_ raw: String?, suffix: String = "") -> String {
+        guard let raw, !raw.isEmpty else { return "--" }
+        return raw + suffix
+    }
+
+    private func displayText(_ raw: String?) -> String? {
+        guard let raw, !raw.isEmpty else { return nil }
+        return raw
+    }
+
+    private func displayBatteryRemaining(_ s: [String: String]) -> String {
+        if let kwh = s["leftBatteryPower"], !kwh.isEmpty { return "\(kwh)kWh" }
+        if let soc = s["batterySoc"], !soc.isEmpty { return "\(soc)%" }
+        return dashboard.batteryRemainingText
+    }
+
+    private func displayBatteryHealth(_ s: [String: String]) -> String {
+        if let soh = s["batSOH"] ?? s["batHealth"], !soh.isEmpty { return "\(soh)%" }
+        return dashboard.batteryHealthPercentText
+    }
+
+    private func boolText(_ raw: String?) -> String {
+        guard let raw else { return "--" }
+        return raw == "1" ? "开启" : (raw == "0" ? "关闭" : raw)
+    }
+
+    private func displayACTemperature(_ s: [String: String]) -> String {
+        if let temp = s["interiorTemperature"], !temp.isEmpty { return "\(temp)°C" }
+        if let ac = parseACStatus(s["acStatus"]) { return ac ? "开启" : "关闭" }
+        return dashboard.acTemperatureText
+    }
+
+    // MARK: - 暂保留 mock 控制联动
 
     override func simulateUnlock() {
         var next = state
@@ -413,32 +629,25 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 extension MQTTVehicleStateStore: CocoaMQTTDelegate {
     func mqtt(_ mqtt: CocoaMQTT, didConnectAck ack: CocoaMQTTConnAck) {
         if ack == .accept {
-            isConnected = true
+            bleStatus = .connected
             CrashLogger.shared.mark("MQTT", "connected (ack=\(ack.rawValue))")
-
-            // 订阅所有 topic
             guard let creds = credentials else { return }
             for topic in creds.topics {
                 mqtt.subscribe(topic, qos: .qos1)
-                CrashLogger.shared.mark("MQTT", "subscribed: \(topic)")
             }
         } else {
+            bleStatus = .error
             CrashLogger.shared.mark("MQTT", "connect rejected: \(ack.rawValue)")
         }
     }
 
     func mqtt(_ mqtt: CocoaMQTT, didPublishMessage message: CocoaMQTTMessage, id: UInt16) {}
-
     func mqtt(_ mqtt: CocoaMQTT, didPublishAck id: UInt16) {}
 
     func mqtt(_ mqtt: CocoaMQTT, didReceiveMessage message: CocoaMQTTMessage, id: UInt16) {
         let payload = Data(message.payload)
-
-        let topic = message.topic
-        if topic.hasSuffix("/vehicle/app/status") {
+        if message.topic.hasSuffix("/vehicle/app/status") {
             handleVehicleStatus(payload)
-        } else if topic.hasSuffix("/vehicle/control") {
-            // ControlResult — 暂不处理
         }
     }
 
@@ -447,14 +656,11 @@ extension MQTTVehicleStateStore: CocoaMQTTDelegate {
     }
 
     func mqtt(_ mqtt: CocoaMQTT, didUnsubscribeTopics topics: [String]) {}
-
     func mqttDidPing(_ mqtt: CocoaMQTT) {}
-
     func mqttDidReceivePong(_ mqtt: CocoaMQTT) {}
 
     func mqttDidDisconnect(_ mqtt: CocoaMQTT, withError err: Error?) {
-        isConnected = false
+        bleStatus = .error
         CrashLogger.shared.mark("MQTT", "disconnected: \(err?.localizedDescription ?? "no error")")
-        // CocoaMQTT autoReconnect 会自动重连
     }
 }
