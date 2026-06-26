@@ -127,6 +127,7 @@ struct SettingsVehicleConfigSection: View {
     @State private var vinDraft: String = ""
     @State private var phoneDraft: String = ""
     @State private var isEditing = false
+    @State private var showingImportGuide = false
     @Binding var toastText: String?
 
     var body: some View {
@@ -161,6 +162,28 @@ struct SettingsVehicleConfigSection: View {
                 Divider().background(theme.cardStroke)
 
                 VStack(alignment: .leading, spacing: 12) {
+                    // 快捷导入按钮
+                    Button {
+                        showingImportGuide = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "square.and.arrow.down")
+                                .font(.system(size: 13))
+                            Text("从五菱 App 导入凭据")
+                                .font(.system(size: 14, weight: .medium))
+                        }
+                        .foregroundStyle(AppTheme.accent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    Divider().background(Color.white.opacity(0.08))
+
                     credentialField(
                         label: "Access Token",
                         placeholder: "五菱/宝骏 App 的 access_token",
@@ -245,6 +268,9 @@ struct SettingsVehicleConfigSection: View {
             vinDraft = vehicleCredentials.vin
             phoneDraft = vehicleCredentials.phone
         }
+        .sheet(isPresented: $showingImportGuide) {
+            ImportGuideSheet()
+        }
     }
 
     @ViewBuilder
@@ -269,6 +295,105 @@ struct SettingsVehicleConfigSection: View {
                     .fill(Color.white.opacity(0.06))
             )
         }
+    }
+}
+
+// MARK: - 导入凭据指引
+struct ImportGuideSheet: View {
+    @Environment(\.dismiss) var dismiss
+    @State private var tokenDraft = ""
+    @State private var vinDraft = ""
+    @State private var phoneDraft = ""
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("从五菱 App 导入凭据")
+                        .font(.title2.bold())
+                        .foregroundStyle(.white)
+
+                    Group {
+                        guideStep(num: 1, title: "打开 TrollStore 文件管理器", detail: "找到五菱 App 的 App Group 容器")
+                        guideStep(num: 2, title: "复制 SavedOAuthModel", detail: "路径：group.com.cloudy.LingLingBang/SavedOAuthModel")
+                        guideStep(num: 3, title: "粘贴到 /var/mobile/", detail: "直接粘贴到 var/mobile/ 目录下")
+                        guideStep(num: 4, title: "返回 App 点击「读取」", detail: "App 会自动从 /var/mobile/SavedOAuthModel 读取")
+                    }
+
+                    Divider().background(Color.white.opacity(0.1))
+
+                    Text("如果自动读取失败，请手动填入：")
+                        .font(.subheadline)
+                        .foregroundStyle(Color.white.opacity(0.6))
+
+                    VStack(spacing: 10) {
+                        HStack {
+                            Text("access_token:").font(.caption).foregroundStyle(.secondary)
+                            TextField("粘贴 token", text: $tokenDraft)
+                                .textFieldStyle(.plain)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.white)
+                        }
+                        HStack {
+                            Text("VIN:").font(.caption).foregroundStyle(.secondary)
+                            TextField("LK6ADAH92RB765125", text: $vinDraft)
+                                .textFieldStyle(.plain)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.white)
+                        }
+                        HStack {
+                            Text("手机号:").font(.caption).foregroundStyle(.secondary)
+                            TextField("13800138000", text: $phoneDraft)
+                                .textFieldStyle(.plain)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .padding(12)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.06)))
+                }
+                .padding()
+            }
+            .background(Color.black.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("读取") {
+                        readFromDisk()
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    private func guideStep(num: Int, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text("\(num)")
+                .font(.caption.bold())
+                .foregroundStyle(.black)
+                .frame(width: 22, height: 22)
+                .background(Capsule().fill(AppTheme.accent))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.subheadline.bold()).foregroundStyle(.white)
+                Text(detail).font(.caption).foregroundStyle(Color.white.opacity(0.5))
+            }
+        }
+    }
+
+    private func readFromDisk() {
+        // 尝试从 /var/mobile/ 读取
+        let path = "/var/mobile/SavedOAuthModel"
+        guard let data = FileManager.default.contents(atPath: path),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let token = json["access_token"] as? String else { return }
+
+        let store = VehicleCredentialsStore()
+        store.accessToken = token
+        store.vin = vinDraft
+        store.phone = phoneDraft
     }
 }
 

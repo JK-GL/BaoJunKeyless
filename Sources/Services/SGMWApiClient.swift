@@ -20,26 +20,42 @@ final class SGMWApiClient {
     /// 从本地读取 access_token
     /// TrollStore 侧载 App 有文件系统权限，可直接读取 App Group 容器
     func readLocalToken() -> String? {
-        // 方案1: 搜索所有 App Group 容器
-        let appGroupBase = "/private/var/mobile/Containers/Shared/AppGroup"
-        CrashLogger.shared.mark("SGMW", "searching \(appGroupBase)")
+        // 搜索路径列表（TrollStore 可能无法访问 App Group，优先搜 /var/mobile/）
+        let searchPaths = [
+            "/var/mobile/SavedOAuthModel",                          // 用户手动复制到这里
+            "/var/mobile/Containers/Shared/AppGroup/group.com.cloudy.LingLingBang/SavedOAuthModel",
+            "/private/var/mobile/Containers/Shared/AppGroup/group.com.cloudy.LingLingBang/SavedOAuthModel",
+        ]
 
-        if let containers = try? FileManager.default.contentsOfDirectory(atPath: appGroupBase) {
-            CrashLogger.shared.mark("SGMW", "found \(containers.count) App Group containers")
-            for container in containers {
-                let savedPath = "\(appGroupBase)/\(container)/SavedOAuthModel"
-                if FileManager.default.fileExists(atPath: savedPath),
-                   let data = FileManager.default.contents(atPath: savedPath),
-                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let token = json["access_token"] as? String,
-                   !token.isEmpty {
-                    CrashLogger.shared.mark("SGMW", "token found from \(container)")
-                    return token
+        // 额外搜索：遍历所有 App Group 容器
+        let appGroupBases = [
+            "/private/var/mobile/Containers/Shared/AppGroup",
+            "/var/mobile/Containers/Shared/AppGroup",
+        ]
+
+        var allPaths = searchPaths
+        for base in appGroupBases {
+            if let containers = try? FileManager.default.contentsOfDirectory(atPath: base) {
+                for container in containers {
+                    allPaths.append("\(base)/\(container)/SavedOAuthModel")
                 }
             }
-        } else {
-            CrashLogger.shared.mark("SGMW", "cannot read \(appGroupBase)")
         }
+
+        CrashLogger.shared.mark("SGMW", "searching \(allPaths.count) paths")
+
+        for path in allPaths {
+            if FileManager.default.fileExists(atPath: path),
+               let data = FileManager.default.contents(atPath: path),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let token = json["access_token"] as? String,
+               !token.isEmpty {
+                CrashLogger.shared.mark("SGMW", "token found from \(path)")
+                return token
+            }
+        }
+
+        CrashLogger.shared.mark("SGMW", "no token in any path")
 
         // 方案2: 标准 App Group API
         if let url = FileManager.default.containerURL(
