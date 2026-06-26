@@ -214,21 +214,34 @@ struct SettingsVehicleConfigSection: View {
 
                     HStack(spacing: 12) {
                         Button {
-                            vehicleCredentials.accessToken = accessTokenDraft
-                            vehicleCredentials.vin = vinDraft
-                            vehicleCredentials.phone = phoneDraft
-                            toastText = "配置已保存，正在连接…"
-                            onSave()
+                            let token = accessTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !token.isEmpty else { return }
+                            isFetching = true
+                            toastText = "正在查询车辆信息…"
+                            SGMWApiClient.shared.queryDefaultCar(accessToken: token) { result in
+                                DispatchQueue.main.async {
+                                    isFetching = false
+                                    guard let result else {
+                                        toastText = "查询失败，请检查 Token"
+                                        return
+                                    }
+                                    vehicleCredentials.accessToken = token
+                                    vehicleCredentials.vin = result.vin
+                                    vehicleCredentials.phone = result.phone
+                                    toastText = "配置已保存 · \(result.vin)"
+                                    onSave()
+                                }
+                            }
                         } label: {
                             Text("保存")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(.black)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
-                                .background(Capsule().fill(vehicleCredentials.isConfigured ? AppTheme.green : Color.white.opacity(0.3)))
+                                .background(Capsule().fill(accessTokenDraft.isEmpty ? Color.white.opacity(0.3) : AppTheme.green))
                         }
                         .buttonStyle(.plain)
-                        .disabled(!vehicleCredentials.isConfigured)
+                        .disabled(accessTokenDraft.isEmpty || isFetching)
 
                         Button {
                             vehicleCredentials.reset()
