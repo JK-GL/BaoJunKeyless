@@ -8,6 +8,7 @@ struct SettingsView: View {
     @EnvironmentObject var keylessSettings: KeylessSettingsStore
     @EnvironmentObject var customVibrationStore: CustomVibrationStore
     @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
+    @EnvironmentObject var vehicleStore: VehicleStateStore
     @EnvironmentObject var vehicleLog: VehicleEventLogStore
     @EnvironmentObject var addressSettings: AddressServiceSettings
 
