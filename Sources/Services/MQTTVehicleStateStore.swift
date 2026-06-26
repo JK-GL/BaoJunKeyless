@@ -150,7 +150,12 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             if let lat = Double(fieldMap[27] ?? ""), let lng = Double(fieldMap[28] ?? ""), lat != 0, lng != 0 {
                 self.latestLatitude = lat
                 self.latestLongitude = lng
-                self.locationResolver.setCarLocation(lat: lat, lng: lng)
+                let addressSettings = AddressServiceSettings()
+                self.locationResolver.getAddress(
+                    wgs84Lat: lat,
+                    wgs84Lng: lng,
+                    amapWebKey: addressSettings.amapWebKey
+                ) { _ in }
             }
 
             // 日志只写关键变化
@@ -333,7 +338,7 @@ extension MQTTVehicleStateStore: CocoaMQTTDelegate {
     func mqtt(_ mqtt: CocoaMQTT, didPublishAck id: UInt16) {}
 
     func mqtt(_ mqtt: CocoaMQTT, didReceiveMessage message: CocoaMQTTMessage, id: UInt16) {
-        guard let payload = message.payload as Data? else { return }
+        let payload = Data(message.payload)
 
         let topic = message.topic
         if topic.hasSuffix("/vehicle/app/status") {
@@ -343,8 +348,8 @@ extension MQTTVehicleStateStore: CocoaMQTTDelegate {
         }
     }
 
-    func mqtt(_ mqtt: CocoaMQTT, didSubscribeTopic topics: [String]) {
-        CrashLogger.shared.mark("MQTT", "subscribed \(topics.count) topics")
+    func mqtt(_ mqtt: CocoaMQTT, didSubscribeTopics success: NSDictionary, failed: [String]) {
+        CrashLogger.shared.mark("MQTT", "subscribed \(success.count) topics, failed \(failed.count)")
     }
 
     func mqtt(_ mqtt: CocoaMQTT, didUnsubscribeTopic topic: String) {}
