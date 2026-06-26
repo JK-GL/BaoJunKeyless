@@ -93,6 +93,7 @@ struct FloatingPopupPrimaryButton: View {
     let color: Color
     var isLoading: Bool = false
     var isDisabled: Bool = false
+    var disabledBackgroundColor: Color? = nil
     let action: () -> Void
 
     var body: some View {
@@ -111,7 +112,7 @@ struct FloatingPopupPrimaryButton: View {
             .padding(.vertical, 12)
             .background(
                 Capsule()
-                    .fill(isDisabled ? Color.white.opacity(0.45) : color)
+                    .fill(isDisabled ? (disabledBackgroundColor ?? Color.white.opacity(0.45)) : color)
             )
         }
         .buttonStyle(.plain)

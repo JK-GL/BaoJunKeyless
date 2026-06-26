@@ -239,11 +239,22 @@ struct CommandConfirmPopup: View {
             }
         } actions: {
             if let result = commandResult {
-                // 执行后：结果按钮（disabled）
+                // 执行后：结果按钮（disabled，用对应颜色背景）
                 FloatingPopupPrimaryButton(
                     title: result == .success ? action.successTitle(state: executedState ?? vehicleState) : action.failureTitle(result: result),
                     color: result.color,
                     isLoading: false,
+                    isDisabled: true,
+                    disabledBackgroundColor: result.color,
+                    action: {}
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            } else if isExecuting {
+                // 执行中：仅显示执行按钮，隐藏取消
+                FloatingPopupPrimaryButton(
+                    title: "执行中…",
+                    color: accentColor,
+                    isLoading: true,
                     isDisabled: true,
                     action: {}
                 )
@@ -252,10 +263,10 @@ struct CommandConfirmPopup: View {
                 // 执行前：确认 + 取消
                 VStack(spacing: 8) {
                     FloatingPopupPrimaryButton(
-                        title: isExecuting ? "执行中…" : action.confirmTitle(state: vehicleState),
+                        title: action.confirmTitle(state: vehicleState),
                         color: accentColor,
-                        isLoading: isExecuting,
-                        isDisabled: isExecuting,
+                        isLoading: false,
+                        isDisabled: false,
                         action: executeCommand
                     )
 
@@ -266,8 +277,11 @@ struct CommandConfirmPopup: View {
                         withAnimation(.easeOut(duration: 0.2)) { isPresented = false }
                     }
                 }
+                .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.25), value: isExecuting)
+        .animation(.easeInOut(duration: 0.25), value: commandResult != nil)
     }
 
     private var statusItemsForCurrentAction: [PopupStatusItem] {
@@ -390,8 +404,8 @@ struct CommandConfirmPopup: View {
                 vehicleLog.add(.error, "指令失败", detail: "\(label) \(mockResult == .timeout ? "连接超时" : "执行失败")")
             }
 
-            // 2.5 秒后自动关闭
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            // 2 秒后自动关闭
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 withAnimation(.easeOut(duration: 0.2)) { isPresented = false }
             }
         }
