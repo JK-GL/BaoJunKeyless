@@ -119,6 +119,159 @@ struct SettingsAboutSection: View {
     }
 }
 
+// MARK: - 车辆配置
+struct SettingsVehicleConfigSection: View {
+    @EnvironmentObject var theme: ThemeManager
+    @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
+    @State private var accessTokenDraft: String = ""
+    @State private var vinDraft: String = ""
+    @State private var phoneDraft: String = ""
+    @State private var isEditing = false
+    @Binding var toastText: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.spring(response: 0.28)) { isEditing.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "car.fill")
+                        .foregroundStyle(AppTheme.orange)
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("车辆配置")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Spacer()
+                    if vehicleCredentials.isConfigured {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(AppTheme.green)
+                            .font(.system(size: 13))
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(theme.textSecondary)
+                        .rotationEffect(.degrees(isEditing ? 90 : 0))
+                }
+                .padding(16)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isEditing {
+                Divider().background(theme.cardStroke)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    credentialField(
+                        label: "Access Token",
+                        placeholder: "五菱/宝骏 App 的 access_token",
+                        text: $accessTokenDraft,
+                        isSecure: true
+                    )
+                    credentialField(
+                        label: "VIN",
+                        placeholder: "车辆识别号 (如 LK6ADAH92RB765125)",
+                        text: $vinDraft
+                    )
+                    credentialField(
+                        label: "手机号",
+                        placeholder: "绑定手机号",
+                        text: $phoneDraft
+                    )
+
+                    HStack(spacing: 12) {
+                        Button {
+                            vehicleCredentials.accessToken = accessTokenDraft
+                            vehicleCredentials.vin = vinDraft
+                            vehicleCredentials.phone = phoneDraft
+                            toastText = "配置已保存"
+                        } label: {
+                            Text("保存")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.black)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Capsule().fill(vehicleCredentials.isConfigured ? AppTheme.green : Color.white.opacity(0.3)))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!vehicleCredentials.isConfigured)
+
+                        Button {
+                            vehicleCredentials.reset()
+                            accessTokenDraft = ""
+                            vinDraft = ""
+                            phoneDraft = ""
+                            toastText = "配置已清除"
+                        } label: {
+                            Text("清除")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(.red.opacity(0.8))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Capsule().stroke(Color.red.opacity(0.3), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if !vehicleCredentials.isConfigured {
+                        Text("填入 access_token 和 VIN 后可连接 MQTT 获取实时车辆状态。")
+                            .font(.caption)
+                            .foregroundStyle(Color.white.opacity(0.45))
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(AppTheme.green)
+                            Text("已配置 · \(vehicleCredentials.vin)")
+                                .font(.caption)
+                                .foregroundStyle(Color.white.opacity(0.62))
+                        }
+                    }
+                }
+                .padding(16)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(theme.cardBg)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(theme.cardStroke, lineWidth: 1)
+        )
+        .padding(.horizontal, 18)
+        .onAppear {
+            accessTokenDraft = vehicleCredentials.accessToken
+            vinDraft = vehicleCredentials.vin
+            phoneDraft = vehicleCredentials.phone
+        }
+    }
+
+    @ViewBuilder
+    private func credentialField(label: String, placeholder: String, text: Binding<String>, isSecure: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(Color.white.opacity(0.55))
+            Group {
+                if isSecure {
+                    SecureField(placeholder, text: text)
+                } else {
+                    TextField(placeholder, text: text)
+                }
+            }
+            .textFieldStyle(.plain)
+            .font(.system(size: 14, design: .monospaced))
+            .foregroundStyle(.white)
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+            )
+        }
+    }
+}
+
 struct SettingsDiagnosticsSection: View {
     @EnvironmentObject var vehicleStore: VehicleStateStore
     @AppStorage(AppDiagnosticsSettings.quickActionsDebugModeKey) private var quickActionsDebugMode = true

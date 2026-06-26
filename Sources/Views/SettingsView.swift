@@ -7,6 +7,7 @@ struct SettingsView: View {
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var keylessSettings: KeylessSettingsStore
     @EnvironmentObject var customVibrationStore: CustomVibrationStore
+    @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
     @EnvironmentObject var vehicleLog: VehicleEventLogStore
     @EnvironmentObject var addressSettings: AddressServiceSettings
 
@@ -35,6 +36,8 @@ struct SettingsView: View {
                     backgroundBlurBinding: backgroundBlurBinding,
                     themeConfig: themeConfig
                 )
+
+                SettingsVehicleConfigSection(toastText: $toastText)
 
                 SettingsAboutSection()
 
@@ -101,6 +104,15 @@ struct SettingsView: View {
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showingResetAlert)
+        .onChange(of: vehicleCredentials.accessToken) { _ in connectMQTTIfNeeded() }
+        .onChange(of: vehicleCredentials.vin) { _ in connectMQTTIfNeeded() }
+    }
+
+    private func connectMQTTIfNeeded() {
+        guard let mqttStore = vehicleStore as? MQTTVehicleStateStore else { return }
+        if vehicleCredentials.isConfigured {
+            mqttStore.start(with: vehicleCredentials)
+        }
     }
 
     private var accentBinding: Binding<Color> {

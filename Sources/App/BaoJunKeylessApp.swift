@@ -7,6 +7,7 @@ struct BaoJunKeylessApp: App {
     @StateObject private var customVibrationStore = CustomVibrationStore()
     @StateObject private var vehicleEventLogStore = VehicleEventLogStore()
     @StateObject private var addressSettings = AddressServiceSettings()
+    @StateObject private var vehicleCredentials = VehicleCredentialsStore()
     @StateObject private var vehicleStore: VehicleStateStore = MQTTVehicleStateStore()
 
     init() {
@@ -27,6 +28,7 @@ struct BaoJunKeylessApp: App {
                 .environmentObject(vehicleEventLogStore)
                 .environmentObject(addressSettings)
                 .environmentObject(vehicleStore)
+                .environmentObject(vehicleCredentials)
                 .preferredColorScheme(.dark)
         }
     }

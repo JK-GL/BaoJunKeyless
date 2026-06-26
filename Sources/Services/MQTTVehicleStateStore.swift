@@ -25,49 +25,80 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     // 地址解析
     private let locationResolver = LocationResolver.shared
 
+    private var credentialsStore: VehicleCredentialsStore?
+
     init() {
         super.init(state: .placeholder, dashboard: VehicleDashboardState())
-        startAuth()
+
+        // 尝试从 UserDefaults 恢复已保存的凭据并自动连接
+        let store = VehicleCredentialsStore()
+        if store.isConfigured {
+            self.credentialsStore = store
+            CrashLogger.shared.mark("MQTT", "found saved credentials, auto-connecting")
+            fetchMqttTokenAndConnect(
+                token: store.accessToken,
+                vin: store.vin,
+                phone: store.phone
+            )
+        }
+    }
+
+    /// 从手动配置的凭据启动连接
+    func start(with credentialsStore: VehicleCredentialsStore) {
+        self.credentialsStore = credentialsStore
+        guard credentialsStore.isConfigured else {
+            CrashLogger.shared.mark("MQTT", "not configured (no token/vin)")
+            return
+        }
+        CrashLogger.shared.mark("MQTT", "starting with configured credentials")
+        fetchMqttTokenAndConnect(
+            token: credentialsStore.accessToken,
+            vin: credentialsStore.vin,
+            phone: credentialsStore.phone
+        )
+    }
+
+    /// 断开当前连接并重新连接
+    func reconnect() {
+        mqtt?.disconnect()
+        mqtt = nil
+        isConnected = false
+        lastMqttFields.removeAll()
+        if let store = credentialsStore, store.isConfigured {
+            fetchMqttTokenAndConnect(
+                token: store.accessToken,
+                vin: store.vin,
+                phone: store.phone
+            )
+        }
     }
 
     // MARK: - 认证流程
 
-    private func startAuth() {
-        guard let token = SGMWApiClient.shared.readLocalToken() else {
-            CrashLogger.shared.mark("MQTT", "no local token found")
-            return
-        }
+    private func fetchMqttTokenAndConnect(token: String, vin: String, phone: String) {
+        CrashLogger.shared.mark("MQTT", "fetching mqttToken for vin=\(vin)")
 
-        CrashLogger.shared.mark("MQTT", "token found, querying vehicle info")
-
-        SGMWApiClient.shared.queryDefaultCar(accessToken: token) { [weak self] result in
-            guard let self, let result else {
-                CrashLogger.shared.mark("MQTT", "failed to query vehicle info")
+        SGMWApiClient.shared.fetchMqttToken(
+            accessToken: token,
+            vin: vin,
+            phone: phone
+        ) { [weak self] mqttToken in
+            guard let self, let mqttToken else {
+                CrashLogger.shared.mark("MQTT", "failed to get mqttToken")
                 return
             }
 
-            CrashLogger.shared.mark("MQTT", "vehicle: \(result.vin)")
+            CrashLogger.shared.mark("MQTT", "mqttToken received")
 
-            SGMWApiClient.shared.fetchMqttToken(
-                accessToken: token,
-                vin: result.vin,
-                phone: result.phone
-            ) { [weak self] mqttToken in
-                guard let self, let mqttToken else {
-                    CrashLogger.shared.mark("MQTT", "failed to get mqttToken")
-                    return
-                }
+            let creds = SGMWApiClient.shared.generateMQTTCredentials(
+                vin: vin,
+                phone: phone,
+                mqttToken: mqttToken
+            )
 
-                let creds = SGMWApiClient.shared.generateMQTTCredentials(
-                    vin: result.vin,
-                    phone: result.phone,
-                    mqttToken: mqttToken
-                )
-
-                DispatchQueue.main.async {
-                    self.credentials = creds
-                    self.connect()
-                }
+            DispatchQueue.main.async {
+                self.credentials = creds
+                self.connect()
             }
         }
     }
