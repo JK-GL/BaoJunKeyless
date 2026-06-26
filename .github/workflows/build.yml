@@ -25,7 +25,7 @@ jobs:
       - name: Generate Xcode Project
         run: xcodegen generate
 
-      - name: Build for Device (Ad-hoc)
+      - name: Build for Device (Unsigned)
         run: |
           xcodebuild \
             -project BaoJunKeyless.xcodeproj \
@@ -34,7 +34,7 @@ jobs:
             -configuration Release \
             -derivedDataPath build \
             CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             COPY_PHASE_STRIP=NO \
             CURRENT_PROJECT_VERSION="$BUILD_DATE"
