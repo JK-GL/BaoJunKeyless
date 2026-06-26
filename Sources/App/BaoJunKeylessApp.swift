@@ -7,7 +7,7 @@ struct BaoJunKeylessApp: App {
     @StateObject private var customVibrationStore = CustomVibrationStore()
     @StateObject private var vehicleEventLogStore = VehicleEventLogStore()
     @StateObject private var addressSettings = AddressServiceSettings()
-    @StateObject private var vehicleStore: VehicleStateStore = MockVehicleStateStore()
+    @StateObject private var vehicleStore: VehicleStateStore = MQTTVehicleStateStore()
 
     init() {
         _ = CrashLogger.shared

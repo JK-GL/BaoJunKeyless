@@ -83,7 +83,11 @@ struct StatusView: View {
                                 .foregroundColor(.secondary)
                         }
                     } else {
-                        RadarCardView(locationManager: locationManager)
+                        RadarCardView(
+                            locationManager: locationManager,
+                            carLat: (vehicleStore as? MQTTVehicleStateStore)?.latestLatitude ?? 22.635842,
+                            carLng: (vehicleStore as? MQTTVehicleStateStore)?.latestLongitude ?? 114.129604
+                        )
                     }
 
                     QuickActionsView(onCommand: { command in
@@ -250,7 +254,9 @@ struct StatusView: View {
                         addressSettings.setAmapWebKey(amapKeyDraft)
                     }
                     isEditingAmapKey = false
-                    locationManager.setCarLocation(lat: 22.635842, lng: 114.129604)
+                    let lat = (vehicleStore as? MQTTVehicleStateStore)?.latestLatitude ?? 22.635842
+                    let lng = (vehicleStore as? MQTTVehicleStateStore)?.latestLongitude ?? 114.129604
+                    locationManager.setCarLocation(lat: lat, lng: lng)
                 }
 
                 FloatingPopupSecondaryButton(
@@ -263,7 +269,9 @@ struct StatusView: View {
                     }
                     isEditingAmapKey = false
                     let keyword = locationManager.vehicleAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let address = keyword.isEmpty ? "22.635842,114.129604" : keyword
+                    let fallbackLat = (vehicleStore as? MQTTVehicleStateStore)?.latestLatitude ?? 22.635842
+                    let fallbackLng = (vehicleStore as? MQTTVehicleStateStore)?.latestLongitude ?? 114.129604
+                    let address = keyword.isEmpty ? "\(fallbackLat),\(fallbackLng)" : keyword
                     let encoded = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? address
                     if let url = URL(string: "amap://search?keyword=\(encoded)"), UIApplication.shared.canOpenURL(url) {
                         UIApplication.shared.open(url)

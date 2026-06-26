@@ -21,6 +21,10 @@ settings:
     INFOPLIST_KEY_UILaunchScreen_Generation: YES
     INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
     INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait"
+packages:
+  CocoaMQTT:
+    url: https://github.com/emqx/CocoaMQTT.git
+    from: "2.2.0"
 targets:
   BaoJunKeyless:
     type: application
@@ -33,3 +37,5 @@ targets:
     settings:
       base:
         INFOPLIST_FILE: Info.plist
+    dependencies:
+      - package: CocoaMQTT

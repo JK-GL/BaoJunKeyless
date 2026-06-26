@@ -505,8 +505,8 @@ struct RadarCardView: View {
     @EnvironmentObject var theme: ThemeManager
     @ObservedObject var locationManager: LocationManager
     @State private var bleConnected = false
-    private let carLat = 22.635842
-    private let carLng = 114.129604
+    var carLat: Double = 22.635842
+    var carLng: Double = 114.129604
 
     var body: some View {
         VStack(spacing: 12) {
