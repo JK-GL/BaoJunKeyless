@@ -352,7 +352,7 @@ extension MQTTVehicleStateStore: CocoaMQTTDelegate {
         CrashLogger.shared.mark("MQTT", "subscribed \(success.count) topics, failed \(failed.count)")
     }
 
-    func mqtt(_ mqtt: CocoaMQTT, didUnsubscribeTopic topic: String) {}
+    func mqtt(_ mqtt: CocoaMQTT, didUnsubscribeTopics topics: [String]) {}
 
     func mqttDidPing(_ mqtt: CocoaMQTT) {}
 
