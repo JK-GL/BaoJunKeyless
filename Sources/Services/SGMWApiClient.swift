@@ -17,9 +17,26 @@ final class SGMWApiClient {
 
     // MARK: - Token 读取
 
-    /// 从本地读取 access_token（五菱 App Group 优先，宝骏 plist 备选）
+    /// 从本地读取 access_token
+    /// TrollStore 侧载 App 有文件系统权限，可直接读取 App Group 容器
     func readLocalToken() -> String? {
-        // 方案1: 五菱 App Group
+        // 方案1: 五菱 App Group 容器
+        // TrollStore App 可以直接访问 /private/var/mobile/Containers/Shared/AppGroup/
+        let appGroupBase = "/private/var/mobile/Containers/Shared/AppGroup"
+        if let containers = try? FileManager.default.contentsOfDirectory(atPath: appGroupBase) {
+            for container in containers {
+                let savedPath = "\(appGroupBase)/\(container)/SavedOAuthModel"
+                if let data = FileManager.default.contents(atPath: savedPath),
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let token = json["access_token"] as? String,
+                   !token.isEmpty {
+                    CrashLogger.shared.mark("SGMW", "token found from App Group: \(container)")
+                    return token
+                }
+            }
+        }
+
+        // 方案2: 标准 App Group API（可能在 TrollStore 下也能用）
         if let url = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: "group.com.cloudy.LingLingBang"
         ) {
@@ -28,11 +45,12 @@ final class SGMWApiClient {
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let token = json["access_token"] as? String,
                !token.isEmpty {
+                CrashLogger.shared.mark("SGMW", "token found from App Group API")
                 return token
             }
         }
 
-        // 方案2: 宝骏 App plist
+        // 方案3: 宝骏 App plist
         let baojunPath = "/var/mobile/Library/Preferences/com.sgmw.baojunplus.plist"
         if let prefs = NSDictionary(contentsOfFile: baojunPath),
            let oauthStr = prefs["flutter.user_oauth"] as? String,
@@ -40,17 +58,33 @@ final class SGMWApiClient {
            let oauth = try? JSONSerialization.jsonObject(with: oauthData) as? [String: Any],
            let token = oauth["access_token"] as? String,
            !token.isEmpty {
+            CrashLogger.shared.mark("SGMW", "token found from Baojun plist")
             return token
         }
 
+        CrashLogger.shared.mark("SGMW", "no token found in any location")
         return nil
     }
 
-    /// 从本地读取 VIN 和手机号
-    func readLocalVehicleInfo() -> (vin: String, phone: String)? {
-        // 从五菱 App Group 或宝骏 plist 读取
-        // 如果本地没有，需要调 API 查询
-        return nil // 需要先调 userCarRelation/queryDefaultCarStatus
+    /// 从本地读取 VIN 和手机号（SavedOAuthModel 可能包含，否则调 API）
+    func readLocalVehicleInfo(token: String, completion: @escaping ((vin: String, phone: String)?) -> Void) {
+        // 先尝试从 SavedOAuthModel 读取
+        let appGroupBase = "/private/var/mobile/Containers/Shared/AppGroup"
+        if let containers = try? FileManager.default.contentsOfDirectory(atPath: appGroupBase) {
+            for container in containers {
+                let savedPath = "\(appGroupBase)/\(container)/SavedOAuthModel"
+                if let data = FileManager.default.contents(atPath: savedPath),
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let vin = json["vin"] as? String, !vin.isEmpty,
+                   let phone = json["phone"] as? String ?? json["mobile"] as? String {
+                    completion((vin: vin, phone: phone))
+                    return
+                }
+            }
+        }
+
+        // 本地没有，调 API 查询
+        queryDefaultCar(accessToken: token, completion: completion)
     }
 
     // MARK: - API 调用

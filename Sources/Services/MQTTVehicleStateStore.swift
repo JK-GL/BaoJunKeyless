@@ -30,16 +30,55 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     init() {
         super.init(state: .placeholder, dashboard: VehicleDashboardState())
 
-        // 尝试从 UserDefaults 恢复已保存的凭据并自动连接
-        let store = VehicleCredentialsStore()
-        if store.isConfigured {
-            self.credentialsStore = store
-            CrashLogger.shared.mark("MQTT", "found saved credentials, auto-connecting")
+        // 启动时自动尝试读取本地 token 并连接
+        autoConnect()
+    }
+
+    /// 自动读取本地 token 并连接 MQTT
+    private func autoConnect() {
+        // 先检查是否有手动保存的凭据
+        let savedStore = VehicleCredentialsStore()
+        if savedStore.isConfigured {
+            self.credentialsStore = savedStore
+            CrashLogger.shared.mark("MQTT", "using saved credentials")
             fetchMqttTokenAndConnect(
-                token: store.accessToken,
-                vin: store.vin,
-                phone: store.phone
+                token: savedStore.accessToken,
+                vin: savedStore.vin,
+                phone: savedStore.phone
             )
+            return
+        }
+
+        // 没有保存的凭据，尝试从本地文件读取
+        guard let token = SGMWApiClient.shared.readLocalToken() else {
+            CrashLogger.shared.mark("MQTT", "no local token found")
+            return
+        }
+
+        CrashLogger.shared.mark("MQTT", "local token found, querying vehicle info")
+
+        SGMWApiClient.shared.readLocalVehicleInfo(token: token) { [weak self] result in
+            guard let self, let result else {
+                CrashLogger.shared.mark("MQTT", "failed to get vehicle info")
+                return
+            }
+
+            CrashLogger.shared.mark("MQTT", "vehicle: \(result.vin), phone: \(result.phone)")
+
+            // 保存到 UserDefaults 方便下次启动
+            let store = VehicleCredentialsStore()
+            store.accessToken = token
+            store.vin = result.vin
+            store.phone = result.phone
+            self.credentialsStore = store
+
+            DispatchQueue.main.async {
+                self.fetchMqttTokenAndConnect(
+                    token: token,
+                    vin: result.vin,
+                    phone: result.phone
+                )
+            }
         }
     }
 

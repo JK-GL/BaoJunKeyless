@@ -53,6 +53,14 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
         return ret
     }
 
+    // MARK: - 设置车辆坐标
+    func setCarLocation(lat: Double, lng: Double) {
+        lastResolvedCoordinate = CLLocationCoordinate2D(latitude: lat, longitude: lng)
+        lastResolvedDate = Date()
+        UserDefaults.standard.set(lat, forKey: "LastLatitude")
+        UserDefaults.standard.set(lng, forKey: "LastLongitude")
+    }
+
     func getAddress(wgs84Lat: Double, wgs84Lng: Double, address: String? = nil, amapWebKey: String? = nil, completion: @escaping (String?) -> Void) {
         let coordinate = CLLocationCoordinate2D(latitude: wgs84Lat, longitude: wgs84Lng)
 
