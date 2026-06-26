@@ -163,7 +163,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                     self.applyDashboard(newDashboard)
                 }
 
-                self.applyHTTPMeta(payload.carInfo: payload.carInfo, carStatus: payload.carStatus)
+                self.applyHTTPMeta(carInfo: payload.carInfo, carStatus: payload.carStatus)
                 CrashLogger.shared.mark("HTTP", "status updated")
             }
         }
@@ -291,7 +291,9 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         d.electricRangeKm = electricRange
         d.fuelRangeKm = fuelRange
         if let batterySoc = parseInt(s["batterySoc"]) { d.electricFullRangeKm = max(electricRange, Int(Double(electricRange) / max(Double(batterySoc), 1) * 100)) }
-        if let leftFuel = parseDouble(s["leftFuel"]), leftFuel > 0 { d.fuelFullRangeKm = max(fuelRange, Int(fuelRange / max(min(leftFuel / leftFuel, 1), 0.01))) }
+        if let leftFuel = parseDouble(s["leftFuel"]), leftFuel > 0 {
+            d.fuelFullRangeKm = max(fuelRange, Int(Double(fuelRange) / 0.5))
+        }
 
         d.batteryRemainingText = displayBatteryRemaining(s)
         d.batteryHealthPercentText = displayBatteryHealth(s)
