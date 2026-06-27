@@ -37,6 +37,13 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
         return (lat + latOffset, lng + lngOffset)
     }
 
+    static func gcj02ToWgs84Approx(lat: Double, lng: Double) -> (lat: Double, lng: Double) {
+        let gcj = wgs84ToGcj02(lat: lat, lng: lng)
+        let dLat = gcj.lat - lat
+        let dLng = gcj.lng - lng
+        return (lat - dLat, lng - dLng)
+    }
+
     private static func transformLat(x: Double, y: Double) -> Double {
         var ret = -100 + 2*x + 3*y + 0.2*y*y + 0.1*x*y + 0.2*sqrt(abs(x))
         ret += (20*sin(6*x*Double.pi) + 20*sin(2*x*Double.pi)) * 2/3
@@ -89,23 +96,28 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
         let elapsed = lastDate.map { now.timeIntervalSince($0) } ?? .greatestFiniteMagnitude
         let cachedAddress = address ?? self.cachedAddress
         let needsUpdate = distanceFromLast >= 50 || elapsed >= 60 || (cachedAddress ?? "").isEmpty
-        guard needsUpdate else { return }
+        guard needsUpdate else {
+            completion(cachedAddress)
+            return
+        }
 
-        if let key = amapWebKey, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let gcj = Self.wgs84ToGcj02(lat: wgs84Lat, lng: wgs84Lng)
-            reverseGeocodeAmap(gcjLat: gcj.lat, gcjLng: gcj.lng, key: key) { [weak self] resolved in
-                let finalAddress = resolved ?? self?.cachedAddress
-                applyResult(coordinate, finalAddress)
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
+            guard let self else { return }
+            if let p = placemarks?.first {
+                let finalAddress = self.buildAddress(from: p)
+                applyResult(coordinate, finalAddress.isEmpty ? cachedAddress : finalAddress)
+                return
             }
-        } else {
-            let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-            geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
-                guard let p = placemarks?.first else {
-                    applyResult(coordinate, self?.cachedAddress)
-                    return
+
+            if let key = amapWebKey, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let gcj = Self.wgs84ToGcj02(lat: wgs84Lat, lng: wgs84Lng)
+                self.reverseGeocodeAmap(gcjLat: gcj.lat, gcjLng: gcj.lng, key: key) { resolved in
+                    let finalAddress = resolved ?? cachedAddress
+                    applyResult(coordinate, finalAddress)
                 }
-                let finalAddress = self?.buildAddress(from: p)
-                applyResult(coordinate, finalAddress?.isEmpty == true ? nil : finalAddress)
+            } else {
+                applyResult(coordinate, cachedAddress)
             }
         }
     }

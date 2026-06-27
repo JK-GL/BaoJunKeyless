@@ -54,6 +54,39 @@ enum StatusBLEState: Equatable {
     }
 }
 
+enum StatusMQTTState: Equatable {
+    case disconnected
+    case connecting
+    case connected
+    case error
+
+    var icon: String {
+        switch self {
+        case .connected: return "antenna.radiowaves.left.and.right.circle.fill"
+        case .connecting: return "dot.radiowaves.left.and.right"
+        case .disconnected, .error: return "antenna.radiowaves.left.and.right.slash"
+        }
+    }
+
+    var text: String {
+        switch self {
+        case .disconnected: return "MQTT未连接"
+        case .connecting: return "MQTT连接中"
+        case .connected: return "MQTT已连接"
+        case .error: return "MQTT异常"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .disconnected: return Color.white.opacity(0.45)
+        case .connecting: return AppTheme.accent
+        case .connected: return AppTheme.green
+        case .error: return AppTheme.red
+        }
+    }
+}
+
 enum StatusDoorLockState {
     case locked
     case unlocked
@@ -205,6 +238,7 @@ struct StatusPillsSection: View {
     let modeText: String
     let modeColor: Color
     var bleStatus: StatusBLEState = .connected
+    var mqttStatus: StatusMQTTState = .disconnected
     var doorLockState: StatusDoorLockState = .locked
     var physicalKeyState: StatusPhysicalKeyState = .normal
     var gearState: StatusGearState = .park
@@ -213,6 +247,7 @@ struct StatusPillsSection: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 StatusPill(icon: bleStatus.icon, text: bleStatus.text, color: bleStatus.color)
+                StatusPill(icon: mqttStatus.icon, text: mqttStatus.text, color: mqttStatus.color)
                 StatusPill(icon: modeIcon, text: modeText, color: modeColor)
                 StatusPill(icon: doorLockState.icon, text: doorLockState.text, color: doorLockState.color)
                 StatusPill(icon: physicalKeyState.icon, text: physicalKeyState.text, color: physicalKeyState.color)

@@ -11,7 +11,14 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     // MARK: - 连接状态
 
-    enum LiveBLEStatus {
+    enum LiveBLEStatus: Equatable {
+        case disconnected
+        case connecting
+        case connected
+        case error
+    }
+
+    enum LiveMQTTStatus: Equatable {
         case disconnected
         case connecting
         case connected
@@ -19,6 +26,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     @Published private(set) var bleStatus: LiveBLEStatus = .disconnected
+    @Published private(set) var mqttStatus: LiveMQTTStatus = .disconnected
     @Published private(set) var authStatus: StatusAuthState = .expired("未登录")
     @Published private(set) var latestLatitude: Double = 0
     @Published private(set) var latestLongitude: Double = 0
@@ -38,6 +46,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     init() {
         super.init(state: .placeholder, dashboard: VehicleDashboardState())
+        applyCachedSnapshotIfAvailable()
         DispatchQueue.main.async { [weak self] in
             self?.autoConnect()
         }
@@ -50,6 +59,31 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     // MARK: - 启动 / 重连
 
+    private func applyCachedSnapshotIfAvailable() {
+        guard let snapshot = WulingAppCacheReader.shared.readStatusCache() else { return }
+
+        var cachedState = mapHTTPToVehicleState(snapshot.carStatus)
+        cachedState.timestamp = Date()
+        var cachedDashboard = mapHTTPToDashboard(snapshot.carStatus)
+        cachedDashboard.updatedAt = Date()
+        cachedDashboard.updatedAtText = formatTime(Date())
+
+        if let gcjLat = snapshot.latitude, let gcjLng = snapshot.longitude, gcjLat != 0, gcjLng != 0 {
+            let wgs = LocationResolver.gcj02ToWgs84Approx(lat: gcjLat, lng: gcjLng)
+            latestLatitude = wgs.lat
+            latestLongitude = wgs.lng
+        }
+
+        if let address = snapshot.address, !address.isEmpty {
+            UserDefaults.standard.set(address, forKey: "LastAddress")
+        }
+
+        apply(cachedState)
+        applyDashboard(cachedDashboard)
+        authStatus = .expired("缓存模式")
+        CrashLogger.shared.mark("CACHE", "loaded Wuling cache from \(snapshot.sourcePath)")
+    }
+
     private func autoConnect() {
         let saved = VehicleCredentialsStore()
         if saved.isConfigured {
@@ -58,9 +92,13 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         }
 
         guard let token = SGMWApiClient.shared.readLocalToken() else {
-            bleStatus = .disconnected
-            authStatus = .expired("未读取到Token")
-            CrashLogger.shared.mark("MQTT", "no local token found")
+            mqttStatus = .disconnected
+            if case .expired("缓存模式") = authStatus {
+                CrashLogger.shared.mark("MQTT", "no local token found, keep cache mode")
+            } else {
+                authStatus = .expired("未读取到Token")
+                CrashLogger.shared.mark("MQTT", "no local token found")
+            }
             return
         }
 
@@ -87,18 +125,18 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         guard !isConnecting else { return }
         guard !credentialsStore.accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             authStatus = .expired("Token为空")
-            bleStatus = .disconnected
+            mqttStatus = .disconnected
             return
         }
         guard !credentialsStore.vin.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             authStatus = .expired("VIN为空")
-            bleStatus = .disconnected
+            mqttStatus = .disconnected
             return
         }
 
         isConnecting = true
         authStatus = .valid
-        bleStatus = .connecting
+        mqttStatus = .connecting
 
         // 先走 HTTP，拿到基础状态/经纬度/电量等
         startHTTPPolling(immediate: true)
@@ -109,7 +147,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             DispatchQueue.main.async {
                 self.isConnecting = false
                 guard let mqttToken, !mqttToken.isEmpty else {
-                    self.bleStatus = .error
+                    self.mqttStatus = .error
                     CrashLogger.shared.mark("MQTT", "mqtt token fetch failed")
                     return
                 }
@@ -176,6 +214,9 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             guard let self, let info else { return }
             DispatchQueue.main.async {
                 self.latestBleKeyInfo = info
+                if self.bleStatus != .connected {
+                    self.bleStatus = .disconnected
+                }
                 var dash = self.dashboard
                 dash.bleMacText = info["bleMac"] ?? info["macAddress"] ?? dash.bleMacText
                 dash.keyIdText = info["keyId"] ?? dash.keyIdText
@@ -201,7 +242,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         self.mqtt = mqtt
         CrashLogger.shared.mark("MQTT", "connecting clientId=\(creds.clientId)")
         if !mqtt.connect() {
-            bleStatus = .error
+            mqttStatus = .error
             CrashLogger.shared.mark("MQTT", "connect initiate failed")
         }
     }
@@ -223,7 +264,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.lastMQTTUpdate = Date()
-            self.bleStatus = .connected
+            self.mqttStatus = .connected
             self.mergeRealtimeState(newState: newState, dashboard: newDashboard)
             let summary = changedKeys.prefix(6).joined(separator: ", ")
             CrashLogger.shared.mark("MQTT", "state changed: \(summary)")
@@ -415,22 +456,19 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         }
 
         var dash = dashboard
-        let model = [carInfo["carSeriesName"], carInfo["carModelName"], carInfo["carTypeName"], carInfo["carName"]]
-            .compactMap { $0 }
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
+        let model = carInfo["carName"]
+            ?? carInfo["carModelName"]
+            ?? carInfo["carSeriesName"]
+            ?? carInfo["carTypeName"]
+            ?? ""
         if !model.isEmpty { dash.vehicleName = model }
         dash.vinText = carInfo["vin"] ?? dash.vinText
         dash.userIdText = carInfo["bindCarUserMobile"] ?? carInfo["userId"] ?? dash.userIdText
         if let supportMqtt = carInfo["supportMqtt"], supportMqtt == "1" {
             authStatus = .valid
         }
-        if let connectMark = carStatus["bluetoothKeyConnectMark"] {
-            if connectMark == "1" {
-                bleStatus = .connected
-            } else if connectMark == "0", bleStatus == .connected {
-                bleStatus = .disconnected
-            }
+        if !latestBleKeyInfo.isEmpty, bleStatus == .connecting {
+            bleStatus = .disconnected
         }
         applyDashboard(dash)
         applyProfile(VehicleProfile())
@@ -631,14 +669,14 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 extension MQTTVehicleStateStore: CocoaMQTTDelegate {
     func mqtt(_ mqtt: CocoaMQTT, didConnectAck ack: CocoaMQTTConnAck) {
         if ack == .accept {
-            bleStatus = .connected
+            mqttStatus = .connected
             CrashLogger.shared.mark("MQTT", "connected (ack=\(ack.rawValue))")
             guard let creds = credentials else { return }
             for topic in creds.topics {
                 mqtt.subscribe(topic, qos: .qos1)
             }
         } else {
-            bleStatus = .error
+            mqttStatus = .error
             CrashLogger.shared.mark("MQTT", "connect rejected: \(ack.rawValue)")
         }
     }
@@ -662,7 +700,7 @@ extension MQTTVehicleStateStore: CocoaMQTTDelegate {
     func mqttDidReceivePong(_ mqtt: CocoaMQTT) {}
 
     func mqttDidDisconnect(_ mqtt: CocoaMQTT, withError err: Error?) {
-        bleStatus = .error
+        mqttStatus = .error
         CrashLogger.shared.mark("MQTT", "disconnected: \(err?.localizedDescription ?? "no error")")
     }
 }

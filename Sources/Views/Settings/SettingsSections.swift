@@ -438,25 +438,9 @@ struct ImportGuideSheet: View {
     }
 
     private func readFromDisk() {
-        let searchPaths = [
-            "/var/mobile/SavedOAuthModel",
-            "/private/var/mobile/SavedOAuthModel",
-            "/var/mobile/Containers/Shared/AppGroup/group.com.cloudy.LingLingBang/SavedOAuthModel",
-            "/private/var/mobile/Containers/Shared/AppGroup/group.com.cloudy.LingLingBang/SavedOAuthModel"
-        ]
-
-        for path in searchPaths {
-            guard let data = FileManager.default.contents(atPath: path),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-
-            let token = (json["access_token"] as? String)
-                ?? ((json["data"] as? [String: Any])?["access_token"] as? String)
-
-            if let token, !token.isEmpty {
-                vehicleCredentials.accessToken = token
-                onImported()
-                return
-            }
+        if let tokenInfo = SGMWApiClient.shared.readLocalTokenInfo() {
+            vehicleCredentials.accessToken = tokenInfo.token
+            onImported()
         }
     }
 }

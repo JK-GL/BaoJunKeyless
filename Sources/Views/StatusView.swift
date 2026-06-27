@@ -37,8 +37,24 @@ struct StatusView: View {
         }
     }
 
-    private var modeText: String {
-        guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
+    private var liveMQTTStatus: StatusMQTTState {
+        switch mqttStore?.mqttStatus {
+        case .connected:
+            return .connected
+        case .connecting:
+            return .connecting
+        case .error:
+            return .error
+        case .disconnected, .none:
+            return .disconnected
+        }
+    }
+
+    private var topBarTitle: String {
+        let name = vehicleStore.dashboard.vehicleName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "车辆状态" : name
+    }
+
         if settingsStore.settings.pluginTakeover { return "插件托管" }
         if settingsStore.settings.smartSwitch { return "智能切换" }
         if settingsStore.settings.appManual { return "App手动" }
@@ -67,7 +83,7 @@ struct StatusView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     VStack(alignment: .leading, spacing: 6) {
                         StatusTopBarSection(
-                            vehicleName: vehicleStore.dashboard.vehicleName,
+                            vehicleName: topBarTitle,
                             isRefreshing: isRefreshing,
                             refreshScale: refreshScale,
                             authStatus: mqttAuthStatus,
@@ -90,6 +106,7 @@ struct StatusView: View {
                             modeText: modeText,
                             modeColor: modeColor,
                             bleStatus: liveBLEStatus,
+                            mqttStatus: liveMQTTStatus,
                             doorLockState: vehicleStore.state.locked == true ? .locked : (vehicleStore.state.locked == false ? .unlocked : .unknown),
                             physicalKeyState: vehicleStore.state.physicalKeyInside == true ? .inCar : (vehicleStore.state.physicalKeyInside == false ? .normal : .unknown),
                             gearState: StatusGearState(gear: vehicleStore.state.gear)

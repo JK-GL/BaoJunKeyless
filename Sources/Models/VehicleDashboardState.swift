@@ -8,7 +8,7 @@ enum VehicleEnergyType {
 
 struct VehicleDashboardState {
     var updatedAt: Date = Date()
-    var vehicleName: String = "宝骏云海"
+    var vehicleName: String = ""
     var vinText: String = "--"
     var userIdText: String = "--"
     var bleMacText: String = "--"

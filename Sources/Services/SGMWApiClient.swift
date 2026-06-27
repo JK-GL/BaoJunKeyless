@@ -47,36 +47,17 @@ final class SGMWApiClient {
     /// 主路径：/var/mobile/SavedOAuthModel（用户复制后最稳）
     /// 兜底：宝骏 app plist
     func readLocalToken() -> String? {
-        let searchPaths = [
-            "/var/mobile/SavedOAuthModel",
-            "/private/var/mobile/SavedOAuthModel",
-            "/var/mobile/Containers/Shared/AppGroup/group.com.cloudy.LingLingBang/SavedOAuthModel",
-            "/private/var/mobile/Containers/Shared/AppGroup/group.com.cloudy.LingLingBang/SavedOAuthModel"
-        ]
-
-        CrashLogger.shared.mark("SGMW", "searching token in \(searchPaths.count) fixed paths")
-
-        for path in searchPaths {
-            if let token = readTokenFromJSONFile(path: path) {
-                CrashLogger.shared.mark("SGMW", "token found from \(path)")
-                return token
-            }
+        if let tokenInfo = WulingAppCacheReader.shared.readTokenInfo() {
+            CrashLogger.shared.mark("SGMW", "token found from \(tokenInfo.sourcePath)")
+            return tokenInfo.token
         }
 
-        let baojunPath = "/var/mobile/Library/Preferences/com.sgmw.baojunplus.plist"
-        if FileManager.default.fileExists(atPath: baojunPath),
-           let prefs = NSDictionary(contentsOfFile: baojunPath),
-           let oauthStr = prefs["flutter.user_oauth"] as? String,
-           let oauthData = oauthStr.data(using: .utf8),
-           let oauth = try? JSONSerialization.jsonObject(with: oauthData) as? [String: Any],
-           let token = oauth["access_token"] as? String,
-           !token.isEmpty {
-            CrashLogger.shared.mark("SGMW", "token found from Baojun plist")
-            return token
-        }
-
-        CrashLogger.shared.mark("SGMW", "no token found in any location")
+        CrashLogger.shared.mark("SGMW", "no Wuling token found")
         return nil
+    }
+
+    func readLocalTokenInfo() -> WulingAppCacheReader.TokenInfo? {
+        WulingAppCacheReader.shared.readTokenInfo()
     }
 
     private func readTokenFromJSONFile(path: String) -> String? {
