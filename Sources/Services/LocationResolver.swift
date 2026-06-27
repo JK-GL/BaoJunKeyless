@@ -101,21 +101,33 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
             return
         }
 
+        if let key = amapWebKey, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let gcj = Self.wgs84ToGcj02(lat: wgs84Lat, lng: wgs84Lng)
+            reverseGeocodeAmap(gcjLat: gcj.lat, gcjLng: gcj.lng, key: key) { [weak self] resolved in
+                guard let self else { return }
+                if let resolved, !resolved.isEmpty {
+                    applyResult(coordinate, resolved)
+                    return
+                }
+                let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+                self.geocoder.reverseGeocodeLocation(location) { placemarks, error in
+                    if let p = placemarks?.first {
+                        let finalAddress = self.buildAddress(from: p)
+                        applyResult(coordinate, finalAddress.isEmpty ? cachedAddress : finalAddress)
+                    } else {
+                        applyResult(coordinate, cachedAddress)
+                    }
+                }
+            }
+            return
+        }
+
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
         geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
             guard let self else { return }
             if let p = placemarks?.first {
                 let finalAddress = self.buildAddress(from: p)
                 applyResult(coordinate, finalAddress.isEmpty ? cachedAddress : finalAddress)
-                return
-            }
-
-            if let key = amapWebKey, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                let gcj = Self.wgs84ToGcj02(lat: wgs84Lat, lng: wgs84Lng)
-                self.reverseGeocodeAmap(gcjLat: gcj.lat, gcjLng: gcj.lng, key: key) { resolved in
-                    let finalAddress = resolved ?? cachedAddress
-                    applyResult(coordinate, finalAddress)
-                }
             } else {
                 applyResult(coordinate, cachedAddress)
             }

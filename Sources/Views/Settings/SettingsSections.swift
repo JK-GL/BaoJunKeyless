@@ -358,6 +358,13 @@ struct SettingsVehicleConfigSection: View {
     }
 
     private func importTokenFromSelectedFile(url: URL) {
+        let accessGranted = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessGranted {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
         guard let data = try? Data(contentsOf: url),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             toastText = "读取文件失败"

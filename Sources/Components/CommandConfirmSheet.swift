@@ -75,11 +75,11 @@ enum CommandAction: String, Identifiable {
         case .lockUnlock:
             return state.locked == true ? "lock.fill" : "lock.open.fill"
         case .remoteStart:
-            return state.power == .off ? "power.circle" : "power.circle.fill"
+            return state.power == .off ? "power" : "power.circle.fill"
         case .findCar:
             return "location.fill"
         case .acToggle:
-            return state.acOn == true ? "snowflake" : "snowflake.slash"
+            return "snowflake"
         case .windowToggle:
             return state.windowsClosed == true ? "rectangle.split.2x2.fill" : "rectangle.split.2x2"
         case .quickCool:
@@ -118,7 +118,7 @@ enum CommandAction: String, Identifiable {
         case .lockUnlock:
             return state.locked == true ? AppTheme.green : AppTheme.red
         case .remoteStart:
-            return state.power == .off ? AppTheme.orange : AppTheme.green
+            return state.power == .off ? Color(red: 0.55, green: 0.58, blue: 0.62) : AppTheme.green
         case .acToggle:
             return state.acOn == true ? AppTheme.accent : Color(red: 0.55, green: 0.58, blue: 0.62)
         case .windowToggle:

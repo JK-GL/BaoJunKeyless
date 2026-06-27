@@ -81,6 +81,13 @@ struct StatusView: View {
         return path.isEmpty ? "手动输入 / 未读取" : path
     }
 
+    private var preferredCarAddress: String {
+        if case .expired("缓存模式") = mqttAuthStatus {
+            return mqttStore?.latestAddress ?? ""
+        }
+        return ""
+    }
+
     private var modeText: String {
         guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
         if settingsStore.settings.pluginTakeover { return "插件托管" }
@@ -154,7 +161,7 @@ struct StatusView: View {
                             bleConnected: liveBLEStatus == .connected,
                             carLat: mqttStore?.latestLatitude ?? 0,
                             carLng: mqttStore?.latestLongitude ?? 0,
-                            carAddress: mqttStore?.latestAddress ?? ""
+                            carAddress: preferredCarAddress
                         )
                     }
 
@@ -404,9 +411,8 @@ struct StatusView: View {
                     isEditingAmapKey = false
                     let lat = mqttStore?.latestLatitude ?? 0
                     let lng = mqttStore?.latestLongitude ?? 0
-                    let address = mqttStore?.latestAddress ?? ""
                     if lat != 0, lng != 0 {
-                        locationManager.setCarLocation(lat: lat, lng: lng, address: address)
+                        locationManager.setCarLocation(lat: lat, lng: lng, address: preferredCarAddress.isEmpty ? nil : preferredCarAddress)
                     }
                 }
 
@@ -460,29 +466,27 @@ struct StatusView: View {
     }
 
     private func handleQuickActionConfirm(action: CommandAction, temperature: Double?) {
-        if quickActionsDebugMode {
-            switch action {
-            case .lockUnlock:
-                if vehicleStore.state.locked == true {
-                    vehicleStore.simulateUnlock()
-                } else {
-                    vehicleStore.simulateLock()
-                }
-            case .acToggle:
-                vehicleStore.simulateToggleAC()
-                if let temperature {
-                    vehicleStore.simulateSetACTemperature(temperature)
-                }
-            case .windowToggle:
-                vehicleStore.simulateToggleWindows()
-            case .remoteStart:
-                vehicleStore.simulateRemoteStart()
-            case .findCar:
-                break
-            case .quickCool:
-                vehicleStore.simulateToggleAC()
-                vehicleStore.simulateSetACTemperature(temperature ?? 17)
+        switch action {
+        case .lockUnlock:
+            if vehicleStore.state.locked == true {
+                vehicleStore.simulateUnlock()
+            } else {
+                vehicleStore.simulateLock()
             }
+        case .acToggle:
+            vehicleStore.simulateToggleAC()
+            if let temperature {
+                vehicleStore.simulateSetACTemperature(temperature)
+            }
+        case .windowToggle:
+            vehicleStore.simulateToggleWindows()
+        case .remoteStart:
+            vehicleStore.simulateRemoteStart()
+        case .findCar:
+            break
+        case .quickCool:
+            vehicleStore.simulateToggleAC()
+            vehicleStore.simulateSetACTemperature(temperature ?? 17)
         }
     }
 }
