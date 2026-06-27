@@ -553,49 +553,42 @@ struct RadarCardView: View {
                 }
             }
 
-            if locationManager.distance > 0 {
-                VStack(spacing: 5) {
+            VStack(spacing: 5) {
+                if locationManager.distance > 0 {
                     Text(String(format: "距车辆 %.0f 米", locationManager.distance))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.5))
-
-                    if !locationManager.vehicleAddress.isEmpty {
-                        Button {
-                            NotificationCenter.default.post(name: .init("OpenAddressFloatingWindow"), object: nil)
-                        } label: {
-                            (Text(Image(systemName: "mappin.and.ellipse")) + Text(" \(locationManager.vehicleAddress)"))
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(Color.white.opacity(0.42))
-                                .multilineTextAlignment(.center)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.65)
-                                .layoutPriority(1)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                } else if carLat != 0 && carLng != 0 {
+                    Text("距离定位中…")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.42))
                 }
-                .frame(maxWidth: .infinity, alignment: .center)
+
+                if !locationManager.vehicleAddress.isEmpty {
+                    Button {
+                        NotificationCenter.default.post(name: .init("OpenAddressFloatingWindow"), object: nil)
+                    } label: {
+                        (Text(Image(systemName: "mappin.and.ellipse")) + Text(" \(locationManager.vehicleAddress)"))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.42))
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.65)
+                            .layoutPriority(1)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                    .buttonStyle(.plain)
+                } else if carLat != 0 && carLng != 0 {
+                    Text("地址解析中…")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.36))
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .center)
         }
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
-        .onAppear {
-            if carLat != 0, carLng != 0 {
-                locationManager.setCarLocation(lat: carLat, lng: carLng, address: carAddress)
-            }
-        }
-        .onChange(of: carLat) { _ in
-            if carLat != 0, carLng != 0 {
-                locationManager.setCarLocation(lat: carLat, lng: carLng, address: carAddress)
-            }
-        }
-        .onChange(of: carLng) { _ in
-            if carLat != 0, carLng != 0 {
-                locationManager.setCarLocation(lat: carLat, lng: carLng, address: carAddress)
-            }
-        }
     }
 
     private func currentSearchedAddress() -> String {

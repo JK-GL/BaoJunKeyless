@@ -200,6 +200,15 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         }
     }
 
+    func refreshNow() {
+        lastMQTTUpdate = nil
+        startHTTPPolling(immediate: true)
+        fetchBleKeyInfo()
+        if mqttStatus != .connected {
+            reconnect()
+        }
+    }
+
     func reconnect() {
         mqtt?.disconnect()
         mqtt = nil

@@ -170,6 +170,10 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
 
+    func forceRequestCurrentLocation() {
+        requestCurrentLocationIfPossible()
+    }
+
     // ⭐ 前后台切换
     func pause() {
         CrashLogger.shared.mark("Location", "pause")

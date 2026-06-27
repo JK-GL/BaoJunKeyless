@@ -4,8 +4,8 @@ struct StatusView: View {
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var settingsStore: KeylessSettingsStore
     @EnvironmentObject var addressSettings: AddressServiceSettings
+    @EnvironmentObject var locationManager: LocationManager
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
-    @StateObject private var locationManager = LocationManager()
     @EnvironmentObject var vehicleStore: VehicleStateStore
     @State private var isRefreshing = false
     @State private var refreshScale: CGFloat = 1.0
@@ -87,6 +87,20 @@ struct StatusView: View {
         return mqttStore?.latestAddress ?? ""
     }
 
+    private var liveCarLatitude: Double {
+        mqttStore?.latestLatitude ?? 0
+    }
+
+    private var liveCarLongitude: Double {
+        mqttStore?.latestLongitude ?? 0
+    }
+
+    private var liveCarAddress: String {
+        let latest = mqttStore?.latestAddress.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !latest.isEmpty { return latest }
+        return preferredCarAddress
+    }
+
     private var modeText: String {
         guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
         if settingsStore.settings.pluginTakeover { return "插件托管" }
@@ -159,9 +173,9 @@ struct StatusView: View {
                         RadarCardView(
                             locationManager: locationManager,
                             bleConnected: liveBLEStatus == .connected,
-                            carLat: mqttStore?.latestLatitude ?? 0,
-                            carLng: mqttStore?.latestLongitude ?? 0,
-                            carAddress: preferredCarAddress,
+                            carLat: liveCarLatitude,
+                            carLng: liveCarLongitude,
+                            carAddress: liveCarAddress,
                             carImageURL: vehicleStore.dashboard.vehicleImageURL
                         )
                     }
@@ -259,9 +273,16 @@ struct StatusView: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: activeCommand != nil)
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isAddressFloatingPresented)
         .onAppear {
-            if let lat = mqttStore?.latestLatitude, let lng = mqttStore?.latestLongitude, lat != 0, lng != 0 {
-                locationManager.setCarLocation(lat: lat, lng: lng, address: preferredCarAddress)
-            }
+            syncCarLocationToManager(forceAddressRefresh: true)
+        }
+        .onChange(of: liveCarLatitude) { _ in
+            syncCarLocationToManager(forceAddressRefresh: false)
+        }
+        .onChange(of: liveCarLongitude) { _ in
+            syncCarLocationToManager(forceAddressRefresh: false)
+        }
+        .onChange(of: liveCarAddress) { _ in
+            syncCarLocationToManager(forceAddressRefresh: true)
         }
     }
 
@@ -312,6 +333,12 @@ struct StatusView: View {
                 }
             }
         }
+    }
+
+    private func syncCarLocationToManager(forceAddressRefresh: Bool) {
+        guard liveCarLatitude != 0, liveCarLongitude != 0 else { return }
+        let address = forceAddressRefresh ? (liveCarAddress.isEmpty ? nil : liveCarAddress) : nil
+        locationManager.setCarLocation(lat: liveCarLatitude, lng: liveCarLongitude, address: address)
     }
 
     private func mqttInfoRow(icon: String, label: String, value: String, mono: Bool = false) -> some View {
@@ -424,7 +451,7 @@ struct StatusView: View {
                     let lat = mqttStore?.latestLatitude ?? 0
                     let lng = mqttStore?.latestLongitude ?? 0
                     if lat != 0, lng != 0 {
-                        locationManager.setCarLocation(lat: lat, lng: lng, address: preferredCarAddress.isEmpty ? nil : preferredCarAddress)
+                        locationManager.setCarLocation(lat: lat, lng: lng, address: liveCarAddress.isEmpty ? nil : liveCarAddress)
                     }
                 }
 
@@ -472,6 +499,12 @@ struct StatusView: View {
                 isRefreshing = true
             }
         }
+
+        locationManager.forceRequestCurrentLocation()
+        locationManager.resume()
+        syncCarLocationToManager(forceAddressRefresh: true)
+        mqttStore?.refreshNow()
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             isRefreshing = false
         }
