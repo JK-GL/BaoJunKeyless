@@ -374,9 +374,11 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         let fuelRange = parseInt(s["oilLeftMileage"]) ?? d.fuelRangeKm
         d.electricRangeKm = electricRange
         d.fuelRangeKm = fuelRange
+        d.batteryPercentValue = parseInt(s["batterySoc"])
+        d.fuelPercentValue = parseInt(s["fuelPercent"] ?? s["oilPercent"] ?? s["leftFuel"])
         if let batterySoc = parseInt(s["batterySoc"]) { d.electricFullRangeKm = max(electricRange, Int(Double(electricRange) / max(Double(batterySoc), 1) * 100)) }
-        if let leftFuel = parseDouble(s["leftFuel"]), leftFuel > 0 {
-            d.fuelFullRangeKm = max(fuelRange, Int(Double(fuelRange) / 0.5))
+        if let fuelPercent = d.fuelPercentValue, fuelPercent > 0 {
+            d.fuelFullRangeKm = max(fuelRange, Int(Double(fuelRange) / max(Double(fuelPercent), 1) * 100))
         }
 
         d.batteryRemainingText = displayBatteryRemaining(s)
@@ -411,7 +413,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         d.brakePercentText = displayValue(s["brakPedalPos"], suffix: "%")
         d.totalMileageText = displayValue(s["mileage"], suffix: "km")
         d.yesterdayMileageText = displayValue(s["yesterMileage"], suffix: "km")
-        d.fuelRemainingText = displayValue(s["leftFuel"], suffix: "L")
+        d.fuelRemainingText = displayFuelRemaining(s)
         d.averageFuelConsumptionText = displayValue(s["avgFuel"], suffix: "L/100km")
         d.averagePowerConsumptionText = displayPowerConsumption(s)
 
@@ -691,6 +693,13 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     private func displayBatteryHealth(_ s: [String: String]) -> String {
         if let soh = s["batSOH"] ?? s["batHealth"], !soh.isEmpty { return "\(soh)%" }
         return dashboard.batteryHealthPercentText
+    }
+
+    private func displayFuelRemaining(_ s: [String: String]) -> String {
+        if let percent = s["fuelPercent"] ?? s["oilPercent"] ?? s["leftFuel"], !percent.isEmpty {
+            return "\(percent)%"
+        }
+        return dashboard.fuelRemainingText
     }
 
     private func boolText(_ raw: String?) -> String {

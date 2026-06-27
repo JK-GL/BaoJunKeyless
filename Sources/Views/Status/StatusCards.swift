@@ -78,12 +78,50 @@ private struct CommandGridButton: View {
     }
 }
 
+struct QuickStatusTripletView: View {
+    let totalMileageText: String
+    let averageFuelConsumptionText: String
+    let yesterdayMileageText: String
+
+    var body: some View {
+        CardView {
+            HStack(spacing: 10) {
+                quickMetric(title: "总里程", value: totalMileageText, color: AppTheme.accent)
+                quickMetric(title: "平均油耗", value: averageFuelConsumptionText, color: AppTheme.orange)
+                quickMetric(title: "昨日里程", value: yesterdayMileageText, color: Color.white.opacity(0.72))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func quickMetric(title: String, value: String, color: Color) -> some View {
+        VStack(spacing: 6) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.48))
+            Text(value)
+                .font(.system(size: 16, weight: .bold, design: .monospaced))
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white.opacity(0.035))
+        )
+    }
+}
+
 struct VehicleHeaderSummaryView: View {
     var energyType: VehicleEnergyType = .plugInHybrid
     var electricRangeKm: Int = 140
     var electricFullRangeKm: Int = 140
     var fuelRangeKm: Int = 1000
     var fuelFullRangeKm: Int = 1000
+    var batteryPercentValue: Int? = nil
+    var fuelPercentValue: Int? = nil
     var isCharging: Bool = false
     var chargingPowerText: String = "3.2 kW"
     var updatedAt: String = "17:59:34"
@@ -102,11 +140,17 @@ struct VehicleHeaderSummaryView: View {
     }
 
     private var electricPercent: Double {
+        if let percent = batteryPercentValue {
+            return min(max(Double(percent) / 100.0, 0), 1)
+        }
         guard electricFullRangeKm > 0 else { return 0 }
         return min(max(Double(electricRangeKm) / Double(electricFullRangeKm), 0), 1)
     }
 
     private var fuelPercent: Double {
+        if let percent = fuelPercentValue {
+            return min(max(Double(percent) / 100.0, 0), 1)
+        }
         guard fuelFullRangeKm > 0 else { return 0 }
         return min(max(Double(fuelRangeKm) / Double(fuelFullRangeKm), 0), 1)
     }

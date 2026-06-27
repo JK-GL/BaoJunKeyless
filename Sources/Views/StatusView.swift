@@ -130,6 +130,8 @@ struct StatusView: View {
                             electricFullRangeKm: vehicleStore.dashboard.electricFullRangeKm,
                             fuelRangeKm: vehicleStore.dashboard.fuelRangeKm,
                             fuelFullRangeKm: vehicleStore.dashboard.fuelFullRangeKm,
+                            batteryPercentValue: vehicleStore.dashboard.batteryPercentValue,
+                            fuelPercentValue: vehicleStore.dashboard.fuelPercentValue,
                             isCharging: vehicleStore.dashboard.isCharging,
                             chargingPowerText: vehicleStore.dashboard.chargingPowerText,
                             updatedAt: vehicleStore.dashboard.updatedAtText
@@ -167,6 +169,12 @@ struct StatusView: View {
                     QuickActionsView(onCommand: { command in
                         activeCommand = command
                     }, vehicleState: vehicleStore.state)
+
+                    QuickStatusTripletView(
+                        totalMileageText: vehicleStore.dashboard.totalMileageText,
+                        averageFuelConsumptionText: vehicleStore.dashboard.averageFuelConsumptionText,
+                        yesterdayMileageText: vehicleStore.dashboard.yesterdayMileageText
+                    )
 
                     VStack(alignment: .leading, spacing: 16) {
                         BodyStatusView(dashboard: vehicleStore.dashboard)

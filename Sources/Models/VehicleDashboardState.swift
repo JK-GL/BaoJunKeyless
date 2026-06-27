@@ -25,6 +25,8 @@ struct VehicleDashboardState {
     var electricFullRangeKm: Int = 0
     var fuelRangeKm: Int = 0
     var fuelFullRangeKm: Int = 0
+    var batteryPercentValue: Int? = nil
+    var fuelPercentValue: Int? = nil
     var isCharging: Bool = false
     var chargingPowerText: String = "--"
     var updatedAtText: String = "--"
@@ -158,12 +160,7 @@ extension VehicleDashboardState {
                 PopupStatusItem(icon: "scope", label: "方向盘", value: steeringAngleText, color: AppTheme.accent),
                 PopupStatusItem(icon: "arrow.up.circle.fill", label: "油门", value: throttlePercentText, color: AppTheme.green),
                 PopupStatusItem(icon: "stop.circle.fill", label: "刹车", value: brakePercentText, color: AppTheme.green),
-                PopupStatusItem(icon: "speedometer", label: "平均车速", value: averageSpeedText, color: Color.white.opacity(0.45)),
-                PopupStatusItem(icon: "gauge.with.needle", label: "总里程", value: totalMileageText, color: AppTheme.accent),
-                PopupStatusItem(icon: "calendar", label: "昨日里程", value: yesterdayMileageText, color: Color.white.opacity(0.45)),
-                PopupStatusItem(icon: "fuelpump.fill", label: "剩余油量", value: fuelRemainingText, color: AppTheme.orange),
-                PopupStatusItem(icon: "flame.fill", label: "平均油耗", value: averageFuelConsumptionText, color: AppTheme.orange),
-                PopupStatusItem(icon: "bolt.fill", label: "平均电耗", value: averagePowerConsumptionText, color: AppTheme.accent)
+                PopupStatusItem(icon: "speedometer", label: "平均车速", value: averageSpeedText, color: Color.white.opacity(0.45))
             ],
             lighting: [
                 PopupStatusItem(icon: "lightbulb.fill", label: "近光灯", value: lowBeamText, color: AppTheme.orange),
