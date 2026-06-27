@@ -123,11 +123,9 @@ struct SettingsAboutSection: View {
 struct SettingsVehicleConfigSection: View {
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
-    @EnvironmentObject var vehicleStore: VehicleStateStore
     @State private var accessTokenDraft: String = ""
     @State private var vinDraft: String = ""
     @State private var phoneDraft: String = ""
-    @State private var isEditing = false
     @State private var isFetching = false
     @State private var showingImportGuide = false
     @State private var showingFilePicker = false
@@ -136,36 +134,93 @@ struct SettingsVehicleConfigSection: View {
     @Binding var toastText: String?
     let onSave: () -> Void
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(.spring(response: 0.28)) { isEditing.toggle() }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "car.fill")
-                        .foregroundStyle(AppTheme.orange)
-                        .font(.system(size: 15, weight: .semibold))
-                    Text("车辆配置")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Spacer()
-                    if vehicleCredentials.isConfigured {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(AppTheme.green)
-                            .font(.system(size: 13))
-                    }
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(theme.textSecondary)
-                        .rotationEffect(.degrees(isEditing ? 90 : 0))
-                }
-                .padding(16)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
+    private var tokenSourceSummary: String {
+        let label = vehicleCredentials.tokenSourceLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let path = vehicleCredentials.tokenSourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        if label.isEmpty && path.isEmpty {
+            return vehicleCredentials.autoReadWulingToken ? "五菱 App 自动读取" : "手动输入 / 手动导入"
+        }
+        if label.isEmpty { return path }
+        if path.isEmpty { return label }
+        return "\(label)"
+    }
 
-            if isEditing {
-                Divider().background(theme.cardStroke)
+    private var currentVINText: String {
+        let value = vinDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !value.isEmpty { return value }
+        let stored = vehicleCredentials.vin.trimmingCharacters(in: .whitespacesAndNewlines)
+        return stored.isEmpty ? "未配置" : stored
+    }
+
+    private var currentUserText: String {
+        let value = phoneDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !value.isEmpty { return value }
+        let stored = vehicleCredentials.phone.trimmingCharacters(in: .whitespacesAndNewlines)
+        return stored.isEmpty ? "未配置" : stored
+    }
+
+    private var statusBadgeText: String {
+        vehicleCredentials.isConfigured ? "已配置" : "未配置"
+    }
+
+    private var statusBadgeColor: Color {
+        vehicleCredentials.isConfigured ? AppTheme.green : Color.white.opacity(0.35)
+    }
+
+    var body: some View {
+        SettingsPanelView(title: "车辆配置", subtitle: "自动读取五菱 App 或手动导入 SavedOAuthModel。") {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(AppTheme.orange.opacity(0.14))
+                                .frame(width: 44, height: 44)
+                            Image(systemName: "car.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(AppTheme.orange)
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(vehicleCredentials.isConfigured ? currentVINText : "未配置车辆")
+                                .font(.system(size: 16, weight: .semibold, design: vehicleCredentials.isConfigured ? .monospaced : .default))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.78)
+
+                            Text(tokenSourceSummary)
+                                .font(.caption)
+                                .foregroundStyle(Color.white.opacity(0.5))
+                                .lineLimit(2)
+                        }
+
+                        Spacer(minLength: 0)
+
+                        Text(statusBadgeText)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(vehicleCredentials.isConfigured ? .black : .white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(vehicleCredentials.isConfigured ? statusBadgeColor : statusBadgeColor.opacity(0.16))
+                            )
+                    }
+
+                    HStack(spacing: 10) {
+                        summaryChip(title: "VIN", value: currentVINText, mono: true)
+                        summaryChip(title: "用户", value: currentUserText, mono: true)
+                    }
+                }
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.white.opacity(0.04))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                )
 
                 VStack(alignment: .leading, spacing: 12) {
                     ToggleRow(
@@ -182,141 +237,104 @@ struct SettingsVehicleConfigSection: View {
                         }
                     } label: {
                         HStack(spacing: 8) {
-                            Image(systemName: vehicleCredentials.autoReadWulingToken ? "bolt.horizontal.circle" : "folder")
+                            Image(systemName: vehicleCredentials.autoReadWulingToken ? "bolt.horizontal.circle.fill" : "folder.fill")
                                 .font(.system(size: 13))
-                            Text(vehicleCredentials.autoReadWulingToken ? "自动读取五菱 App 凭据" : "手动选择 SavedOAuthModel")
+                            Text(vehicleCredentials.autoReadWulingToken ? "立即读取五菱 App 凭据" : "手动选择 SavedOAuthModel")
                                 .font(.system(size: 14, weight: .medium))
                         }
                         .foregroundStyle(AppTheme.accent)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 11)
                         .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(AppTheme.accent.opacity(0.10))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(AppTheme.accent.opacity(0.22), lineWidth: 1)
+                                )
                         )
                     }
                     .buttonStyle(.plain)
 
-                    Divider().background(Color.white.opacity(0.08))
+                    Text(vehicleCredentials.autoReadWulingToken ? "默认自动读取五菱 App 的 SavedOAuthModel；关闭后可手动选择文件。" : "已关闭自动读取，请手动选择 SavedOAuthModel 或粘贴 token。")
+                        .font(.caption)
+                        .foregroundStyle(Color.white.opacity(0.45))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.white.opacity(0.04))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                )
 
-                    credentialField(
-                        label: "Access Token",
-                        placeholder: "从五菱 App 的 SavedOAuthModel 获取",
-                        text: $accessTokenDraft,
-                        isSecure: true
-                    )
+                credentialField(
+                    label: "Access Token",
+                    placeholder: "从五菱 App 的 SavedOAuthModel 获取",
+                    text: $accessTokenDraft,
+                    isSecure: true
+                )
+
+                Button {
+                    fetchVehicleInfo()
+                } label: {
+                    HStack(spacing: 6) {
+                        if isFetching { ProgressView().scaleEffect(0.7) }
+                        Text(isFetching ? "查询中…" : "查询车辆并确认用户信息")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .foregroundStyle(AppTheme.accent)
+                }
+                .disabled(accessTokenDraft.isEmpty || isFetching)
+
+                HStack(spacing: 12) {
+                    Button {
+                        let token = accessTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !token.isEmpty, !vinDraft.isEmpty else {
+                            toastText = "请先查询车辆信息"
+                            return
+                        }
+                        vehicleCredentials.accessToken = token
+                        vehicleCredentials.vin = vinDraft
+                        vehicleCredentials.phone = phoneDraft
+                        if vehicleCredentials.tokenSourceLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            vehicleCredentials.tokenSourceLabel = "手动输入 Token"
+                        }
+                        toastText = "配置已保存 · \(vinDraft)"
+                        onSave()
+                    } label: {
+                        Text("保存")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Capsule().fill((accessTokenDraft.isEmpty || vinDraft.isEmpty) ? Color.white.opacity(0.3) : AppTheme.green))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(accessTokenDraft.isEmpty || vinDraft.isEmpty || isFetching)
 
                     Button {
-                        fetchVehicleInfo()
+                        vehicleCredentials.reset()
+                        accessTokenDraft = ""
+                        vinDraft = ""
+                        phoneDraft = ""
+                        queriedVehicleName = ""
+                        toastText = "配置已清除"
                     } label: {
-                        HStack(spacing: 6) {
-                            if isFetching { ProgressView().scaleEffect(0.7) }
-                            Text(isFetching ? "查询中…" : "查询车辆并确认用户信息")
-                                .font(.system(size: 13, weight: .medium))
-                        }
-                        .foregroundStyle(AppTheme.accent)
+                        Text("清除")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.red.opacity(0.8))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Capsule().stroke(Color.red.opacity(0.3), lineWidth: 1))
                     }
-                    .disabled(accessTokenDraft.isEmpty || isFetching)
-
-                    HStack(spacing: 12) {
-                        Button {
-                            let token = accessTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !token.isEmpty, !vinDraft.isEmpty else {
-                                toastText = "请先查询车辆信息"
-                                return
-                            }
-                            vehicleCredentials.accessToken = token
-                            vehicleCredentials.vin = vinDraft
-                            vehicleCredentials.phone = phoneDraft
-                            if vehicleCredentials.tokenSourceLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                vehicleCredentials.tokenSourceLabel = "手动输入 Token"
-                            }
-                            toastText = "配置已保存 · \(vinDraft)"
-                            onSave()
-                        } label: {
-                            Text("保存")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.black)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(Capsule().fill((accessTokenDraft.isEmpty || vinDraft.isEmpty) ? Color.white.opacity(0.3) : AppTheme.green))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(accessTokenDraft.isEmpty || vinDraft.isEmpty || isFetching)
-
-                        Button {
-                            vehicleCredentials.reset()
-                            accessTokenDraft = ""
-                            vinDraft = ""
-                            phoneDraft = ""
-                            queriedVehicleName = ""
-                            toastText = "配置已清除"
-                        } label: {
-                            Text("清除")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(.red.opacity(0.8))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(Capsule().stroke(Color.red.opacity(0.3), lineWidth: 1))
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    if !vehicleCredentials.isConfigured {
-                        Text(vehicleCredentials.autoReadWulingToken ? "默认自动读取五菱 App 的 SavedOAuthModel；关闭后可手动选择文件。" : "已关闭自动读取，请手动选择 SavedOAuthModel 或粘贴 token。")
-                            .font(.caption)
-                            .foregroundStyle(Color.white.opacity(0.45))
-                            .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(AppTheme.green)
-                            Text("已配置 · \(vehicleCredentials.vin)")
-                                .font(.caption)
-                                .foregroundStyle(Color.white.opacity(0.62))
-                        }
-                    }
-
-                    Divider().background(Color.white.opacity(0.08))
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "fuelpump.fill")
-                                .foregroundStyle(AppTheme.orange)
-                            Text("油量栏显示")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.white)
-                        }
-
-                        VStack(spacing: 8) {
-                            HStack(spacing: 8) {
-                                fuelModeButton(.auto, title: "自动")
-                                fuelModeButton(.show, title: "强制显示")
-                            }
-                            HStack(spacing: 8) {
-                                fuelModeButton(.hide, title: "强制隐藏")
-                                Spacer(minLength: 0)
-                            }
-                        }
-
-                        Text("根据车辆配置决定是否显示油量栏，可手动覆盖。")
-                            .font(.caption)
-                            .foregroundStyle(Color.white.opacity(0.45))
-                    }
+                    .buttonStyle(.plain)
                 }
-                .padding(16)
-                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(theme.cardBg)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(theme.cardStroke, lineWidth: 1)
-        )
-        .padding(.horizontal, 18)
         .onAppear {
             accessTokenDraft = vehicleCredentials.accessToken
             vinDraft = vehicleCredentials.vin
@@ -418,25 +436,6 @@ struct SettingsVehicleConfigSection: View {
     }
 
     @ViewBuilder
-    private func fuelModeButton(_ mode: FuelBarMode, title: String) -> some View {
-        let selected = vehicleStore.fuelBarMode == mode
-        Button {
-            vehicleStore.setFuelBarMode(mode)
-        } label: {
-            Text(title)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(selected ? .black : .white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(selected ? Color.white : Color.white.opacity(0.08))
-                )
-        }
-        .buttonStyle(.plain)
-    }
-
-    @ViewBuilder
     private func credentialField(label: String, placeholder: String, text: Binding<String>, isSecure: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
@@ -458,6 +457,67 @@ struct SettingsVehicleConfigSection: View {
                     .fill(Color.white.opacity(0.06))
             )
         }
+    }
+
+    @ViewBuilder
+    private func summaryChip(title: String, value: String, mono: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(Color.white.opacity(0.45))
+            Text(value)
+                .font(.system(size: mono ? 12 : 13, weight: .semibold, design: mono ? .monospaced : .default))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
+    }
+}
+
+struct SettingsFuelDisplaySection: View {
+    @EnvironmentObject var vehicleStore: VehicleStateStore
+
+    var body: some View {
+        SettingsPanelView(title: "油量显示", subtitle: "控制状态页是否显示油量。") {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    fuelModeButton(.auto, title: "自动")
+                    fuelModeButton(.show, title: "强制显示")
+                    fuelModeButton(.hide, title: "强制隐藏")
+                }
+
+                Text("自动：根据车辆配置识别插混/纯电；强制显示/隐藏：手动覆盖结果。")
+                    .font(.caption)
+                    .foregroundStyle(Color.white.opacity(0.45))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func fuelModeButton(_ mode: FuelBarMode, title: String) -> some View {
+        let selected = vehicleStore.fuelBarMode == mode
+        Button {
+            vehicleStore.setFuelBarMode(mode)
+        } label: {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(selected ? .black : .white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(selected ? AppTheme.orange : Color.white.opacity(0.08))
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 

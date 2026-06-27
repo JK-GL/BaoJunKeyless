@@ -250,6 +250,11 @@ struct StatusView: View {
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: activeCommand != nil)
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isAddressFloatingPresented)
+        .onAppear {
+            if let lat = mqttStore?.latestLatitude, let lng = mqttStore?.latestLongitude, lat != 0, lng != 0 {
+                locationManager.setCarLocation(lat: lat, lng: lng, address: preferredCarAddress)
+            }
+        }
     }
 
     @ViewBuilder

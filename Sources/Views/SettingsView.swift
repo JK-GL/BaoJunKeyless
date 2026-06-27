@@ -40,6 +40,8 @@ struct SettingsView: View {
 
                 SettingsVehicleConfigSection(toastText: $toastText, onSave: connectMQTTIfNeeded)
 
+                SettingsFuelDisplaySection()
+
                 SettingsAboutSection()
 
                 SettingsCrashLogSection(

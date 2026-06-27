@@ -34,12 +34,14 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.requestWhenInUseAuthorization()
         manager.startUpdatingLocation()
         manager.startUpdatingHeading()
+        requestCurrentLocationIfPossible()
     }
 
     // MARK: - 设置车辆坐标
     func setCarLocation(lat: Double, lng: Double, address: String? = nil) {
         carLatitude = lat
         carLongitude = lng
+        requestCurrentLocationIfPossible()
         recalculate()
 
         if let address, !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -74,6 +76,21 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
         heading = newHeading.magneticHeading
         recalculate()
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            manager.startUpdatingLocation()
+            manager.startUpdatingHeading()
+            requestCurrentLocationIfPossible()
+        default:
+            break
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        CrashLogger.shared.mark("Location", "update failed", details: error.localizedDescription)
     }
 
     // MARK: - 计算距离、方位、相对角度
@@ -144,6 +161,15 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         return a
     }
 
+    private func requestCurrentLocationIfPossible() {
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            manager.requestLocation()
+        default:
+            break
+        }
+    }
+
     // ⭐ 前后台切换
     func pause() {
         CrashLogger.shared.mark("Location", "pause")
@@ -155,6 +181,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         CrashLogger.shared.mark("Location", "resume")
         manager.startUpdatingLocation()
         manager.startUpdatingHeading()
+        requestCurrentLocationIfPossible()
     }
 
     deinit {
