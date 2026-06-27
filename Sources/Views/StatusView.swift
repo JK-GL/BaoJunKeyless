@@ -55,6 +55,8 @@ struct StatusView: View {
         return name.isEmpty ? "车辆状态" : name
     }
 
+    private var modeText: String {
+        guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
         if settingsStore.settings.pluginTakeover { return "插件托管" }
         if settingsStore.settings.smartSwitch { return "智能切换" }
         if settingsStore.settings.appManual { return "App手动" }
