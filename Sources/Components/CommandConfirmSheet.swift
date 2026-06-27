@@ -81,7 +81,7 @@ enum CommandAction: String, Identifiable {
         case .acToggle:
             return "snowflake"
         case .windowToggle:
-            return state.windowsClosed == true ? "rectangle.split.2x2.fill" : "rectangle.split.2x2"
+            return "rectangle.split.2x2.fill"
         case .quickCool:
             return "snowflake"
         }
@@ -339,7 +339,7 @@ struct CommandConfirmPopup: View {
             ]
         case .windowToggle:
             return [
-                PopupStatusItem(icon: state.windowsClosed == false ? "rectangle.split.2x2" : "rectangle.split.2x2.fill",
+                PopupStatusItem(icon: "rectangle.split.2x2.fill",
                                 label: "车窗",
                                 value: state.windowsClosed == true ? "已关" : "未关",
                                 color: state.windowsClosed == true ? AppTheme.green : AppTheme.orange),

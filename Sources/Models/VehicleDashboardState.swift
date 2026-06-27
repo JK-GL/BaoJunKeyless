@@ -153,7 +153,7 @@ extension VehicleDashboardState {
             bodyStatus: [
                 PopupStatusItem(icon: "lock.fill", label: "车锁", value: lockStatusText, color: colorForStatus(lockStatusText)),
                 PopupStatusItem(icon: "car.fill", label: "车门", value: doorStatusText, color: colorForStatus(doorStatusText)),
-                PopupStatusItem(icon: "rectangle.fill", label: "车窗", value: windowStatusText, color: colorForStatus(windowStatusText)),
+                PopupStatusItem(icon: "rectangle.split.2x2.fill", label: "车窗", value: windowStatusText, color: colorForStatus(windowStatusText)),
                 PopupStatusItem(icon: "lock.fill", label: "尾门", value: tailgateStatusText, color: colorForStatus(tailgateStatusText))
             ],
             driving: [

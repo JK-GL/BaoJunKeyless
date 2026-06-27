@@ -86,26 +86,34 @@ struct QuickStatusTripletView: View {
     var body: some View {
         CardView {
             HStack(spacing: 10) {
-                quickMetric(title: "总里程", value: totalMileageText, color: AppTheme.accent)
-                quickMetric(title: "平均油耗", value: averageFuelConsumptionText, color: AppTheme.orange)
-                quickMetric(title: "昨日里程", value: yesterdayMileageText, color: Color.white.opacity(0.72))
+                quickMetric(icon: "car.fill", title: "总里程", value: totalMileageText, color: AppTheme.accent)
+                quickMetric(icon: "fuelpump.fill", title: "平均油耗", value: averageFuelConsumptionText, color: AppTheme.orange)
+                quickMetric(icon: "calendar", title: "昨日里程", value: yesterdayMileageText, color: Color.white.opacity(0.72))
             }
         }
     }
 
     @ViewBuilder
-    private func quickMetric(title: String, value: String, color: Color) -> some View {
-        VStack(spacing: 6) {
-            Text(title)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.48))
+    private func quickMetric(icon: String, title: String, value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(color)
+                Text(title)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.48))
+                    .lineLimit(1)
+            }
+
             Text(value)
-                .font(.system(size: 16, weight: .bold, design: .monospaced))
-                .foregroundStyle(color)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
                 .lineLimit(1)
-                .minimumScaleFactor(0.72)
+                .minimumScaleFactor(0.7)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
