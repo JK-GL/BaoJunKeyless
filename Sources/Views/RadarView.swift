@@ -507,6 +507,7 @@ struct RadarCardView: View {
     var bleConnected: Bool = false
     var carLat: Double = 0
     var carLng: Double = 0
+    var carAddress: String = ""
 
     var body: some View {
         VStack(spacing: 12) {
@@ -567,17 +568,17 @@ struct RadarCardView: View {
         .padding(.horizontal, 16)
         .onAppear {
             if carLat != 0, carLng != 0 {
-                locationManager.setCarLocation(lat: carLat, lng: carLng)
+                locationManager.setCarLocation(lat: carLat, lng: carLng, address: carAddress)
             }
         }
         .onChange(of: carLat) { _ in
             if carLat != 0, carLng != 0 {
-                locationManager.setCarLocation(lat: carLat, lng: carLng)
+                locationManager.setCarLocation(lat: carLat, lng: carLng, address: carAddress)
             }
         }
         .onChange(of: carLng) { _ in
             if carLat != 0, carLng != 0 {
-                locationManager.setCarLocation(lat: carLat, lng: carLng)
+                locationManager.setCarLocation(lat: carLat, lng: carLng, address: carAddress)
             }
         }
     }

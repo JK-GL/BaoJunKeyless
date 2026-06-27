@@ -14,10 +14,14 @@ final class VehicleCredentialsStore: ObservableObject {
     @Published var phone: String {
         didSet { UserDefaults.standard.set(phone, forKey: key_phone) }
     }
+    @Published var autoReadWulingToken: Bool {
+        didSet { UserDefaults.standard.set(autoReadWulingToken, forKey: key_autoReadWulingToken) }
+    }
 
     private let key_token = "VehicleCredentials.accessToken"
     private let key_vin = "VehicleCredentials.vin"
     private let key_phone = "VehicleCredentials.phone"
+    private let key_autoReadWulingToken = "VehicleCredentials.autoReadWulingToken"
 
     var isConfigured: Bool {
         !accessToken.isEmpty && !vin.isEmpty
@@ -27,6 +31,7 @@ final class VehicleCredentialsStore: ObservableObject {
         self.accessToken = UserDefaults.standard.string(forKey: key_token) ?? ""
         self.vin = UserDefaults.standard.string(forKey: key_vin) ?? ""
         self.phone = UserDefaults.standard.string(forKey: key_phone) ?? ""
+        self.autoReadWulingToken = UserDefaults.standard.object(forKey: key_autoReadWulingToken) as? Bool ?? true
     }
 
     func reset() {

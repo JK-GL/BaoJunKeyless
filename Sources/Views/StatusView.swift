@@ -11,6 +11,7 @@ struct StatusView: View {
     @State private var isRefreshing = false
     @State private var refreshScale: CGFloat = 1.0
     @State private var isAddressFloatingPresented = false
+    @State private var isMQTTFloatingPresented = false
     @State private var activeCommand: CommandAction? = nil
     @State private var isEditingAmapKey = false
     @State private var amapKeyDraft = ""
@@ -53,6 +54,31 @@ struct StatusView: View {
     private var topBarTitle: String {
         let name = vehicleStore.dashboard.vehicleName.trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? "车辆状态" : name
+    }
+
+    private var mqttDisplayClientId: String {
+        mqttStore?.mqttClientId ?? "--"
+    }
+
+    private var mqttDisplayBroker: String {
+        mqttStore?.mqttBrokerDisplayText ?? "parkingdata.sgmwcloud.com.cn:1883"
+    }
+
+    private var mqttDisplayUsername: String {
+        mqttStore?.mqttUsernameMasked ?? "--"
+    }
+
+    private var mqttDisplayPassword: String {
+        mqttStore?.mqttPasswordMasked ?? "--"
+    }
+
+    private var mqttTopicRows: [String] {
+        mqttStore?.mqttTopics ?? []
+    }
+
+    private var mqttTokenSourceText: String {
+        let path = mqttStore?.tokenSourcePath.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return path.isEmpty ? "手动输入 / 未读取" : path
     }
 
     private var modeText: String {
@@ -111,7 +137,8 @@ struct StatusView: View {
                             mqttStatus: liveMQTTStatus,
                             doorLockState: vehicleStore.state.locked == true ? .locked : (vehicleStore.state.locked == false ? .unlocked : .unknown),
                             physicalKeyState: vehicleStore.state.physicalKeyInside == true ? .inCar : (vehicleStore.state.physicalKeyInside == false ? .normal : .unknown),
-                            gearState: StatusGearState(gear: vehicleStore.state.gear)
+                            gearState: StatusGearState(gear: vehicleStore.state.gear),
+                            onMQTTTap: { isMQTTFloatingPresented = true }
                         )
                     }
 
@@ -126,7 +153,8 @@ struct StatusView: View {
                             locationManager: locationManager,
                             bleConnected: liveBLEStatus == .connected,
                             carLat: mqttStore?.latestLatitude ?? 0,
-                            carLng: mqttStore?.latestLongitude ?? 0
+                            carLng: mqttStore?.latestLongitude ?? 0,
+                            carAddress: mqttStore?.latestAddress ?? ""
                         )
                     }
 
@@ -178,6 +206,20 @@ struct StatusView: View {
                     .zIndex(10)
             }
 
+            if isMQTTFloatingPresented {
+                Color.clear
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.2)) { isMQTTFloatingPresented = false }
+                    }
+
+                mqttFloatingWindow()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .transition(.scale.combined(with: .opacity))
+                    .zIndex(12)
+            }
+
             // 快捷操作居中弹窗
             if let command = activeCommand {
                 CommandConfirmPopup(
@@ -202,6 +244,72 @@ struct StatusView: View {
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: activeCommand != nil)
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isAddressFloatingPresented)
+    }
+
+    @ViewBuilder
+    private func mqttFloatingWindow() -> some View {
+        FloatingPopupCard(
+            icon: liveMQTTStatus.icon,
+            iconColor: liveMQTTStatus.color,
+            title: "MQTT 连接信息",
+            subtitle: "随机 ClientID，避免与官方 App 冲突（rc=7）",
+            onClose: { withAnimation(.easeOut(duration: 0.2)) { isMQTTFloatingPresented = false } }
+        ) {
+            VStack(alignment: .leading, spacing: 10) {
+                mqttInfoRow(icon: "antenna.radiowaves.left.and.right.circle.fill", label: "状态", value: liveMQTTStatus.text)
+                mqttInfoRow(icon: "server.rack", label: "Broker", value: mqttDisplayBroker, mono: true)
+                mqttInfoRow(icon: "iphone.radiowaves.left.and.right", label: "ClientID", value: mqttDisplayClientId, mono: true)
+                mqttInfoRow(icon: "person.text.rectangle", label: "Username", value: mqttDisplayUsername, mono: true)
+                mqttInfoRow(icon: "key.fill", label: "Password", value: mqttDisplayPassword, mono: true)
+                mqttInfoRow(icon: "doc.text", label: "Token来源", value: mqttTokenSourceText, mono: true)
+
+                if !mqttTopicRows.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("订阅 Topics")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.white.opacity(0.62))
+                        ForEach(mqttTopicRows, id: \.self) { topic in
+                            Text(topic)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.white)
+                                .lineLimit(2)
+                        }
+                    }
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color.white.opacity(0.05))
+                    )
+                }
+            }
+        } actions: {
+            VStack(spacing: 8) {
+                FloatingPopupPrimaryButton(title: "重新连接", color: AppTheme.accent) {
+                    mqttStore?.reconnect()
+                    withAnimation(.easeOut(duration: 0.2)) { isMQTTFloatingPresented = false }
+                }
+                FloatingPopupSecondaryButton(title: "关闭", textColor: .white) {
+                    withAnimation(.easeOut(duration: 0.2)) { isMQTTFloatingPresented = false }
+                }
+            }
+        }
+    }
+
+    private func mqttInfoRow(icon: String, label: String, value: String, mono: Bool = false) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .frame(width: 18)
+                .foregroundStyle(AppTheme.accent)
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundStyle(Color.white.opacity(0.62))
+            Spacer()
+            Text(value)
+                .font(.system(size: mono ? 11 : 13, weight: .medium, design: mono ? .monospaced : .default))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.vertical, 2)
     }
 
     @ViewBuilder
@@ -296,8 +404,9 @@ struct StatusView: View {
                     isEditingAmapKey = false
                     let lat = mqttStore?.latestLatitude ?? 0
                     let lng = mqttStore?.latestLongitude ?? 0
+                    let address = mqttStore?.latestAddress ?? ""
                     if lat != 0, lng != 0 {
-                        locationManager.setCarLocation(lat: lat, lng: lng)
+                        locationManager.setCarLocation(lat: lat, lng: lng, address: address)
                     }
                 }
 

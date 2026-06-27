@@ -30,7 +30,9 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     @Published private(set) var authStatus: StatusAuthState = .expired("未登录")
     @Published private(set) var latestLatitude: Double = 0
     @Published private(set) var latestLongitude: Double = 0
+    @Published private(set) var latestAddress: String = ""
     @Published private(set) var latestBleKeyInfo: [String: String] = [:]
+    @Published private(set) var tokenSourcePath: String = ""
 
     private var mqtt: CocoaMQTT?
     private var credentials: SGMWApiClient.MQTTCredentials?
@@ -75,6 +77,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         }
 
         if let address = snapshot.address, !address.isEmpty {
+            latestAddress = address
             UserDefaults.standard.set(address, forKey: "LastAddress")
         }
 
@@ -91,7 +94,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             return
         }
 
-        guard let token = SGMWApiClient.shared.readLocalToken() else {
+        guard let tokenInfo = SGMWApiClient.shared.readLocalTokenInfo() else {
             mqttStatus = .disconnected
             if case .expired("缓存模式") = authStatus {
                 CrashLogger.shared.mark("MQTT", "no local token found, keep cache mode")
@@ -101,6 +104,9 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             }
             return
         }
+
+        let token = tokenInfo.token
+        tokenSourcePath = tokenInfo.sourcePath
 
         authStatus = .valid
         SGMWApiClient.shared.queryDefaultCar(accessToken: token) { [weak self] result in
@@ -451,8 +457,16 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             latestLatitude = lat
             latestLongitude = lng
             let addressHint = carStatus["address"]
+            if let addressHint, !addressHint.isEmpty {
+                latestAddress = addressHint
+            }
             let addressSettings = AddressServiceSettings()
-            locationResolver.getAddress(wgs84Lat: lat, wgs84Lng: lng, address: addressHint, amapWebKey: addressSettings.amapWebKey) { _ in }
+            locationResolver.getAddress(wgs84Lat: lat, wgs84Lng: lng, address: nil, amapWebKey: addressSettings.amapWebKey) { [weak self] resolved in
+                guard let self, let resolved else { return }
+                DispatchQueue.main.async {
+                    self.latestAddress = resolved
+                }
+            }
         }
 
         var dash = dashboard
@@ -475,6 +489,15 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     // MARK: - 解析工具
+
+    var mqttClientId: String { credentials?.clientId ?? "" }
+    var mqttBrokerDisplayText: String {
+        guard let credentials else { return "" }
+        return "\(credentials.broker):\(credentials.port)"
+    }
+    var mqttUsernameMasked: String { maskHex(credentials?.username, visiblePrefix: 4, visibleSuffix: 4) }
+    var mqttPasswordMasked: String { maskHex(credentials?.password, visiblePrefix: 4, visibleSuffix: 4) }
+    var mqttTopics: [String] { credentials?.topics ?? [] }
 
     private func parseLocked(_ raw: String?) -> Bool? {
         guard let raw else { return nil }

@@ -42,6 +42,11 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         carLongitude = lng
         recalculate()
 
+        if let address, !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            vehicleAddress = address
+            return
+        }
+
         if vehicleAddress.isEmpty {
             vehicleAddress = LocationResolver.shared.cachedAddress ?? ""
         }

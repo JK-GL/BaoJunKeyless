@@ -73,14 +73,17 @@ enum CommandAction: String, Identifiable {
     func icon(state: VehicleState) -> String {
         switch self {
         case .lockUnlock:
-            return state.locked == true ? "lock.open.fill" : "lock.fill"
-        case .remoteStart:   return state.power == .off ? "dot.radiowaves.left.and.right" : "power"
-        case .findCar:       return "location.fill"
+            return state.locked == true ? "lock.fill" : "lock.open.fill"
+        case .remoteStart:
+            return state.power == .off ? "power.circle" : "power.circle.fill"
+        case .findCar:
+            return "location.fill"
         case .acToggle:
-            return state.acOn == true ? "thermometer.medium" : "snowflake"
+            return state.acOn == true ? "snowflake" : "snowflake.slash"
         case .windowToggle:
-            return state.windowsClosed == false ? "rectangle.split.2x2" : "rectangle.split.2x2.fill"
-        case .quickCool:     return "snowflake"
+            return state.windowsClosed == true ? "rectangle.split.2x2.fill" : "rectangle.split.2x2"
+        case .quickCool:
+            return "snowflake"
         }
     }
 
@@ -88,10 +91,10 @@ enum CommandAction: String, Identifiable {
         switch self {
         case .lockUnlock:
             return state.locked == true ? "解锁" : "锁车"
-        case .remoteStart:   return state.power == .off ? "启动" : "已启动"
+        case .remoteStart:   return state.power == .off ? "启动" : "熄火"
         case .findCar:       return "寻车"
         case .acToggle:
-            return state.acOn == true ? "关闭空调" : "打开空调"
+            return state.acOn == true ? "关空调" : "开空调"
         case .windowToggle:
             return state.windowsClosed == false ? "关窗" : "开窗"
         case .quickCool:     return "快冷"

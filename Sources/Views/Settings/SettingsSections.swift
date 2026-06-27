@@ -129,6 +129,9 @@ struct SettingsVehicleConfigSection: View {
     @State private var isEditing = false
     @State private var isFetching = false
     @State private var showingImportGuide = false
+    @State private var showingFilePicker = false
+    @State private var showingVehicleInfoConfirm = false
+    @State private var queriedVehicleName = ""
     @Binding var toastText: String?
     let onSave: () -> Void
 
@@ -164,14 +167,23 @@ struct SettingsVehicleConfigSection: View {
                 Divider().background(theme.cardStroke)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    // 快捷导入按钮
+                    ToggleRow(
+                        icon: "arrow.trianglehead.2.clockwise.rotate.90",
+                        label: "自动读取五菱 App Token",
+                        isOn: $vehicleCredentials.autoReadWulingToken
+                    )
+
                     Button {
-                        showingImportGuide = true
+                        if vehicleCredentials.autoReadWulingToken {
+                            autoImportFromWulingApp()
+                        } else {
+                            showingFilePicker = true
+                        }
                     } label: {
                         HStack(spacing: 8) {
-                            Image(systemName: "square.and.arrow.down")
+                            Image(systemName: vehicleCredentials.autoReadWulingToken ? "bolt.horizontal.circle" : "folder")
                                 .font(.system(size: 13))
-                            Text("从五菱 App 导入凭据")
+                            Text(vehicleCredentials.autoReadWulingToken ? "自动读取五菱 App 凭据" : "手动选择 SavedOAuthModel")
                                 .font(.system(size: 14, weight: .medium))
                         }
                         .foregroundStyle(AppTheme.accent)
@@ -188,24 +200,17 @@ struct SettingsVehicleConfigSection: View {
 
                     credentialField(
                         label: "Access Token",
-                        placeholder: "从五菱/宝骏 App 的 SavedOAuthModel 获取",
+                        placeholder: "从五菱 App 的 SavedOAuthModel 获取",
                         text: $accessTokenDraft,
                         isSecure: true
                     )
-
-                    if !vinDraft.isEmpty {
-                        credentialField(label: "VIN", placeholder: "", text: .constant(vinDraft))
-                            .disabled(true)
-                        credentialField(label: "手机号", placeholder: "", text: .constant(phoneDraft))
-                            .disabled(true)
-                    }
 
                     Button {
                         fetchVehicleInfo()
                     } label: {
                         HStack(spacing: 6) {
                             if isFetching { ProgressView().scaleEffect(0.7) }
-                            Text(isFetching ? "查询中…" : "填入 Token 后点这里查询车辆")
+                            Text(isFetching ? "查询中…" : "查询车辆并确认用户信息")
                                 .font(.system(size: 13, weight: .medium))
                         }
                         .foregroundStyle(AppTheme.accent)
@@ -215,39 +220,32 @@ struct SettingsVehicleConfigSection: View {
                     HStack(spacing: 12) {
                         Button {
                             let token = accessTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !token.isEmpty else { return }
-                            isFetching = true
-                            toastText = "正在查询车辆信息…"
-                            SGMWApiClient.shared.queryDefaultCar(accessToken: token) { result in
-                                DispatchQueue.main.async {
-                                    isFetching = false
-                                    guard let result else {
-                                        toastText = "查询失败，请检查 Token"
-                                        return
-                                    }
-                                    vehicleCredentials.accessToken = token
-                                    vehicleCredentials.vin = result.vin
-                                    vehicleCredentials.phone = result.phone
-                                    toastText = "配置已保存 · \(result.vin)"
-                                    onSave()
-                                }
+                            guard !token.isEmpty, !vinDraft.isEmpty else {
+                                toastText = "请先查询车辆信息"
+                                return
                             }
+                            vehicleCredentials.accessToken = token
+                            vehicleCredentials.vin = vinDraft
+                            vehicleCredentials.phone = phoneDraft
+                            toastText = "配置已保存 · \(vinDraft)"
+                            onSave()
                         } label: {
                             Text("保存")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(.black)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
-                                .background(Capsule().fill(accessTokenDraft.isEmpty ? Color.white.opacity(0.3) : AppTheme.green))
+                                .background(Capsule().fill((accessTokenDraft.isEmpty || vinDraft.isEmpty) ? Color.white.opacity(0.3) : AppTheme.green))
                         }
                         .buttonStyle(.plain)
-                        .disabled(accessTokenDraft.isEmpty || isFetching)
+                        .disabled(accessTokenDraft.isEmpty || vinDraft.isEmpty || isFetching)
 
                         Button {
                             vehicleCredentials.reset()
                             accessTokenDraft = ""
                             vinDraft = ""
                             phoneDraft = ""
+                            queriedVehicleName = ""
                             toastText = "配置已清除"
                         } label: {
                             Text("清除")
@@ -261,7 +259,7 @@ struct SettingsVehicleConfigSection: View {
                     }
 
                     if !vehicleCredentials.isConfigured {
-                        Text("只需填入 access_token，VIN 和手机号会自动查询获取。")
+                        Text(vehicleCredentials.autoReadWulingToken ? "默认自动读取五菱 App 的 SavedOAuthModel；关闭后可手动选择文件。" : "已关闭自动读取，请手动选择 SavedOAuthModel 或粘贴 token。")
                             .font(.caption)
                             .foregroundStyle(Color.white.opacity(0.45))
                             .fixedSize(horizontal: false, vertical: true)
@@ -305,6 +303,38 @@ struct SettingsVehicleConfigSection: View {
             })
             .environmentObject(vehicleCredentials)
         }
+        .sheet(isPresented: $showingFilePicker) {
+            SimpleDocumentPicker { url in
+                importTokenFromSelectedFile(url: url)
+                showingFilePicker = false
+            }
+        }
+        .overlay {
+            if showingVehicleInfoConfirm {
+                CustomAlertView(
+                    title: queriedVehicleName.isEmpty ? "车辆信息确认" : queriedVehicleName,
+                    message: "VIN：\(vinDraft)\n用户：\(phoneDraft.isEmpty ? "--" : phoneDraft)",
+                    confirmTitle: "确认",
+                    confirmColor: .green,
+                    onCancel: { withAnimation(.easeOut(duration: 0.2)) { showingVehicleInfoConfirm = false } },
+                    onConfirm: { withAnimation(.easeOut(duration: 0.2)) { showingVehicleInfoConfirm = false } }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+    }
+
+    private func autoImportFromWulingApp() {
+        if let tokenInfo = SGMWApiClient.shared.readLocalTokenInfo() {
+            accessTokenDraft = tokenInfo.token
+            vehicleCredentials.accessToken = tokenInfo.token
+            toastText = "已自动读取五菱 Token"
+            fetchVehicleInfo()
+        } else {
+            toastText = "自动读取失败，可切换为手动选择文件"
+            showingImportGuide = true
+        }
     }
 
     private func fetchVehicleInfo() {
@@ -317,12 +347,32 @@ struct SettingsVehicleConfigSection: View {
                 if let result {
                     vinDraft = result.vin
                     phoneDraft = result.phone
+                    queriedVehicleName = "车辆信息确认"
+                    showingVehicleInfoConfirm = true
                     toastText = "车辆信息已获取"
                 } else {
                     toastText = "查询失败，请检查 Token"
                 }
             }
         }
+    }
+
+    private func importTokenFromSelectedFile(url: URL) {
+        guard let data = try? Data(contentsOf: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            toastText = "读取文件失败"
+            return
+        }
+        let token = (json["access_token"] as? String)
+            ?? ((json["data"] as? [String: Any])?["access_token"] as? String)
+        guard let token, !token.isEmpty else {
+            toastText = "文件中未找到 access_token"
+            return
+        }
+        accessTokenDraft = token
+        vehicleCredentials.accessToken = token
+        toastText = "已从文件导入 Token"
+        fetchVehicleInfo()
     }
 
     @ViewBuilder
@@ -368,10 +418,10 @@ struct ImportGuideSheet: View {
                         .foregroundStyle(.white)
 
                     Group {
-                        guideStep(num: 1, title: "打开 TrollStore 文件管理器", detail: "找到五菱 App 的 App Group 容器")
-                        guideStep(num: 2, title: "复制 SavedOAuthModel", detail: "路径：group.com.cloudy.LingLingBang/SavedOAuthModel")
-                        guideStep(num: 3, title: "粘贴到 /var/mobile/", detail: "直接粘贴到 var/mobile/ 目录下")
-                        guideStep(num: 4, title: "返回 App 点击「读取」", detail: "App 会自动从 /var/mobile/SavedOAuthModel 读取")
+                        guideStep(num: 1, title: "默认自动读取五菱 App", detail: "开启自动读取后，App 会优先通过 App Group 直接读取 SavedOAuthModel")
+                        guideStep(num: 2, title: "读取失败再手动选择文件", detail: "关闭自动读取后，可手动选择导出的 SavedOAuthModel 文件")
+                        guideStep(num: 3, title: "导入后自动查询车辆", detail: "会自动查询 VIN 和用户信息，方便你确认")
+                        guideStep(num: 4, title: "无需手动复制到 /var/mobile", detail: "现在优先尝试五菱 AppGroup 原路径，不再要求你手动拷贝")
                     }
 
                     Divider().background(Color.white.opacity(0.1))
