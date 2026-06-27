@@ -179,7 +179,7 @@ struct StatusTopBarSection: View {
     let onRefresh: () -> Void
 
     init(
-        vehicleName: String = "宝骏云海",
+        vehicleName: String = "车辆状态",
         isRefreshing: Bool,
         refreshScale: CGFloat,
         authStatus: StatusAuthState = .valid,
@@ -239,7 +239,6 @@ struct StatusPillsSection: View {
     let modeColor: Color
     var bleStatus: StatusBLEState = .connected
     var mqttStatus: StatusMQTTState = .disconnected
-    var doorLockState: StatusDoorLockState = .locked
     var physicalKeyState: StatusPhysicalKeyState = .normal
     var gearState: StatusGearState = .park
     var onMQTTTap: (() -> Void)? = nil
@@ -257,7 +256,6 @@ struct StatusPillsSection: View {
                     StatusPill(icon: mqttStatus.icon, text: mqttStatus.text, color: mqttStatus.color)
                 }
                 StatusPill(icon: modeIcon, text: modeText, color: modeColor)
-                StatusPill(icon: doorLockState.icon, text: doorLockState.text, color: doorLockState.color)
                 StatusPill(icon: physicalKeyState.icon, text: physicalKeyState.text, color: physicalKeyState.color)
                 StatusPill(icon: gearState.icon, text: gearState.text, color: gearState.color)
             }

@@ -140,7 +140,6 @@ struct StatusView: View {
                             modeColor: modeColor,
                             bleStatus: liveBLEStatus,
                             mqttStatus: liveMQTTStatus,
-                            doorLockState: vehicleStore.state.locked == true ? .locked : (vehicleStore.state.locked == false ? .unlocked : .unknown),
                             physicalKeyState: vehicleStore.state.physicalKeyInside == true ? .inCar : (vehicleStore.state.physicalKeyInside == false ? .normal : .unknown),
                             gearState: StatusGearState(gear: vehicleStore.state.gear),
                             onMQTTTap: { isMQTTFloatingPresented = true }

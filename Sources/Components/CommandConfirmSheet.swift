@@ -96,9 +96,9 @@ enum CommandAction: String, Identifiable {
         case .findCar:
             return "寻车"
         case .acToggle:
-            return state.acOn == true ? "已开空调" : "关闭"
+            return state.acOn == true ? "已开空调" : "空调"
         case .windowToggle:
-            return state.windowsClosed == false ? "已开窗" : "关窗"
+            return state.windowsClosed == false ? "已开窗" : "车窗"
         case .quickCool:
             return "快冷"
         }
@@ -125,7 +125,7 @@ enum CommandAction: String, Identifiable {
         case .acToggle:
             return state.acOn == true ? AppTheme.accent : Color(red: 0.55, green: 0.58, blue: 0.62)
         case .windowToggle:
-            return state.windowsClosed == true ? AppTheme.green : Color(red: 0.22, green: 0.74, blue: 1.0)
+            return state.windowsClosed == true ? Color(red: 0.55, green: 0.58, blue: 0.62) : Color(red: 0.22, green: 0.74, blue: 1.0)
         default:
             return color
         }

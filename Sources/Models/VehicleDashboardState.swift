@@ -20,39 +20,39 @@ struct VehicleDashboardState {
 
     // 能源
     var energyType: VehicleEnergyType = .plugInHybrid
-    var electricRangeKm: Int = 140
-    var electricFullRangeKm: Int = 140
-    var fuelRangeKm: Int = 680
-    var fuelFullRangeKm: Int = 800
+    var electricRangeKm: Int = 0
+    var electricFullRangeKm: Int = 0
+    var fuelRangeKm: Int = 0
+    var fuelFullRangeKm: Int = 0
     var isCharging: Bool = false
-    var chargingPowerText: String = "3.2 kW"
-    var updatedAtText: String = "17:59:34"
+    var chargingPowerText: String = "--"
+    var updatedAtText: String = "--"
 
     // 电池
-    var batteryRemainingText: String = "17.8kWh"
-    var batteryHealthPercentText: String = "99%"
-    var batteryVoltageText: String = "109.5V"
-    var batteryAuxText: String = "12.4V"
+    var batteryRemainingText: String = "--"
+    var batteryHealthPercentText: String = "--"
+    var batteryVoltageText: String = "--"
+    var batteryAuxText: String = "--"
 
     // 温度
-    var cabinTemperatureText: String = "22°C"
-    var acTemperatureText: String = "17°C"
-    var batteryTemperatureText: String = "25°C"
-    var motorTemperatureText: String = "27°C"
-    var inverterTemperatureText: String = "27°C"
+    var cabinTemperatureText: String = "--"
+    var acTemperatureText: String = "--"
+    var batteryTemperatureText: String = "--"
+    var motorTemperatureText: String = "--"
+    var inverterTemperatureText: String = "--"
 
     // 充电
-    var chargingStatusText: String = "否"
+    var chargingStatusText: String = "--"
     var chargingPowerValueText: String = "--"
-    var obcCurrentText: String = "0A"
+    var obcCurrentText: String = "--"
     var obcTemperatureText: String = "--"
     var chargingStateText: String = "--"
 
     // 车身状态
-    var lockStatusText: String = "已锁车"
-    var doorStatusText: String = "全关"
-    var windowStatusText: String = "全关"
-    var tailgateStatusText: String = "已锁"
+    var lockStatusText: String = "--"
+    var doorStatusText: String = "--"
+    var windowStatusText: String = "--"
+    var tailgateStatusText: String = "--"
 
     var bodyStatusNormalText: String {
         let badStatuses: [String] = ["未关", "未锁", "已开", "打开", "异常", "故障"]
@@ -80,18 +80,18 @@ struct VehicleDashboardState {
     }
 
     // 驾驶
-    var steeringAngleText: String = "0.0°"
-    var throttlePercentText: String = "0%"
-    var brakePercentText: String = "0%"
+    var steeringAngleText: String = "--"
+    var throttlePercentText: String = "--"
+    var brakePercentText: String = "--"
     var speedText: String = "--"
 
     // 灯光
-    var lowBeamText: String = "关闭"
-    var highBeamText: String = "关闭"
-    var leftTurnText: String = "关闭"
-    var rightTurnText: String = "关闭"
-    var positionLightText: String = "关闭"
-    var frontFogText: String = "关闭"
+    var lowBeamText: String = "--"
+    var highBeamText: String = "--"
+    var leftTurnText: String = "--"
+    var rightTurnText: String = "--"
+    var positionLightText: String = "--"
+    var frontFogText: String = "--"
 }
 
 struct VehicleDashboardMetrics {

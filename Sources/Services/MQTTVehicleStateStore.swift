@@ -49,7 +49,6 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     init() {
         super.init(state: .placeholder, dashboard: VehicleDashboardState())
-        applyCachedSnapshotIfAvailable()
         DispatchQueue.main.async { [weak self] in
             self?.autoConnect()
         }
@@ -109,6 +108,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
         let token = tokenInfo.token
         tokenSourcePath = tokenInfo.sourcePath
+        applyCachedSnapshotIfAvailable()
 
         authStatus = .valid
         SGMWApiClient.shared.queryDefaultCar(accessToken: token) { [weak self] result in
@@ -461,17 +461,13 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             let addressHint = carStatus["address"]
             if let addressHint, !addressHint.isEmpty {
                 latestAddress = addressHint
-                shouldPreferCachedAddress = false
             }
+            shouldPreferCachedAddress = false
             let addressSettings = AddressServiceSettings()
-            let hasAmapKey = !addressSettings.amapWebKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            if hasAmapKey {
-                shouldPreferCachedAddress = false
-                locationResolver.getAddress(wgs84Lat: lat, wgs84Lng: lng, address: nil, amapWebKey: addressSettings.amapWebKey) { [weak self] resolved in
-                    guard let self, let resolved else { return }
-                    DispatchQueue.main.async {
-                        self.latestAddress = resolved
-                    }
+            locationResolver.getAddress(wgs84Lat: lat, wgs84Lng: lng, address: nil, amapWebKey: addressSettings.amapWebKey) { [weak self] resolved in
+                guard let self, let resolved else { return }
+                DispatchQueue.main.async {
+                    self.latestAddress = resolved
                 }
             }
         }
