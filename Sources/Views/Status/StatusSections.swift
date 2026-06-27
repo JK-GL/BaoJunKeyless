@@ -239,7 +239,7 @@ struct StatusPillsSection: View {
     let modeColor: Color
     var bleStatus: StatusBLEState = .connected
     var mqttStatus: StatusMQTTState = .disconnected
-    var physicalKeyState: StatusPhysicalKeyState = .normal
+    var physicalKeyState: StatusPhysicalKeyState = .outside
     var gearState: StatusGearState = .park
     var onMQTTTap: (() -> Void)? = nil
 
