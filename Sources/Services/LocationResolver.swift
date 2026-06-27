@@ -95,7 +95,8 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
         }
         let elapsed = lastDate.map { now.timeIntervalSince($0) } ?? .greatestFiniteMagnitude
         let cachedAddress = address ?? self.cachedAddress
-        let needsUpdate = distanceFromLast >= 50 || elapsed >= 60 || (cachedAddress ?? "").isEmpty
+        let shouldForceRefresh = (address == nil)
+        let needsUpdate = shouldForceRefresh || distanceFromLast >= 50 || elapsed >= 60 || (cachedAddress ?? "").isEmpty
         guard needsUpdate else {
             completion(cachedAddress)
             return
