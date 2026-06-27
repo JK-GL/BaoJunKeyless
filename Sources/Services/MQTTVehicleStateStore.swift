@@ -31,6 +31,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     @Published private(set) var latestLatitude: Double = 0
     @Published private(set) var latestLongitude: Double = 0
     @Published private(set) var latestAddress: String = ""
+    @Published private(set) var shouldPreferCachedAddress: Bool = false
     @Published private(set) var latestBleKeyInfo: [String: String] = [:]
     @Published private(set) var tokenSourcePath: String = ""
 
@@ -78,6 +79,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
         if let address = snapshot.address, !address.isEmpty {
             latestAddress = address
+            shouldPreferCachedAddress = true
             UserDefaults.standard.set(address, forKey: "LastAddress")
         }
 
@@ -459,12 +461,17 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             let addressHint = carStatus["address"]
             if let addressHint, !addressHint.isEmpty {
                 latestAddress = addressHint
+                shouldPreferCachedAddress = false
             }
             let addressSettings = AddressServiceSettings()
-            locationResolver.getAddress(wgs84Lat: lat, wgs84Lng: lng, address: nil, amapWebKey: addressSettings.amapWebKey) { [weak self] resolved in
-                guard let self, let resolved else { return }
-                DispatchQueue.main.async {
-                    self.latestAddress = resolved
+            let hasAmapKey = !addressSettings.amapWebKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if hasAmapKey {
+                shouldPreferCachedAddress = false
+                locationResolver.getAddress(wgs84Lat: lat, wgs84Lng: lng, address: nil, amapWebKey: addressSettings.amapWebKey) { [weak self] resolved in
+                    guard let self, let resolved else { return }
+                    DispatchQueue.main.async {
+                        self.latestAddress = resolved
+                    }
                 }
             }
         }

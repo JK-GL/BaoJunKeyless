@@ -90,14 +90,17 @@ enum CommandAction: String, Identifiable {
     func label(state: VehicleState) -> String {
         switch self {
         case .lockUnlock:
-            return state.locked == true ? "解锁" : "锁车"
-        case .remoteStart:   return state.power == .off ? "启动" : "熄火"
-        case .findCar:       return "寻车"
+            return state.locked == true ? "锁车" : "已开锁"
+        case .remoteStart:
+            return state.power == .off ? "熄火" : "已启动"
+        case .findCar:
+            return "寻车"
         case .acToggle:
-            return state.acOn == true ? "关空调" : "开空调"
+            return state.acOn == true ? "已开空调" : "关闭"
         case .windowToggle:
-            return state.windowsClosed == false ? "关窗" : "开窗"
-        case .quickCool:     return "快冷"
+            return state.windowsClosed == false ? "已开窗" : "关窗"
+        case .quickCool:
+            return "快冷"
         }
     }
 

@@ -82,10 +82,8 @@ struct StatusView: View {
     }
 
     private var preferredCarAddress: String {
-        if case .expired("缓存模式") = mqttAuthStatus {
-            return mqttStore?.latestAddress ?? ""
-        }
-        return ""
+        guard mqttStore?.shouldPreferCachedAddress == true else { return "" }
+        return mqttStore?.latestAddress ?? ""
     }
 
     private var modeText: String {
