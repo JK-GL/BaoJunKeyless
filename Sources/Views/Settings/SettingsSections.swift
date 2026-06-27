@@ -123,6 +123,7 @@ struct SettingsAboutSection: View {
 struct SettingsVehicleConfigSection: View {
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
+    @EnvironmentObject var vehicleStore: VehicleStateStore
     @State private var accessTokenDraft: String = ""
     @State private var vinDraft: String = ""
     @State private var phoneDraft: String = ""
@@ -272,6 +273,33 @@ struct SettingsVehicleConfigSection: View {
                                 .foregroundStyle(Color.white.opacity(0.62))
                         }
                     }
+
+                    Divider().background(Color.white.opacity(0.08))
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "fuelpump.fill")
+                                .foregroundStyle(AppTheme.orange)
+                            Text("油量栏显示")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+
+                        VStack(spacing: 8) {
+                            HStack(spacing: 8) {
+                                fuelModeButton(.auto, title: "自动")
+                                fuelModeButton(.show, title: "强制显示")
+                            }
+                            HStack(spacing: 8) {
+                                fuelModeButton(.hide, title: "强制隐藏")
+                                Spacer(minLength: 0)
+                            }
+                        }
+
+                        Text("根据车辆配置决定是否显示油量栏，可手动覆盖。")
+                            .font(.caption)
+                            .foregroundStyle(Color.white.opacity(0.45))
+                    }
                 }
                 .padding(16)
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -380,6 +408,25 @@ struct SettingsVehicleConfigSection: View {
         vehicleCredentials.accessToken = token
         toastText = "已从文件导入 Token"
         fetchVehicleInfo()
+    }
+
+    @ViewBuilder
+    private func fuelModeButton(_ mode: FuelBarMode, title: String) -> some View {
+        let selected = vehicleStore.fuelBarMode == mode
+        Button {
+            vehicleStore.setFuelBarMode(mode)
+        } label: {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(selected ? .black : .white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(selected ? Color.white : Color.white.opacity(0.08))
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder

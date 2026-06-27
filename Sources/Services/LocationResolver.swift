@@ -123,7 +123,8 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
             return
         }
 
-        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let gcj = Self.wgs84ToGcj02(lat: wgs84Lat, lng: wgs84Lng)
+        let location = CLLocation(latitude: gcj.lat, longitude: gcj.lng)
         geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
             guard let self else { return }
             if let p = placemarks?.first {

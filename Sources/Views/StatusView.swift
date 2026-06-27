@@ -5,7 +5,6 @@ struct StatusView: View {
     @EnvironmentObject var settingsStore: KeylessSettingsStore
     @EnvironmentObject var addressSettings: AddressServiceSettings
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
-    @AppStorage(AppDiagnosticsSettings.quickActionsDebugModeKey) private var quickActionsDebugMode = true
     @StateObject private var locationManager = LocationManager()
     @EnvironmentObject var vehicleStore: VehicleStateStore
     @State private var isRefreshing = false
@@ -140,7 +139,7 @@ struct StatusView: View {
                             modeColor: modeColor,
                             bleStatus: liveBLEStatus,
                             mqttStatus: liveMQTTStatus,
-                            physicalKeyState: vehicleStore.state.physicalKeyInside == true ? .inCar : (vehicleStore.state.physicalKeyInside == false ? .normal : .unknown),
+                            physicalKeyState: vehicleStore.state.physicalKeyInside == true ? .inCar : (vehicleStore.state.physicalKeyInside == false ? .outside : .unknown),
                             gearState: StatusGearState(gear: vehicleStore.state.gear),
                             onMQTTTap: { isMQTTFloatingPresented = true }
                         )

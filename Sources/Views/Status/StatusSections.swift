@@ -118,7 +118,7 @@ enum StatusDoorLockState {
 }
 
 enum StatusPhysicalKeyState {
-    case normal
+    case outside
     case inCar
     case unknown
 
@@ -126,15 +126,15 @@ enum StatusPhysicalKeyState {
 
     var text: String {
         switch self {
-        case .normal: return "钥匙正常"
-        case .inCar: return "钥匙在车"
-        case .unknown: return "钥匙未知"
+        case .outside: return "物理钥匙车外"
+        case .inCar: return "物理钥匙车内"
+        case .unknown: return "物理钥匙未知"
         }
     }
 
     var color: Color {
         switch self {
-        case .normal: return AppTheme.green
+        case .outside: return AppTheme.green
         case .inCar: return AppTheme.orange
         case .unknown: return Color.white.opacity(0.45)
         }

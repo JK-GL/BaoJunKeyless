@@ -206,15 +206,16 @@ final class RadarUIView: UIView {
 
     private func restoreDynamicResourcesIfNeeded() {
         resumeScanRingAnimationsIfNeeded()
-        if !isUsingSFSymbolCar || carImageView.image == nil {
-            Self.sharedCarImage = nil
-            URLCache.shared.removeAllCachedResponses()
-            isUsingSFSymbolCar = true
-            carOnlineImage = nil
-            carImageView.image = UIImage(systemName: "car.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
-            if AppDiagnosticsSettings.isDiagnosticsEnabled {
-                CrashLogger.shared.mark("RadarCar", "useSFSymbol")
+        if let shared = Self.sharedCarImage {
+            isUsingSFSymbolCar = false
+            carOnlineImage = shared
+            if carImageView.image !== shared {
+                carImageView.image = shared
             }
+        } else if carImageView.image == nil {
+            isUsingSFSymbolCar = false
+            carImageView.image = UIImage(systemName: "car.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
+            loadCarImage()
         }
     }
 
