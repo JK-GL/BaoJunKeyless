@@ -9,6 +9,15 @@ import CocoaMQTT
 
 final class MQTTVehicleStateStore: VehicleStateStore {
 
+    struct VehicleTokenSource: Equatable {
+        let label: String
+        let path: String
+
+        var displayText: String {
+            path.isEmpty ? label : "\(label) · \(path)"
+        }
+    }
+
     // MARK: - 连接状态
 
     enum LiveBLEStatus: Equatable {
@@ -34,6 +43,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     @Published private(set) var shouldPreferCachedAddress: Bool = false
     @Published private(set) var latestBleKeyInfo: [String: String] = [:]
     @Published private(set) var tokenSourcePath: String = ""
+    @Published private(set) var tokenSourceLabel: String = ""
 
     private var mqtt: CocoaMQTT?
     private var credentials: SGMWApiClient.MQTTCredentials?
@@ -59,7 +69,28 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         mqtt?.disconnect()
     }
 
-    // MARK: - 启动 / 重连
+    private func updateTokenSource(label: String, path: String = "") {
+        let normalizedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        tokenSourceLabel = normalizedLabel
+        tokenSourcePath = normalizedPath
+        credentialsStore?.tokenSourceLabel = normalizedLabel
+        credentialsStore?.tokenSourcePath = normalizedPath
+    }
+
+    private func inferredTokenSourceLabel(from credentialsStore: VehicleCredentialsStore) -> String {
+        let explicit = credentialsStore.tokenSourceLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !explicit.isEmpty { return explicit }
+
+        let path = credentialsStore.tokenSourcePath.lowercased()
+        if path.contains("savedoauthmodel") && path.contains("appgroup") {
+            return "五菱 App 自动读取"
+        }
+        if path.contains("savedoauthmodel") {
+            return "手动导入 SavedOAuthModel"
+        }
+        return "手动输入 Token"
+    }
 
     private func applyCachedSnapshotIfAvailable() {
         guard let snapshot = WulingAppCacheReader.shared.readStatusCache() else { return }
@@ -107,7 +138,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         }
 
         let token = tokenInfo.token
-        tokenSourcePath = tokenInfo.sourcePath
+        updateTokenSource(label: "五菱 App 自动读取", path: tokenInfo.sourcePath)
         applyCachedSnapshotIfAvailable()
 
         authStatus = .valid
@@ -123,6 +154,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 store.accessToken = token
                 store.vin = result.vin
                 store.phone = result.phone
+                store.tokenSourceLabel = "五菱 App 自动读取"
+                store.tokenSourcePath = tokenInfo.sourcePath
                 self.start(with: store)
             }
         }
@@ -130,6 +163,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     func start(with credentialsStore: VehicleCredentialsStore) {
         self.credentialsStore = credentialsStore
+        updateTokenSource(label: inferredTokenSourceLabel(from: credentialsStore), path: credentialsStore.tokenSourcePath)
         guard !isConnecting else { return }
         guard !credentialsStore.accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             authStatus = .expired("Token为空")
@@ -319,6 +353,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         if let leftFuel = parseDouble(s["leftFuel"]) { next.oilRange = parseDouble(s["oilLeftMileage"]) ?? next.oilRange; next.fuelLevel = next.fuelLevel ?? leftFuel }
         if let oilMileage = parseDouble(s["oilLeftMileage"]) { next.oilRange = oilMileage }
 
+
         if let ac = parseACStatus(s["acStatus"]) { next.acOn = ac }
         if let temp = parseDouble(s["accCntTemp"] ?? s["interiorTemperature"]) { next.acTemperature = temp }
         if let gear = parseGear(s["autoGearStatus"]) { next.gear = gear }
@@ -370,9 +405,15 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         d.tailgateStatusText = (parseOpen(s["tailDoorOpenStatus"]) == true) ? "已开" : ((parseOpen(s["tailDoorOpenStatus"]) == false) ? "已锁" : "未知")
 
         d.speedText = displayValue(s["vehSpdAvgDrvn"] ?? s["speed"], suffix: "km/h")
+        d.averageSpeedText = displayValue(s["vehSpdAvgDrvn"], suffix: "km/h")
         d.steeringAngleText = displayValue(s["strWhAng"], suffix: "°")
         d.throttlePercentText = displayValue(s["accActPos"], suffix: "%")
         d.brakePercentText = displayValue(s["brakPedalPos"], suffix: "%")
+        d.totalMileageText = displayValue(s["mileage"], suffix: "km")
+        d.yesterdayMileageText = displayValue(s["yesterMileage"], suffix: "km")
+        d.fuelRemainingText = displayValue(s["leftFuel"], suffix: "L")
+        d.averageFuelConsumptionText = displayValue(s["avgFuel"], suffix: "L/100km")
+        d.averagePowerConsumptionText = displayPowerConsumption(s)
 
         d.lowBeamText = boolText(s["dipHeadLight"])
         d.highBeamText = boolText(s["lowBeamLight"])
@@ -403,6 +444,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         if let windowsClosed = parseWindowsClosed(s) { d.windowStatusText = windowsClosed ? "全关" : "未关" }
         if let tailOpen = parseOpen(s["tailDoorOpenStatus"]) { d.tailgateStatusText = tailOpen ? "已开" : "已锁" }
         if let ac = parseACStatus(s["acStatus"]) { d.acTemperatureText = ac ? "开启" : "关闭" }
+        if let averageSpeed = s["vehSpdAvgDrvn"], !averageSpeed.isEmpty { d.averageSpeedText = "\(averageSpeed)km/h" }
         d.updatedAt = parseTimestamp(s["collectTime"]) ?? Date()
         d.updatedAtText = formatTime(d.updatedAt)
         return d
@@ -477,8 +519,11 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             ?? carInfo["carModelName"]
             ?? carInfo["carSeriesName"]
             ?? carInfo["carTypeName"]
+            ?? carInfo["model"]
             ?? ""
         if !model.isEmpty { dash.vehicleName = model }
+        let imageURL = carInfo["image"] ?? carInfo["imageUrl"] ?? ""
+        if !imageURL.isEmpty { dash.vehicleImageURL = imageURL }
         dash.vinText = carInfo["vin"] ?? dash.vinText
         dash.userIdText = carInfo["bindCarUserMobile"] ?? carInfo["userId"] ?? dash.userIdText
         if let supportMqtt = carInfo["supportMqtt"], supportMqtt == "1" {
@@ -488,7 +533,21 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             bleStatus = .disconnected
         }
         applyDashboard(dash)
-        applyProfile(VehicleProfile())
+
+        var profile = VehicleProfile()
+        profile.vin = carInfo["vin"] ?? ""
+        profile.modelName = carInfo["model"] ?? carInfo["carName"] ?? ""
+        profile.carTypeName = carInfo["carTypeName"] ?? carInfo["carSeriesName"] ?? ""
+        profile.powerType = carInfo["powerType"] ?? carStatus["powerType"] ?? ""
+        profile.engineType = carInfo["engineType"] ?? carInfo["physicsEngine"] ?? ""
+        profile.vehicleType = carInfo["carTypeName"] ?? carInfo["carName"] ?? ""
+        profile.driveType = carStatus["driveType"] ?? ""
+        profile.fuelType = carStatus["fuelType"] ?? ""
+        profile.capabilities.hasFuel = nil
+        profile.capabilities.supportHybridMileage = carInfo["supportHybridMileage"] == "1"
+        profile.capabilities.supportBatteryIndicate = carInfo["supportBatteryIndicate"] == "1"
+        profile.capabilities.supportChargePower = carInfo["supportChargePower"] == "1"
+        applyProfile(profile)
     }
 
     // MARK: - 解析工具
@@ -501,6 +560,12 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var mqttUsernameMasked: String { maskHex(credentials?.username, visiblePrefix: 4, visibleSuffix: 4) }
     var mqttPasswordMasked: String { maskHex(credentials?.password, visiblePrefix: 4, visibleSuffix: 4) }
     var mqttTopics: [String] { credentials?.topics ?? [] }
+    var tokenSource: VehicleTokenSource? {
+        let label = tokenSourceLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let path = tokenSourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !label.isEmpty || !path.isEmpty else { return nil }
+        return VehicleTokenSource(label: label.isEmpty ? "已配置凭据" : label, path: path)
+    }
 
     private func parseLocked(_ raw: String?) -> Bool? {
         guard let raw else { return nil }
@@ -631,6 +696,19 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     private func boolText(_ raw: String?) -> String {
         guard let raw else { return "--" }
         return raw == "1" ? "开启" : (raw == "0" ? "关闭" : raw)
+    }
+
+    private func displayPowerConsumption(_ s: [String: String]) -> String {
+        if let avgElectronFuel = s["avgElectronFuel"], !avgElectronFuel.isEmpty {
+            return "\(avgElectronFuel)kWh/100km"
+        }
+        if let avgElecFuel = s["avgElecFuel"], !avgElecFuel.isEmpty {
+            return "\(avgElecFuel)kWh/100km"
+        }
+        if let avgPower = s["avgPowerConsumption"], !avgPower.isEmpty {
+            return "\(avgPower)kWh/100km"
+        }
+        return dashboard.averagePowerConsumptionText
     }
 
     private func displayACTemperature(_ s: [String: String]) -> String {

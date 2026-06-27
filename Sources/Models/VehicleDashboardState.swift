@@ -9,6 +9,7 @@ enum VehicleEnergyType {
 struct VehicleDashboardState {
     var updatedAt: Date = Date()
     var vehicleName: String = ""
+    var vehicleImageURL: String = ""
     var vinText: String = "--"
     var userIdText: String = "--"
     var bleMacText: String = "--"
@@ -53,6 +54,14 @@ struct VehicleDashboardState {
     var doorStatusText: String = "--"
     var windowStatusText: String = "--"
     var tailgateStatusText: String = "--"
+
+    // 行驶 / 能耗
+    var averageFuelConsumptionText: String = "--"
+    var averagePowerConsumptionText: String = "--"
+    var averageSpeedText: String = "--"
+    var totalMileageText: String = "--"
+    var yesterdayMileageText: String = "--"
+    var fuelRemainingText: String = "--"
 
     var bodyStatusNormalText: String {
         let badStatuses: [String] = ["未关", "未锁", "已开", "打开", "异常", "故障"]
@@ -149,7 +158,12 @@ extension VehicleDashboardState {
                 PopupStatusItem(icon: "scope", label: "方向盘", value: steeringAngleText, color: AppTheme.accent),
                 PopupStatusItem(icon: "arrow.up.circle.fill", label: "油门", value: throttlePercentText, color: AppTheme.green),
                 PopupStatusItem(icon: "stop.circle.fill", label: "刹车", value: brakePercentText, color: AppTheme.green),
-                PopupStatusItem(icon: "speedometer", label: "车速", value: speedText, color: Color.white.opacity(0.45))
+                PopupStatusItem(icon: "speedometer", label: "平均车速", value: averageSpeedText, color: Color.white.opacity(0.45)),
+                PopupStatusItem(icon: "gauge.with.needle", label: "总里程", value: totalMileageText, color: AppTheme.accent),
+                PopupStatusItem(icon: "calendar", label: "昨日里程", value: yesterdayMileageText, color: Color.white.opacity(0.45)),
+                PopupStatusItem(icon: "fuelpump.fill", label: "剩余油量", value: fuelRemainingText, color: AppTheme.orange),
+                PopupStatusItem(icon: "flame.fill", label: "平均油耗", value: averageFuelConsumptionText, color: AppTheme.orange),
+                PopupStatusItem(icon: "bolt.fill", label: "平均电耗", value: averagePowerConsumptionText, color: AppTheme.accent)
             ],
             lighting: [
                 PopupStatusItem(icon: "lightbulb.fill", label: "近光灯", value: lowBeamText, color: AppTheme.orange),

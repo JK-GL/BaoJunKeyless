@@ -228,6 +228,9 @@ struct SettingsVehicleConfigSection: View {
                             vehicleCredentials.accessToken = token
                             vehicleCredentials.vin = vinDraft
                             vehicleCredentials.phone = phoneDraft
+                            if vehicleCredentials.tokenSourceLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                vehicleCredentials.tokenSourceLabel = "手动输入 Token"
+                            }
                             toastText = "配置已保存 · \(vinDraft)"
                             onSave()
                         } label: {
@@ -357,6 +360,8 @@ struct SettingsVehicleConfigSection: View {
         if let tokenInfo = SGMWApiClient.shared.readLocalTokenInfo() {
             accessTokenDraft = tokenInfo.token
             vehicleCredentials.accessToken = tokenInfo.token
+            vehicleCredentials.tokenSourceLabel = "五菱 App 自动读取"
+            vehicleCredentials.tokenSourcePath = tokenInfo.sourcePath
             toastText = "已自动读取五菱 Token"
             fetchVehicleInfo()
         } else {
@@ -406,6 +411,8 @@ struct SettingsVehicleConfigSection: View {
         }
         accessTokenDraft = token
         vehicleCredentials.accessToken = token
+        vehicleCredentials.tokenSourceLabel = "手动导入 SavedOAuthModel"
+        vehicleCredentials.tokenSourcePath = url.path
         toastText = "已从文件导入 Token"
         fetchVehicleInfo()
     }
@@ -544,6 +551,8 @@ struct ImportGuideSheet: View {
     private func readFromDisk() {
         if let tokenInfo = SGMWApiClient.shared.readLocalTokenInfo() {
             vehicleCredentials.accessToken = tokenInfo.token
+            vehicleCredentials.tokenSourceLabel = "五菱 App 自动读取"
+            vehicleCredentials.tokenSourcePath = tokenInfo.sourcePath
             onImported()
         }
     }

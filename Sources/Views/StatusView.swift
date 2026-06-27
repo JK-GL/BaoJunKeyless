@@ -76,8 +76,10 @@ struct StatusView: View {
     }
 
     private var mqttTokenSourceText: String {
-        let path = mqttStore?.tokenSourcePath.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return path.isEmpty ? "手动输入 / 未读取" : path
+        if let source = mqttStore?.tokenSource {
+            return source.displayText
+        }
+        return "未配置 / 未读取"
     }
 
     private var preferredCarAddress: String {
@@ -157,7 +159,8 @@ struct StatusView: View {
                             bleConnected: liveBLEStatus == .connected,
                             carLat: mqttStore?.latestLatitude ?? 0,
                             carLng: mqttStore?.latestLongitude ?? 0,
-                            carAddress: preferredCarAddress
+                            carAddress: preferredCarAddress,
+                            carImageURL: vehicleStore.dashboard.vehicleImageURL
                         )
                     }
 

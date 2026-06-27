@@ -28,10 +28,21 @@ final class RadarUIView: UIView {
     private var lastBackgroundSize: CGSize = .zero
     private var carOnlineImage: UIImage?
     private var isUsingSFSymbolCar = false
+    var carImageURLString: String = "" {
+        didSet {
+            guard oldValue != carImageURLString else { return }
+            currentCarImageCacheKey = ""
+            if window != nil {
+                restoreDynamicResourcesIfNeeded()
+                updateMarker(force: true)
+            }
+        }
+    }
+    private var currentCarImageCacheKey: String = ""
 
-    private static let carImageURL = URL(string: "https://cdn-df.00bang.cn/images/T1Dw_TBTEv1RCvBVdK.png")!
-    private static var sharedCarImage: UIImage?
-    private static var sharedCarImageLoadInFlight = false
+    private static let defaultCarImageURLString = "https://cdn-df.00bang.cn/images/T1Dw_TBTEv1RCvBVdK.png"
+    private static var sharedCarImages: [String: UIImage] = [:]
+    private static var sharedCarImageLoadInFlight = Set<String>()
     private static var staticBackgroundCache: [String: UIImage] = [:]
 
     override init(frame: CGRect) {
@@ -206,17 +217,25 @@ final class RadarUIView: UIView {
 
     private func restoreDynamicResourcesIfNeeded() {
         resumeScanRingAnimationsIfNeeded()
-        if let shared = Self.sharedCarImage {
+        let key = normalizedCarImageCacheKey
+        if let shared = Self.sharedCarImages[key] {
             isUsingSFSymbolCar = false
             carOnlineImage = shared
+            currentCarImageCacheKey = key
             if carImageView.image !== shared {
                 carImageView.image = shared
             }
-        } else if carImageView.image == nil {
+        } else if carImageView.image == nil || currentCarImageCacheKey != key {
             isUsingSFSymbolCar = false
+            currentCarImageCacheKey = key
             carImageView.image = UIImage(systemName: "car.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
             loadCarImage()
         }
+    }
+
+    private var normalizedCarImageCacheKey: String {
+        let trimmed = carImageURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? Self.defaultCarImageURLString : trimmed
     }
 
     private func updateMarker(force: Bool) {
@@ -396,13 +415,21 @@ final class RadarUIView: UIView {
 
     private func loadCarImage() {
         guard !AppDiagnosticsSettings.shouldUseSFRadarCarIcon else { return }
-        CrashLogger.shared.mark("Radar", "loadCarImage:start")
-        if Self.sharedCarImageLoadInFlight { return }
-        Self.sharedCarImageLoadInFlight = true
+        let key = normalizedCarImageCacheKey
+        CrashLogger.shared.mark("Radar", "loadCarImage:start", details: key)
+        if Self.sharedCarImageLoadInFlight.contains(key) { return }
+        Self.sharedCarImageLoadInFlight.insert(key)
 
-        let request = URLRequest(url: Self.carImageURL, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
+        guard let url = URL(string: key) else {
+            let fallback = UIImage(systemName: "car.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
+            carOnlineImage = fallback
+            carImageView.image = fallback
+            return
+        }
+
+        let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
         let task = URLSession.shared.dataTask(with: request) { data, _, _ in
-            defer { Self.sharedCarImageLoadInFlight = false }
+            defer { Self.sharedCarImageLoadInFlight.remove(key) }
             guard let data = data, let img = UIImage(data: data) else {
                 DispatchQueue.main.async { [weak self] in
                     let fallback = UIImage(systemName: "car.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
@@ -413,21 +440,23 @@ final class RadarUIView: UIView {
             }
 
             let finalImage = img
-            Self.sharedCarImage = finalImage
+            Self.sharedCarImages[key] = finalImage
             if AppDiagnosticsSettings.isDiagnosticsEnabled {
                 CrashLogger.shared.logImageDiagnostics(
                     "RadarCar",
                     width: finalImage.size.width,
                     height: finalImage.size.height,
                     bytes: data.count,
-                    note: "network"
+                    note: key
                 )
             }
             DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
                 guard !AppDiagnosticsSettings.shouldUseSFRadarCarIcon else { return }
-                self?.carOnlineImage = finalImage
-                self?.carImageView.image = finalImage
-                self?.updateMarker(force: true)
+                self.currentCarImageCacheKey = key
+                self.carOnlineImage = finalImage
+                self.carImageView.image = finalImage
+                self.updateMarker(force: true)
             }
         }
         task.resume()
@@ -438,6 +467,7 @@ final class RadarUIView: UIView {
 struct RadarRepresentable: UIViewRepresentable {
     let locationManager: LocationManager
     var bleConnected: Bool = false
+    var carImageURL: String = ""
 
     func makeCoordinator() -> Coordinator {
         Coordinator(locationManager: locationManager)
@@ -453,6 +483,7 @@ struct RadarRepresentable: UIViewRepresentable {
 
     func makeUIView(context: Context) -> RadarUIView {
         let view = RadarUIView(frame: .zero)
+        view.carImageURLString = carImageURL
         locationManager.radarPositionHandler = { [weak view] distance, relativeAngle in
             guard let view else { return }
             view.distance = distance
@@ -467,6 +498,7 @@ struct RadarRepresentable: UIViewRepresentable {
 
     func updateUIView(_ view: RadarUIView, context: Context) {
         view.bleConnected = bleConnected
+        view.carImageURLString = carImageURL
         locationManager.radarPositionHandler = { [weak view] distance, relativeAngle in
             guard let view else { return }
             view.distance = distance
@@ -490,11 +522,12 @@ struct RadarCardView: View {
     var carLat: Double = 0
     var carLng: Double = 0
     var carAddress: String = ""
+    var carImageURL: String = ""
 
     var body: some View {
         VStack(spacing: 12) {
             ZStack {
-                RadarRepresentable(locationManager: locationManager, bleConnected: bleConnected)
+                RadarRepresentable(locationManager: locationManager, bleConnected: bleConnected, carImageURL: carImageURL)
                     .frame(width: 280, height: 280)
 
                 if bleConnected {
