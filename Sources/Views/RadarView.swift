@@ -558,6 +558,10 @@ struct RadarCardView: View {
                     Text(String(format: "距车辆 %.0f 米", locationManager.distance))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.5))
+                } else if let cachedDistance = UserDefaults.standard.object(forKey: "LastDistanceMeters") as? Double, cachedDistance > 0 {
+                    Text(String(format: "距车辆 %.0f 米", cachedDistance))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.42))
                 } else if carLat != 0 && carLng != 0 {
                     Text("距离定位中…")
                         .font(.system(size: 12, weight: .medium))

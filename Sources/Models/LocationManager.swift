@@ -8,9 +8,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private var phoneLocation: CLLocation?
     private var heading: CLLocationDirection = 0  // 手机朝向角度
 
-    // 车辆坐标（从 MQTT/API 获取后设置）
-    private var carLatitude: Double = 0
-    private var carLongitude: Double = 0
+    // 车辆坐标（显示层统一使用 GCJ-02）
+    private var carLatitudeGcj: Double = 0
+    private var carLongitudeGcj: Double = 0
 
     // 雷达内部状态：不走 @Published，避免高频 heading 让 SwiftUI 反复刷新。
     private(set) var radarDistance: CLLocationDistance = 0
@@ -29,18 +29,18 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
-        manager.distanceFilter = 10      // ⭐ 移动 10 米以上才更新 GPS
-        manager.headingFilter = kCLHeadingFilterNone  // ⭐ 方位连续更新，避免雷达车图 5° 一跳导致卡顿
+        manager.distanceFilter = 1
+        manager.headingFilter = kCLHeadingFilterNone
         manager.requestWhenInUseAuthorization()
         manager.startUpdatingLocation()
         manager.startUpdatingHeading()
         requestCurrentLocationIfPossible()
     }
 
-    // MARK: - 设置车辆坐标
+    // MARK: - 设置车辆坐标（GCJ-02）
     func setCarLocation(lat: Double, lng: Double, address: String? = nil) {
-        carLatitude = lat
-        carLongitude = lng
+        carLatitudeGcj = lat
+        carLongitudeGcj = lng
         requestCurrentLocationIfPossible()
         recalculate()
 
@@ -55,8 +55,8 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
         let addressSettings = AddressServiceSettings()
         LocationResolver.shared.getAddress(
-            wgs84Lat: lat,
-            wgs84Lng: lng,
+            gcjLat: lat,
+            gcjLng: lng,
             address: address,
             amapWebKey: addressSettings.amapWebKey
         ) { [weak self] resolved in
@@ -96,7 +96,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     // MARK: - 计算距离、方位、相对角度
     private func recalculate() {
         guard let phone = phoneLocation else { return }
-        guard carLatitude != 0 || carLongitude != 0 else {
+        guard carLatitudeGcj != 0 || carLongitudeGcj != 0 else {
             if lastPublishedDistance != 0 {
                 distance = 0
                 lastPublishedDistance = 0
@@ -104,17 +104,14 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             return
         }
 
-        let carLoc = CLLocation(latitude: carLatitude, longitude: carLongitude)
-        let nextDistance = phone.distance(from: carLoc)
+        let phoneGcj = LocationResolver.wgs84ToGcj02(lat: phone.coordinate.latitude, lng: phone.coordinate.longitude)
+        let phoneLoc = CLLocation(latitude: phoneGcj.lat, longitude: phoneGcj.lng)
+        let carLoc = CLLocation(latitude: carLatitudeGcj, longitude: carLongitudeGcj)
+        let nextDistance = phoneLoc.distance(from: carLoc)
 
-        // 方位角：从手机到车辆
-        let nextBearing = calculateBearing(from: phone, to: carLoc)
-
-        // 相对角度：车辆方位 - 手机朝向（映射到雷达 360°）
+        let nextBearing = calculateBearing(from: phoneLoc, to: carLoc)
         let nextRelativeAngle = normalizeAngle(nextBearing - heading)
 
-        // 保留连续 heading 采样，但不要把每个微小传感器抖动都发布给 SwiftUI。
-        // 雷达位置直接回调给 UIKit 视图；距离文字才低频 @Published 给 SwiftUI。
         var radarChanged = false
         if lastRadarDistance < 0 || abs(nextDistance - lastRadarDistance) >= 0.25 {
             radarDistance = nextDistance
@@ -132,9 +129,11 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             radarPositionHandler?(radarDistance, radarRelativeAngle)
         }
 
-        if lastPublishedDistance < 0 || abs(nextDistance - lastPublishedDistance) >= 1.0 {
+        if lastPublishedDistance < 0 || abs(nextDistance - lastPublishedDistance) >= 0.5 {
             distance = nextDistance
             lastPublishedDistance = nextDistance
+            UserDefaults.standard.set(nextDistance, forKey: "LastDistanceMeters")
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "LastDistanceTs")
         }
     }
 

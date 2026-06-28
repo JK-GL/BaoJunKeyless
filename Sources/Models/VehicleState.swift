@@ -38,6 +38,13 @@ enum VehiclePowerState: String, Codable, CaseIterable {
     }
 }
 
+enum PhysicalKeyPosition: String, Codable, CaseIterable {
+    case farAway
+    case outside
+    case inside
+    case unknown
+}
+
 // MARK: - 车辆状态快照
 struct VehicleState: Equatable {
     var timestamp: Date
@@ -58,7 +65,7 @@ struct VehicleState: Equatable {
     var gear: VehicleGear
     var power: VehiclePowerState
     var speed: Double?
-    var physicalKeyInside: Bool?
+    var physicalKeyPosition: PhysicalKeyPosition = .unknown
     var bleRssi: Int?
     var phoneNearby: Bool
 
@@ -79,7 +86,7 @@ struct VehicleState: Equatable {
             gear: .unknown,
             power: .unknown,
             speed: nil,
-            physicalKeyInside: nil,
+            physicalKeyPosition: .unknown,
             bleRssi: nil,
             phoneNearby: false
         )
@@ -102,7 +109,7 @@ struct VehicleState: Equatable {
             gear: .p,
             power: .off,
             speed: 0,
-            physicalKeyInside: false,
+            physicalKeyPosition: .outside,
             bleRssi: -52,
             phoneNearby: true
         )

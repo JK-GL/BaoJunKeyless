@@ -37,13 +37,23 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     @Published private(set) var bleStatus: LiveBLEStatus = .disconnected
     @Published private(set) var mqttStatus: LiveMQTTStatus = .disconnected
     @Published private(set) var authStatus: StatusAuthState = .expired("未登录")
-    @Published private(set) var latestLatitude: Double = 0
-    @Published private(set) var latestLongitude: Double = 0
-    @Published private(set) var latestAddress: String = ""
-    @Published private(set) var shouldPreferCachedAddress: Bool = false
+    @Published private(set) var cachedLatitudeGcj: Double = 0
+    @Published private(set) var cachedLongitudeGcj: Double = 0
+    @Published private(set) var cachedAddress: String = ""
+    @Published private(set) var liveLatitudeGcj: Double = 0
+    @Published private(set) var liveLongitudeGcj: Double = 0
+    @Published private(set) var liveAddress: String = ""
     @Published private(set) var latestBleKeyInfo: [String: String] = [:]
     @Published private(set) var tokenSourcePath: String = ""
     @Published private(set) var tokenSourceLabel: String = ""
+
+    var displayLatitudeGcj: Double { liveLatitudeGcj != 0 ? liveLatitudeGcj : cachedLatitudeGcj }
+    var displayLongitudeGcj: Double { liveLongitudeGcj != 0 ? liveLongitudeGcj : cachedLongitudeGcj }
+    var displayAddress: String {
+        let live = liveAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !live.isEmpty { return live }
+        return cachedAddress
+    }
 
     private var mqtt: CocoaMQTT?
     private var credentials: SGMWApiClient.MQTTCredentials?
@@ -102,14 +112,12 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         cachedDashboard.updatedAtText = formatTime(Date())
 
         if let gcjLat = snapshot.latitude, let gcjLng = snapshot.longitude, gcjLat != 0, gcjLng != 0 {
-            let wgs = LocationResolver.gcj02ToWgs84Approx(lat: gcjLat, lng: gcjLng)
-            latestLatitude = wgs.lat
-            latestLongitude = wgs.lng
+            cachedLatitudeGcj = gcjLat
+            cachedLongitudeGcj = gcjLng
         }
 
         if let address = snapshot.address, !address.isEmpty {
-            latestAddress = address
-            shouldPreferCachedAddress = true
+            cachedAddress = address
             UserDefaults.standard.set(address, forKey: "LastAddress")
         }
 
@@ -367,8 +375,9 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         if let temp = parseDouble(s["accCntTemp"] ?? s["interiorTemperature"]) { next.acTemperature = temp }
         if let gear = parseGear(s["autoGearStatus"]) { next.gear = gear }
         if let speed = parseDouble(s["vehSpdAvgDrvn"] ?? s["speed"]) { next.speed = speed }
-        if let keyInside = parseKeyInside(s["keyStatus"]) { next.physicalKeyInside = keyInside }
-        if let phoneNearby = parsePhoneNearby(s["keyStatus"]) { next.phoneNearby = phoneNearby }
+        let physicalKeyPosition = parsePhysicalKeyPosition(s["keyStatus"])
+        next.physicalKeyPosition = physicalKeyPosition
+        next.phoneNearby = (physicalKeyPosition != .farAway && physicalKeyPosition != .unknown)
         if let rssi = parseInt(s["bleRssi"]) { next.bleRssi = rssi }
         if let power = parsePowerState(s) { next.power = power }
         return next
@@ -468,7 +477,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         merged.gear = newState.gear
         merged.power = newState.power
         merged.speed = newState.speed
-        merged.physicalKeyInside = newState.physicalKeyInside
+        merged.physicalKeyPosition = newState.physicalKeyPosition
         merged.phoneNearby = newState.phoneNearby
         merged.fuelLevel = newState.fuelLevel
         merged.fuelRange = newState.fuelRange
@@ -509,18 +518,18 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     private func applyHTTPMeta(carInfo: [String: String], carStatus: [String: String]) {
         if let lat = parseDouble(carStatus["latitude"]), let lng = parseDouble(carStatus["longitude"]), lat != 0, lng != 0 {
-            latestLatitude = lat
-            latestLongitude = lng
+            let gcj = LocationResolver.wgs84ToGcj02(lat: lat, lng: lng)
+            liveLatitudeGcj = gcj.lat
+            liveLongitudeGcj = gcj.lng
             let addressHint = carStatus["address"]
             if let addressHint, !addressHint.isEmpty {
-                latestAddress = addressHint
+                liveAddress = addressHint
             }
-            shouldPreferCachedAddress = false
             let addressSettings = AddressServiceSettings()
-            locationResolver.getAddress(wgs84Lat: lat, wgs84Lng: lng, address: nil, amapWebKey: addressSettings.amapWebKey) { [weak self] resolved in
+            locationResolver.getAddress(gcjLat: gcj.lat, gcjLng: gcj.lng, address: nil, amapWebKey: addressSettings.amapWebKey) { [weak self] resolved in
                 guard let self, let resolved else { return }
                 DispatchQueue.main.async {
-                    self.latestAddress = resolved
+                    self.liveAddress = resolved
                 }
             }
         }
@@ -636,18 +645,14 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         return nil
     }
 
-    private func parseKeyInside(_ raw: String?) -> Bool? {
-        guard let raw else { return nil }
+    private func parsePhysicalKeyPosition(_ raw: String?) -> PhysicalKeyPosition {
+        guard let raw else { return .unknown }
         switch raw {
-        case "2": return true
-        case "0", "1": return false
-        default: return nil
+        case "0": return .farAway
+        case "1": return .outside
+        case "2": return .inside
+        default: return .unknown
         }
-    }
-
-    private func parsePhoneNearby(_ raw: String?) -> Bool? {
-        guard let raw else { return nil }
-        return raw != "0"
     }
 
     private func maskHex(_ raw: String?, visiblePrefix: Int, visibleSuffix: Int) -> String {

@@ -82,23 +82,16 @@ struct StatusView: View {
         return "未配置 / 未读取"
     }
 
-    private var preferredCarAddress: String {
-        guard mqttStore?.shouldPreferCachedAddress == true else { return "" }
-        return mqttStore?.latestAddress ?? ""
+    private var displayCarLatitude: Double {
+        mqttStore?.displayLatitudeGcj ?? 0
     }
 
-    private var liveCarLatitude: Double {
-        mqttStore?.latestLatitude ?? 0
+    private var displayCarLongitude: Double {
+        mqttStore?.displayLongitudeGcj ?? 0
     }
 
-    private var liveCarLongitude: Double {
-        mqttStore?.latestLongitude ?? 0
-    }
-
-    private var liveCarAddress: String {
-        let latest = mqttStore?.latestAddress.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !latest.isEmpty { return latest }
-        return preferredCarAddress
+    private var displayCarAddress: String {
+        mqttStore?.displayAddress ?? ""
     }
 
     private var modeText: String {
@@ -157,7 +150,14 @@ struct StatusView: View {
                             modeColor: modeColor,
                             bleStatus: liveBLEStatus,
                             mqttStatus: liveMQTTStatus,
-                            physicalKeyState: vehicleStore.state.physicalKeyInside == true ? .inCar : (vehicleStore.state.physicalKeyInside == false ? .outside : .unknown),
+                            physicalKeyState: {
+                                switch vehicleStore.state.physicalKeyPosition {
+                                case .inside: return .inCar
+                                case .outside: return .outside
+                                case .farAway: return .farAway
+                                case .unknown: return .unknown
+                                }
+                            }(),
                             gearState: StatusGearState(gear: vehicleStore.state.gear),
                             onMQTTTap: { isMQTTFloatingPresented = true }
                         )
@@ -173,9 +173,9 @@ struct StatusView: View {
                         RadarCardView(
                             locationManager: locationManager,
                             bleConnected: liveBLEStatus == .connected,
-                            carLat: liveCarLatitude,
-                            carLng: liveCarLongitude,
-                            carAddress: liveCarAddress,
+                            carLat: displayCarLatitude,
+                            carLng: displayCarLongitude,
+                            carAddress: displayCarAddress,
                             carImageURL: vehicleStore.dashboard.vehicleImageURL
                         )
                     }
@@ -275,13 +275,13 @@ struct StatusView: View {
         .onAppear {
             syncCarLocationToManager(forceAddressRefresh: true)
         }
-        .onChange(of: liveCarLatitude) { _ in
+        .onChange(of: displayCarLatitude) { _ in
             syncCarLocationToManager(forceAddressRefresh: false)
         }
-        .onChange(of: liveCarLongitude) { _ in
+        .onChange(of: displayCarLongitude) { _ in
             syncCarLocationToManager(forceAddressRefresh: false)
         }
-        .onChange(of: liveCarAddress) { _ in
+        .onChange(of: displayCarAddress) { _ in
             syncCarLocationToManager(forceAddressRefresh: true)
         }
     }
@@ -336,9 +336,9 @@ struct StatusView: View {
     }
 
     private func syncCarLocationToManager(forceAddressRefresh: Bool) {
-        guard liveCarLatitude != 0, liveCarLongitude != 0 else { return }
-        let address = forceAddressRefresh ? (liveCarAddress.isEmpty ? nil : liveCarAddress) : nil
-        locationManager.setCarLocation(lat: liveCarLatitude, lng: liveCarLongitude, address: address)
+        guard displayCarLatitude != 0, displayCarLongitude != 0 else { return }
+        let address = forceAddressRefresh ? (displayCarAddress.isEmpty ? nil : displayCarAddress) : nil
+        locationManager.setCarLocation(lat: displayCarLatitude, lng: displayCarLongitude, address: address)
     }
 
     private func mqttInfoRow(icon: String, label: String, value: String, mono: Bool = false) -> some View {
@@ -448,10 +448,10 @@ struct StatusView: View {
                         addressSettings.setAmapWebKey(amapKeyDraft)
                     }
                     isEditingAmapKey = false
-                    let lat = mqttStore?.latestLatitude ?? 0
-                    let lng = mqttStore?.latestLongitude ?? 0
+                    let lat = mqttStore?.displayLatitudeGcj ?? 0
+                    let lng = mqttStore?.displayLongitudeGcj ?? 0
                     if lat != 0, lng != 0 {
-                        locationManager.setCarLocation(lat: lat, lng: lng, address: liveCarAddress.isEmpty ? nil : liveCarAddress)
+                        locationManager.setCarLocation(lat: lat, lng: lng, address: displayCarAddress.isEmpty ? nil : displayCarAddress)
                     }
                 }
 
@@ -465,8 +465,8 @@ struct StatusView: View {
                     }
                     isEditingAmapKey = false
                     let keyword = locationManager.vehicleAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let fallbackLat = mqttStore?.latestLatitude ?? 0
-                    let fallbackLng = mqttStore?.latestLongitude ?? 0
+                    let fallbackLat = mqttStore?.displayLatitudeGcj ?? 0
+                    let fallbackLng = mqttStore?.displayLongitudeGcj ?? 0
                     let address = keyword.isEmpty ? (fallbackLat != 0 && fallbackLng != 0 ? "\(fallbackLat),\(fallbackLng)" : "") : keyword
                     guard !address.isEmpty else { return }
                     let encoded = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? address

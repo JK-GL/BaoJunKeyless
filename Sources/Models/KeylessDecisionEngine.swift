@@ -153,7 +153,7 @@ struct KeylessDecisionEngine {
             return .deny(action: .lock, reason: "车辆未熄火 (\(state.power.title))")
         }
         // 11. 物理钥匙不在车内
-        if state.physicalKeyInside == true {
+        if state.physicalKeyPosition == .inside {
             return .deny(action: .lock, reason: "物理钥匙在车内")
         }
 
@@ -186,8 +186,15 @@ struct KeylessDecisionEngine {
             if let trunk = state.trunkOpen, trunk {
                 parts.append("trunk=open")
             }
-            if let key = state.physicalKeyInside {
-                parts.append("keyInside=\(key)")
+            switch state.physicalKeyPosition {
+            case .inside:
+                parts.append("key=inside")
+            case .outside:
+                parts.append("key=outside")
+            case .farAway:
+                parts.append("key=far")
+            case .unknown:
+                break
             }
         } else {
             parts.append("offline")

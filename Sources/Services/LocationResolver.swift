@@ -2,12 +2,11 @@ import Foundation
 import CoreLocation
 
 // MARK: - 车辆地址解析器
-// 严格按照 LOCATION_RESOLVER_SPEC.md 实现：
-// 1. WGS-84 → GCJ-02
-// 2. CLGeocoder 逆地理
-// 3. 省市区街道+POI 拼接
-// 4. NSUserDefaults 缓存
-// 5. 不用任何第三方库/API key
+// 中国大陆插件显示层统一使用 GCJ-02：
+// 1. 首屏优先返回缓存地址
+// 2. 实时坐标进入显示层后按 GCJ-02 处理
+// 3. 有高德 key 时直接走高德 GCJ-02 路线
+// 4. 无 key 时也按 GCJ-02 体系进行兼容解析和缓存
 final class LocationResolver: NSObject, CLLocationManagerDelegate {
     static let shared = LocationResolver()
     private let geocoder = CLGeocoder()
@@ -37,13 +36,6 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
         return (lat + latOffset, lng + lngOffset)
     }
 
-    static func gcj02ToWgs84Approx(lat: Double, lng: Double) -> (lat: Double, lng: Double) {
-        let gcj = wgs84ToGcj02(lat: lat, lng: lng)
-        let dLat = gcj.lat - lat
-        let dLng = gcj.lng - lng
-        return (lat - dLat, lng - dLng)
-    }
-
     private static func transformLat(x: Double, y: Double) -> Double {
         var ret = -100 + 2*x + 3*y + 0.2*y*y + 0.1*x*y + 0.2*sqrt(abs(x))
         ret += (20*sin(6*x*Double.pi) + 20*sin(2*x*Double.pi)) * 2/3
@@ -60,27 +52,32 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
         return ret
     }
 
-    // MARK: - 设置车辆坐标
-    func setCarLocation(lat: Double, lng: Double) {
-        lastResolvedCoordinate = CLLocationCoordinate2D(latitude: lat, longitude: lng)
+    // MARK: - 设置车辆坐标（GCJ-02）
+    func setCarLocation(gcjLat: Double, gcjLng: Double) {
+        lastResolvedCoordinate = CLLocationCoordinate2D(latitude: gcjLat, longitude: gcjLng)
         lastResolvedDate = Date()
-        UserDefaults.standard.set(lat, forKey: "LastLatitude")
-        UserDefaults.standard.set(lng, forKey: "LastLongitude")
+        UserDefaults.standard.set(gcjLat, forKey: "LastLatitude")
+        UserDefaults.standard.set(gcjLng, forKey: "LastLongitude")
     }
 
-    func getAddress(wgs84Lat: Double, wgs84Lng: Double, address: String? = nil, amapWebKey: String? = nil, completion: @escaping (String?) -> Void) {
-        let coordinate = CLLocationCoordinate2D(latitude: wgs84Lat, longitude: wgs84Lng)
+    func getAddress(gcjLat: Double, gcjLng: Double, address: String? = nil, amapWebKey: String? = nil, completion: @escaping (String?) -> Void) {
+        let coordinate = CLLocationCoordinate2D(latitude: gcjLat, longitude: gcjLng)
+        let cachedAddress = address?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? address : self.cachedAddress
 
-        let applyResult: (CLLocationCoordinate2D, String?) -> Void = { [weak self] resolvedCoordinate, address in
+        if let cachedAddress, !cachedAddress.isEmpty {
+            completion(cachedAddress)
+        }
+
+        let applyResult: (CLLocationCoordinate2D, String?) -> Void = { [weak self] resolvedCoordinate, resolvedAddress in
             guard let self else { return }
             self.lastResolvedCoordinate = resolvedCoordinate
             self.lastResolvedDate = Date()
 
-            UserDefaults.standard.set(address ?? "", forKey: "LastAddress")
+            UserDefaults.standard.set(resolvedAddress ?? "", forKey: "LastAddress")
             UserDefaults.standard.set(resolvedCoordinate.latitude, forKey: "LastLatitude")
             UserDefaults.standard.set(resolvedCoordinate.longitude, forKey: "LastLongitude")
 
-            completion(address)
+            completion(resolvedAddress)
         }
 
         let lastCoordinate = lastResolvedCoordinate
@@ -89,43 +86,29 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
         let distanceFromLast: Double
         if let lastCoordinate {
             distanceFromLast = CLLocation(latitude: lastCoordinate.latitude, longitude: lastCoordinate.longitude)
-                .distance(from: CLLocation(latitude: wgs84Lat, longitude: wgs84Lng))
+                .distance(from: CLLocation(latitude: gcjLat, longitude: gcjLng))
         } else {
             distanceFromLast = .greatestFiniteMagnitude
         }
         let elapsed = lastDate.map { now.timeIntervalSince($0) } ?? .greatestFiniteMagnitude
-        let cachedAddress = address ?? self.cachedAddress
-        let shouldForceRefresh = (address == nil)
-        let needsUpdate = shouldForceRefresh || distanceFromLast >= 50 || elapsed >= 60 || (cachedAddress ?? "").isEmpty
-        guard needsUpdate else {
-            completion(cachedAddress)
-            return
-        }
+        let needsUpdate = distanceFromLast >= 50 || elapsed >= 60 || (cachedAddress ?? "").isEmpty
+        guard needsUpdate else { return }
 
         if let key = amapWebKey, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let gcj = Self.wgs84ToGcj02(lat: wgs84Lat, lng: wgs84Lng)
-            reverseGeocodeAmap(gcjLat: gcj.lat, gcjLng: gcj.lng, key: key) { [weak self] resolved in
-                guard let self else { return }
+            reverseGeocodeAmap(gcjLat: gcjLat, gcjLng: gcjLng, key: key) { resolved in
                 if let resolved, !resolved.isEmpty {
                     applyResult(coordinate, resolved)
-                    return
-                }
-                let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-                self.geocoder.reverseGeocodeLocation(location) { placemarks, error in
-                    if let p = placemarks?.first {
-                        let finalAddress = self.buildAddress(from: p)
-                        applyResult(coordinate, finalAddress.isEmpty ? cachedAddress : finalAddress)
-                    } else {
-                        applyResult(coordinate, cachedAddress)
-                    }
+                } else {
+                    applyResult(coordinate, cachedAddress)
                 }
             }
             return
         }
 
-        let gcj = Self.wgs84ToGcj02(lat: wgs84Lat, lng: wgs84Lng)
-        let location = CLLocation(latitude: gcj.lat, longitude: gcj.lng)
-        geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
+        // 无 key 时优先保留缓存结果，同时异步尝试系统地址解析作为兼容补充。
+        // 这里为了统一中国大陆显示层，传入的仍是 GCJ-02 展示坐标。
+        let location = CLLocation(latitude: gcjLat, longitude: gcjLng)
+        geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, _ in
             guard let self else { return }
             if let p = placemarks?.first {
                 let finalAddress = self.buildAddress(from: p)
@@ -149,7 +132,7 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
             return
         }
 
-        URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
             guard let data, error == nil else {
                 completion(self?.cachedAddress)
                 return
