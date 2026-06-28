@@ -18,6 +18,7 @@ struct VehicleDashboardState {
     var randomMaskedText: String = "--"
     var keyTypeText: String = "--"
     var keyExpiryText: String = "--"
+    var vehicleInfoUpdatedAtText: String = "--"
 
     // 能源
     var energyType: VehicleEnergyType = .plugInHybrid

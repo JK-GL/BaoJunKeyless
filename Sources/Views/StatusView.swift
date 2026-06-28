@@ -11,6 +11,7 @@ struct StatusView: View {
     @State private var refreshScale: CGFloat = 1.0
     @State private var isAddressFloatingPresented = false
     @State private var isMQTTFloatingPresented = false
+    @State private var isVehicleInfoFloatingPresented = false
     @State private var activeCommand: CommandAction? = nil
     @State private var isEditingAmapKey = false
     @State private var amapKeyDraft = ""
@@ -159,6 +160,7 @@ struct StatusView: View {
                                 }
                             }(),
                             gearState: StatusGearState(gear: vehicleStore.state.gear),
+                            onBLETap: { isVehicleInfoFloatingPresented = true },
                             onMQTTTap: { isMQTTFloatingPresented = true }
                         )
                     }
@@ -203,7 +205,6 @@ struct StatusView: View {
                             ChargingStatusView(metrics: vehicleStore.cachedDashboardMetrics.charging)
                         }
                         LightingStatusView(metrics: vehicleStore.cachedDashboardMetrics.lighting)
-                        VehicleInfoMergedCard(dashboard: vehicleStore.dashboard)
 
                         Spacer(minLength: 100)
                     }
@@ -246,6 +247,20 @@ struct StatusView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                     .transition(.scale.combined(with: .opacity))
                     .zIndex(12)
+            }
+
+            if isVehicleInfoFloatingPresented {
+                Color.clear
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.2)) { isVehicleInfoFloatingPresented = false }
+                    }
+
+                vehicleInfoFloatingWindow()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .transition(.scale.combined(with: .opacity))
+                    .zIndex(14)
             }
 
             // 快捷操作居中弹窗
@@ -330,6 +345,29 @@ struct StatusView: View {
                 }
                 FloatingPopupSecondaryButton(title: "关闭", textColor: .white) {
                     withAnimation(.easeOut(duration: 0.2)) { isMQTTFloatingPresented = false }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func vehicleInfoFloatingWindow() -> some View {
+        FloatingPopupCard(
+            icon: liveBLEStatus.icon,
+            iconColor: liveBLEStatus.color,
+            title: "车辆信息",
+            subtitle: "点击 BLE 胶囊查看，信息来自 HTTP + BLE 钥匙接口",
+            onClose: { withAnimation(.easeOut(duration: 0.2)) { isVehicleInfoFloatingPresented = false } }
+        ) {
+            VehicleInfoMergedCard(dashboard: vehicleStore.dashboard, isEmbedded: false)
+        } actions: {
+            VStack(spacing: 8) {
+                FloatingPopupPrimaryButton(title: "刷新信息", color: AppTheme.accent) {
+                    mqttStore?.refreshNow()
+                    withAnimation(.easeOut(duration: 0.2)) { isVehicleInfoFloatingPresented = false }
+                }
+                FloatingPopupSecondaryButton(title: "关闭", textColor: .white) {
+                    withAnimation(.easeOut(duration: 0.2)) { isVehicleInfoFloatingPresented = false }
                 }
             }
         }

@@ -69,6 +69,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     init() {
         super.init(state: .placeholder, dashboard: VehicleDashboardState())
+        loadPersistedDisplayCache()
         DispatchQueue.main.async { [weak self] in
             self?.autoConnect()
         }
@@ -114,6 +115,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         if let gcjLat = snapshot.latitude, let gcjLng = snapshot.longitude, gcjLat != 0, gcjLng != 0 {
             cachedLatitudeGcj = gcjLat
             cachedLongitudeGcj = gcjLng
+            UserDefaults.standard.set(gcjLat, forKey: "LastLatitude")
+            UserDefaults.standard.set(gcjLng, forKey: "LastLongitude")
         }
 
         if let address = snapshot.address, !address.isEmpty {
@@ -121,10 +124,39 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             UserDefaults.standard.set(address, forKey: "LastAddress")
         }
 
+        persistDisplayCache()
         apply(cachedState)
         applyDashboard(cachedDashboard)
         authStatus = .expired("缓存模式")
         CrashLogger.shared.mark("CACHE", "loaded Wuling cache from \(snapshot.sourcePath)")
+    }
+
+    private func loadPersistedDisplayCache() {
+        let defaults = UserDefaults.standard
+        let lat = defaults.double(forKey: "LastLatitude")
+        let lng = defaults.double(forKey: "LastLongitude")
+        if lat != 0, lng != 0 {
+            cachedLatitudeGcj = lat
+            cachedLongitudeGcj = lng
+        }
+
+        let address = defaults.string(forKey: "LastAddress")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !address.isEmpty {
+            cachedAddress = address
+        }
+    }
+
+    private func persistDisplayCache() {
+        let defaults = UserDefaults.standard
+        if cachedLatitudeGcj != 0, cachedLongitudeGcj != 0 {
+            defaults.set(cachedLatitudeGcj, forKey: "LastLatitude")
+            defaults.set(cachedLongitudeGcj, forKey: "LastLongitude")
+        }
+
+        let address = cachedAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !address.isEmpty {
+            defaults.set(address, forKey: "LastAddress")
+        }
     }
 
     private func autoConnect() {
@@ -283,6 +315,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 dash.masterKeyMaskedText = self.maskHex(info["masterKey"], visiblePrefix: 4, visibleSuffix: 4)
                 dash.randomMaskedText = self.maskHex(info["keyMasterRandom"] ?? info["random"], visiblePrefix: 4, visibleSuffix: 4)
                 dash.keyExpiryText = info["expiredTime"] ?? info["expireTime"] ?? info["endTime"] ?? dash.keyExpiryText
+                dash.vehicleInfoUpdatedAtText = self.formatDateTime(Date())
                 self.applyDashboard(dash)
             }
         }
@@ -521,15 +554,23 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             let gcj = LocationResolver.wgs84ToGcj02(lat: lat, lng: lng)
             liveLatitudeGcj = gcj.lat
             liveLongitudeGcj = gcj.lng
+            cachedLatitudeGcj = gcj.lat
+            cachedLongitudeGcj = gcj.lng
             let addressHint = carStatus["address"]
             if let addressHint, !addressHint.isEmpty {
                 liveAddress = addressHint
+                cachedAddress = addressHint
+                persistDisplayCache()
+            } else {
+                persistDisplayCache()
             }
             let addressSettings = AddressServiceSettings()
-            locationResolver.getAddress(gcjLat: gcj.lat, gcjLng: gcj.lng, address: nil, amapWebKey: addressSettings.amapWebKey) { [weak self] resolved in
+            locationResolver.getAddress(gcjLat: gcj.lat, gcjLng: gcj.lng, address: addressHint, amapWebKey: addressSettings.amapWebKey) { [weak self] resolved in
                 guard let self, let resolved else { return }
                 DispatchQueue.main.async {
                     self.liveAddress = resolved
+                    self.cachedAddress = resolved
+                    self.persistDisplayCache()
                 }
             }
         }
@@ -685,6 +726,12 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     private func formatTime(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss"
+        return formatter.string(from: date)
+    }
+
+    private func formatDateTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return formatter.string(from: date)
     }
 

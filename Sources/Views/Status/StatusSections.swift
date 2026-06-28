@@ -244,12 +244,20 @@ struct StatusPillsSection: View {
     var mqttStatus: StatusMQTTState = .disconnected
     var physicalKeyState: StatusPhysicalKeyState = .outside
     var gearState: StatusGearState = .park
+    var onBLETap: (() -> Void)? = nil
     var onMQTTTap: (() -> Void)? = nil
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                StatusPill(icon: bleStatus.icon, text: bleStatus.text, color: bleStatus.color)
+                if let onBLETap {
+                    Button(action: onBLETap) {
+                        StatusPill(icon: bleStatus.icon, text: bleStatus.text, color: bleStatus.color)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    StatusPill(icon: bleStatus.icon, text: bleStatus.text, color: bleStatus.color)
+                }
                 if let onMQTTTap {
                     Button(action: onMQTTTap) {
                         StatusPill(icon: mqttStatus.icon, text: mqttStatus.text, color: mqttStatus.color)

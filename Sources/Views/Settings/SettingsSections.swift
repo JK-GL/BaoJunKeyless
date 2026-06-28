@@ -142,7 +142,11 @@ struct SettingsVehicleConfigSection: View {
         }
         if label.isEmpty { return path }
         if path.isEmpty { return label }
-        return "\(label)"
+        return label
+    }
+
+    private var maskedTokenText: String {
+        maskToken(accessTokenDraft.isEmpty ? vehicleCredentials.accessToken : accessTokenDraft)
     }
 
     private var currentVINText: String {
@@ -211,6 +215,8 @@ struct SettingsVehicleConfigSection: View {
                         summaryChip(title: "VIN", value: currentVINText, mono: true)
                         summaryChip(title: "用户", value: currentUserText, mono: true)
                     }
+
+                    summaryChip(title: "Token", value: maskedTokenText, mono: true)
                 }
                 .padding(14)
                 .background(
@@ -398,9 +404,16 @@ struct SettingsVehicleConfigSection: View {
                 if let result {
                     vinDraft = result.vin
                     phoneDraft = result.phone
+                    vehicleCredentials.accessToken = token
+                    vehicleCredentials.vin = result.vin
+                    vehicleCredentials.phone = result.phone
+                    if vehicleCredentials.tokenSourceLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        vehicleCredentials.tokenSourceLabel = vehicleCredentials.autoReadWulingToken ? "五菱 App 自动读取" : "手动输入 Token"
+                    }
                     queriedVehicleName = "车辆信息确认"
                     showingVehicleInfoConfirm = true
-                    toastText = "车辆信息已获取"
+                    toastText = "车辆信息已获取并保存"
+                    onSave()
                 } else {
                     toastText = "查询失败，请检查 Token"
                 }
@@ -433,6 +446,15 @@ struct SettingsVehicleConfigSection: View {
         vehicleCredentials.tokenSourcePath = url.path
         toastText = "已从文件导入 Token"
         fetchVehicleInfo()
+    }
+
+    private func maskToken(_ raw: String) -> String {
+        let token = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { return "未读取" }
+        guard token.count > 12 else { return token }
+        let prefix = token.prefix(6)
+        let suffix = token.suffix(6)
+        return "\(prefix)******\(suffix)"
     }
 
     @ViewBuilder

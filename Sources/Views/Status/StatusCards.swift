@@ -521,6 +521,7 @@ struct VehicleStatusMetricCard: View {
 
 struct VehicleInfoMergedCard: View {
     let dashboard: VehicleDashboardState
+    var isEmbedded: Bool = true
     @State private var isExpanded = false
     @State private var showCopiedToast = false
 
@@ -537,6 +538,7 @@ struct VehicleInfoMergedCard: View {
 
     private var rows: [RowData] {
         [
+            RowData("clock.fill",     "更新日期",   dashboard.vehicleInfoUpdatedAtText),
             RowData("car.fill",       "车型",       dashboard.vehicleName),
             RowData("info.circle",    "VIN",        dashboard.vinText, mono: true),
             RowData("person.fill",    "用户ID",     dashboard.userIdText, mono: true),
@@ -545,12 +547,13 @@ struct VehicleInfoMergedCard: View {
             RowData("number",         "Key ID",     dashboard.keyIdText, mono: true, color: AppTheme.accent),
             RowData("lock.fill",      "MasterKey",  dashboard.masterKeyMaskedText, mono: true),
             RowData("dice.fill",      "Random",     dashboard.randomMaskedText, mono: true),
-            RowData("clock.fill",     "有效期至",   dashboard.keyExpiryText, color: AppTheme.green),
+            RowData("clock.arrow.circlepath", "有效期至",   dashboard.keyExpiryText, color: AppTheme.green),
         ]
     }
 
     private var fullText: String {
         """
+        更新日期: \(dashboard.vehicleInfoUpdatedAtText)
         车型: \(dashboard.vehicleName)
         VIN: \(dashboard.vinText)
         用户ID: \(dashboard.userIdText)
@@ -565,48 +568,30 @@ struct VehicleInfoMergedCard: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            CollapsibleCard(
-                title: "车辆信息",
-                icon: "car.fill",
-                iconColor: AppTheme.accent,
-                isExpanded: $isExpanded,
-                headerExtra: {
-                    Text("\(rows.count) 项")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            ) {
-                VStack(spacing: 0) {
-                    ForEach(Array(rows.enumerated()), id: \.offset) { idx, row in
-                        HStack(spacing: 10) {
-                            Image(systemName: row.icon)
-                                .font(.system(size: 13))
-                                .foregroundColor(.secondary)
-                                .frame(width: 20)
-                            Text(row.label)
-                                .font(.system(size: 13))
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text(row.value)
-                                .font(.system(size: row.mono ? 11 : 13,
-                                              weight: .medium,
-                                              design: row.mono ? .monospaced : .default))
-                                .foregroundColor(row.color)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
+            Group {
+                if isEmbedded {
+                    AnyView(
+                        CollapsibleCard(
+                            title: "车辆信息",
+                            icon: "car.fill",
+                            iconColor: AppTheme.accent,
+                            isExpanded: $isExpanded,
+                            headerExtra: {
+                                Text("\(rows.count) 项")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        ) {
+                            rowsContent
                         }
-                        .padding(.vertical, 7)
-
-                        if idx < rows.count - 1 {
-                            Divider().padding(.leading, 30)
+                    )
+                } else {
+                    AnyView(
+                        VStack(alignment: .leading, spacing: 0) {
+                            rowsContent
                         }
-                    }
+                    )
                 }
-                Text("长按复制全部信息")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.top, 6)
             }
             .onLongPressGesture(minimumDuration: 0.5) {
                 UIPasteboard.general.string = fullText
@@ -623,5 +608,40 @@ struct VehicleInfoMergedCard: View {
                     .offset(y: -40)
             }
         }
+    }
+
+    @ViewBuilder
+    private var rowsContent: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { idx, row in
+                HStack(spacing: 10) {
+                    Image(systemName: row.icon)
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                        .frame(width: 20)
+                    Text(row.label)
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(row.value)
+                        .font(.system(size: row.mono ? 11 : 13,
+                                      weight: .medium,
+                                      design: row.mono ? .monospaced : .default))
+                        .foregroundColor(row.color)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                .padding(.vertical, 7)
+
+                if idx < rows.count - 1 {
+                    Divider().padding(.leading, 30)
+                }
+            }
+        }
+        Text("长按复制全部信息")
+            .font(.caption2)
+            .foregroundColor(.secondary)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.top, 6)
     }
 }
