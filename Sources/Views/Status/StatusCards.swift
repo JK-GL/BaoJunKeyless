@@ -641,3 +641,106 @@ struct VehicleInfoMergedCard: View {
         }
     }
 }
+
+struct MQTTInfoMergedCard: View {
+    let status: StatusMQTTState
+    let broker: String
+    let clientId: String
+    let username: String
+    let password: String
+    let tokenSource: String
+    let topics: [String]
+
+    private struct RowData {
+        let icon: String
+        let label: String
+        let value: String
+        let mono: Bool
+        let color: Color
+        init(_ icon: String, _ label: String, _ value: String, mono: Bool = false, color: Color = .primary) {
+            self.icon = icon; self.label = label; self.value = value; self.mono = mono; self.color = color
+        }
+    }
+
+    private var rows: [RowData] {
+        [
+            RowData("antenna.radiowaves.left.and.right.circle.fill", "状态", status.text, color: status.color),
+            RowData("server.rack", "Broker", broker, mono: true),
+            RowData("iphone.radiowaves.left.and.right", "ClientID", clientId, mono: true),
+            RowData("person.text.rectangle", "Username", username, mono: true),
+            RowData("key.fill", "Password", password, mono: true),
+            RowData("doc.text.fill", "来源", tokenSource, mono: true)
+        ]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            rowsContent
+
+            if !topics.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "dot.radiowaves.left.and.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Text("订阅 Topics")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(topics.count) 项")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.white.opacity(0.45))
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(topics.prefix(3)), id: \.self) { topic in
+                            Text(topic)
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundStyle(Color.white.opacity(0.78))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.72)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color.white.opacity(0.045))
+                    )
+                }
+                .padding(.top, 2)
+            }
+        }
+        .padding(.horizontal, 2)
+    }
+
+    @ViewBuilder
+    private var rowsContent: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { idx, row in
+                HStack(spacing: 10) {
+                    Image(systemName: row.icon)
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                        .frame(width: 20)
+                    Text(row.label)
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(row.value)
+                        .font(.system(size: row.mono ? 11 : 13,
+                                      weight: .medium,
+                                      design: row.mono ? .monospaced : .default))
+                        .foregroundColor(row.color)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                .padding(.vertical, 7)
+
+                if idx < rows.count - 1 {
+                    Divider().padding(.leading, 30)
+                }
+            }
+        }
+    }
+}

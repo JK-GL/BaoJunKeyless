@@ -306,36 +306,17 @@ struct StatusView: View {
         FloatingPopupCard(
             icon: liveMQTTStatus.icon,
             iconColor: liveMQTTStatus.color,
-            title: "MQTT 连接信息",
-            subtitle: "随机 ClientID，避免与官方 App 冲突（rc=7）"
+            title: "MQTT 信息"
         ) {
-            VStack(alignment: .leading, spacing: 10) {
-                mqttInfoRow(icon: "antenna.radiowaves.left.and.right.circle.fill", label: "状态", value: liveMQTTStatus.text)
-                mqttInfoRow(icon: "server.rack", label: "Broker", value: mqttDisplayBroker, mono: true)
-                mqttInfoRow(icon: "iphone.radiowaves.left.and.right", label: "ClientID", value: mqttDisplayClientId, mono: true)
-                mqttInfoRow(icon: "person.text.rectangle", label: "Username", value: mqttDisplayUsername, mono: true)
-                mqttInfoRow(icon: "key.fill", label: "Password", value: mqttDisplayPassword, mono: true)
-                mqttInfoRow(icon: "doc.text", label: "Token来源", value: mqttTokenSourceText, mono: true)
-
-                if !mqttTopicRows.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("订阅 Topics")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.white.opacity(0.62))
-                        ForEach(mqttTopicRows, id: \.self) { topic in
-                            Text(topic)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(.white)
-                                .lineLimit(2)
-                        }
-                    }
-                    .padding(10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(Color.white.opacity(0.05))
-                    )
-                }
-            }
+            MQTTInfoMergedCard(
+                status: liveMQTTStatus,
+                broker: mqttDisplayBroker,
+                clientId: mqttDisplayClientId,
+                username: mqttDisplayUsername,
+                password: mqttDisplayPassword,
+                tokenSource: mqttTokenSourceText,
+                topics: mqttTopicRows
+            )
         } actions: {
             VStack(spacing: 8) {
                 FloatingPopupPrimaryButton(title: "重新连接", color: AppTheme.accent) {
@@ -353,8 +334,7 @@ struct StatusView: View {
         FloatingPopupCard(
             icon: liveBLEStatus.icon,
             iconColor: liveBLEStatus.color,
-            title: "车辆信息",
-            subtitle: "点击 BLE 胶囊查看，信息来自 HTTP + BLE 钥匙接口"
+            title: "车辆信息"
         ) {
             VehicleInfoMergedCard(dashboard: vehicleStore.dashboard, isEmbedded: false)
         } actions: {
@@ -375,30 +355,12 @@ struct StatusView: View {
         locationManager.setCarLocation(lat: displayCarLatitude, lng: displayCarLongitude, address: address)
     }
 
-    private func mqttInfoRow(icon: String, label: String, value: String, mono: Bool = false) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .frame(width: 18)
-                .foregroundStyle(AppTheme.accent)
-            Text(label)
-                .font(.system(size: 13))
-                .foregroundStyle(Color.white.opacity(0.62))
-            Spacer()
-            Text(value)
-                .font(.system(size: mono ? 11 : 13, weight: .medium, design: mono ? .monospaced : .default))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.trailing)
-        }
-        .padding(.vertical, 2)
-    }
-
     @ViewBuilder
     private func addressFloatingWindow() -> some View {
         FloatingPopupCard(
             icon: "mappin.and.ellipse",
             iconColor: AppTheme.accent,
-            title: "车辆地址",
-            subtitle: "查看当前定位并配置高德服务 Key"
+            title: "车辆地址"
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {

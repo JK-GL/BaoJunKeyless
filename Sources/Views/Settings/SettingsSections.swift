@@ -140,31 +140,32 @@ struct SettingsVehicleConfigSection: View {
     }
 
     var body: some View {
-        SettingsPanelView(title: "车辆配置", subtitle: "自动读取五菱 App 或手动导入 SavedOAuthModel。") {
+        SettingsPanelView(title: "车辆配置") {
             VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 12) {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
                                 .fill(AppTheme.orange.opacity(0.14))
-                                .frame(width: 44, height: 44)
+                                .frame(width: 42, height: 42)
                             Image(systemName: "car.fill")
                                 .font(.system(size: 18, weight: .semibold))
                                 .foregroundStyle(AppTheme.orange)
                         }
 
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: 5) {
                             Text(viewModel.isConfigured ? viewModel.currentVINText : "未配置车辆")
                                 .font(.system(size: 16, weight: .semibold, design: viewModel.isConfigured ? .monospaced : .default))
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.78)
 
-                            Text(viewModel.tokenSourceSummary)
-                                .font(.caption)
-                                .foregroundStyle(Color.white.opacity(0.5))
-                                .lineLimit(2)
+                            HStack(spacing: 8) {
+                                infoPill(icon: "person.fill", text: viewModel.currentUserText, mono: true)
+                                infoPill(icon: "doc.text.fill", text: viewModel.tokenSourceSummary)
+                            }
                         }
+                        .layoutPriority(1)
 
                         Spacer(minLength: 0)
 
@@ -178,15 +179,11 @@ struct SettingsVehicleConfigSection: View {
                                     .fill(viewModel.isConfigured ? statusBadgeColor : statusBadgeColor.opacity(0.16))
                             )
                     }
-
-                    HStack(spacing: 10) {
-                        summaryChip(title: "用户", value: viewModel.currentUserText, mono: true)
-                    }
                 }
                 .padding(14)
                 .background(
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.white.opacity(0.04))
+                        .fill(Color.white.opacity(0.045))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -196,7 +193,7 @@ struct SettingsVehicleConfigSection: View {
                 VStack(alignment: .leading, spacing: 12) {
                     ToggleRow(
                         icon: "arrow.trianglehead.2.clockwise.rotate.90",
-                        label: "自动读取五菱 App Token",
+                        label: "自动读取凭据",
                         isOn: Binding(
                             get: { viewModel.autoReadWulingToken },
                             set: { viewModel.autoReadWulingToken = $0 }
@@ -216,7 +213,7 @@ struct SettingsVehicleConfigSection: View {
                         HStack(spacing: 8) {
                             Image(systemName: viewModel.autoReadWulingToken ? "bolt.horizontal.circle.fill" : "folder.fill")
                                 .font(.system(size: 13))
-                            Text(viewModel.autoReadWulingToken ? "立即读取五菱 App 凭据" : "手动选择 SavedOAuthModel")
+                            Text(viewModel.autoReadWulingToken ? "立即读取" : "选择文件")
                                 .font(.system(size: 14, weight: .medium))
                         }
                         .foregroundStyle(AppTheme.accent)
@@ -233,10 +230,6 @@ struct SettingsVehicleConfigSection: View {
                     }
                     .buttonStyle(.plain)
 
-                    Text(viewModel.autoReadWulingToken ? "默认自动读取五菱 App 的 SavedOAuthModel；关闭后可手动选择文件。" : "已关闭自动读取，请手动选择 SavedOAuthModel 或粘贴 token。")
-                        .font(.caption)
-                        .foregroundStyle(Color.white.opacity(0.45))
-                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(14)
                 .background(
@@ -249,11 +242,11 @@ struct SettingsVehicleConfigSection: View {
                 )
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Access Token")
+                    Text("Token")
                         .font(.caption)
                         .foregroundStyle(Color.white.opacity(0.55))
 
-                    TextField("从五菱 App 的 SavedOAuthModel 获取", text: Binding(
+                    TextField("粘贴或自动读取 Token", text: Binding(
                         get: { viewModel.tokenFieldDisplayText },
                         set: { viewModel.accessTokenDraft = $0 }
                     ))
@@ -289,7 +282,7 @@ struct SettingsVehicleConfigSection: View {
                 } label: {
                     HStack(spacing: 6) {
                         if viewModel.isFetching { ProgressView().scaleEffect(0.7) }
-                        Text(viewModel.isFetching ? "查询中…" : "查询车辆并确认用户信息")
+                        Text(viewModel.isFetching ? "查询中…" : "查询并保存车辆信息")
                             .font(.system(size: 13, weight: .medium))
                     }
                     .foregroundStyle(AppTheme.accent)
@@ -374,23 +367,22 @@ struct SettingsVehicleConfigSection: View {
     }
 
     @ViewBuilder
-    private func summaryChip(title: String, value: String, mono: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(Color.white.opacity(0.45))
-            Text(value)
-                .font(.system(size: mono ? 12 : 13, weight: .semibold, design: mono ? .monospaced : .default))
-                .foregroundStyle(.white)
+    private func infoPill(icon: String, text: String, mono: Bool = false) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.48))
+            Text(text)
+                .font(.system(size: 11, weight: .medium, design: mono ? .monospaced : .default))
+                .foregroundStyle(Color.white.opacity(0.66))
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.04))
+            Capsule()
+                .fill(Color.white.opacity(0.055))
         )
     }
 }
@@ -399,18 +391,13 @@ struct SettingsFuelDisplaySection: View {
     @EnvironmentObject var vehicleStore: VehicleStateStore
 
     var body: some View {
-        SettingsPanelView(title: "油量显示", subtitle: "控制状态页是否显示油量。") {
+        SettingsPanelView(title: "油量显示") {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     fuelModeButton(.auto, title: "自动")
                     fuelModeButton(.show, title: "强制显示")
                     fuelModeButton(.hide, title: "强制隐藏")
                 }
-
-                Text("自动：根据车辆配置识别插混/纯电；强制显示/隐藏：手动覆盖结果。")
-                    .font(.caption)
-                    .foregroundStyle(Color.white.opacity(0.45))
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -571,10 +558,6 @@ struct SettingsDiagnosticsSection: View {
                     .frame(width: 180)
                 }
 
-                Text("自动：根据车辆配置识别插混/纯电；强制显示/隐藏：手动覆盖识别结果。")
-                    .font(.caption)
-                    .foregroundStyle(Color.white.opacity(0.55))
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

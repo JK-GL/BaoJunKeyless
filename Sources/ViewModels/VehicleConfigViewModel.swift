@@ -29,11 +29,15 @@ final class VehicleConfigViewModel: ObservableObject {
         let label = credentials.tokenSourceLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         let path = credentials.tokenSourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
         if label.isEmpty && path.isEmpty {
-            return credentials.autoReadWulingToken ? "五菱 App 自动读取" : "手动输入 / 手动导入"
+            return credentials.autoReadWulingToken ? "自动读取" : "手动输入"
         }
-        if label.isEmpty { return path }
-        if path.isEmpty { return label }
-        return label
+        if !label.isEmpty {
+            if label.contains("自动读取") { return "自动读取" }
+            if label.contains("导入") { return "文件导入" }
+            if label.contains("手动") { return "手动输入" }
+            return label
+        }
+        return path.isEmpty ? "--" : "文件导入"
     }
 
     var tokenFieldDisplayText: String {
