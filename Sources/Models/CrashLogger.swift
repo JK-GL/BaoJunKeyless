@@ -5,7 +5,7 @@ import UIKit
 class CrashLogger {
     static let shared = CrashLogger()
     private let logFile: URL?
-    private let loggingKey = "CrashLoggerEnabled"
+    private let loggingKey = AppDefaultsKey.CrashLogger.enabled
     var isLoggingEnabled: Bool {
         get { UserDefaults.standard.object(forKey: loggingKey) as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: loggingKey) }
@@ -90,9 +90,7 @@ class CrashLogger {
         logCurrentStatus(tag: tag)
         guard let raw = readLog(), !raw.isEmpty else { return nil }
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd_HHmmss"
-        let filename = "BaoJunKeyless_error_log_\(formatter.string(from: Date())).txt"
+        let filename = "BaoJunKeyless_error_log_\(AppDateFormatters.fileTimestamp.string(from: Date())).txt"
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
         do {
             try raw.write(to: url, atomically: true, encoding: .utf8)

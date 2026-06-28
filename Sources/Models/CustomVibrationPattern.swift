@@ -42,7 +42,7 @@ private class SharedHapticEngine {
             engine = try CHHapticEngine()
             try engine?.start()
         } catch {
-            print("Haptic engine init failed: \(error)")
+            CrashLogger.shared.mark("Haptics", "engine init failed", details: error.localizedDescription)
         }
     }
 
@@ -95,7 +95,7 @@ extension CustomVibrationPattern {
             shared.player = player
             try player.start(atTime: 0)
         } catch {
-            print("Core Haptics playback failed: \(error)")
+            CrashLogger.shared.mark("Haptics", "playback failed", details: error.localizedDescription)
         }
     }
 }
@@ -104,7 +104,7 @@ extension CustomVibrationPattern {
 class CustomVibrationStore: ObservableObject {
     @Published var patterns: [CustomVibrationPattern] = []
 
-    private static let storageKey = "CustomVibrationPatterns"
+    private static let storageKey = AppDefaultsKey.CustomVibration.patterns
     private let key = CustomVibrationStore.storageKey
 
     init() {

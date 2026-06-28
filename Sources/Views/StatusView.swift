@@ -280,7 +280,7 @@ struct StatusView: View {
                 .zIndex(20)
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenAddressFloatingWindow"))) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .openAddressFloatingWindow)) { _ in
             isEditingAmapKey = false
             amapKeyDraft = addressSettings.amapWebKey
             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { isAddressFloatingPresented = true }

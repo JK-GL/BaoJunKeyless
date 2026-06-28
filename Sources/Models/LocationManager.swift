@@ -4,6 +4,8 @@ import CoreLocation
 // MARK: - GPS + 磁力计管理器
 class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
+    private let addressSettings: AddressServiceSettings
+    private let displayCacheStore: VehicleDisplayCacheStore
 
     private var phoneLocation: CLLocation?
     private var heading: CLLocationDirection = 0  // 手机朝向角度
@@ -25,7 +27,12 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private var lastRadarRelativeAngle: CLLocationDirection = -1
     private var lastPublishedDistance: CLLocationDistance = -1
 
-    override init() {
+    init(
+        addressSettings: AddressServiceSettings = .shared,
+        displayCacheStore: VehicleDisplayCacheStore = VehicleDisplayCacheStore()
+    ) {
+        self.addressSettings = addressSettings
+        self.displayCacheStore = displayCacheStore
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
@@ -53,7 +60,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             vehicleAddress = LocationResolver.shared.cachedAddress ?? ""
         }
 
-        let addressSettings = AddressServiceSettings()
         LocationResolver.shared.getAddress(
             gcjLat: lat,
             gcjLng: lng,
@@ -132,8 +138,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         if lastPublishedDistance < 0 || abs(nextDistance - lastPublishedDistance) >= 0.5 {
             distance = nextDistance
             lastPublishedDistance = nextDistance
-            UserDefaults.standard.set(nextDistance, forKey: "LastDistanceMeters")
-            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "LastDistanceTs")
+            displayCacheStore.setDistance(nextDistance)
         }
     }
 

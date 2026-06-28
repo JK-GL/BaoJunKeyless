@@ -122,56 +122,21 @@ struct SettingsAboutSection: View {
 // MARK: - 车辆配置
 struct SettingsVehicleConfigSection: View {
     @EnvironmentObject var theme: ThemeManager
-    @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
-    @State private var accessTokenDraft: String = ""
-    @State private var vinDraft: String = ""
-    @State private var phoneDraft: String = ""
-    @State private var isFetching = false
-    @State private var showingImportGuide = false
-    @State private var showingFilePicker = false
-    @State private var showingVehicleInfoConfirm = false
-    @State private var queriedVehicleName = ""
-    @State private var isEditingToken = false
+    let vehicleCredentials: VehicleCredentialsStore
+    @StateObject private var viewModel: VehicleConfigViewModel
     @FocusState private var isTokenFieldFocused: Bool
     @Binding var toastText: String?
     let onSave: () -> Void
 
-    private var tokenSourceSummary: String {
-        let label = vehicleCredentials.tokenSourceLabel.trimmingCharacters(in: .whitespacesAndNewlines)
-        let path = vehicleCredentials.tokenSourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
-        if label.isEmpty && path.isEmpty {
-            return vehicleCredentials.autoReadWulingToken ? "五菱 App 自动读取" : "手动输入 / 手动导入"
-        }
-        if label.isEmpty { return path }
-        if path.isEmpty { return label }
-        return label
-    }
-
-    private var tokenFieldDisplayText: String {
-        let source = isEditingToken ? accessTokenDraft : (accessTokenDraft.isEmpty ? vehicleCredentials.accessToken : accessTokenDraft)
-        return isEditingToken ? source : maskToken(source)
-    }
-
-    private var currentVINText: String {
-        let value = vinDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !value.isEmpty { return value }
-        let stored = vehicleCredentials.vin.trimmingCharacters(in: .whitespacesAndNewlines)
-        return stored.isEmpty ? "未配置" : stored
-    }
-
-    private var currentUserText: String {
-        let value = phoneDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !value.isEmpty { return value }
-        let stored = vehicleCredentials.phone.trimmingCharacters(in: .whitespacesAndNewlines)
-        return stored.isEmpty ? "未配置" : stored
-    }
-
-    private var statusBadgeText: String {
-        vehicleCredentials.isConfigured ? "已配置" : "未配置"
+    init(vehicleCredentials: VehicleCredentialsStore, toastText: Binding<String?>, onSave: @escaping () -> Void) {
+        self.vehicleCredentials = vehicleCredentials
+        self._toastText = toastText
+        self.onSave = onSave
+        self._viewModel = StateObject(wrappedValue: VehicleConfigViewModel(credentials: vehicleCredentials))
     }
 
     private var statusBadgeColor: Color {
-        vehicleCredentials.isConfigured ? AppTheme.green : Color.white.opacity(0.35)
+        viewModel.isConfigured ? AppTheme.green : Color.white.opacity(0.35)
     }
 
     var body: some View {
@@ -189,13 +154,13 @@ struct SettingsVehicleConfigSection: View {
                         }
 
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(vehicleCredentials.isConfigured ? currentVINText : "未配置车辆")
-                                .font(.system(size: 16, weight: .semibold, design: vehicleCredentials.isConfigured ? .monospaced : .default))
+                            Text(viewModel.isConfigured ? viewModel.currentVINText : "未配置车辆")
+                                .font(.system(size: 16, weight: .semibold, design: viewModel.isConfigured ? .monospaced : .default))
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.78)
 
-                            Text(tokenSourceSummary)
+                            Text(viewModel.tokenSourceSummary)
                                 .font(.caption)
                                 .foregroundStyle(Color.white.opacity(0.5))
                                 .lineLimit(2)
@@ -203,19 +168,19 @@ struct SettingsVehicleConfigSection: View {
 
                         Spacer(minLength: 0)
 
-                        Text(statusBadgeText)
+                        Text(viewModel.statusBadgeText)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(vehicleCredentials.isConfigured ? .black : .white)
+                            .foregroundStyle(viewModel.isConfigured ? .black : .white)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
                             .background(
                                 Capsule()
-                                    .fill(vehicleCredentials.isConfigured ? statusBadgeColor : statusBadgeColor.opacity(0.16))
+                                    .fill(viewModel.isConfigured ? statusBadgeColor : statusBadgeColor.opacity(0.16))
                             )
                     }
 
                     HStack(spacing: 10) {
-                        summaryChip(title: "用户", value: currentUserText, mono: true)
+                        summaryChip(title: "用户", value: viewModel.currentUserText, mono: true)
                     }
                 }
                 .padding(14)
@@ -232,20 +197,26 @@ struct SettingsVehicleConfigSection: View {
                     ToggleRow(
                         icon: "arrow.trianglehead.2.clockwise.rotate.90",
                         label: "自动读取五菱 App Token",
-                        isOn: $vehicleCredentials.autoReadWulingToken
+                        isOn: Binding(
+                            get: { viewModel.autoReadWulingToken },
+                            set: { viewModel.autoReadWulingToken = $0 }
+                        )
                     )
 
                     Button {
-                        if vehicleCredentials.autoReadWulingToken {
-                            autoImportFromWulingApp()
+                        if viewModel.autoReadWulingToken {
+                            viewModel.autoImportFromWulingApp { toast, shouldConnect in
+                                toastText = toast
+                                if shouldConnect { onSave() }
+                            }
                         } else {
-                            showingFilePicker = true
+                            viewModel.showingFilePicker = true
                         }
                     } label: {
                         HStack(spacing: 8) {
-                            Image(systemName: vehicleCredentials.autoReadWulingToken ? "bolt.horizontal.circle.fill" : "folder.fill")
+                            Image(systemName: viewModel.autoReadWulingToken ? "bolt.horizontal.circle.fill" : "folder.fill")
                                 .font(.system(size: 13))
-                            Text(vehicleCredentials.autoReadWulingToken ? "立即读取五菱 App 凭据" : "手动选择 SavedOAuthModel")
+                            Text(viewModel.autoReadWulingToken ? "立即读取五菱 App 凭据" : "手动选择 SavedOAuthModel")
                                 .font(.system(size: 14, weight: .medium))
                         }
                         .foregroundStyle(AppTheme.accent)
@@ -262,7 +233,7 @@ struct SettingsVehicleConfigSection: View {
                     }
                     .buttonStyle(.plain)
 
-                    Text(vehicleCredentials.autoReadWulingToken ? "默认自动读取五菱 App 的 SavedOAuthModel；关闭后可手动选择文件。" : "已关闭自动读取，请手动选择 SavedOAuthModel 或粘贴 token。")
+                    Text(viewModel.autoReadWulingToken ? "默认自动读取五菱 App 的 SavedOAuthModel；关闭后可手动选择文件。" : "已关闭自动读取，请手动选择 SavedOAuthModel 或粘贴 token。")
                         .font(.caption)
                         .foregroundStyle(Color.white.opacity(0.45))
                         .fixedSize(horizontal: false, vertical: true)
@@ -283,8 +254,8 @@ struct SettingsVehicleConfigSection: View {
                         .foregroundStyle(Color.white.opacity(0.55))
 
                     TextField("从五菱 App 的 SavedOAuthModel 获取", text: Binding(
-                        get: { tokenFieldDisplayText },
-                        set: { accessTokenDraft = $0 }
+                        get: { viewModel.tokenFieldDisplayText },
+                        set: { viewModel.accessTokenDraft = $0 }
                     ))
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
@@ -299,67 +270,55 @@ struct SettingsVehicleConfigSection: View {
                     )
                     .onTapGesture {
                         withAnimation(.easeOut(duration: 0.15)) {
-                            isEditingToken = true
-                            accessTokenDraft = vehicleCredentials.accessToken.isEmpty ? accessTokenDraft : vehicleCredentials.accessToken
+                            viewModel.beginTokenEditing()
                             isTokenFieldFocused = true
                         }
                     }
                     .onChange(of: isTokenFieldFocused) { focused in
                         if !focused {
-                            isEditingToken = false
+                            viewModel.endTokenEditing()
                         }
                     }
                 }
 
                 Button {
-                    fetchVehicleInfo()
+                    viewModel.fetchVehicleInfo { toast, shouldConnect in
+                        toastText = toast
+                        if shouldConnect { onSave() }
+                    }
                 } label: {
                     HStack(spacing: 6) {
-                        if isFetching { ProgressView().scaleEffect(0.7) }
-                        Text(isFetching ? "查询中…" : "查询车辆并确认用户信息")
+                        if viewModel.isFetching { ProgressView().scaleEffect(0.7) }
+                        Text(viewModel.isFetching ? "查询中…" : "查询车辆并确认用户信息")
                             .font(.system(size: 13, weight: .medium))
                     }
                     .foregroundStyle(AppTheme.accent)
                 }
-                .disabled(accessTokenDraft.isEmpty || isFetching)
+                .disabled(viewModel.accessTokenDraft.isEmpty || viewModel.isFetching)
 
                 HStack(spacing: 12) {
                     Button {
-                        let token = accessTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !token.isEmpty, !vinDraft.isEmpty else {
-                            toastText = "请先查询车辆信息"
-                            return
+                        viewModel.saveManualConfig { toast, shouldConnect in
+                            toastText = toast
+                            if shouldConnect { onSave() }
                         }
-                        vehicleCredentials.accessToken = token
-                        vehicleCredentials.vin = vinDraft
-                        vehicleCredentials.phone = phoneDraft
-                        isEditingToken = false
                         isTokenFieldFocused = false
-                        if vehicleCredentials.tokenSourceLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            vehicleCredentials.tokenSourceLabel = "手动输入 Token"
-                        }
-                        toastText = "配置已保存 · \(vinDraft)"
-                        onSave()
                     } label: {
                         Text("保存")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.black)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
-                            .background(Capsule().fill((accessTokenDraft.isEmpty || vinDraft.isEmpty) ? Color.white.opacity(0.3) : AppTheme.green))
+                            .background(Capsule().fill((viewModel.accessTokenDraft.isEmpty || viewModel.vinDraft.isEmpty) ? Color.white.opacity(0.3) : AppTheme.green))
                     }
                     .buttonStyle(.plain)
-                    .disabled(accessTokenDraft.isEmpty || vinDraft.isEmpty || isFetching)
+                    .disabled(viewModel.accessTokenDraft.isEmpty || viewModel.vinDraft.isEmpty || viewModel.isFetching)
 
                     Button {
-                        vehicleCredentials.reset()
-                        accessTokenDraft = ""
-                        vinDraft = ""
-                        phoneDraft = ""
-                        queriedVehicleName = ""
-                        isEditingToken = false
+                        viewModel.clear { toast, _ in
+                            toastText = toast
+                        }
                         isTokenFieldFocused = false
-                        toastText = "配置已清除"
                     } label: {
                         Text("清除")
                             .font(.system(size: 14, weight: .medium))
@@ -373,150 +332,44 @@ struct SettingsVehicleConfigSection: View {
             }
         }
         .onAppear {
-            accessTokenDraft = vehicleCredentials.accessToken
-            vinDraft = vehicleCredentials.vin
-            phoneDraft = vehicleCredentials.phone
-            isEditingToken = false
+            viewModel.syncFromStore()
             isTokenFieldFocused = false
         }
-        .sheet(isPresented: $showingImportGuide) {
+        .sheet(isPresented: $viewModel.showingImportGuide) {
             ImportGuideSheet(onImported: {
-                accessTokenDraft = vehicleCredentials.accessToken
-                vinDraft = vehicleCredentials.vin
-                phoneDraft = vehicleCredentials.phone
+                viewModel.syncFromStore()
                 toastText = vehicleCredentials.accessToken.isEmpty ? "未读取到 Token" : "已从文件读取 Token"
                 if !vehicleCredentials.accessToken.isEmpty {
-                    fetchVehicleInfo()
+                    viewModel.fetchVehicleInfo { toast, shouldConnect in
+                        toastText = toast
+                        if shouldConnect { onSave() }
+                    }
                 }
             })
             .environmentObject(vehicleCredentials)
         }
-        .sheet(isPresented: $showingFilePicker) {
+        .sheet(isPresented: $viewModel.showingFilePicker) {
             SimpleDocumentPicker { url in
-                importTokenFromSelectedFile(url: url)
-                showingFilePicker = false
+                viewModel.importTokenFromSelectedFile(url: url) { toast, shouldConnect in
+                    toastText = toast
+                    if shouldConnect { onSave() }
+                }
+                viewModel.showingFilePicker = false
             }
         }
         .overlay {
-            if showingVehicleInfoConfirm {
+            if viewModel.showingVehicleInfoConfirm {
                 CustomAlertView(
-                    title: queriedVehicleName.isEmpty ? "车辆信息确认" : queriedVehicleName,
-                    message: "VIN：\(vinDraft)\n用户：\(phoneDraft.isEmpty ? "--" : phoneDraft)",
+                    title: viewModel.queriedVehicleName.isEmpty ? "车辆信息确认" : viewModel.queriedVehicleName,
+                    message: "VIN：\(viewModel.vinDraft)\n用户：\(viewModel.phoneDraft.isEmpty ? "--" : viewModel.phoneDraft)",
                     confirmTitle: "确认",
                     confirmColor: .green,
-                    onCancel: { withAnimation(.easeOut(duration: 0.2)) { showingVehicleInfoConfirm = false } },
-                    onConfirm: { withAnimation(.easeOut(duration: 0.2)) { showingVehicleInfoConfirm = false } }
+                    onCancel: { withAnimation(.easeOut(duration: 0.2)) { viewModel.showingVehicleInfoConfirm = false } },
+                    onConfirm: { withAnimation(.easeOut(duration: 0.2)) { viewModel.showingVehicleInfoConfirm = false } }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .transition(.scale.combined(with: .opacity))
             }
-        }
-    }
-
-    private func autoImportFromWulingApp() {
-        if let tokenInfo = SGMWApiClient.shared.readLocalTokenInfo() {
-            accessTokenDraft = tokenInfo.token
-            vehicleCredentials.accessToken = tokenInfo.token
-            vehicleCredentials.tokenSourceLabel = "五菱 App 自动读取"
-            vehicleCredentials.tokenSourcePath = tokenInfo.sourcePath
-            isEditingToken = false
-            isTokenFieldFocused = false
-            toastText = "已自动读取五菱 Token"
-            fetchVehicleInfo()
-        } else {
-            toastText = "自动读取失败，可切换为手动选择文件"
-            showingImportGuide = true
-        }
-    }
-
-    private func fetchVehicleInfo() {
-        let token = accessTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !token.isEmpty else { return }
-        isFetching = true
-        SGMWApiClient.shared.queryDefaultCar(accessToken: token) { result in
-            DispatchQueue.main.async {
-                isFetching = false
-                if let result {
-                    vinDraft = result.vin
-                    phoneDraft = result.phone
-                    vehicleCredentials.accessToken = token
-                    vehicleCredentials.vin = result.vin
-                    vehicleCredentials.phone = result.phone
-                    isEditingToken = false
-                    isTokenFieldFocused = false
-                    if vehicleCredentials.tokenSourceLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        vehicleCredentials.tokenSourceLabel = vehicleCredentials.autoReadWulingToken ? "五菱 App 自动读取" : "手动输入 Token"
-                    }
-                    queriedVehicleName = "车辆信息确认"
-                    showingVehicleInfoConfirm = true
-                    toastText = "车辆信息已获取并保存"
-                    onSave()
-                } else {
-                    toastText = "查询失败，请检查 Token"
-                }
-            }
-        }
-    }
-
-    private func importTokenFromSelectedFile(url: URL) {
-        let accessGranted = url.startAccessingSecurityScopedResource()
-        defer {
-            if accessGranted {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        guard let data = try? Data(contentsOf: url),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            toastText = "读取文件失败"
-            return
-        }
-        let token = (json["access_token"] as? String)
-            ?? ((json["data"] as? [String: Any])?["access_token"] as? String)
-        guard let token, !token.isEmpty else {
-            toastText = "文件中未找到 access_token"
-            return
-        }
-        accessTokenDraft = token
-        vehicleCredentials.accessToken = token
-        vehicleCredentials.tokenSourceLabel = "手动导入 SavedOAuthModel"
-        vehicleCredentials.tokenSourcePath = url.path
-        isEditingToken = false
-        isTokenFieldFocused = false
-        toastText = "已从文件导入 Token"
-        fetchVehicleInfo()
-    }
-
-    private func maskToken(_ raw: String) -> String {
-        let token = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !token.isEmpty else { return "未读取" }
-        guard token.count > 12 else { return token }
-        let prefix = token.prefix(6)
-        let suffix = token.suffix(6)
-        return "\(prefix)******\(suffix)"
-    }
-
-    @ViewBuilder
-    private func credentialField(label: String, placeholder: String, text: Binding<String>, isSecure: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(Color.white.opacity(0.55))
-            Group {
-                if isSecure {
-                    SecureField(placeholder, text: text)
-                } else {
-                    TextField(placeholder, text: text)
-                }
-            }
-            .textFieldStyle(.plain)
-            .font(.system(size: 14, design: .monospaced))
-            .foregroundStyle(.white)
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
-            )
         }
     }
 

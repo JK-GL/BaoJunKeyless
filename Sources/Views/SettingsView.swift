@@ -38,7 +38,11 @@ struct SettingsView: View {
                     themeConfig: themeConfig
                 )
 
-                SettingsVehicleConfigSection(toastText: $toastText, onSave: connectMQTTIfNeeded)
+                SettingsVehicleConfigSection(
+                    vehicleCredentials: vehicleCredentials,
+                    toastText: $toastText,
+                    onSave: connectMQTTIfNeeded
+                )
 
                 SettingsFuelDisplaySection()
 

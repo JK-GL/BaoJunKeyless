@@ -558,8 +558,8 @@ struct RadarCardView: View {
                     Text(String(format: "距车辆 %.0f 米", locationManager.distance))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.5))
-                } else if let cachedDistance = UserDefaults.standard.object(forKey: "LastDistanceMeters") as? Double, cachedDistance > 0 {
-                    Text(String(format: "距车辆 %.0f 米", cachedDistance))
+                } else if VehicleDisplayCacheStore().loadSnapshot().distanceMeters > 0 {
+                    Text(String(format: "距车辆 %.0f 米", VehicleDisplayCacheStore().loadSnapshot().distanceMeters))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.42))
                 } else if carLat != 0 && carLng != 0 {
@@ -570,7 +570,7 @@ struct RadarCardView: View {
 
                 if !locationManager.vehicleAddress.isEmpty {
                     Button {
-                        NotificationCenter.default.post(name: .init("OpenAddressFloatingWindow"), object: nil)
+                        NotificationCenter.default.post(name: .openAddressFloatingWindow, object: nil)
                     } label: {
                         (Text(Image(systemName: "mappin.and.ellipse")) + Text(" \(locationManager.vehicleAddress)"))
                             .font(.system(size: 11, weight: .medium))

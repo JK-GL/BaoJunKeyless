@@ -6,12 +6,18 @@ struct BaoJunKeylessApp: App {
     @StateObject private var keylessSettings = KeylessSettingsStore()
     @StateObject private var customVibrationStore = CustomVibrationStore()
     @StateObject private var vehicleEventLogStore = VehicleEventLogStore()
-    @StateObject private var addressSettings = AddressServiceSettings()
-    @StateObject private var vehicleCredentials = VehicleCredentialsStore()
-    @StateObject private var locationManager = LocationManager()
-    @StateObject private var vehicleStore: VehicleStateStore = MQTTVehicleStateStore()
+    @StateObject private var addressSettings = AddressServiceSettings.shared
+    @StateObject private var vehicleCredentials = VehicleCredentialsStore.shared
+    @StateObject private var locationManager = LocationManager(addressSettings: AddressServiceSettings.shared)
+    @StateObject private var vehicleStore: VehicleStateStore
 
     init() {
+        _vehicleStore = StateObject(
+            wrappedValue: MQTTVehicleStateStore(
+                addressSettings: AddressServiceSettings.shared,
+                credentialsStore: VehicleCredentialsStore.shared
+            )
+        )
         _ = CrashLogger.shared
         AppDiagnosticsSettings.resetHiddenDiagnosticsToggles()
         if CrashLogger.shared.isLoggingEnabled {

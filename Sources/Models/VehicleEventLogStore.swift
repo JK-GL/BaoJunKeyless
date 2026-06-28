@@ -74,16 +74,14 @@ struct VehicleEventLogEntry: Identifiable, Codable, Equatable {
     }
 
     var timeText: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date)
+        AppDateFormatters.logTime.string(from: date)
     }
 }
 
 final class VehicleEventLogStore: ObservableObject {
     @Published private(set) var entries: [VehicleEventLogEntry] = []
 
-    private let key = "VehicleEventLogs"
+    private let key = AppDefaultsKey.VehicleEventLog.entries
     private let maxEntries = 500
 
     init() {
@@ -119,21 +117,17 @@ final class VehicleEventLogStore: ObservableObject {
 
     func exportText(entries: [VehicleEventLogEntry]) -> String {
         guard !entries.isEmpty else { return "" }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return entries.map { entry in
             let detail = entry.detail.isEmpty ? "" : " | \(entry.detail)"
-            return "[\(formatter.string(from: entry.date))] [\(entry.category.title)] \(entry.title)\(detail)"
+            return "[\(AppDateFormatters.fullDateTime.string(from: entry.date))] [\(entry.category.title)] \(entry.title)\(detail)"
         }.joined(separator: "\n")
     }
 
     func exportFile(entries: [VehicleEventLogEntry], filterTitle: String) -> URL? {
         let text = exportText(entries: entries)
         guard !text.isEmpty else { return nil }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd_HHmmss"
         let safeFilter = filterTitle.replacingOccurrences(of: " ", with: "_")
-        let filename = "BaoJunKeyless_vehicle_events_\(safeFilter)_\(formatter.string(from: Date())).txt"
+        let filename = "BaoJunKeyless_vehicle_events_\(safeFilter)_\(AppDateFormatters.fileTimestamp.string(from: Date())).txt"
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
         do {
             try text.write(to: url, atomically: true, encoding: .utf8)

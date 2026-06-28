@@ -10,6 +10,7 @@ import CoreLocation
 final class LocationResolver: NSObject, CLLocationManagerDelegate {
     static let shared = LocationResolver()
     private let geocoder = CLGeocoder()
+    private let displayCacheStore = VehicleDisplayCacheStore()
     private var lastResolvedCoordinate: CLLocationCoordinate2D?
     private var lastResolvedDate: Date?
 
@@ -56,8 +57,7 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
     func setCarLocation(gcjLat: Double, gcjLng: Double) {
         lastResolvedCoordinate = CLLocationCoordinate2D(latitude: gcjLat, longitude: gcjLng)
         lastResolvedDate = Date()
-        UserDefaults.standard.set(gcjLat, forKey: "LastLatitude")
-        UserDefaults.standard.set(gcjLng, forKey: "LastLongitude")
+        displayCacheStore.setCoordinate(latitudeGcj: gcjLat, longitudeGcj: gcjLng)
     }
 
     func getAddress(gcjLat: Double, gcjLng: Double, address: String? = nil, amapWebKey: String? = nil, completion: @escaping (String?) -> Void) {
@@ -72,11 +72,8 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
             guard let self else { return }
             self.lastResolvedCoordinate = resolvedCoordinate
             self.lastResolvedDate = Date()
-
-            UserDefaults.standard.set(resolvedAddress ?? "", forKey: "LastAddress")
-            UserDefaults.standard.set(resolvedCoordinate.latitude, forKey: "LastLatitude")
-            UserDefaults.standard.set(resolvedCoordinate.longitude, forKey: "LastLongitude")
-
+            self.displayCacheStore.setAddress(resolvedAddress ?? "")
+            self.displayCacheStore.setCoordinate(latitudeGcj: resolvedCoordinate.latitude, longitudeGcj: resolvedCoordinate.longitude)
             completion(resolvedAddress)
         }
 
@@ -180,6 +177,7 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
 
     // MARK: - 缓存
     var cachedAddress: String? {
-        UserDefaults.standard.string(forKey: "LastAddress")
+        let address = displayCacheStore.loadSnapshot().address
+        return address.isEmpty ? nil : address
     }
 }

@@ -286,7 +286,7 @@ class HapticRecorderManager: ObservableObject {
             engine = try CHHapticEngine()
             try engine?.start()
         } catch {
-            print("Haptic engine failed: \(error)")
+            CrashLogger.shared.mark("Haptics", "record engine failed", details: error.localizedDescription)
         }
     }
 
@@ -334,7 +334,7 @@ class HapticRecorderManager: ObservableObject {
             continuousPlayer = try engine.makeAdvancedPlayer(with: pattern)
             try continuousPlayer?.start(atTime: 0)
         } catch {
-            print("Start continuous haptic failed: \(error)")
+            CrashLogger.shared.mark("Haptics", "start continuous failed", details: error.localizedDescription)
         }
     }
 

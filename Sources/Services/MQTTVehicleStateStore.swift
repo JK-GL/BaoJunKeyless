@@ -57,7 +57,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     private var mqtt: CocoaMQTT?
     private var credentials: SGMWApiClient.MQTTCredentials?
-    private var credentialsStore: VehicleCredentialsStore?
+    private var credentialsStore: VehicleCredentialsStore
 
     private var lastMqttFields: [String: String] = [:]
     private var httpTimer: Timer?
@@ -66,8 +66,17 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     private var isConnecting = false
 
     private let locationResolver = LocationResolver.shared
+    private let addressSettings: AddressServiceSettings
+    private let displayCacheStore: VehicleDisplayCacheStore
 
-    init() {
+    init(
+        addressSettings: AddressServiceSettings = .shared,
+        credentialsStore: VehicleCredentialsStore = .shared,
+        displayCacheStore: VehicleDisplayCacheStore = VehicleDisplayCacheStore()
+    ) {
+        self.addressSettings = addressSettings
+        self.credentialsStore = credentialsStore
+        self.displayCacheStore = displayCacheStore
         super.init(state: .placeholder, dashboard: VehicleDashboardState())
         loadPersistedDisplayCache()
         DispatchQueue.main.async { [weak self] in
@@ -85,8 +94,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
         tokenSourceLabel = normalizedLabel
         tokenSourcePath = normalizedPath
-        credentialsStore?.tokenSourceLabel = normalizedLabel
-        credentialsStore?.tokenSourcePath = normalizedPath
+        credentialsStore.tokenSourceLabel = normalizedLabel
+        credentialsStore.tokenSourcePath = normalizedPath
     }
 
     private func inferredTokenSourceLabel(from credentialsStore: VehicleCredentialsStore) -> String {
@@ -115,13 +124,12 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         if let gcjLat = snapshot.latitude, let gcjLng = snapshot.longitude, gcjLat != 0, gcjLng != 0 {
             cachedLatitudeGcj = gcjLat
             cachedLongitudeGcj = gcjLng
-            UserDefaults.standard.set(gcjLat, forKey: "LastLatitude")
-            UserDefaults.standard.set(gcjLng, forKey: "LastLongitude")
+            displayCacheStore.setCoordinate(latitudeGcj: gcjLat, longitudeGcj: gcjLng)
         }
 
         if let address = snapshot.address, !address.isEmpty {
             cachedAddress = address
-            UserDefaults.standard.set(address, forKey: "LastAddress")
+            displayCacheStore.setAddress(address)
         }
 
         persistDisplayCache()
@@ -132,35 +140,30 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     private func loadPersistedDisplayCache() {
-        let defaults = UserDefaults.standard
-        let lat = defaults.double(forKey: "LastLatitude")
-        let lng = defaults.double(forKey: "LastLongitude")
-        if lat != 0, lng != 0 {
-            cachedLatitudeGcj = lat
-            cachedLongitudeGcj = lng
+        let snapshot = displayCacheStore.loadSnapshot()
+        if snapshot.latitudeGcj != 0, snapshot.longitudeGcj != 0 {
+            cachedLatitudeGcj = snapshot.latitudeGcj
+            cachedLongitudeGcj = snapshot.longitudeGcj
         }
 
-        let address = defaults.string(forKey: "LastAddress")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !address.isEmpty {
-            cachedAddress = address
+        if !snapshot.address.isEmpty {
+            cachedAddress = snapshot.address
         }
     }
 
     private func persistDisplayCache() {
-        let defaults = UserDefaults.standard
         if cachedLatitudeGcj != 0, cachedLongitudeGcj != 0 {
-            defaults.set(cachedLatitudeGcj, forKey: "LastLatitude")
-            defaults.set(cachedLongitudeGcj, forKey: "LastLongitude")
+            displayCacheStore.setCoordinate(latitudeGcj: cachedLatitudeGcj, longitudeGcj: cachedLongitudeGcj)
         }
 
         let address = cachedAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         if !address.isEmpty {
-            defaults.set(address, forKey: "LastAddress")
+            displayCacheStore.setAddress(address)
         }
     }
 
     private func autoConnect() {
-        let saved = VehicleCredentialsStore()
+        let saved = credentialsStore
         if saved.isConfigured {
             start(with: saved)
             return
@@ -190,7 +193,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                     CrashLogger.shared.mark("HTTP", "queryDefaultCar failed")
                     return
                 }
-                let store = VehicleCredentialsStore()
+                let store = VehicleCredentialsStore.shared
                 store.accessToken = token
                 store.vin = result.vin
                 store.phone = result.phone
@@ -255,9 +258,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         credentials = nil
         lastMqttFields.removeAll()
         lastMQTTUpdate = nil
-        if let store = credentialsStore {
-            start(with: store)
-        }
+        start(with: credentialsStore)
     }
 
     // MARK: - HTTP 轮询
@@ -272,7 +273,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     private func pollHTTPOnce() {
-        guard let store = credentialsStore else { return }
+        let store = credentialsStore
         let token = store.accessToken
         guard !token.isEmpty else { return }
 
@@ -299,7 +300,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     private func fetchBleKeyInfo() {
-        guard let store = credentialsStore else { return }
+        let store = credentialsStore
         guard !store.accessToken.isEmpty, !store.vin.isEmpty, !store.phone.isEmpty else { return }
         SGMWApiClient.shared.queryBleKey(accessToken: store.accessToken, vin: store.vin, phone: store.phone) { [weak self] info in
             guard let self, let info else { return }
@@ -564,7 +565,6 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             } else {
                 persistDisplayCache()
             }
-            let addressSettings = AddressServiceSettings()
             locationResolver.getAddress(gcjLat: gcj.lat, gcjLng: gcj.lng, address: addressHint, amapWebKey: addressSettings.amapWebKey) { [weak self] resolved in
                 guard let self, let resolved else { return }
                 DispatchQueue.main.async {
@@ -718,21 +718,15 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         guard let raw, !raw.isEmpty else { return nil }
         if let ms = Double(raw), ms > 1000000000000 { return Date(timeIntervalSince1970: ms / 1000) }
         if let sec = Double(raw), sec > 1000000000 { return Date(timeIntervalSince1970: sec) }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
-        return formatter.date(from: raw)
+        return AppDateFormatters.timestampMillis.date(from: raw)
     }
 
     private func formatTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        return formatter.string(from: date)
+        AppDateFormatters.vehicleTime.string(from: date)
     }
 
     private func formatDateTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return formatter.string(from: date)
+        AppDateFormatters.fullDateTime.string(from: date)
     }
 
     private func displayValue(_ raw: String?, suffix: String = "") -> String {

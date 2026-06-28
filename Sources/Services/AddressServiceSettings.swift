@@ -2,10 +2,10 @@ import Foundation
 
 // MARK: - 地址服务设置
 final class AddressServiceSettings: ObservableObject {
-    private let amapKey = "AddressService.AmapWebKey"
+    static let shared = AddressServiceSettings()
 
     var amapWebKey: String {
-        UserDefaults.standard.string(forKey: amapKey) ?? ""
+        UserDefaults.standard.string(forKey: AppDefaultsKey.AddressService.amapWebKey) ?? ""
     }
 
     var displayAmapWebKey: String {
@@ -22,12 +22,12 @@ final class AddressServiceSettings: ObservableObject {
 
     func setAmapWebKey(_ value: String) {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        UserDefaults.standard.set(trimmed, forKey: amapKey)
+        UserDefaults.standard.set(trimmed, forKey: AppDefaultsKey.AddressService.amapWebKey)
         CrashLogger.shared.mark("AddressService", "amapKey", details: trimmed.isEmpty ? "cleared" : "***")
     }
 
     func clearAmapWebKey() {
-        UserDefaults.standard.removeObject(forKey: amapKey)
+        UserDefaults.standard.removeObject(forKey: AppDefaultsKey.AddressService.amapWebKey)
         CrashLogger.shared.mark("AddressService", "amapKey", details: "cleared")
     }
 
