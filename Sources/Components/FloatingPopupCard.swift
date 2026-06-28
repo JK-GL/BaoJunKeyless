@@ -1,5 +1,13 @@
 import SwiftUI
 
+private struct FloatingPopupContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 1
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 // MARK: - 统一悬浮弹窗底座
 struct FloatingPopupCard<Content: View, Actions: View>: View {
     let icon: String
@@ -8,6 +16,7 @@ struct FloatingPopupCard<Content: View, Actions: View>: View {
     var subtitle: String = ""
     var maxWidth: CGFloat = 316
     var onClose: (() -> Void)? = nil
+    @State private var measuredContentHeight: CGFloat = 1
     @ViewBuilder let content: () -> Content
     @ViewBuilder let actions: () -> Actions
 
@@ -44,11 +53,20 @@ struct FloatingPopupCard<Content: View, Actions: View>: View {
                 Spacer().frame(height: 10)
             }
 
-            ScrollView(.vertical, showsIndicators: true) {
+            ScrollView(.vertical, showsIndicators: measuredContentHeight > 320) {
                 content()
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear
+                                .preference(key: FloatingPopupContentHeightKey.self, value: proxy.size.height)
+                        }
+                    )
             }
-            .frame(maxHeight: 320)
+            .frame(height: min(max(measuredContentHeight, 1), 320), alignment: .top)
+            .onPreferenceChange(FloatingPopupContentHeightKey.self) { value in
+                measuredContentHeight = max(value, 1)
+            }
 
             actions()
                 .padding(.top, 10)
