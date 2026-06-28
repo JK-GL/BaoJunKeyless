@@ -639,10 +639,5 @@ struct VehicleInfoMergedCard: View {
                 }
             }
         }
-        Text("长按复制全部信息")
-            .font(.caption2)
-            .foregroundColor(.secondary)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.top, 6)
     }
 }

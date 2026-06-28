@@ -228,8 +228,7 @@ struct CommandConfirmPopup: View {
             icon: resultIcon,
             iconColor: resultColor,
             title: action.label(state: displayState),
-            subtitle: resultSubtitle,
-            onClose: { withAnimation(.easeOut(duration: 0.2)) { isPresented = false } }
+            subtitle: resultSubtitle
         ) {
             VStack(spacing: 12) {
                 PopupStatusSummaryView(items: statusItemsForCurrentAction)

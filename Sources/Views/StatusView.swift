@@ -307,8 +307,7 @@ struct StatusView: View {
             icon: liveMQTTStatus.icon,
             iconColor: liveMQTTStatus.color,
             title: "MQTT 连接信息",
-            subtitle: "随机 ClientID，避免与官方 App 冲突（rc=7）",
-            onClose: { withAnimation(.easeOut(duration: 0.2)) { isMQTTFloatingPresented = false } }
+            subtitle: "随机 ClientID，避免与官方 App 冲突（rc=7）"
         ) {
             VStack(alignment: .leading, spacing: 10) {
                 mqttInfoRow(icon: "antenna.radiowaves.left.and.right.circle.fill", label: "状态", value: liveMQTTStatus.text)
@@ -341,7 +340,6 @@ struct StatusView: View {
             VStack(spacing: 8) {
                 FloatingPopupPrimaryButton(title: "重新连接", color: AppTheme.accent) {
                     mqttStore?.reconnect()
-                    withAnimation(.easeOut(duration: 0.2)) { isMQTTFloatingPresented = false }
                 }
                 FloatingPopupSecondaryButton(title: "关闭", textColor: .white) {
                     withAnimation(.easeOut(duration: 0.2)) { isMQTTFloatingPresented = false }
@@ -356,14 +354,16 @@ struct StatusView: View {
             icon: liveBLEStatus.icon,
             iconColor: liveBLEStatus.color,
             title: "车辆信息",
-            subtitle: "点击 BLE 胶囊查看，信息来自 HTTP + BLE 钥匙接口",
-            onClose: { withAnimation(.easeOut(duration: 0.2)) { isVehicleInfoFloatingPresented = false } }
+            subtitle: "点击 BLE 胶囊查看，信息来自 HTTP + BLE 钥匙接口"
         ) {
             VehicleInfoMergedCard(dashboard: vehicleStore.dashboard, isEmbedded: false)
         } actions: {
             VStack(spacing: 8) {
                 FloatingPopupPrimaryButton(title: "刷新信息", color: AppTheme.accent) {
                     mqttStore?.refreshNow()
+                }
+                FloatingPopupSecondaryButton(title: "关闭", textColor: .white) {
+                    withAnimation(.easeOut(duration: 0.2)) { isVehicleInfoFloatingPresented = false }
                 }
             }
         }
@@ -398,8 +398,7 @@ struct StatusView: View {
             icon: "mappin.and.ellipse",
             iconColor: AppTheme.accent,
             title: "车辆地址",
-            subtitle: "查看当前定位并配置高德服务 Key",
-            onClose: { withAnimation(.easeOut(duration: 0.2)) { isAddressFloatingPresented = false } }
+            subtitle: "查看当前定位并配置高德服务 Key"
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -507,6 +506,13 @@ struct StatusView: View {
                     if let url = URL(string: "amap://search?keyword=\(encoded)"), UIApplication.shared.canOpenURL(url) {
                         UIApplication.shared.open(url)
                     }
+                }
+
+                FloatingPopupSecondaryButton(
+                    title: "关闭",
+                    textColor: .white
+                ) {
+                    withAnimation(.easeOut(duration: 0.2)) { isAddressFloatingPresented = false }
                 }
             }
         }

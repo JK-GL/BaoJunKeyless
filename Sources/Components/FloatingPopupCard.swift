@@ -6,39 +6,26 @@ struct FloatingPopupCard<Content: View, Actions: View>: View {
     let iconColor: Color
     let title: String
     var subtitle: String = ""
-    var maxWidth: CGFloat = 320
+    var maxWidth: CGFloat = 316
     var onClose: (() -> Void)? = nil
     @ViewBuilder let content: () -> Content
     @ViewBuilder let actions: () -> Actions
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Spacer()
-                if let onClose {
-                    Button(action: onClose) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 22))
-                            .foregroundColor(Color.white.opacity(0.28))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.bottom, 4)
-
             ZStack {
                 Circle()
                     .fill(iconColor.opacity(0.14))
-                    .frame(width: 56, height: 56)
+                    .frame(width: 48, height: 48)
                 Image(systemName: icon)
-                    .font(.system(size: 24, weight: .semibold))
+                    .font(.system(size: 21, weight: .semibold))
                     .foregroundColor(iconColor)
             }
             .frame(maxWidth: .infinity)
-            .padding(.bottom, 10)
+            .padding(.bottom, 8)
 
             Text(title)
-                .font(.system(size: 20, weight: .bold))
+                .font(.system(size: 18, weight: .bold))
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .fixedSize(horizontal: false, vertical: true)
@@ -46,42 +33,42 @@ struct FloatingPopupCard<Content: View, Actions: View>: View {
 
             if !subtitle.isEmpty {
                 Text(subtitle)
-                    .font(.system(size: 13))
+                    .font(.system(size: 12.5))
                     .foregroundColor(Color.white.opacity(0.52))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .minimumScaleFactor(0.8)
-                    .padding(.top, 4)
-                    .padding(.bottom, 16)
+                    .padding(.top, 3)
+                    .padding(.bottom, 12)
             } else {
-                Spacer().frame(height: 12)
+                Spacer().frame(height: 10)
             }
 
             ScrollView(.vertical, showsIndicators: true) {
                 content()
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxHeight: 360)
+            .frame(maxHeight: 320)
 
             actions()
-                .padding(.top, 12)
+                .padding(.top, 10)
         }
-        .padding(20)
+        .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(.ultraThinMaterial)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
                         .fill(Color.white.opacity(0.035))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
         )
-        .shadow(color: Color.black.opacity(0.38), radius: 40, x: 0, y: 20)
+        .shadow(color: Color.black.opacity(0.38), radius: 34, x: 0, y: 16)
         .frame(maxWidth: maxWidth)
-        .padding(.horizontal, 32)
+        .padding(.horizontal, 24)
     }
 }
 

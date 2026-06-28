@@ -212,8 +212,7 @@ struct VibrationRecorderView: View {
                     iconColor: AppTheme.accent,
                     title: "保存震动模式",
                     subtitle: "为你的自定义震动模式命名",
-                    maxWidth: 320,
-                    onClose: { showSaveDialog = false }
+                    maxWidth: 320
                 ) {
                     TextField("输入名称", text: $patternName)
                         .textFieldStyle(.plain)

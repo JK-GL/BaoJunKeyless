@@ -51,8 +51,7 @@ struct CustomAlertView: View {
             icon: "exclamationmark.triangle.fill",
             iconColor: confirmColor,
             title: title,
-            subtitle: message,
-            onClose: onCancel
+            subtitle: message
         ) {
             EmptyView()
         } actions: {
