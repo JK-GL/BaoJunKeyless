@@ -590,6 +590,7 @@ struct VehicleInfoMergedCard: View {
                         VStack(alignment: .leading, spacing: 0) {
                             rowsContent
                         }
+                        .padding(.horizontal, 2)
                     )
                 }
             }

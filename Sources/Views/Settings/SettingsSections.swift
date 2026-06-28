@@ -131,6 +131,8 @@ struct SettingsVehicleConfigSection: View {
     @State private var showingFilePicker = false
     @State private var showingVehicleInfoConfirm = false
     @State private var queriedVehicleName = ""
+    @State private var isEditingToken = false
+    @FocusState private var isTokenFieldFocused: Bool
     @Binding var toastText: String?
     let onSave: () -> Void
 
@@ -145,8 +147,9 @@ struct SettingsVehicleConfigSection: View {
         return label
     }
 
-    private var maskedTokenText: String {
-        maskToken(accessTokenDraft.isEmpty ? vehicleCredentials.accessToken : accessTokenDraft)
+    private var tokenFieldDisplayText: String {
+        let source = isEditingToken ? accessTokenDraft : (accessTokenDraft.isEmpty ? vehicleCredentials.accessToken : accessTokenDraft)
+        return isEditingToken ? source : maskToken(source)
     }
 
     private var currentVINText: String {
@@ -212,11 +215,8 @@ struct SettingsVehicleConfigSection: View {
                     }
 
                     HStack(spacing: 10) {
-                        summaryChip(title: "VIN", value: currentVINText, mono: true)
                         summaryChip(title: "用户", value: currentUserText, mono: true)
                     }
-
-                    summaryChip(title: "Token", value: maskedTokenText, mono: true)
                 }
                 .padding(14)
                 .background(
@@ -277,12 +277,39 @@ struct SettingsVehicleConfigSection: View {
                         .stroke(Color.white.opacity(0.06), lineWidth: 1)
                 )
 
-                credentialField(
-                    label: "Access Token",
-                    placeholder: "从五菱 App 的 SavedOAuthModel 获取",
-                    text: $accessTokenDraft,
-                    isSecure: true
-                )
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Access Token")
+                        .font(.caption)
+                        .foregroundStyle(Color.white.opacity(0.55))
+
+                    TextField("从五菱 App 的 SavedOAuthModel 获取", text: Binding(
+                        get: { tokenFieldDisplayText },
+                        set: { accessTokenDraft = $0 }
+                    ))
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+                    .focused($isTokenFieldFocused)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 14, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.white.opacity(0.06))
+                    )
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            isEditingToken = true
+                            accessTokenDraft = vehicleCredentials.accessToken.isEmpty ? accessTokenDraft : vehicleCredentials.accessToken
+                            isTokenFieldFocused = true
+                        }
+                    }
+                    .onChange(of: isTokenFieldFocused) { focused in
+                        if !focused {
+                            isEditingToken = false
+                        }
+                    }
+                }
 
                 Button {
                     fetchVehicleInfo()
@@ -306,6 +333,8 @@ struct SettingsVehicleConfigSection: View {
                         vehicleCredentials.accessToken = token
                         vehicleCredentials.vin = vinDraft
                         vehicleCredentials.phone = phoneDraft
+                        isEditingToken = false
+                        isTokenFieldFocused = false
                         if vehicleCredentials.tokenSourceLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             vehicleCredentials.tokenSourceLabel = "手动输入 Token"
                         }
@@ -328,6 +357,8 @@ struct SettingsVehicleConfigSection: View {
                         vinDraft = ""
                         phoneDraft = ""
                         queriedVehicleName = ""
+                        isEditingToken = false
+                        isTokenFieldFocused = false
                         toastText = "配置已清除"
                     } label: {
                         Text("清除")
@@ -345,6 +376,8 @@ struct SettingsVehicleConfigSection: View {
             accessTokenDraft = vehicleCredentials.accessToken
             vinDraft = vehicleCredentials.vin
             phoneDraft = vehicleCredentials.phone
+            isEditingToken = false
+            isTokenFieldFocused = false
         }
         .sheet(isPresented: $showingImportGuide) {
             ImportGuideSheet(onImported: {
@@ -386,6 +419,8 @@ struct SettingsVehicleConfigSection: View {
             vehicleCredentials.accessToken = tokenInfo.token
             vehicleCredentials.tokenSourceLabel = "五菱 App 自动读取"
             vehicleCredentials.tokenSourcePath = tokenInfo.sourcePath
+            isEditingToken = false
+            isTokenFieldFocused = false
             toastText = "已自动读取五菱 Token"
             fetchVehicleInfo()
         } else {
@@ -407,6 +442,8 @@ struct SettingsVehicleConfigSection: View {
                     vehicleCredentials.accessToken = token
                     vehicleCredentials.vin = result.vin
                     vehicleCredentials.phone = result.phone
+                    isEditingToken = false
+                    isTokenFieldFocused = false
                     if vehicleCredentials.tokenSourceLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         vehicleCredentials.tokenSourceLabel = vehicleCredentials.autoReadWulingToken ? "五菱 App 自动读取" : "手动输入 Token"
                     }
@@ -444,6 +481,8 @@ struct SettingsVehicleConfigSection: View {
         vehicleCredentials.accessToken = token
         vehicleCredentials.tokenSourceLabel = "手动导入 SavedOAuthModel"
         vehicleCredentials.tokenSourcePath = url.path
+        isEditingToken = false
+        isTokenFieldFocused = false
         toastText = "已从文件导入 Token"
         fetchVehicleInfo()
     }

@@ -57,15 +57,14 @@ struct FloatingPopupCard<Content: View, Actions: View>: View {
                 Spacer().frame(height: 12)
             }
 
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    content()
-
-                    actions()
-                        .padding(.top, 12)
-                }
+            ScrollView(.vertical, showsIndicators: true) {
+                content()
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxHeight: 380)
+            .frame(maxHeight: 360)
+
+            actions()
+                .padding(.top, 12)
         }
         .padding(20)
         .background(
@@ -81,7 +80,6 @@ struct FloatingPopupCard<Content: View, Actions: View>: View {
                 )
         )
         .shadow(color: Color.black.opacity(0.38), radius: 40, x: 0, y: 20)
-        .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: maxWidth)
         .padding(.horizontal, 32)
     }

@@ -364,10 +364,6 @@ struct StatusView: View {
             VStack(spacing: 8) {
                 FloatingPopupPrimaryButton(title: "刷新信息", color: AppTheme.accent) {
                     mqttStore?.refreshNow()
-                    withAnimation(.easeOut(duration: 0.2)) { isVehicleInfoFloatingPresented = false }
-                }
-                FloatingPopupSecondaryButton(title: "关闭", textColor: .white) {
-                    withAnimation(.easeOut(duration: 0.2)) { isVehicleInfoFloatingPresented = false }
                 }
             }
         }
