@@ -668,47 +668,23 @@ struct MQTTInfoMergedCard: View {
             RowData("server.rack", "Broker", broker, mono: true),
             RowData("iphone.radiowaves.left.and.right", "ClientID", clientId, mono: true),
             RowData("person.text.rectangle", "Username", username, mono: true),
-            RowData("key.fill", "Password", password, mono: true),
-            RowData("doc.text.fill", "来源", tokenSource, mono: true)
+            RowData("key.fill", "Password", password, mono: true)
         ]
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             rowsContent
 
-            if !topics.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "dot.radiowaves.left.and.right")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        Text("订阅 Topics")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text("\(topics.count) 项")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.white.opacity(0.45))
-                    }
+            detailBlock(
+                icon: "doc.text.fill",
+                title: "来源",
+                value: tokenSource,
+                mono: false
+            )
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(Array(topics.prefix(3)), id: \.self) { topic in
-                            Text(topic)
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundStyle(Color.white.opacity(0.78))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.72)
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(Color.white.opacity(0.045))
-                    )
-                }
-                .padding(.top, 2)
+            if !topics.isEmpty {
+                topicsBlock
             }
         }
         .padding(.horizontal, 2)
@@ -726,14 +702,16 @@ struct MQTTInfoMergedCard: View {
                     Text(row.label)
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
-                    Spacer()
+                    Spacer(minLength: 12)
                     Text(row.value)
                         .font(.system(size: row.mono ? 11 : 13,
                                       weight: .medium,
                                       design: row.mono ? .monospaced : .default))
                         .foregroundColor(row.color)
+                        .multilineTextAlignment(.trailing)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
+                        .layoutPriority(1)
                 }
                 .padding(.vertical, 7)
 
@@ -741,6 +719,74 @@ struct MQTTInfoMergedCard: View {
                     Divider().padding(.leading, 30)
                 }
             }
+        }
+    }
+
+    private func detailBlock(icon: String, title: String, value: String, mono: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+
+            Text(value.isEmpty ? "--" : value)
+                .font(.system(size: mono ? 11 : 12,
+                              weight: .medium,
+                              design: mono ? .monospaced : .default))
+                .foregroundStyle(Color.white.opacity(0.78))
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.045))
+        )
+    }
+
+    private var topicsBlock: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text("订阅 Topics")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(topics.count) 项")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.white.opacity(0.45))
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(topics.enumerated()), id: \.offset) { idx, topic in
+                    Text(topic)
+                        .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.78))
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 5)
+
+                    if idx < topics.count - 1 {
+                        Divider()
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white.opacity(0.045))
+            )
         }
     }
 }

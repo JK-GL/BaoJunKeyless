@@ -78,7 +78,12 @@ struct StatusView: View {
 
     private var mqttTokenSourceText: String {
         if let source = mqttStore?.tokenSource {
-            return source.displayText
+            let label = source.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            let path = source.path.trimmingCharacters(in: .whitespacesAndNewlines)
+            if label.isEmpty && path.isEmpty { return "未配置 / 未读取" }
+            if path.isEmpty { return label }
+            if label.isEmpty { return path }
+            return "\(label)\n\(path)"
         }
         return "未配置 / 未读取"
     }
@@ -306,7 +311,9 @@ struct StatusView: View {
         FloatingPopupCard(
             icon: liveMQTTStatus.icon,
             iconColor: liveMQTTStatus.color,
-            title: "MQTT 信息"
+            title: "MQTT 信息",
+            maxWidth: 332,
+            maxContentHeight: 400
         ) {
             MQTTInfoMergedCard(
                 status: liveMQTTStatus,

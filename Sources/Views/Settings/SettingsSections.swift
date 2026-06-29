@@ -142,18 +142,18 @@ struct SettingsVehicleConfigSection: View {
     var body: some View {
         SettingsPanelView(title: "车辆配置") {
             VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .center, spacing: 12) {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                                .fill(AppTheme.orange.opacity(0.14))
-                                .frame(width: 42, height: 42)
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(AppTheme.orange.opacity(0.15))
+                                .frame(width: 46, height: 46)
                             Image(systemName: "car.fill")
-                                .font(.system(size: 18, weight: .semibold))
+                                .font(.system(size: 19, weight: .semibold))
                                 .foregroundStyle(AppTheme.orange)
                         }
 
-                        VStack(alignment: .leading, spacing: 5) {
+                        VStack(alignment: .leading, spacing: 6) {
                             Text(viewModel.isConfigured ? viewModel.currentVINText : "未配置车辆")
                                 .font(.system(size: 16, weight: .semibold, design: viewModel.isConfigured ? .monospaced : .default))
                                 .foregroundStyle(.white)
@@ -169,15 +169,21 @@ struct SettingsVehicleConfigSection: View {
 
                         Spacer(minLength: 0)
 
-                        Text(viewModel.statusBadgeText)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(viewModel.isConfigured ? .black : .white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(
-                                Capsule()
-                                    .fill(viewModel.isConfigured ? statusBadgeColor : statusBadgeColor.opacity(0.16))
-                            )
+                        VStack(spacing: 4) {
+                            ZStack {
+                                Circle()
+                                    .fill(statusBadgeColor.opacity(viewModel.isConfigured ? 0.18 : 0.12))
+                                    .frame(width: 34, height: 34)
+                                Image(systemName: viewModel.isConfigured ? "checkmark.seal.fill" : "exclamationmark.circle.fill")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(statusBadgeColor)
+                            }
+
+                            Text(viewModel.statusBadgeText)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(statusBadgeColor)
+                        }
+                        .accessibilityLabel(viewModel.statusBadgeText)
                     }
                 }
                 .padding(14)
@@ -191,14 +197,29 @@ struct SettingsVehicleConfigSection: View {
                 )
 
                 VStack(alignment: .leading, spacing: 12) {
-                    ToggleRow(
-                        icon: "arrow.trianglehead.2.clockwise.rotate.90",
-                        label: "自动读取凭据",
-                        isOn: Binding(
+                    HStack(alignment: .center, spacing: 10) {
+                        Image(systemName: viewModel.autoReadWulingToken ? "bolt.horizontal.circle.fill" : "folder.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(viewModel.autoReadWulingToken ? AppTheme.accent : AppTheme.orange)
+                            .frame(width: 28, height: 28)
+                            .background(
+                                Circle()
+                                    .fill((viewModel.autoReadWulingToken ? AppTheme.accent : AppTheme.orange).opacity(0.14))
+                            )
+
+                        Text("自动读取五菱 App 凭证")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.white)
+
+                        Spacer(minLength: 8)
+
+                        Toggle("", isOn: Binding(
                             get: { viewModel.autoReadWulingToken },
                             set: { viewModel.autoReadWulingToken = $0 }
-                        )
-                    )
+                        ))
+                        .labelsHidden()
+                        .tint(theme.accent)
+                    }
 
                     Button {
                         if viewModel.autoReadWulingToken {
@@ -211,25 +232,24 @@ struct SettingsVehicleConfigSection: View {
                         }
                     } label: {
                         HStack(spacing: 8) {
-                            Image(systemName: viewModel.autoReadWulingToken ? "bolt.horizontal.circle.fill" : "folder.fill")
-                                .font(.system(size: 13))
-                            Text(viewModel.autoReadWulingToken ? "立即读取" : "选择文件")
-                                .font(.system(size: 14, weight: .medium))
+                            Image(systemName: viewModel.autoReadWulingToken ? "arrow.down.circle.fill" : "folder.badge.plus")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text(viewModel.autoReadWulingToken ? "立即读取五菱 App 凭证" : "选择凭证文件")
+                                .font(.system(size: 14, weight: .semibold))
                         }
                         .foregroundStyle(AppTheme.accent)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 11)
+                        .padding(.vertical, 12)
                         .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(AppTheme.accent.opacity(0.10))
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .fill(AppTheme.accent.opacity(0.11))
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    RoundedRectangle(cornerRadius: 15, style: .continuous)
                                         .stroke(AppTheme.accent.opacity(0.22), lineWidth: 1)
                                 )
-                        )
+                        }
                     }
                     .buttonStyle(.plain)
-
                 }
                 .padding(14)
                 .background(
@@ -241,10 +261,27 @@ struct SettingsVehicleConfigSection: View {
                         .stroke(Color.white.opacity(0.06), lineWidth: 1)
                 )
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Token")
-                        .font(.caption)
-                        .foregroundStyle(Color.white.opacity(0.55))
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Text("Token")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.white.opacity(0.55))
+                        Spacer()
+                        Button {
+                            viewModel.fetchVehicleInfo { toast, shouldConnect in
+                                toastText = toast
+                                if shouldConnect { onSave() }
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                if viewModel.isFetching { ProgressView().scaleEffect(0.7) }
+                                Text(viewModel.isFetching ? "查询中…" : "查询车辆信息")
+                                    .font(.system(size: 12.5, weight: .semibold))
+                            }
+                            .foregroundStyle(AppTheme.accent)
+                        }
+                        .disabled(viewModel.accessTokenDraft.isEmpty || viewModel.isFetching)
+                    }
 
                     TextField("粘贴或自动读取 Token", text: Binding(
                         get: { viewModel.tokenFieldDisplayText },
@@ -256,9 +293,10 @@ struct SettingsVehicleConfigSection: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 14, design: .monospaced))
                     .foregroundStyle(.white)
-                    .padding(10)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
                     .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(Color.white.opacity(0.06))
                     )
                     .onTapGesture {
@@ -273,21 +311,15 @@ struct SettingsVehicleConfigSection: View {
                         }
                     }
                 }
-
-                Button {
-                    viewModel.fetchVehicleInfo { toast, shouldConnect in
-                        toastText = toast
-                        if shouldConnect { onSave() }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        if viewModel.isFetching { ProgressView().scaleEffect(0.7) }
-                        Text(viewModel.isFetching ? "查询中…" : "查询并保存车辆信息")
-                            .font(.system(size: 13, weight: .medium))
-                    }
-                    .foregroundStyle(AppTheme.accent)
-                }
-                .disabled(viewModel.accessTokenDraft.isEmpty || viewModel.isFetching)
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.white.opacity(0.04))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                )
 
                 HStack(spacing: 12) {
                     Button {
