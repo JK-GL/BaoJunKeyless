@@ -389,7 +389,8 @@ struct SettingsVehicleConfigSection: View {
                     iconColor: AppTheme.green,
                     title: "用户凭证",
                     maxWidth: 332,
-                    maxContentHeight: 260
+                    maxContentHeight: 260,
+                    contentScrollEnabled: false
                 ) {
                     credentialConfirmContent
                 } actions: {
@@ -411,8 +412,6 @@ struct SettingsVehicleConfigSection: View {
             credentialConfirmRow(icon: "phone.fill", label: "手机号", value: viewModel.phoneDraft.isEmpty ? "--" : viewModel.phoneDraft, mono: true)
             credentialDivider()
             credentialConfirmRow(icon: "key.fill", label: "Token", value: viewModel.tokenFieldDisplayText, mono: true)
-            credentialDivider()
-            credentialConfirmRow(icon: "doc.text.fill", label: "导入方式", value: viewModel.tokenSourceSummary)
         }
         .padding(.horizontal, 2)
     }

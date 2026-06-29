@@ -16,10 +16,22 @@ struct FloatingPopupCard<Content: View, Actions: View>: View {
     var subtitle: String = ""
     var maxWidth: CGFloat = 316
     var maxContentHeight: CGFloat = 320
+    var contentScrollEnabled: Bool = true
     var onClose: (() -> Void)? = nil
     @State private var measuredContentHeight: CGFloat = 1
     @ViewBuilder let content: () -> Content
     @ViewBuilder let actions: () -> Actions
+
+    private var measuredContent: some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .preference(key: FloatingPopupContentHeightKey.self, value: proxy.size.height)
+                }
+            )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,17 +66,16 @@ struct FloatingPopupCard<Content: View, Actions: View>: View {
                 Spacer().frame(height: 10)
             }
 
-            ScrollView(.vertical, showsIndicators: measuredContentHeight > maxContentHeight) {
-                content()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        GeometryReader { proxy in
-                            Color.clear
-                                .preference(key: FloatingPopupContentHeightKey.self, value: proxy.size.height)
-                        }
-                    )
+            Group {
+                if contentScrollEnabled {
+                    ScrollView(.vertical, showsIndicators: measuredContentHeight > maxContentHeight) {
+                        measuredContent
+                    }
+                    .frame(height: min(max(measuredContentHeight, 1), maxContentHeight), alignment: .top)
+                } else {
+                    measuredContent
+                }
             }
-            .frame(height: min(max(measuredContentHeight, 1), maxContentHeight), alignment: .top)
             .onPreferenceChange(FloatingPopupContentHeightKey.self) { value in
                 measuredContentHeight = max(value, 1)
             }
