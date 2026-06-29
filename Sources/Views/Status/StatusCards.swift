@@ -324,7 +324,7 @@ struct BatteryGaugesView: View {
     let metrics: [PopupStatusItem]
 
     var body: some View {
-        CardView(title: "电池系统", icon: "battery.100.bolt", iconColor: AppTheme.accent) {
+        CardView(title: "电池系统", icon: "battery.100", iconColor: AppTheme.accent) {
             VehicleStatusMetricList(items: metrics)
         }
     }
@@ -334,7 +334,7 @@ struct TemperatureView: View {
     let metrics: [PopupStatusItem]
 
     var body: some View {
-        CardView(title: "温度监控", icon: "thermometer.medium", iconColor: AppTheme.orange) {
+        CardView(title: "温度监控", icon: "thermometer", iconColor: AppTheme.orange) {
             VehicleStatusMetricList(items: metrics)
         }
     }
@@ -543,7 +543,7 @@ struct VehicleInfoMergedCard: View {
             RowData("info.circle",    "VIN",        dashboard.vinText, mono: true),
             RowData("person.fill",    "用户ID",     dashboard.userIdText, mono: true),
             RowData("key.fill",       "钥匙类型",   dashboard.keyTypeText, color: AppTheme.green),
-            RowData("bolt.fill",      "BLE MAC",    dashboard.bleMacText, mono: true, color: AppTheme.accent),
+            RowData("antenna.radiowaves.left.and.right", "BLE MAC",    dashboard.bleMacText, mono: true, color: AppTheme.accent),
             RowData("number",         "Key ID",     dashboard.keyIdText, mono: true, color: AppTheme.accent),
             RowData("lock.fill",      "MasterKey",  dashboard.masterKeyMaskedText, mono: true),
             RowData("dice.fill",      "Random",     dashboard.randomMaskedText, mono: true),
@@ -664,10 +664,10 @@ struct MQTTInfoMergedCard: View {
 
     private var rows: [RowData] {
         [
-            RowData("antenna.radiowaves.left.and.right.circle.fill", "状态", status.text, color: status.color),
-            RowData("server.rack", "Broker", broker, mono: true),
+            RowData("antenna.radiowaves.left.and.right", "状态", status.text, color: status.color),
+            RowData("network", "Broker", broker, mono: true),
             RowData("iphone.radiowaves.left.and.right", "ClientID", clientId, mono: true),
-            RowData("person.text.rectangle", "Username", username, mono: true),
+            RowData("person.fill", "Username", username, mono: true),
             RowData("key.fill", "Password", password, mono: true)
         ]
     }

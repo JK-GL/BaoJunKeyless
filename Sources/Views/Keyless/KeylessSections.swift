@@ -30,7 +30,7 @@ struct KeylessMainSection: View {
                         set: { if $0 { setMode(.manual) } else { settingsStore.settings.appManual = false; vehicleLog.add(.keyless, "关闭 App 手动") } }
                     ))
 
-                    SliderRow(icon: "gauge.medium", label: "重复指令间隔",
+                    SliderRow(icon: "gauge", label: "重复指令间隔",
                               value: $settingsStore.settings.cmdInterval, range: 1...15, step: 1,
                               format: "\(Int(settingsStore.settings.cmdInterval))s", tint: AppTheme.purple) { value in
                         vehicleLog.add(.keyless, "修改重复指令间隔", detail: "\(Int(value))s")
@@ -119,7 +119,7 @@ struct LockSettingsSection: View {
                         vehicleLog.add(.keyless, "修改上锁阈值", detail: "\(Int(value)) dBm")
                     }
 
-                    SliderRow(icon: "gauge.medium", label: "上锁延迟",
+                    SliderRow(icon: "gauge", label: "上锁延迟",
                               value: $settingsStore.settings.lockDelay, range: 0...60, step: 1,
                               format: "\(Int(settingsStore.settings.lockDelay))s", tint: AppTheme.red) { value in
                         vehicleLog.add(.keyless, "修改上锁延迟", detail: "\(Int(value))s")
@@ -227,7 +227,7 @@ struct VibrationSettingsDetail: View {
             }
             .buttonStyle(.plain)
 
-            SliderRow(icon: "gauge.medium", label: "震动强度",
+            SliderRow(icon: "gauge", label: "震动强度",
                       value: strength, range: 20...100, step: 1,
                       format: "\(Int(strength.wrappedValue))%", tint: tint)
 

@@ -6,7 +6,7 @@ struct SettingsCredentialConfirmPopup: View {
 
     var body: some View {
         FloatingPopupCard(
-            icon: "person.text.rectangle.fill",
+            icon: "person.fill",
             iconColor: AppTheme.green,
             title: "用户凭证",
             maxWidth: 332,

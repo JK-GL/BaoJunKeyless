@@ -62,7 +62,7 @@ enum StatusMQTTState: Equatable {
 
     var icon: String {
         switch self {
-        case .connected: return "antenna.radiowaves.left.and.right.circle.fill"
+        case .connected: return "antenna.radiowaves.left.and.right"
         case .connecting: return "dot.radiowaves.left.and.right"
         case .disconnected, .error: return "antenna.radiowaves.left.and.right.slash"
         }

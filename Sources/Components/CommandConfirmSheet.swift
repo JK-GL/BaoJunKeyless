@@ -329,7 +329,7 @@ struct CommandConfirmPopup: View {
             return []
         case .acToggle:
             return [
-                PopupStatusItem(icon: state.acOn == true ? "thermometer.medium" : "snowflake",
+                PopupStatusItem(icon: state.acOn == true ? "thermometer" : "snowflake",
                                 label: "空调",
                                 value: state.acOn == true ? "已开" : "已关",
                                 color: state.acOn == true ? AppTheme.green : AppTheme.accent),

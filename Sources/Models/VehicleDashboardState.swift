@@ -132,21 +132,21 @@ extension VehicleDashboardState {
 
         return VehicleDashboardMetrics(
             battery: [
-                PopupStatusItem(icon: "battery.100.bolt", label: "剩余", value: batteryRemainingText, color: AppTheme.accent),
+                PopupStatusItem(icon: "battery.100", label: "剩余", value: batteryRemainingText, color: AppTheme.accent),
                 PopupStatusItem(icon: "checkmark.seal.fill", label: "健康", value: batteryHealthPercentText, color: AppTheme.green),
                 PopupStatusItem(icon: "bolt.fill", label: "电压", value: batteryVoltageText, color: AppTheme.accent),
-                PopupStatusItem(icon: "car.fill", label: "小电瓶", value: batteryAuxText, color: AppTheme.accent)
+                PopupStatusItem(icon: "battery.25", label: "小电瓶", value: batteryAuxText, color: AppTheme.accent)
             ],
             temperature: [
                 PopupStatusItem(icon: "thermometer", label: "车内", value: cabinTemperatureText, color: AppTheme.accent),
                 PopupStatusItem(icon: "snowflake", label: "空调", value: acTemperatureText, color: AppTheme.orange),
-                PopupStatusItem(icon: "thermometer.medium", label: "电池", value: batteryTemperatureText, color: AppTheme.green),
+                PopupStatusItem(icon: "thermometer", label: "电池", value: batteryTemperatureText, color: AppTheme.green),
                 PopupStatusItem(icon: "gearshape.fill", label: "电机", value: motorTemperatureText, color: AppTheme.green),
                 PopupStatusItem(icon: "cpu.fill", label: "逆变", value: inverterTemperatureText, color: AppTheme.green)
             ],
             charging: [
                 PopupStatusItem(icon: "bolt.fill", label: "充电中", value: chargingStatusText, color: AppTheme.orange),
-                PopupStatusItem(icon: "gauge.medium", label: "功率", value: chargingPowerValueText, color: Color.white.opacity(0.45)),
+                PopupStatusItem(icon: "gauge", label: "功率", value: chargingPowerValueText, color: Color.white.opacity(0.45)),
                 PopupStatusItem(icon: "bolt.fill", label: "OBC电流", value: obcCurrentText, color: AppTheme.orange),
                 PopupStatusItem(icon: "thermometer", label: "OBC温度", value: obcTemperatureText, color: Color.white.opacity(0.45)),
                 PopupStatusItem(icon: "bolt.circle.fill", label: "状态", value: chargingStateText, color: Color.white.opacity(0.45))
@@ -155,7 +155,7 @@ extension VehicleDashboardState {
                 PopupStatusItem(icon: "lock.fill", label: "车锁", value: lockStatusText, color: colorForStatus(lockStatusText)),
                 PopupStatusItem(icon: "car.fill", label: "车门", value: doorStatusText, color: colorForStatus(doorStatusText)),
                 PopupStatusItem(icon: "rectangle.split.2x2.fill", label: "车窗", value: windowStatusText, color: colorForStatus(windowStatusText)),
-                PopupStatusItem(icon: "lock.fill", label: "尾门", value: tailgateStatusText, color: colorForStatus(tailgateStatusText))
+                PopupStatusItem(icon: "rectangle.portrait.fill", label: "尾门", value: tailgateStatusText, color: colorForStatus(tailgateStatusText))
             ],
             driving: [
                 PopupStatusItem(icon: "scope", label: "方向盘", value: steeringAngleText, color: AppTheme.accent),

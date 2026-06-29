@@ -245,7 +245,7 @@ struct SettingsVehicleConfigSection: View {
                     }
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: viewModel.autoReadWulingToken ? "arrow.down.circle.fill" : "folder.badge.plus")
+                        Image(systemName: viewModel.autoReadWulingToken ? "arrow.down.circle.fill" : "folder.fill")
                             .font(.system(size: 14, weight: .semibold))
                         Text(viewModel.autoReadWulingToken ? "立即读取五菱 App 凭证" : "选择凭证文件")
                             .font(.system(size: 14, weight: .semibold))
@@ -574,7 +574,7 @@ struct SettingsDiagnosticsSection: View {
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 ToggleRow(
-                    icon: "wrench.and.screwdriver",
+                    icon: "wrench.fill",
                     label: "快捷操作联动状态",
                     isOn: $quickActionsDebugMode
                 )

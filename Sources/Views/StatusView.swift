@@ -171,7 +171,7 @@ struct StatusView: View {
                     }
 
                     if disableRadar {
-                        CardView(title: "雷达已禁用（诊断模式）", icon: "wave.3.slash", iconColor: AppTheme.orange) {
+                        CardView(title: "雷达已禁用（诊断模式）", icon: "antenna.radiowaves.left.and.right.slash", iconColor: AppTheme.orange) {
                             Text("已通过诊断开关关闭雷达，以便隔离内存问题。")
                                 .font(.system(size: 13))
                                 .foregroundColor(.secondary)
