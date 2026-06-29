@@ -536,34 +536,58 @@ struct VehicleInfoMergedCard: View {
         }
     }
 
-    private var rows: [RowData] {
+    private struct SectionData {
+        let title: String
+        let rows: [RowData]
+    }
+
+    private var batteryLevelText: String {
+        if let value = dashboard.batteryPercentValue { return "\(value)%" }
+        return dashboard.batteryRemainingText
+    }
+
+    private var sections: [SectionData] {
         [
-            RowData("clock.fill",     "更新日期",   dashboard.vehicleInfoUpdatedAtText),
-            RowData("car.fill",       "车型",       dashboard.vehicleName),
-            RowData("info.circle",    "VIN",        dashboard.vinText, mono: true),
-            RowData("person.fill",    "用户ID",     dashboard.userIdText, mono: true),
-            RowData("key.fill",       "钥匙类型",   dashboard.keyTypeText, color: AppTheme.green),
-            RowData("bolt.fill",      "BLE MAC",    dashboard.bleMacText, mono: true, color: AppTheme.accent),
-            RowData("number",         "Key ID",     dashboard.keyIdText, mono: true, color: AppTheme.accent),
-            RowData("lock.fill",      "MasterKey",  dashboard.masterKeyMaskedText, mono: true),
-            RowData("dice.fill",      "Random",     dashboard.randomMaskedText, mono: true),
-            RowData("clock.arrow.circlepath", "有效期至",   dashboard.keyExpiryText, color: AppTheme.green),
+            SectionData(title: "顶部摘要", rows: [
+                RowData("car.fill", "车型", dashboard.vehicleName),
+                RowData("info.circle", "VIN", dashboard.vinText, mono: true),
+                RowData("person.fill", "手机号", dashboard.userIdText, mono: true),
+                RowData("clock.fill", "更新时间", dashboard.vehicleInfoUpdatedAtText)
+            ]),
+            SectionData(title: "状态摘要", rows: [
+                RowData("lock.fill", "车锁", dashboard.lockStatusText, color: statusColor(dashboard.lockStatusText)),
+                RowData("car.fill", "车门", dashboard.doorStatusText, color: statusColor(dashboard.doorStatusText)),
+                RowData("rectangle.split.2x2.fill", "车窗", dashboard.windowStatusText, color: statusColor(dashboard.windowStatusText)),
+                RowData("lock.fill", "尾门", dashboard.tailgateStatusText, color: statusColor(dashboard.tailgateStatusText))
+            ]),
+            SectionData(title: "行驶能耗", rows: [
+                RowData("speedometer", "总里程", dashboard.totalMileageText, mono: true),
+                RowData("calendar", "昨日里程", dashboard.yesterdayMileageText, mono: true),
+                RowData("fuelpump.fill", "平均油耗", dashboard.averageFuelConsumptionText, mono: true, color: AppTheme.orange)
+            ]),
+            SectionData(title: "电池温度", rows: [
+                RowData("battery.100.bolt", "电量", batteryLevelText, mono: true, color: AppTheme.accent),
+                RowData("checkmark.seal.fill", "电池健康", dashboard.batteryHealthPercentText, mono: true, color: AppTheme.green),
+                RowData("bolt.fill", "电压", dashboard.batteryVoltageText, mono: true, color: AppTheme.accent),
+                RowData("car.fill", "小电瓶", dashboard.batteryAuxText, mono: true, color: AppTheme.accent),
+                RowData("thermometer", "车内温度", dashboard.cabinTemperatureText, mono: true, color: AppTheme.orange),
+                RowData("thermometer.medium", "电池温度", dashboard.batteryTemperatureText, mono: true, color: AppTheme.green)
+            ]),
+            SectionData(title: "钥匙信息", rows: [
+                RowData("key.fill", "钥匙类型", dashboard.keyTypeText, color: AppTheme.green),
+                RowData("bolt.fill", "BLE MAC", dashboard.bleMacText, mono: true, color: AppTheme.accent),
+                RowData("number", "Key ID", dashboard.keyIdText, mono: true, color: AppTheme.accent),
+                RowData("clock.arrow.circlepath", "有效期", dashboard.keyExpiryText, color: AppTheme.green)
+            ])
         ]
     }
 
     private var fullText: String {
-        """
-        更新日期: \(dashboard.vehicleInfoUpdatedAtText)
-        车型: \(dashboard.vehicleName)
-        VIN: \(dashboard.vinText)
-        用户ID: \(dashboard.userIdText)
-        钥匙类型: \(dashboard.keyTypeText)
-        BLE MAC: \(dashboard.bleMacText)
-        Key ID: \(dashboard.keyIdText)
-        MasterKey: \(dashboard.masterKeyMaskedText)
-        Random: \(dashboard.randomMaskedText)
-        有效期至: \(dashboard.keyExpiryText)
-        """
+        sections.map { section in
+            let rows = section.rows.map { "\($0.label): \($0.value)" }.joined(separator: "\n")
+            return "【\(section.title)】\n\(rows)"
+        }
+        .joined(separator: "\n\n")
     }
 
     var body: some View {
@@ -572,26 +596,21 @@ struct VehicleInfoMergedCard: View {
                 if isEmbedded {
                     AnyView(
                         CollapsibleCard(
-                            title: "车辆信息",
+                            title: "车辆详情",
                             icon: "car.fill",
                             iconColor: AppTheme.accent,
                             isExpanded: $isExpanded,
                             headerExtra: {
-                                Text("\(rows.count) 项")
+                                Text("\(sections.reduce(0) { $0 + $1.rows.count }) 项")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
                         ) {
-                            rowsContent
+                            sectionsContent
                         }
                     )
                 } else {
-                    AnyView(
-                        VStack(alignment: .leading, spacing: 0) {
-                            rowsContent
-                        }
-                        .padding(.horizontal, 2)
-                    )
+                    AnyView(sectionsContent.padding(.horizontal, 2))
                 }
             }
             .onLongPressGesture(minimumDuration: 0.5) {
@@ -611,34 +630,65 @@ struct VehicleInfoMergedCard: View {
         }
     }
 
-    @ViewBuilder
-    private var rowsContent: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { idx, row in
-                HStack(spacing: 10) {
-                    Image(systemName: row.icon)
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                        .frame(width: 20)
-                    Text(row.label)
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text(row.value)
-                        .font(.system(size: row.mono ? 11 : 13,
-                                      weight: .medium,
-                                      design: row.mono ? .monospaced : .default))
-                        .foregroundColor(row.color)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                }
-                .padding(.vertical, 7)
+    private func statusColor(_ text: String) -> Color {
+        let good = ["全关", "已锁", "已锁车", "正常"]
+        let bad = ["未关", "未锁", "已开", "打开", "异常", "故障"]
+        if good.contains(text) { return AppTheme.green }
+        if bad.contains(text) { return AppTheme.red }
+        return Color.white.opacity(0.45)
+    }
 
-                if idx < rows.count - 1 {
-                    Divider().padding(.leading, 30)
+    @ViewBuilder
+    private var sectionsContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
+                detailSection(title: section.title, rows: section.rows)
+            }
+        }
+    }
+
+    private func detailSection(title: String, rows: [RowData]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.68))
+
+            VStack(spacing: 0) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { idx, row in
+                    HStack(spacing: 10) {
+                        Image(systemName: row.icon)
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
+                            .frame(width: 20)
+                        Text(row.label)
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .frame(width: 68, alignment: .leading)
+                        Spacer(minLength: 8)
+                        Text(row.value)
+                            .font(.system(size: row.mono ? 11 : 13,
+                                          weight: .medium,
+                                          design: row.mono ? .monospaced : .default))
+                            .foregroundColor(row.color)
+                            .multilineTextAlignment(.trailing)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.64)
+                    }
+                    .padding(.vertical, 7)
+
+                    if idx < rows.count - 1 {
+                        Divider().padding(.leading, 30)
+                    }
                 }
             }
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.045))
+        )
     }
 }
 
