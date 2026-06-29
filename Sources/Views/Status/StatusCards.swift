@@ -702,7 +702,9 @@ struct MQTTInfoMergedCard: View {
                     Text(row.label)
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
-                    Spacer(minLength: 12)
+                        .lineLimit(1)
+                        .frame(width: 72, alignment: .leading)
+                    Spacer(minLength: 8)
                     Text(row.value)
                         .font(.system(size: row.mono ? 11 : 13,
                                       weight: .medium,
@@ -710,8 +712,7 @@ struct MQTTInfoMergedCard: View {
                         .foregroundColor(row.color)
                         .multilineTextAlignment(.trailing)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .layoutPriority(1)
+                        .minimumScaleFactor(0.64)
                 }
                 .padding(.vertical, 7)
 

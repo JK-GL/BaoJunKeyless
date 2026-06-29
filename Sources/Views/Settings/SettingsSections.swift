@@ -153,34 +153,28 @@ struct SettingsVehicleConfigSection: View {
                                 .foregroundStyle(AppTheme.orange)
                         }
 
-                        VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text(viewModel.isConfigured ? viewModel.currentVINText : "未配置车辆")
                                 .font(.system(size: 16, weight: .semibold, design: viewModel.isConfigured ? .monospaced : .default))
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.78)
 
-                            HStack(spacing: 8) {
-                                infoPill(icon: "person.fill", text: viewModel.currentUserText, mono: true)
-                                infoPill(icon: "doc.text.fill", text: viewModel.tokenSourceSummary)
-                            }
+                            Text(viewModel.isConfigured ? "车辆已配置" : "等待配置车辆凭证")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(Color.white.opacity(0.52))
+                                .lineLimit(1)
                         }
                         .layoutPriority(1)
 
                         Spacer(minLength: 0)
 
-                        VStack(spacing: 4) {
-                            ZStack {
-                                Circle()
-                                    .fill(statusBadgeColor.opacity(viewModel.isConfigured ? 0.18 : 0.12))
-                                    .frame(width: 34, height: 34)
-                                Image(systemName: viewModel.isConfigured ? "checkmark.seal.fill" : "exclamationmark.circle.fill")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(statusBadgeColor)
-                            }
-
-                            Text(viewModel.statusBadgeText)
-                                .font(.system(size: 11, weight: .semibold))
+                        ZStack {
+                            Circle()
+                                .fill(statusBadgeColor.opacity(viewModel.isConfigured ? 0.18 : 0.12))
+                                .frame(width: 36, height: 36)
+                            Image(systemName: viewModel.isConfigured ? "checkmark.seal.fill" : "exclamationmark.circle.fill")
+                                .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(statusBadgeColor)
                         }
                         .accessibilityLabel(viewModel.statusBadgeText)
@@ -196,7 +190,28 @@ struct SettingsVehicleConfigSection: View {
                         .stroke(Color.white.opacity(0.06), lineWidth: 1)
                 )
 
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .center, spacing: 10) {
+                        Image(systemName: "doc.text.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(AppTheme.orange)
+                            .frame(width: 28, height: 28)
+                            .background(
+                                Circle()
+                                    .fill(AppTheme.orange.opacity(0.14))
+                            )
+
+                        Text("导入方式")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white)
+
+                        Spacer(minLength: 8)
+
+                        infoPill(icon: "doc.text.fill", text: viewModel.tokenSourceSummary)
+                    }
+
+                    Divider().background(Color.white.opacity(0.08))
+
                     HStack(alignment: .center, spacing: 10) {
                         Image(systemName: viewModel.autoReadWulingToken ? "bolt.horizontal.circle.fill" : "folder.fill")
                             .font(.system(size: 15, weight: .semibold))
@@ -250,65 +265,97 @@ struct SettingsVehicleConfigSection: View {
                         )
                     }
                     .buttonStyle(.plain)
-                }
-                .padding(14)
-                .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.white.opacity(0.04))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                )
 
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 8) {
-                        Text("Token")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.white.opacity(0.55))
-                        Spacer()
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Text("Token")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color.white.opacity(0.55))
+                            Spacer()
+                            Button {
+                                viewModel.fetchVehicleInfo { toast, shouldConnect in
+                                    toastText = toast
+                                    if shouldConnect { onSave() }
+                                }
+                            } label: {
+                                HStack(spacing: 5) {
+                                    if viewModel.isFetching { ProgressView().scaleEffect(0.7) }
+                                    Text(viewModel.isFetching ? "查询中…" : "查询车辆信息")
+                                        .font(.system(size: 12.5, weight: .semibold))
+                                }
+                                .foregroundStyle(AppTheme.accent)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(
+                                    Capsule()
+                                        .fill(AppTheme.accent.opacity(0.10))
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(viewModel.accessTokenDraft.isEmpty || viewModel.isFetching)
+                        }
+
+                        TextField("粘贴或自动读取 Token", text: Binding(
+                            get: { viewModel.tokenFieldDisplayText },
+                            set: { viewModel.accessTokenDraft = $0 }
+                        ))
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+                        .focused($isTokenFieldFocused)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 14, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(Color.white.opacity(0.06))
+                        )
+                        .onTapGesture {
+                            withAnimation(.easeOut(duration: 0.15)) {
+                                viewModel.beginTokenEditing()
+                                isTokenFieldFocused = true
+                            }
+                        }
+                        .onChange(of: isTokenFieldFocused) { focused in
+                            if !focused {
+                                viewModel.endTokenEditing()
+                            }
+                        }
+                    }
+
+                    HStack(spacing: 12) {
                         Button {
-                            viewModel.fetchVehicleInfo { toast, shouldConnect in
+                            viewModel.saveManualConfig { toast, shouldConnect in
                                 toastText = toast
                                 if shouldConnect { onSave() }
                             }
+                            isTokenFieldFocused = false
                         } label: {
-                            HStack(spacing: 5) {
-                                if viewModel.isFetching { ProgressView().scaleEffect(0.7) }
-                                Text(viewModel.isFetching ? "查询中…" : "查询车辆信息")
-                                    .font(.system(size: 12.5, weight: .semibold))
-                            }
-                            .foregroundStyle(AppTheme.accent)
+                            Text("保存")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.black)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 11)
+                                .background(Capsule().fill((viewModel.accessTokenDraft.isEmpty || viewModel.vinDraft.isEmpty) ? Color.white.opacity(0.3) : AppTheme.green))
                         }
-                        .disabled(viewModel.accessTokenDraft.isEmpty || viewModel.isFetching)
-                    }
+                        .buttonStyle(.plain)
+                        .disabled(viewModel.accessTokenDraft.isEmpty || viewModel.vinDraft.isEmpty || viewModel.isFetching)
 
-                    TextField("粘贴或自动读取 Token", text: Binding(
-                        get: { viewModel.tokenFieldDisplayText },
-                        set: { viewModel.accessTokenDraft = $0 }
-                    ))
-                    .textInputAutocapitalization(.never)
-                    .disableAutocorrection(true)
-                    .focused($isTokenFieldFocused)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 14, design: .monospaced))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(Color.white.opacity(0.06))
-                    )
-                    .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.15)) {
-                            viewModel.beginTokenEditing()
-                            isTokenFieldFocused = true
+                        Button {
+                            viewModel.clear { toast, _ in
+                                toastText = toast
+                            }
+                            isTokenFieldFocused = false
+                        } label: {
+                            Text("清除")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(.red.opacity(0.8))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 11)
+                                .background(Capsule().stroke(Color.red.opacity(0.3), lineWidth: 1))
                         }
-                    }
-                    .onChange(of: isTokenFieldFocused) { focused in
-                        if !focused {
-                            viewModel.endTokenEditing()
-                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(14)
@@ -320,40 +367,6 @@ struct SettingsVehicleConfigSection: View {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .stroke(Color.white.opacity(0.06), lineWidth: 1)
                 )
-
-                HStack(spacing: 12) {
-                    Button {
-                        viewModel.saveManualConfig { toast, shouldConnect in
-                            toastText = toast
-                            if shouldConnect { onSave() }
-                        }
-                        isTokenFieldFocused = false
-                    } label: {
-                        Text("保存")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.black)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(Capsule().fill((viewModel.accessTokenDraft.isEmpty || viewModel.vinDraft.isEmpty) ? Color.white.opacity(0.3) : AppTheme.green))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(viewModel.accessTokenDraft.isEmpty || viewModel.vinDraft.isEmpty || viewModel.isFetching)
-
-                    Button {
-                        viewModel.clear { toast, _ in
-                            toastText = toast
-                        }
-                        isTokenFieldFocused = false
-                    } label: {
-                        Text("清除")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.red.opacity(0.8))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(Capsule().stroke(Color.red.opacity(0.3), lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                }
             }
         }
         .onAppear {
@@ -386,7 +399,7 @@ struct SettingsVehicleConfigSection: View {
             if viewModel.showingVehicleInfoConfirm {
                 CustomAlertView(
                     title: viewModel.queriedVehicleName.isEmpty ? "车辆信息确认" : viewModel.queriedVehicleName,
-                    message: "VIN：\(viewModel.vinDraft)\n用户：\(viewModel.phoneDraft.isEmpty ? "--" : viewModel.phoneDraft)",
+                    message: "VIN：\(viewModel.vinDraft)",
                     confirmTitle: "确认",
                     confirmColor: .green,
                     onCancel: { withAnimation(.easeOut(duration: 0.2)) { viewModel.showingVehicleInfoConfirm = false } },
