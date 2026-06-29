@@ -384,18 +384,66 @@ struct SettingsVehicleConfigSection: View {
         }
         .overlay {
             if viewModel.showingVehicleInfoConfirm {
-                CustomAlertView(
-                    title: viewModel.queriedVehicleName.isEmpty ? "车辆信息确认" : viewModel.queriedVehicleName,
-                    message: "VIN：\(viewModel.vinDraft)",
-                    confirmTitle: "确认",
-                    confirmColor: .green,
-                    onCancel: { withAnimation(.easeOut(duration: 0.2)) { viewModel.showingVehicleInfoConfirm = false } },
-                    onConfirm: { withAnimation(.easeOut(duration: 0.2)) { viewModel.showingVehicleInfoConfirm = false } }
-                )
+                FloatingPopupCard(
+                    icon: "person.text.rectangle.fill",
+                    iconColor: AppTheme.green,
+                    title: "用户凭证确认",
+                    maxWidth: 332,
+                    maxContentHeight: 260
+                ) {
+                    credentialConfirmContent
+                } actions: {
+                    FloatingPopupPrimaryButton(title: "确认", color: AppTheme.green) {
+                        withAnimation(.easeOut(duration: 0.2)) { viewModel.showingVehicleInfoConfirm = false }
+                    }
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .transition(.scale.combined(with: .opacity))
             }
         }
+    }
+
+    @ViewBuilder
+    private var credentialConfirmContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            credentialConfirmRow(icon: "info.circle", label: "VIN", value: viewModel.vinDraft.isEmpty ? "--" : viewModel.vinDraft, mono: true)
+            credentialDivider()
+            credentialConfirmRow(icon: "phone.fill", label: "手机号", value: viewModel.phoneDraft.isEmpty ? "--" : viewModel.phoneDraft, mono: true)
+            credentialDivider()
+            credentialConfirmRow(icon: "doc.text.fill", label: "导入方式", value: viewModel.tokenSourceSummary)
+            credentialDivider()
+            credentialConfirmRow(icon: "key.fill", label: "Token", value: viewModel.tokenFieldDisplayText, mono: true)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.045))
+        )
+    }
+
+    private func credentialConfirmRow(icon: String, label: String, value: String, mono: Bool = false) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 13))
+                .foregroundStyle(Color.white.opacity(0.48))
+                .frame(width: 20)
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundStyle(Color.white.opacity(0.58))
+                .frame(width: 58, alignment: .leading)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.system(size: mono ? 11 : 13, weight: .medium, design: mono ? .monospaced : .default))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.64)
+        }
+        .padding(.vertical, 8)
+    }
+
+    private func credentialDivider() -> some View {
+        Divider().padding(.leading, 30)
     }
 
     @ViewBuilder
