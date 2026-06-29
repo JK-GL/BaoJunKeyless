@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var isCrashLogExpanded = false
     @State private var crashLogText: String = ""
     @State private var sharePayload: SharePayload?
+    @State private var credentialConfirmPayload: CredentialConfirmPayload?
 
     private var currentTheme: AppThemeConfiguration {
         theme.current
@@ -41,7 +42,12 @@ struct SettingsView: View {
                 SettingsVehicleConfigSection(
                     vehicleCredentials: vehicleCredentials,
                     toastText: $toastText,
-                    onSave: connectMQTTIfNeeded
+                    onSave: connectMQTTIfNeeded,
+                    onCredentialConfirm: { payload in
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            credentialConfirmPayload = payload
+                        }
+                    }
                 )
 
                 SettingsFuelDisplaySection()
@@ -96,6 +102,23 @@ struct SettingsView: View {
                 .transition(.scale.combined(with: .opacity))
             }
         }
+        .overlay {
+            if let payload = credentialConfirmPayload {
+                Color.clear
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.2)) { credentialConfirmPayload = nil }
+                    }
+
+                SettingsCredentialConfirmPopup(payload: payload) {
+                    withAnimation(.easeOut(duration: 0.2)) { credentialConfirmPayload = nil }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .transition(.scale.combined(with: .opacity))
+                .zIndex(10)
+            }
+        }
         .overlay(alignment: .bottom) {
             if let text = toastText {
                 ToastView(text: text)
@@ -109,6 +132,7 @@ struct SettingsView: View {
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showingResetAlert)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: credentialConfirmPayload != nil)
         .onChange(of: vehicleCredentials.accessToken) { _ in connectMQTTIfNeeded() }
         .onChange(of: vehicleCredentials.vin) { _ in connectMQTTIfNeeded() }
     }

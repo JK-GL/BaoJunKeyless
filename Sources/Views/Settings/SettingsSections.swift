@@ -127,11 +127,18 @@ struct SettingsVehicleConfigSection: View {
     @FocusState private var isTokenFieldFocused: Bool
     @Binding var toastText: String?
     let onSave: () -> Void
+    let onCredentialConfirm: (CredentialConfirmPayload) -> Void
 
-    init(vehicleCredentials: VehicleCredentialsStore, toastText: Binding<String?>, onSave: @escaping () -> Void) {
+    init(
+        vehicleCredentials: VehicleCredentialsStore,
+        toastText: Binding<String?>,
+        onSave: @escaping () -> Void,
+        onCredentialConfirm: @escaping (CredentialConfirmPayload) -> Void
+    ) {
         self.vehicleCredentials = vehicleCredentials
         self._toastText = toastText
         self.onSave = onSave
+        self.onCredentialConfirm = onCredentialConfirm
         self._viewModel = StateObject(wrappedValue: VehicleConfigViewModel(credentials: vehicleCredentials))
     }
 
@@ -228,7 +235,10 @@ struct SettingsVehicleConfigSection: View {
                     if viewModel.autoReadWulingToken {
                         viewModel.autoImportFromWulingApp { toast, shouldConnect in
                             toastText = toast
-                            if shouldConnect { onSave() }
+                            if shouldConnect {
+                                presentCredentialConfirm()
+                                onSave()
+                            }
                         }
                     } else {
                         viewModel.showingFilePicker = true
@@ -263,7 +273,10 @@ struct SettingsVehicleConfigSection: View {
                         Button {
                             viewModel.fetchVehicleInfo { toast, shouldConnect in
                                 toastText = toast
-                                if shouldConnect { onSave() }
+                                if shouldConnect {
+                                    presentCredentialConfirm()
+                                    onSave()
+                                }
                             }
                         } label: {
                             HStack(spacing: 5) {
@@ -316,7 +329,10 @@ struct SettingsVehicleConfigSection: View {
                     Button {
                         viewModel.saveManualConfig { toast, shouldConnect in
                             toastText = toast
-                            if shouldConnect { onSave() }
+                            if shouldConnect {
+                                presentCredentialConfirm()
+                                onSave()
+                            }
                         }
                         isTokenFieldFocused = false
                     } label: {
@@ -367,7 +383,10 @@ struct SettingsVehicleConfigSection: View {
                 if !vehicleCredentials.accessToken.isEmpty {
                     viewModel.fetchVehicleInfo { toast, shouldConnect in
                         toastText = toast
-                        if shouldConnect { onSave() }
+                        if shouldConnect {
+                            presentCredentialConfirm()
+                            onSave()
+                        }
                     }
                 }
             })
@@ -377,68 +396,18 @@ struct SettingsVehicleConfigSection: View {
             SimpleDocumentPicker { url in
                 viewModel.importTokenFromSelectedFile(url: url) { toast, shouldConnect in
                     toastText = toast
-                    if shouldConnect { onSave() }
+                    if shouldConnect {
+                        presentCredentialConfirm()
+                        onSave()
+                    }
                 }
                 viewModel.showingFilePicker = false
             }
         }
-        .overlay {
-            if viewModel.showingVehicleInfoConfirm {
-                FloatingPopupCard(
-                    icon: "person.text.rectangle.fill",
-                    iconColor: AppTheme.green,
-                    title: "用户凭证",
-                    maxWidth: 332,
-                    maxContentHeight: 260,
-                    contentScrollEnabled: false
-                ) {
-                    credentialConfirmContent
-                } actions: {
-                    FloatingPopupPrimaryButton(title: "确认", color: AppTheme.green) {
-                        withAnimation(.easeOut(duration: 0.2)) { viewModel.showingVehicleInfoConfirm = false }
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .transition(.scale.combined(with: .opacity))
-            }
-        }
     }
 
-    @ViewBuilder
-    private var credentialConfirmContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            credentialConfirmRow(icon: "info.circle", label: "VIN", value: viewModel.vinDraft.isEmpty ? "--" : viewModel.vinDraft, mono: true)
-            credentialDivider()
-            credentialConfirmRow(icon: "phone.fill", label: "手机号", value: viewModel.phoneDraft.isEmpty ? "--" : viewModel.phoneDraft, mono: true)
-            credentialDivider()
-            credentialConfirmRow(icon: "key.fill", label: "Token", value: viewModel.tokenFieldDisplayText, mono: true)
-        }
-        .padding(.horizontal, 2)
-    }
-
-    private func credentialConfirmRow(icon: String, label: String, value: String, mono: Bool = false) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
-                .frame(width: 20)
-            Text(label)
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-                .frame(width: 68, alignment: .leading)
-            Spacer(minLength: 8)
-            Text(value)
-                .font(.system(size: mono ? 11 : 13, weight: .medium, design: mono ? .monospaced : .default))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.64)
-        }
-        .padding(.vertical, 8)
-    }
-
-    private func credentialDivider() -> some View {
-        Divider().padding(.leading, 30)
+    private func presentCredentialConfirm() {
+        onCredentialConfirm(viewModel.credentialConfirmPayload)
     }
 
     @ViewBuilder

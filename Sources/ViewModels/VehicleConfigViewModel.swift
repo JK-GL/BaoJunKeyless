@@ -9,7 +9,6 @@ final class VehicleConfigViewModel: ObservableObject {
     @Published var isFetching = false
     @Published var showingImportGuide = false
     @Published var showingFilePicker = false
-    @Published var showingVehicleInfoConfirm = false
     @Published var queriedVehicleName = ""
     @Published var isEditingToken = false
 
@@ -43,6 +42,14 @@ final class VehicleConfigViewModel: ObservableObject {
     var tokenFieldDisplayText: String {
         let source = isEditingToken ? accessTokenDraft : (accessTokenDraft.isEmpty ? credentials.accessToken : accessTokenDraft)
         return isEditingToken ? source : maskToken(source)
+    }
+
+    var credentialConfirmPayload: CredentialConfirmPayload {
+        CredentialConfirmPayload(
+            vin: vinDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "--" : vinDraft,
+            phone: phoneDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "--" : phoneDraft,
+            tokenMasked: tokenFieldDisplayText
+        )
     }
 
     var currentVINText: String {
@@ -131,7 +138,6 @@ final class VehicleConfigViewModel: ObservableObject {
                     self.credentials.tokenSourceLabel = self.credentials.autoReadWulingToken ? "五菱 App 自动读取" : "手动输入 Token"
                 }
                 self.queriedVehicleName = "车辆信息确认"
-                self.showingVehicleInfoConfirm = true
                 onComplete(successToast, true)
             }
         }
