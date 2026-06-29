@@ -247,7 +247,7 @@ struct SettingsVehicleConfigSection: View {
                                     RoundedRectangle(cornerRadius: 15, style: .continuous)
                                         .stroke(AppTheme.accent.opacity(0.22), lineWidth: 1)
                                 )
-                        }
+                        )
                     }
                     .buttonStyle(.plain)
                 }
