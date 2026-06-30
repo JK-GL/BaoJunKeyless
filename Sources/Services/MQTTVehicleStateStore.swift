@@ -57,7 +57,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     private var mqtt: CocoaMQTT?
     private var credentials: SGMWApiClient.MQTTCredentials?
-    private var credentialsStore: VehicleCredentialsStore
+    var credentialsStore: VehicleCredentialsStore
 
     private var lastMqttFields: [String: String] = [:]
     private var httpTimer: Timer?
@@ -151,7 +151,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         }
     }
 
-    private func persistDisplayCache() {
+    func persistDisplayCache() {
         if cachedLatitudeGcj != 0, cachedLongitudeGcj != 0 {
             displayCacheStore.setCoordinate(latitudeGcj: cachedLatitudeGcj, longitudeGcj: cachedLongitudeGcj)
         }
@@ -265,7 +265,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     // MARK: - HTTP 轮询（委托给 RefreshService）
 
-    private func startHTTPPolling(immediate: Bool) {
+    func startHTTPPolling(immediate: Bool) {
         httpTimer?.invalidate()
         let timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.pollHTTPOnce()
@@ -350,11 +350,11 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     // MARK: - HTTP/MQTT 映射
 
-    private func mapHTTPToVehicleState(_ s: [String: String]) -> VehicleState {
+    func mapHTTPToVehicleState(_ s: [String: String]) -> VehicleState {
         VehicleStatusMapper.httpState(from: s, base: state)
     }
 
-    private func mapHTTPToDashboard(_ s: [String: String]) -> VehicleDashboardState {
+    func mapHTTPToDashboard(_ s: [String: String]) -> VehicleDashboardState {
         VehicleStatusMapper.httpDashboard(from: s, base: dashboard)
     }
 
@@ -366,7 +366,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         VehicleStatusMapper.mqttDashboard(from: s, base: dashboard)
     }
 
-    private func mergeHTTPBaseState(newState: VehicleState, dashboard newDashboard: VehicleDashboardState) {
+    func mergeHTTPBaseState(newState: VehicleState, dashboard newDashboard: VehicleDashboardState) {
         let merged = VehicleStateMerger.mergeHTTPBase(current: state, newState: newState)
         apply(merged)
         applyDashboard(newDashboard)
