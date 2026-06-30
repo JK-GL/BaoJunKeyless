@@ -34,18 +34,18 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         case error
     }
 
-    @Published private(set) var bleStatus: LiveBLEStatus = .disconnected
-    @Published private(set) var mqttStatus: LiveMQTTStatus = .disconnected
-    @Published private(set) var authStatus: StatusAuthState = .expired("未登录")
-    @Published private(set) var cachedLatitudeGcj: Double = 0
-    @Published private(set) var cachedLongitudeGcj: Double = 0
-    @Published private(set) var cachedAddress: String = ""
-    @Published private(set) var liveLatitudeGcj: Double = 0
-    @Published private(set) var liveLongitudeGcj: Double = 0
-    @Published private(set) var liveAddress: String = ""
-    @Published private(set) var latestBleKeyInfo: [String: String] = [:]
-    @Published private(set) var tokenSourcePath: String = ""
-    @Published private(set) var tokenSourceLabel: String = ""
+    @Published var bleStatus: LiveBLEStatus = .disconnected
+    @Published var mqttStatus: LiveMQTTStatus = .disconnected
+    @Published var authStatus: StatusAuthState = .expired("未登录")
+    @Published var cachedLatitudeGcj: Double = 0
+    @Published var cachedLongitudeGcj: Double = 0
+    @Published var cachedAddress: String = ""
+    @Published var liveLatitudeGcj: Double = 0
+    @Published var liveLongitudeGcj: Double = 0
+    @Published var liveAddress: String = ""
+    @Published var latestBleKeyInfo: [String: String] = [:]
+    @Published var tokenSourcePath: String = ""
+    @Published var tokenSourceLabel: String = ""
 
     var displayLatitudeGcj: Double { liveLatitudeGcj != 0 ? liveLatitudeGcj : cachedLatitudeGcj }
     var displayLongitudeGcj: Double { liveLongitudeGcj != 0 ? liveLongitudeGcj : cachedLongitudeGcj }
@@ -61,8 +61,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     private var lastMqttFields: [String: String] = [:]
     private var httpTimer: Timer?
-    private var lastMQTTUpdate: Date?
-    private var lastHTTPUpdate: Date?
+    var lastMQTTUpdate: Date?
+    var lastHTTPUpdate: Date?
     private var isConnecting = false
 
     private let locationResolver = LocationResolver.shared
@@ -263,7 +263,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         start(with: credentialsStore)
     }
 
-    // MARK: - HTTP 轮询
+    // MARK: - HTTP 轮询（委托给 RefreshService）
 
     private func startHTTPPolling(immediate: Bool) {
         httpTimer?.invalidate()
@@ -275,55 +275,13 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     private func pollHTTPOnce() {
-        let store = credentialsStore
-        let token = store.accessToken
-        guard !token.isEmpty else { return }
-
-        SGMWApiClient.shared.queryVehicleStatusResult(accessToken: token) { [weak self] result in
-            guard let self else { return }
-            DispatchQueue.main.async {
-                guard case .success(let payload) = result else { return }
-                self.lastHTTPUpdate = Date()
-                let newState = self.mapHTTPToVehicleState(payload.carStatus)
-                let newDashboard = self.mapHTTPToDashboard(payload.carStatus)
-                let shouldUseHTTP = self.lastMQTTUpdate == nil || Date().timeIntervalSince(self.lastMQTTUpdate!) >= 60
-
-                // 基础状态永远以 HTTP 回填（特别是经纬度/电量/续航/档位）
-                self.mergeHTTPBaseState(newState: newState, dashboard: newDashboard)
-
-                if shouldUseHTTP {
-                    self.apply(newState)
-                    self.applyDashboard(newDashboard)
-                }
-
-                self.applyHTTPMeta(carInfo: payload.carInfo, carStatus: payload.carStatus)
-                CrashLogger.shared.mark("HTTP", "status updated")
-            }
-        }
+        HTTPRefreshService.shared.pollOnce(store: self)
     }
 
+    // MARK: - BLE 钥匙查询（精简包装）
+
     private func fetchBleKeyInfo() {
-        let store = credentialsStore
-        guard !store.accessToken.isEmpty, !store.vin.isEmpty, !store.phone.isEmpty else { return }
-        SGMWApiClient.shared.queryBleKeyResult(accessToken: store.accessToken, vin: store.vin, phone: store.phone) { [weak self] result in
-            guard let self else { return }
-            DispatchQueue.main.async {
-                guard case .success(let info) = result else { return }
-                self.latestBleKeyInfo = info
-                if self.bleStatus != .connected {
-                    self.bleStatus = .disconnected
-                }
-                var dash = self.dashboard
-                dash.bleMacText = info["bleMac"] ?? info["macAddress"] ?? dash.bleMacText
-                dash.keyIdText = info["keyId"] ?? dash.keyIdText
-                dash.keyTypeText = info["keyType"] ?? dash.keyTypeText
-                dash.masterKeyMaskedText = maskHex(info["masterKey"], visiblePrefix: 4, visibleSuffix: 4)
-                dash.randomMaskedText = maskHex(info["keyMasterRandom"] ?? info["random"], visiblePrefix: 4, visibleSuffix: 4)
-                dash.keyExpiryText = info["expiredTime"] ?? info["expireTime"] ?? info["endTime"] ?? dash.keyExpiryText
-                dash.vehicleInfoUpdatedAtText = formatDateTime(Date())
-                self.applyDashboard(dash)
-            }
-        }
+        HTTPRefreshService.shared.fetchBleKeyInfo(store: self)
     }
 
     // MARK: - MQTT
@@ -423,39 +381,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     private func applyHTTPMeta(carInfo: [String: String], carStatus: [String: String]) {
-        if let coordinate = VehicleHTTPMetaMapper.coordinate(from: carStatus) {
-            liveLatitudeGcj = coordinate.latGcj
-            liveLongitudeGcj = coordinate.lngGcj
-            cachedLatitudeGcj = coordinate.latGcj
-            cachedLongitudeGcj = coordinate.lngGcj
-            if let addressHint = coordinate.addressHint, !addressHint.isEmpty {
-                liveAddress = addressHint
-                cachedAddress = addressHint
-                persistDisplayCache()
-            } else {
-                persistDisplayCache()
-            }
-            locationResolver.getAddress(gcjLat: coordinate.latGcj, gcjLng: coordinate.lngGcj, address: coordinate.addressHint, amapWebKey: addressSettings.amapWebKey) { [weak self] resolved in
-                guard let self, let resolved else { return }
-                DispatchQueue.main.async {
-                    self.liveAddress = resolved
-                    self.cachedAddress = resolved
-                    self.persistDisplayCache()
-                }
-            }
-        }
-
-        let dash = VehicleHTTPMetaMapper.dashboard(base: dashboard, carInfo: carInfo)
-        if VehicleHTTPMetaMapper.supportsMQTT(carInfo: carInfo) {
-            authStatus = .valid
-        }
-        if !latestBleKeyInfo.isEmpty, bleStatus == .connecting {
-            bleStatus = .disconnected
-        }
-        applyDashboard(dash)
-
-        let profile = VehicleHTTPMetaMapper.profile(carInfo: carInfo, carStatus: carStatus)
-        applyProfile(profile)
+        HTTPRefreshService.shared.applyHTTPMeta(carInfo: carInfo, carStatus: carStatus, store: self)
     }
 
     // MARK: - MQTT 显示信息
