@@ -313,10 +313,10 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 dash.bleMacText = info["bleMac"] ?? info["macAddress"] ?? dash.bleMacText
                 dash.keyIdText = info["keyId"] ?? dash.keyIdText
                 dash.keyTypeText = info["keyType"] ?? dash.keyTypeText
-                dash.masterKeyMaskedText = self.maskHex(info["masterKey"], visiblePrefix: 4, visibleSuffix: 4)
-                dash.randomMaskedText = self.maskHex(info["keyMasterRandom"] ?? info["random"], visiblePrefix: 4, visibleSuffix: 4)
+                dash.masterKeyMaskedText = maskHex(info["masterKey"], visiblePrefix: 4, visibleSuffix: 4)
+                dash.randomMaskedText = maskHex(info["keyMasterRandom"] ?? info["random"], visiblePrefix: 4, visibleSuffix: 4)
                 dash.keyExpiryText = info["expiredTime"] ?? info["expireTime"] ?? info["endTime"] ?? dash.keyExpiryText
-                dash.vehicleInfoUpdatedAtText = self.formatDateTime(Date())
+                dash.vehicleInfoUpdatedAtText = formatDateTime(Date())
                 self.applyDashboard(dash)
             }
         }
@@ -433,13 +433,13 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             d.fuelFullRangeKm = max(fuelRange, Int(Double(fuelRange) / max(Double(fuelPercent), 1) * 100))
         }
 
-        d.batteryRemainingText = displayBatteryRemaining(s)
-        d.batteryHealthPercentText = displayBatteryHealth(s)
+        d.batteryRemainingText = displayBatteryRemaining(s, fallback: dashboard.batteryRemainingText)
+        d.batteryHealthPercentText = displayBatteryHealth(s, fallback: dashboard.batteryHealthPercentText)
         d.batteryVoltageText = displayValue(s["voltage"], suffix: "V")
         d.batteryAuxText = displayValue(s["lowBatVol"], suffix: "V")
 
         d.cabinTemperatureText = displayValue(s["interiorTemperature"], suffix: "°C")
-        d.acTemperatureText = displayACTemperature(s)
+        d.acTemperatureText = displayACTemperature(s, fallback: dashboard.acTemperatureText)
         d.batteryTemperatureText = displayValue(s["batAvgTemp"] ?? s["batMinTemp"], suffix: "°C")
         d.motorTemperatureText = displayValue(s["tmActTemp"], suffix: "°C")
         d.inverterTemperatureText = displayValue(s["invActTemp"], suffix: "°C")
@@ -465,16 +465,16 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         d.brakePercentText = displayValue(s["brakPedalPos"], suffix: "%")
         d.totalMileageText = displayValue(s["mileage"], suffix: "km")
         d.yesterdayMileageText = displayValue(s["yesterMileage"], suffix: "km")
-        d.fuelRemainingText = displayFuelRemaining(s)
+        d.fuelRemainingText = displayFuelRemaining(s, fallback: dashboard.fuelRemainingText)
         d.averageFuelConsumptionText = displayValue(s["avgFuel"], suffix: "L/100km")
-        d.averagePowerConsumptionText = displayPowerConsumption(s)
+        d.averagePowerConsumptionText = displayPowerConsumption(s, fallback: dashboard.averagePowerConsumptionText)
 
-        d.lowBeamText = boolText(s["dipHeadLight"])
-        d.highBeamText = boolText(s["lowBeamLight"])
-        d.leftTurnText = boolText(s["leftTurnLight"])
-        d.rightTurnText = boolText(s["rightTurnLight"])
-        d.positionLightText = boolText(s["positionLight"])
-        d.frontFogText = boolText(s["frontFogLight"])
+        d.lowBeamText = displayBool(s["dipHeadLight"])
+        d.highBeamText = displayBool(s["lowBeamLight"])
+        d.leftTurnText = displayBool(s["leftTurnLight"])
+        d.rightTurnText = displayBool(s["rightTurnLight"])
+        d.positionLightText = displayBool(s["positionLight"])
+        d.frontFogText = displayBool(s["frontFogLight"])
         return d
     }
 
@@ -611,7 +611,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         applyProfile(profile)
     }
 
-    // MARK: - 解析工具
+    // MARK: - MQTT 显示信息
 
     var mqttClientId: String { credentials?.clientId ?? "" }
     var mqttBrokerDisplayText: String {
@@ -628,157 +628,36 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         return VehicleTokenSource(label: label.isEmpty ? "已配置凭据" : label, path: path)
     }
 
-    private func parseLocked(_ raw: String?) -> Bool? {
-        guard let raw else { return nil }
-        if raw == "0" { return true }
-        if raw == "1" { return false }
-        return nil
-    }
+    // MARK: - MQTT Delegate 事件入口
 
-    private func parseOpen(_ raw: String?) -> Bool? {
-        guard let raw else { return nil }
-        if raw == "0" { return false }
-        if raw == "1" { return true }
-        return nil
-    }
-
-    private func parseDoorClosed(_ s: [String: String]) -> Bool? {
-        if let total = parseOpen(s["doorOpenStatus"]) { return !total }
-        let values = [s["door1OpenStatus"], s["door2OpenStatus"], s["door3OpenStatus"], s["door4OpenStatus"]]
-        let parsed = values.compactMap(parseOpen)
-        guard !parsed.isEmpty else { return nil }
-        return !parsed.contains(true)
-    }
-
-    private func parseWindowsClosed(_ s: [String: String]) -> Bool? {
-        if let total = parseOpen(s["windowStatus"]) { return !total }
-        let values = [s["window1Status"], s["window2Status"], s["window3Status"], s["window4Status"]]
-        let parsed = values.compactMap(parseOpen)
-        guard !parsed.isEmpty else { return nil }
-        return !parsed.contains(true)
-    }
-
-    private func parseACStatus(_ raw: String?) -> Bool? {
-        guard let raw else { return nil }
-        switch raw {
-        case "0": return false
-        case "1", "2": return true
-        default: return nil
+    func handleMQTTConnectAck(_ mqtt: CocoaMQTT, ack: CocoaMQTTConnAck) {
+        if ack == .accept {
+            mqttStatus = .connected
+            CrashLogger.shared.mark("MQTT", "connected (ack=\(ack.rawValue))")
+            guard let creds = credentials else { return }
+            for topic in creds.topics {
+                mqtt.subscribe(topic, qos: .qos1)
+            }
+        } else {
+            mqttStatus = .error
+            CrashLogger.shared.mark("MQTT", "connect rejected: \(ack.rawValue)")
         }
     }
 
-    private func parseGear(_ raw: String?) -> VehicleGear? {
-        guard let raw else { return nil }
-        switch raw {
-        case "10": return .p
-        case "14": return .r
-        case "13": return .n
-        case "12": return .d
-        default: return .unknown
+    func handleMQTTReceivedMessage(_ message: CocoaMQTTMessage) {
+        let payload = Data(message.payload)
+        if message.topic.hasSuffix("/vehicle/app/status") {
+            handleVehicleStatus(payload)
         }
     }
 
-    private func parsePowerState(_ s: [String: String]) -> VehiclePowerState? {
-        if let engine = s["engineStatus"] {
-            if engine == "1" { return .ready }
-            if engine == "0" { return .off }
-        }
-        return nil
+    func handleMQTTSubscribedTopics(success: NSDictionary, failed: [String]) {
+        CrashLogger.shared.mark("MQTT", "subscribed \(success.count) topics, failed \(failed.count)")
     }
 
-    private func parsePhysicalKeyPosition(_ raw: String?) -> PhysicalKeyPosition {
-        guard let raw else { return .unknown }
-        switch raw {
-        case "0": return .farAway
-        case "1": return .outside
-        case "2": return .inside
-        default: return .unknown
-        }
-    }
-
-    private func maskHex(_ raw: String?, visiblePrefix: Int, visibleSuffix: Int) -> String {
-        guard let raw, !raw.isEmpty else { return "--" }
-        guard raw.count > visiblePrefix + visibleSuffix else { return raw }
-        let prefix = raw.prefix(visiblePrefix)
-        let suffix = raw.suffix(visibleSuffix)
-        return "\(prefix)...\(suffix)"
-    }
-
-    private func parseInt(_ raw: String?) -> Int? {
-        guard let raw, !raw.isEmpty else { return nil }
-        return Int(Double(raw) ?? .nan)
-    }
-
-    private func parseDouble(_ raw: String?) -> Double? {
-        guard let raw, !raw.isEmpty else { return nil }
-        return Double(raw)
-    }
-
-    private func parseTimestamp(_ raw: String?) -> Date? {
-        guard let raw, !raw.isEmpty else { return nil }
-        if let ms = Double(raw), ms > 1000000000000 { return Date(timeIntervalSince1970: ms / 1000) }
-        if let sec = Double(raw), sec > 1000000000 { return Date(timeIntervalSince1970: sec) }
-        return AppDateFormatters.timestampMillis.date(from: raw)
-    }
-
-    private func formatTime(_ date: Date) -> String {
-        AppDateFormatters.vehicleTime.string(from: date)
-    }
-
-    private func formatDateTime(_ date: Date) -> String {
-        AppDateFormatters.fullDateTime.string(from: date)
-    }
-
-    private func displayValue(_ raw: String?, suffix: String = "") -> String {
-        guard let raw, !raw.isEmpty else { return "--" }
-        return raw + suffix
-    }
-
-    private func displayText(_ raw: String?) -> String? {
-        guard let raw, !raw.isEmpty else { return nil }
-        return raw
-    }
-
-    private func displayBatteryRemaining(_ s: [String: String]) -> String {
-        if let kwh = s["leftBatteryPower"], !kwh.isEmpty { return "\(kwh)kWh" }
-        if let soc = s["batterySoc"], !soc.isEmpty { return "\(soc)%" }
-        return dashboard.batteryRemainingText
-    }
-
-    private func displayBatteryHealth(_ s: [String: String]) -> String {
-        if let soh = s["batSOH"] ?? s["batHealth"], !soh.isEmpty { return "\(soh)%" }
-        return dashboard.batteryHealthPercentText
-    }
-
-    private func displayFuelRemaining(_ s: [String: String]) -> String {
-        if let percent = s["fuelPercent"] ?? s["oilPercent"] ?? s["leftFuel"], !percent.isEmpty {
-            return "\(percent)%"
-        }
-        return dashboard.fuelRemainingText
-    }
-
-    private func boolText(_ raw: String?) -> String {
-        guard let raw else { return "--" }
-        return raw == "1" ? "开启" : (raw == "0" ? "关闭" : raw)
-    }
-
-    private func displayPowerConsumption(_ s: [String: String]) -> String {
-        if let avgElectronFuel = s["avgElectronFuel"], !avgElectronFuel.isEmpty {
-            return "\(avgElectronFuel)kWh/100km"
-        }
-        if let avgElecFuel = s["avgElecFuel"], !avgElecFuel.isEmpty {
-            return "\(avgElecFuel)kWh/100km"
-        }
-        if let avgPower = s["avgPowerConsumption"], !avgPower.isEmpty {
-            return "\(avgPower)kWh/100km"
-        }
-        return dashboard.averagePowerConsumptionText
-    }
-
-    private func displayACTemperature(_ s: [String: String]) -> String {
-        if let temp = s["interiorTemperature"], !temp.isEmpty { return "\(temp)°C" }
-        if let ac = parseACStatus(s["acStatus"]) { return ac ? "开启" : "关闭" }
-        return dashboard.acTemperatureText
+    func handleMQTTDisconnect(error: Error?) {
+        mqttStatus = .error
+        CrashLogger.shared.mark("MQTT", "disconnected: \(error?.localizedDescription ?? "no error")")
     }
 
     // MARK: - 暂保留 mock 控制联动
@@ -829,46 +708,5 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         var dash = dashboard
         dash.windowStatusText = next.windowsClosed == true ? "全关" : "未关"
         applyDashboard(dash)
-    }
-}
-
-// MARK: - CocoaMQTTDelegate
-
-extension MQTTVehicleStateStore: CocoaMQTTDelegate {
-    func mqtt(_ mqtt: CocoaMQTT, didConnectAck ack: CocoaMQTTConnAck) {
-        if ack == .accept {
-            mqttStatus = .connected
-            CrashLogger.shared.mark("MQTT", "connected (ack=\(ack.rawValue))")
-            guard let creds = credentials else { return }
-            for topic in creds.topics {
-                mqtt.subscribe(topic, qos: .qos1)
-            }
-        } else {
-            mqttStatus = .error
-            CrashLogger.shared.mark("MQTT", "connect rejected: \(ack.rawValue)")
-        }
-    }
-
-    func mqtt(_ mqtt: CocoaMQTT, didPublishMessage message: CocoaMQTTMessage, id: UInt16) {}
-    func mqtt(_ mqtt: CocoaMQTT, didPublishAck id: UInt16) {}
-
-    func mqtt(_ mqtt: CocoaMQTT, didReceiveMessage message: CocoaMQTTMessage, id: UInt16) {
-        let payload = Data(message.payload)
-        if message.topic.hasSuffix("/vehicle/app/status") {
-            handleVehicleStatus(payload)
-        }
-    }
-
-    func mqtt(_ mqtt: CocoaMQTT, didSubscribeTopics success: NSDictionary, failed: [String]) {
-        CrashLogger.shared.mark("MQTT", "subscribed \(success.count) topics, failed \(failed.count)")
-    }
-
-    func mqtt(_ mqtt: CocoaMQTT, didUnsubscribeTopics topics: [String]) {}
-    func mqttDidPing(_ mqtt: CocoaMQTT) {}
-    func mqttDidReceivePong(_ mqtt: CocoaMQTT) {}
-
-    func mqttDidDisconnect(_ mqtt: CocoaMQTT, withError err: Error?) {
-        mqttStatus = .error
-        CrashLogger.shared.mark("MQTT", "disconnected: \(err?.localizedDescription ?? "no error")")
     }
 }
