@@ -1,6 +1,29 @@
 import Foundation
 import CryptoKit
 
+// MARK: - SGMW API 错误类型
+enum SGMWApiError: LocalizedError {
+    case invalidToken
+    case invalidVIN
+    case invalidPhone
+    case network(Error?)
+    case invalidResponse(String?)
+    case serverMessage(String)
+    case parseFailed(String?)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidToken: return "Token 已失效或未配置"
+        case .invalidVIN: return "车架号无效"
+        case .invalidPhone: return "手机号无效"
+        case .network(let err): return "网络请求失败：\(err?.localizedDescription ?? "未知错误")"
+        case .invalidResponse(let detail): return "服务器返回异常\(detail.map { "：\($0)" } ?? "")"
+        case .serverMessage(let msg): return msg
+        case .parseFailed(let detail): return "数据解析失败\(detail.map { "：\($0)" } ?? "")"
+        }
+    }
+}
+
 // MARK: - SGMW API 客户端
 // 负责：读取本地 token、调用 HTTP API、获取 mqttToken、生成 MQTT 凭据
 
@@ -70,62 +93,78 @@ final class SGMWApiClient {
 
     // MARK: - HTTP API
 
-    /// 查询默认车辆状态（拿 VIN + 手机号）
-    func queryDefaultCar(accessToken: String, completion: @escaping (VehicleDefaultCarInfo?) -> Void) {
-        apiCall(endpoint: "userCarRelation/queryDefaultCarStatus", body: [:], accessToken: accessToken) { json in
-            guard let json,
-                  let dataObj = json["data"] as? [String: Any],
-                  let carInfo = dataObj["carInfo"] as? [String: Any],
-                  let vin = self.stringValue(carInfo["vin"]), !vin.isEmpty,
-                  let phone = self.stringValue(carInfo["bindCarUserMobile"]), !phone.isEmpty else {
-                completion(nil)
-                return
+    /// 查询默认车辆状态（拿 VIN + 手机号 — Result 版本）
+    func queryDefaultCarResult(accessToken: String, completion: @escaping (Result<VehicleDefaultCarInfo, SGMWApiError>) -> Void) {
+        apiCallResult(endpoint: "userCarRelation/queryDefaultCarStatus", body: [:], accessToken: accessToken) { result in
+            switch result {
+            case .failure(let err):
+                completion(.failure(err))
+            case .success(let json):
+                guard let dataObj = json["data"] as? [String: Any],
+                      let carInfo = dataObj["carInfo"] as? [String: Any],
+                      let vin = self.stringValue(carInfo["vin"]), !vin.isEmpty,
+                      let phone = self.stringValue(carInfo["bindCarUserMobile"]), !phone.isEmpty else {
+                    completion(.failure(.parseFailed("缺少 VIN 或手机号")))
+                    return
+                }
+                completion(.success(VehicleDefaultCarInfo(vin: vin, phone: phone)))
             }
-            completion(VehicleDefaultCarInfo(vin: vin, phone: phone))
         }
     }
 
-    /// 查询完整车辆状态（HTTP 基础状态）
-    func queryVehicleStatus(accessToken: String, completion: @escaping (VehicleHTTPPayload?) -> Void) {
-        apiCall(endpoint: "userCarRelation/queryDefaultCarStatus", body: [:], accessToken: accessToken) { json in
-            guard let json,
-                  let dataObj = json["data"] as? [String: Any] else {
-                completion(nil)
-                return
+    /// 查询完整车辆状态（HTTP 基础状态 — Result 版本）
+    func queryVehicleStatusResult(accessToken: String, completion: @escaping (Result<VehicleHTTPPayload, SGMWApiError>) -> Void) {
+        apiCallResult(endpoint: "userCarRelation/queryDefaultCarStatus", body: [:], accessToken: accessToken) { result in
+            switch result {
+            case .failure(let err):
+                completion(.failure(err))
+            case .success(let json):
+                guard let dataObj = json["data"] as? [String: Any] else {
+                    completion(.failure(.parseFailed("缺少 data")))
+                    return
+                }
+                let carInfo = self.stringifyDictionary(dataObj["carInfo"] as? [String: Any] ?? [:])
+                let carStatus = self.stringifyDictionary(dataObj["carStatus"] as? [String: Any] ?? [:])
+                completion(.success(VehicleHTTPPayload(carInfo: carInfo, carStatus: carStatus)))
             }
-
-            let carInfo = self.stringifyDictionary(dataObj["carInfo"] as? [String: Any] ?? [:])
-            let carStatus = self.stringifyDictionary(dataObj["carStatus"] as? [String: Any] ?? [:])
-            completion(VehicleHTTPPayload(carInfo: carInfo, carStatus: carStatus))
         }
     }
 
-    /// 查询 BLE 钥匙信息（用于车辆信息卡）
-    func queryBleKey(accessToken: String, vin: String, phone: String, completion: @escaping ([String: String]?) -> Void) {
-        apiCall(
+    /// 查询 BLE 钥匙信息（Result 版本）
+    func queryBleKeyResult(accessToken: String, vin: String, phone: String, completion: @escaping (Result<[String: String], SGMWApiError>) -> Void) {
+        apiCallResult(
             endpoint: "car/control/ble/key/query",
             body: ["vin": vin, "userId": phone],
             accessToken: accessToken
-        ) { json in
-            guard let json,
-                  let dataObj = json["data"] as? [String: Any] else {
-                completion(nil)
-                return
+        ) { result in
+            switch result {
+            case .failure(let err):
+                completion(.failure(err))
+            case .success(let json):
+                guard let dataObj = json["data"] as? [String: Any] else {
+                    completion(.failure(.parseFailed("缺少 data")))
+                    return
+                }
+                completion(.success(self.stringifyDictionary(dataObj)))
             }
-            completion(self.stringifyDictionary(dataObj))
         }
     }
 
-    /// 调用 API 获取 mqttToken
-    func fetchMqttToken(accessToken: String, vin: String, completion: @escaping (String?) -> Void) {
-        apiCall(endpoint: "base/mqtt/auth", body: ["vin": vin], accessToken: accessToken) { json in
-            guard let json,
-                  let dataObj = json["data"] as? [String: Any] else {
-                completion(nil)
-                return
+    /// 调用 API 获取 mqttToken（Result 版本）
+    func fetchMqttTokenResult(accessToken: String, vin: String, completion: @escaping (Result<String, SGMWApiError>) -> Void) {
+        apiCallResult(endpoint: "base/mqtt/auth", body: ["vin": vin], accessToken: accessToken) { result in
+            switch result {
+            case .failure(let err):
+                completion(.failure(err))
+            case .success(let json):
+                guard let dataObj = json["data"] as? [String: Any],
+                      let token = self.stringValue(dataObj["token"]) ?? self.stringValue(dataObj["mqttToken"]),
+                      !token.isEmpty else {
+                    completion(.failure(.parseFailed("缺少 mqttToken")))
+                    return
+                }
+                completion(.success(token))
             }
-            let token = self.stringValue(dataObj["token"]) ?? self.stringValue(dataObj["mqttToken"])
-            completion(token?.isEmpty == false ? token : nil)
         }
     }
 
@@ -158,9 +197,9 @@ final class SGMWApiClient {
 
     // MARK: - 请求底层
 
-    private func apiCall(endpoint: String, body: [String: Any], accessToken: String, completion: @escaping ([String: Any]?) -> Void) {
+    private func apiCallResult(endpoint: String, body: [String: Any], accessToken: String, completion: @escaping (Result<[String: Any], SGMWApiError>) -> Void) {
         guard let url = URL(string: "\(baseUrl)/\(endpoint)") else {
-            completion(nil)
+            completion(.failure(.invalidResponse("URL 构造失败")))
             return
         }
 
@@ -171,15 +210,42 @@ final class SGMWApiClient {
         request.allHTTPHeaderFields = headers
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
-        URLSession.shared.dataTask(with: request) { data, _, error in
-            guard let data, error == nil,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  (json["result"] as? Bool) == true else {
-                completion(nil)
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(.network(error)))
                 return
             }
-            completion(json)
+            guard let data else {
+                completion(.failure(.network(nil)))
+                return
+            }
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                let preview = String(data: data, encoding: .utf8).map { String($0.prefix(100)) }
+                completion(.failure(.parseFailed(preview)))
+                return
+            }
+            if let result = json["result"] as? Bool, result == true {
+                completion(.success(json))
+                return
+            }
+            // 业务错误
+            let msg = (json["msg"] as? String) ?? (json["message"] as? String) ?? "未知错误"
+            if msg.contains("token") || msg.contains("Token") || json["code"] as? String == "2002" {
+                completion(.failure(.invalidToken))
+            } else {
+                completion(.failure(.serverMessage(msg)))
+            }
         }.resume()
+    }
+
+    /// 旧版 apiCall（向下兼容，内部转为 apiCallResult）
+    private func apiCall(endpoint: String, body: [String: Any], accessToken: String, completion: @escaping ([String: Any]?) -> Void) {
+        apiCallResult(endpoint: endpoint, body: body, accessToken: accessToken) { result in
+            switch result {
+            case .success(let json): completion(json)
+            case .failure: completion(nil)
+            }
+        }
     }
 
     private func buildSignedHeaders(accessToken: String) -> [String: String] {

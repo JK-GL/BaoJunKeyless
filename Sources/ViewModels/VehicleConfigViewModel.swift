@@ -120,25 +120,26 @@ final class VehicleConfigViewModel: ObservableObject {
         let token = accessTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty else { return }
         isFetching = true
-        apiClient.queryDefaultCar(accessToken: token) { [weak self] result in
+        apiClient.queryDefaultCarResult(accessToken: token) { [weak self] result in
             guard let self else { return }
             DispatchQueue.main.async {
                 self.isFetching = false
-                guard let result else {
-                    onComplete("查询失败，请检查 Token", false)
-                    return
+                switch result {
+                case .success(let info):
+                    self.vinDraft = info.vin
+                    self.phoneDraft = info.phone
+                    self.credentials.accessToken = token
+                    self.credentials.vin = info.vin
+                    self.credentials.phone = info.phone
+                    self.isEditingToken = false
+                    if self.credentials.tokenSourceLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        self.credentials.tokenSourceLabel = self.credentials.autoReadWulingToken ? "五菱 App 自动读取" : "手动输入 Token"
+                    }
+                    self.queriedVehicleName = "车辆信息确认"
+                    onComplete(successToast, true)
+                case .failure(let error):
+                    onComplete("查询失败：\(error.localizedDescription)", false)
                 }
-                self.vinDraft = result.vin
-                self.phoneDraft = result.phone
-                self.credentials.accessToken = token
-                self.credentials.vin = result.vin
-                self.credentials.phone = result.phone
-                self.isEditingToken = false
-                if self.credentials.tokenSourceLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    self.credentials.tokenSourceLabel = self.credentials.autoReadWulingToken ? "五菱 App 自动读取" : "手动输入 Token"
-                }
-                self.queriedVehicleName = "车辆信息确认"
-                onComplete(successToast, true)
             }
         }
     }

@@ -185,21 +185,22 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         applyCachedSnapshotIfAvailable()
 
         authStatus = .valid
-        SGMWApiClient.shared.queryDefaultCar(accessToken: token) { [weak self] result in
+        SGMWApiClient.shared.queryDefaultCarResult(accessToken: token) { [weak self] result in
             guard let self else { return }
             DispatchQueue.main.async {
-                guard let result else {
-                    self.authStatus = .expired("车辆查询失败")
-                    CrashLogger.shared.mark("HTTP", "queryDefaultCar failed")
-                    return
+                switch result {
+                case .success(let info):
+                    let store = VehicleCredentialsStore.shared
+                    store.accessToken = token
+                    store.vin = info.vin
+                    store.phone = info.phone
+                    store.tokenSourceLabel = "五菱 App 自动读取"
+                    store.tokenSourcePath = tokenInfo.sourcePath
+                    self.start(with: store)
+                case .failure(let error):
+                    self.authStatus = .expired("车辆查询失败：\(error.localizedDescription)")
+                    CrashLogger.shared.mark("HTTP", "queryDefaultCar failed: \(error.localizedDescription)")
                 }
-                let store = VehicleCredentialsStore.shared
-                store.accessToken = token
-                store.vin = result.vin
-                store.phone = result.phone
-                store.tokenSourceLabel = "五菱 App 自动读取"
-                store.tokenSourcePath = tokenInfo.sourcePath
-                self.start(with: store)
             }
         }
     }
@@ -227,18 +228,19 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         startHTTPPolling(immediate: true)
         fetchBleKeyInfo()
 
-        SGMWApiClient.shared.fetchMqttToken(accessToken: credentialsStore.accessToken, vin: credentialsStore.vin) { [weak self] mqttToken in
+        SGMWApiClient.shared.fetchMqttTokenResult(accessToken: credentialsStore.accessToken, vin: credentialsStore.vin) { [weak self] result in
             guard let self else { return }
             DispatchQueue.main.async {
                 self.isConnecting = false
-                guard let mqttToken, !mqttToken.isEmpty else {
+                switch result {
+                case .success(let mqttToken):
+                    let creds = SGMWApiClient.shared.generateMQTTCredentials(vin: credentialsStore.vin, phone: credentialsStore.phone, mqttToken: mqttToken)
+                    self.credentials = creds
+                    self.connectMQTT(creds)
+                case .failure(let error):
                     self.mqttStatus = .error
-                    CrashLogger.shared.mark("MQTT", "mqtt token fetch failed")
-                    return
+                    CrashLogger.shared.mark("MQTT", "mqtt token fetch failed: \(error.localizedDescription)")
                 }
-                let creds = SGMWApiClient.shared.generateMQTTCredentials(vin: credentialsStore.vin, phone: credentialsStore.phone, mqttToken: mqttToken)
-                self.credentials = creds
-                self.connectMQTT(creds)
             }
         }
     }
@@ -277,9 +279,10 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         let token = store.accessToken
         guard !token.isEmpty else { return }
 
-        SGMWApiClient.shared.queryVehicleStatus(accessToken: token) { [weak self] payload in
-            guard let self, let payload else { return }
+        SGMWApiClient.shared.queryVehicleStatusResult(accessToken: token) { [weak self] result in
+            guard let self else { return }
             DispatchQueue.main.async {
+                guard case .success(let payload) = result else { return }
                 self.lastHTTPUpdate = Date()
                 let newState = self.mapHTTPToVehicleState(payload.carStatus)
                 let newDashboard = self.mapHTTPToDashboard(payload.carStatus)
@@ -302,9 +305,10 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     private func fetchBleKeyInfo() {
         let store = credentialsStore
         guard !store.accessToken.isEmpty, !store.vin.isEmpty, !store.phone.isEmpty else { return }
-        SGMWApiClient.shared.queryBleKey(accessToken: store.accessToken, vin: store.vin, phone: store.phone) { [weak self] info in
-            guard let self, let info else { return }
+        SGMWApiClient.shared.queryBleKeyResult(accessToken: store.accessToken, vin: store.vin, phone: store.phone) { [weak self] result in
+            guard let self else { return }
             DispatchQueue.main.async {
+                guard case .success(let info) = result else { return }
                 self.latestBleKeyInfo = info
                 if self.bleStatus != .connected {
                     self.bleStatus = .disconnected
