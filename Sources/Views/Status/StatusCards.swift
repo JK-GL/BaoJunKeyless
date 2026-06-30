@@ -525,29 +525,18 @@ struct VehicleInfoMergedCard: View {
     @State private var isExpanded = false
     @State private var showCopiedToast = false
 
-    private struct RowData {
-        let icon: String
-        let label: String
-        let value: String
-        let mono: Bool
-        let color: Color
-        init(_ icon: String, _ label: String, _ value: String, mono: Bool = false, color: Color = .primary) {
-            self.icon = icon; self.label = label; self.value = value; self.mono = mono; self.color = color
-        }
-    }
-
-    private var rows: [RowData] {
+    private var rows: [PopupInfoRowItem] {
         [
-            RowData("clock.fill",     "更新日期",   dashboard.vehicleInfoUpdatedAtText),
-            RowData("car.fill",       "车型",       dashboard.vehicleName),
-            RowData("info.circle",    "VIN",        dashboard.vinText, mono: true),
-            RowData("person.fill",    "用户ID",     dashboard.userIdText, mono: true),
-            RowData("key.fill",       "钥匙类型",   dashboard.keyTypeText, color: AppTheme.green),
-            RowData("antenna.radiowaves.left.and.right", "BLE MAC",    dashboard.bleMacText, mono: true, color: AppTheme.accent),
-            RowData("number",         "Key ID",     dashboard.keyIdText, mono: true, color: AppTheme.accent),
-            RowData("lock.fill",      "MasterKey",  dashboard.masterKeyMaskedText, mono: true),
-            RowData("dice.fill",      "Random",     dashboard.randomMaskedText, mono: true),
-            RowData("clock.arrow.circlepath", "有效期至",   dashboard.keyExpiryText, color: AppTheme.green),
+            PopupInfoRowItem("clock.fill",     "更新日期",   dashboard.vehicleInfoUpdatedAtText),
+            PopupInfoRowItem("car.fill",       "车型",       dashboard.vehicleName),
+            PopupInfoRowItem("info.circle",    "VIN",        dashboard.vinText, mono: true),
+            PopupInfoRowItem("person.fill",    "用户ID",     dashboard.userIdText, mono: true),
+            PopupInfoRowItem("key.fill",       "钥匙类型",   dashboard.keyTypeText, color: AppTheme.green),
+            PopupInfoRowItem("antenna.radiowaves.left.and.right", "BLE MAC",    dashboard.bleMacText, mono: true, color: AppTheme.accent),
+            PopupInfoRowItem("number",         "Key ID",     dashboard.keyIdText, mono: true, color: AppTheme.accent),
+            PopupInfoRowItem("lock.fill",      "MasterKey",  dashboard.masterKeyMaskedText, mono: true),
+            PopupInfoRowItem("dice.fill",      "Random",     dashboard.randomMaskedText, mono: true),
+            PopupInfoRowItem("clock.arrow.circlepath", "有效期至",   dashboard.keyExpiryText, color: AppTheme.green),
         ]
     }
 
@@ -613,32 +602,10 @@ struct VehicleInfoMergedCard: View {
 
     @ViewBuilder
     private var rowsContent: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { idx, row in
-                HStack(spacing: 10) {
-                    Image(systemName: row.icon)
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                        .frame(width: 20)
-                    Text(row.label)
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text(row.value)
-                        .font(.system(size: row.mono ? 11 : 13,
-                                      weight: .medium,
-                                      design: row.mono ? .monospaced : .default))
-                        .foregroundColor(row.color)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                }
-                .padding(.vertical, 7)
-
-                if idx < rows.count - 1 {
-                    Divider().padding(.leading, 30)
-                }
-            }
-        }
+        PopupInfoRowsView(
+            rows: rows,
+            valueMinimumScaleFactor: 0.7
+        )
     }
 }
 
@@ -651,24 +618,13 @@ struct MQTTInfoMergedCard: View {
     let tokenSource: String
     let topics: [String]
 
-    private struct RowData {
-        let icon: String
-        let label: String
-        let value: String
-        let mono: Bool
-        let color: Color
-        init(_ icon: String, _ label: String, _ value: String, mono: Bool = false, color: Color = .primary) {
-            self.icon = icon; self.label = label; self.value = value; self.mono = mono; self.color = color
-        }
-    }
-
-    private var rows: [RowData] {
+    private var rows: [PopupInfoRowItem] {
         [
-            RowData("antenna.radiowaves.left.and.right", "状态", status.text, color: status.color),
-            RowData("network", "Broker", broker, mono: true),
-            RowData("iphone.radiowaves.left.and.right", "ClientID", clientId, mono: true),
-            RowData("person.fill", "Username", username, mono: true),
-            RowData("key.fill", "Password", password, mono: true)
+            PopupInfoRowItem("antenna.radiowaves.left.and.right", "状态", status.text, color: status.color),
+            PopupInfoRowItem("network", "Broker", broker, mono: true),
+            PopupInfoRowItem("iphone.radiowaves.left.and.right", "ClientID", clientId, mono: true),
+            PopupInfoRowItem("person.fill", "Username", username, mono: true),
+            PopupInfoRowItem("key.fill", "Password", password, mono: true)
         ]
     }
 
@@ -676,15 +632,19 @@ struct MQTTInfoMergedCard: View {
         VStack(alignment: .leading, spacing: 12) {
             rowsContent
 
-            detailBlock(
+            PopupInfoTextBlock(
                 icon: "doc.text.fill",
                 title: "来源",
-                value: tokenSource,
-                mono: false
+                value: tokenSource
             )
 
             if !topics.isEmpty {
-                topicsBlock
+                PopupInfoListBlock(
+                    icon: "dot.radiowaves.left.and.right",
+                    title: "订阅 Topics",
+                    items: topics,
+                    countText: "\(topics.count) 项"
+                )
             }
         }
         .padding(.horizontal, 2)
@@ -692,102 +652,9 @@ struct MQTTInfoMergedCard: View {
 
     @ViewBuilder
     private var rowsContent: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { idx, row in
-                HStack(spacing: 10) {
-                    Image(systemName: row.icon)
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                        .frame(width: 20)
-                    Text(row.label)
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .frame(width: 72, alignment: .leading)
-                    Spacer(minLength: 8)
-                    Text(row.value)
-                        .font(.system(size: row.mono ? 11 : 13,
-                                      weight: .medium,
-                                      design: row.mono ? .monospaced : .default))
-                        .foregroundColor(row.color)
-                        .multilineTextAlignment(.trailing)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.64)
-                }
-                .padding(.vertical, 7)
-
-                if idx < rows.count - 1 {
-                    Divider().padding(.leading, 30)
-                }
-            }
-        }
-    }
-
-    private func detailBlock(icon: String, title: String, value: String, mono: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Text(title)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-            }
-
-            Text(value.isEmpty ? "--" : value)
-                .font(.system(size: mono ? 11 : 12,
-                              weight: .medium,
-                              design: mono ? .monospaced : .default))
-                .foregroundStyle(Color.white.opacity(0.78))
-                .lineLimit(nil)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.045))
+        PopupInfoRowsView(
+            rows: rows,
+            labelWidth: 72
         )
-    }
-
-    private var topicsBlock: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 6) {
-                Image(systemName: "dot.radiowaves.left.and.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Text("订阅 Topics")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("\(topics.count) 项")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.white.opacity(0.45))
-            }
-
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(topics.enumerated()), id: \.offset) { idx, topic in
-                    Text(topic)
-                        .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                        .foregroundStyle(Color.white.opacity(0.78))
-                        .lineLimit(nil)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 5)
-
-                    if idx < topics.count - 1 {
-                        Divider()
-                    }
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.white.opacity(0.045))
-            )
-        }
     }
 }

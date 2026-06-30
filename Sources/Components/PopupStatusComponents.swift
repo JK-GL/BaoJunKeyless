@@ -50,6 +50,185 @@ struct PopupStatusSummaryView: View {
     }
 }
 
+// MARK: - 弹窗内统一信息行数据
+struct PopupInfoRowItem: Identifiable {
+    let id = UUID()
+    let icon: String
+    let label: String
+    let value: String
+    let mono: Bool
+    let color: Color
+
+    init(_ icon: String, _ label: String, _ value: String, mono: Bool = false, color: Color = .primary) {
+        self.icon = icon
+        self.label = label
+        self.value = value
+        self.mono = mono
+        self.color = color
+    }
+}
+
+// MARK: - 弹窗内统一分隔线
+struct PopupInfoDivider: View {
+    var leadingPadding: CGFloat = 30
+
+    var body: some View {
+        Divider()
+            .padding(.leading, leadingPadding)
+    }
+}
+
+// MARK: - 弹窗内统一信息行列表
+struct PopupInfoRowsView: View {
+    let rows: [PopupInfoRowItem]
+    var labelWidth: CGFloat? = nil
+    var valueLineLimit: Int? = 1
+    var valueMinimumScaleFactor: CGFloat = 0.64
+    var rowVerticalPadding: CGFloat = 7
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { idx, row in
+                infoRow(row)
+
+                if idx < rows.count - 1 {
+                    PopupInfoDivider()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func infoRow(_ row: PopupInfoRowItem) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: row.icon)
+                .font(.system(size: 13))
+                .foregroundColor(.secondary)
+                .frame(width: 20)
+
+            labelText(row.label)
+
+            Spacer(minLength: 8)
+
+            Text(row.value.isEmpty ? "--" : row.value)
+                .font(.system(size: row.mono ? 11 : 13,
+                              weight: .medium,
+                              design: row.mono ? .monospaced : .default))
+                .foregroundColor(row.color)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(valueLineLimit)
+                .minimumScaleFactor(valueMinimumScaleFactor)
+        }
+        .padding(.vertical, rowVerticalPadding)
+    }
+
+    @ViewBuilder
+    private func labelText(_ label: String) -> some View {
+        if let labelWidth = labelWidth {
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+                .frame(width: labelWidth, alignment: .leading)
+        } else {
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+        }
+    }
+}
+
+// MARK: - 弹窗内统一长文本块
+struct PopupInfoTextBlock: View {
+    let icon: String
+    let title: String
+    let value: String
+    var mono: Bool = false
+    var valueColor: Color = Color.white.opacity(0.78)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+
+            Text(value.isEmpty ? "--" : value)
+                .font(.system(size: mono ? 11 : 12,
+                              weight: .medium,
+                              design: mono ? .monospaced : .default))
+                .foregroundStyle(valueColor)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.045))
+        )
+    }
+}
+
+// MARK: - 弹窗内统一列表块
+struct PopupInfoListBlock: View {
+    let icon: String
+    let title: String
+    let items: [String]
+    var countText: String? = nil
+    var mono: Bool = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if let countText = countText {
+                    Text(countText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.white.opacity(0.45))
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
+                    Text(item)
+                        .font(.system(size: 10.5,
+                                      weight: .medium,
+                                      design: mono ? .monospaced : .default))
+                        .foregroundStyle(Color.white.opacity(0.78))
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 5)
+
+                    if idx < items.count - 1 {
+                        Divider()
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white.opacity(0.045))
+            )
+        }
+    }
+}
+
 // MARK: - 弹窗内温度滑块组件
 struct PopupTemperatureSlider: View {
     let title: String

@@ -21,38 +21,15 @@ struct SettingsCredentialConfirmPopup: View {
 
     @ViewBuilder
     private var rowsContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            row(icon: "info.circle", label: "VIN", value: payload.vin, mono: true)
-            divider
-            row(icon: "phone.fill", label: "手机号", value: payload.phone, mono: true)
-            divider
-            row(icon: "key.fill", label: "Token", value: payload.tokenMasked, mono: true)
-        }
+        PopupInfoRowsView(
+            rows: [
+                PopupInfoRowItem("info.circle", "VIN", payload.vin, mono: true, color: .white),
+                PopupInfoRowItem("phone.fill", "手机号", payload.phone, mono: true, color: .white),
+                PopupInfoRowItem("key.fill", "Token", payload.tokenMasked, mono: true, color: .white)
+            ],
+            labelWidth: 68,
+            rowVerticalPadding: 8
+        )
         .padding(.horizontal, 2)
-    }
-
-    private func row(icon: String, label: String, value: String, mono: Bool = false) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
-                .frame(width: 20)
-            Text(label)
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-                .frame(width: 68, alignment: .leading)
-            Spacer(minLength: 8)
-            Text(value)
-                .font(.system(size: mono ? 11 : 13, weight: .medium, design: mono ? .monospaced : .default))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.64)
-        }
-        .padding(.vertical, 8)
-    }
-
-    private var divider: some View {
-        Divider().padding(.leading, 30)
     }
 }
