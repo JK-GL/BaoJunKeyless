@@ -286,7 +286,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 self.lastHTTPUpdate = Date()
                 let newState = self.mapHTTPToVehicleState(payload.carStatus)
                 let newDashboard = self.mapHTTPToDashboard(payload.carStatus)
-                let shouldUseHTTP = self.lastMQTTUpdate == nil || Date().timeIntervalSince(self.lastMQTTUpdate) >= 60
+                let shouldUseHTTP = self.lastMQTTUpdate.map { Date().timeIntervalSince($0) >= 60 } ?? true
 
                 self.mergeHTTPBaseState(newState: newState, dashboard: newDashboard)
                 if shouldUseHTTP {
