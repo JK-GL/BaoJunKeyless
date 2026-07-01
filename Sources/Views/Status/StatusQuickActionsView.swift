@@ -5,9 +5,9 @@ struct QuickActionsView: View {
     let vehicleState: VehicleState
 
     private let gridColumns = [
-        GridItem(.flexible(), spacing: 8),
-        GridItem(.flexible(), spacing: 8),
-        GridItem(.flexible(), spacing: 8)
+        GridItem(.flexible(), spacing: AppSpacing.compact),
+        GridItem(.flexible(), spacing: AppSpacing.compact),
+        GridItem(.flexible(), spacing: AppSpacing.compact)
     ]
 
     private let orderedActions: [CommandAction] = [
@@ -17,7 +17,7 @@ struct QuickActionsView: View {
 
     var body: some View {
         CardView(title: "快捷操作", icon: "bolt.fill", iconColor: AppTheme.orange) {
-            LazyVGrid(columns: gridColumns, spacing: 8) {
+            LazyVGrid(columns: gridColumns, spacing: AppSpacing.compact) {
                 ForEach(orderedActions) { action in
                     CommandGridButton(
                         action: action,
@@ -45,34 +45,34 @@ private struct CommandGridButton: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: 7) {
+            VStack(spacing: 6) {
                 ZStack {
                     Circle()
                         .fill(color.opacity(0.10))
-                        .frame(width: 34, height: 34)
+                        .frame(width: 30, height: 30)
                     Image(systemName: icon)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(color)
                 }
 
                 Text(label)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 10.5, weight: .semibold))
                     .foregroundColor(Color.white.opacity(0.92))
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
             }
-            .frame(maxWidth: .infinity, minHeight: 74)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: 62)
+            .padding(.horizontal, 3)
+            .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.white.opacity(0.045))
+                RoundedRectangle(cornerRadius: AppRadius.segmented, style: .continuous)
+                    .fill(Color.white.opacity(0.04))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        RoundedRectangle(cornerRadius: AppRadius.segmented, style: .continuous)
                             .stroke(color.opacity(0.14), lineWidth: 0.8)
                     )
             )
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: AppRadius.segmented, style: .continuous))
         }
         .buttonStyle(.plain)
     }

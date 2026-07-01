@@ -7,7 +7,7 @@ struct QuickStatusTripletView: View {
 
     var body: some View {
         CardView {
-            HStack(spacing: 10) {
+            HStack(spacing: AppSpacing.compact) {
                 quickMetric(icon: "car.fill", title: "总里程", value: totalMileageText, color: AppTheme.accent)
                 quickMetric(icon: "fuelpump.fill", title: "平均油耗", value: averageFuelConsumptionText, color: AppTheme.orange)
                 quickMetric(icon: "calendar", title: "昨日里程", value: yesterdayMileageText, color: Color.white.opacity(0.72))
@@ -17,7 +17,8 @@ struct QuickStatusTripletView: View {
 
     @ViewBuilder
     private func quickMetric(icon: String, title: String, value: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
+        let parts = splitMetricValue(value)
+        VStack(alignment: .center, spacing: 7) {
             HStack(spacing: 5) {
                 Image(systemName: icon)
                     .font(.system(size: 11, weight: .semibold))
@@ -27,20 +28,40 @@ struct QuickStatusTripletView: View {
                     .foregroundStyle(Color.white.opacity(0.48))
                     .lineLimit(1)
             }
+            .frame(maxWidth: .infinity, alignment: .center)
 
-            Text(value)
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(parts.number)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                if !parts.unit.isEmpty {
+                    Text(parts.unit)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.white.opacity(0.66))
+                }
+            }
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.horizontal, 10)
         .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: AppRadius.control, style: .continuous)
                 .fill(Color.white.opacity(0.035))
         )
+    }
+
+    private func splitMetricValue(_ value: String) -> (number: String, unit: String) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != "--" else { return (trimmed.isEmpty ? "--" : trimmed, "") }
+        let numberEnd = trimmed.firstIndex { character in
+            !(character.isNumber || character == ".")
+        } ?? trimmed.endIndex
+        let number = String(trimmed[..<numberEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let unit = String(trimmed[numberEnd...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return (number.isEmpty ? trimmed : number, number.isEmpty ? "" : unit)
     }
 }
 

@@ -127,8 +127,8 @@ struct StatusView: View {
     var body: some View {
         ZStack {
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: AppSpacing.section) {
+                    VStack(alignment: .leading, spacing: AppSpacing.compact) {
                         StatusTopBarSection(
                             vehicleName: topBarTitle,
                             isRefreshing: isRefreshing,
@@ -197,7 +197,7 @@ struct StatusView: View {
                         yesterdayMileageText: vehicleStore.dashboard.yesterdayMileageText
                     )
 
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: AppSpacing.section) {
                         BodyStatusView(dashboard: vehicleStore.dashboard)
                         StatusDashboardPair {
                             DrivingStatusView(metrics: vehicleStore.cachedDashboardMetrics.driving)
