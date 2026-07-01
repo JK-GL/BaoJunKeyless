@@ -65,8 +65,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var lastHTTPUpdate: Date?
     private var isConnecting = false
 
-    private let locationResolver = LocationResolver.shared
-    private let addressSettings: AddressServiceSettings
+    let locationResolver = LocationResolver.shared
+    let addressSettings: AddressServiceSettings
     private let displayCacheStore: VehicleDisplayCacheStore
 
     init(
@@ -98,7 +98,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         credentialsStore.tokenSourcePath = normalizedPath
     }
 
-    private func inferredTokenSourceLabel(from credentialsStore: VehicleCredentialsStore) -> String {
+    func inferredTokenSourceLabel(from credentialsStore: VehicleCredentialsStore) -> String {
         let explicit = credentialsStore.tokenSourceLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         if !explicit.isEmpty { return explicit }
 
@@ -112,7 +112,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         return "手动输入 Token"
     }
 
-    private func applyCachedSnapshotIfAvailable() {
+    func applyCachedSnapshotIfAvailable() {
         guard let snapshot = WulingAppCacheReader.shared.readStatusCache() else { return }
 
         var cachedState = mapHTTPToVehicleState(snapshot.carStatus)
@@ -139,7 +139,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         CrashLogger.shared.mark("CACHE", "loaded Wuling cache from \(snapshot.sourcePath)")
     }
 
-    private func loadPersistedDisplayCache() {
+    func loadPersistedDisplayCache() {
         let snapshot = displayCacheStore.loadSnapshot()
         if snapshot.latitudeGcj != 0, snapshot.longitudeGcj != 0 {
             cachedLatitudeGcj = snapshot.latitudeGcj
@@ -372,7 +372,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         applyDashboard(newDashboard)
     }
 
-    private func mergeRealtimeState(newState: VehicleState, dashboard newDashboard: VehicleDashboardState) {
+    func mergeRealtimeState(newState: VehicleState, dashboard newDashboard: VehicleDashboardState) {
         let merged = VehicleStateMerger.mergeRealtime(current: state, newState: newState)
         apply(merged)
 
@@ -380,7 +380,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         applyDashboard(dash)
     }
 
-    private func applyHTTPMeta(carInfo: [String: String], carStatus: [String: String]) {
+    func applyHTTPMeta(carInfo: [String: String], carStatus: [String: String]) {
         HTTPRefreshService.shared.applyHTTPMeta(carInfo: carInfo, carStatus: carStatus, store: self)
     }
 
