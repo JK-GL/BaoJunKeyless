@@ -13,12 +13,12 @@ struct SettingsFuelDisplaySection: View {
                 }
                 .padding(4)
                 .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color.white.opacity(0.045))
+                    RoundedRectangle(cornerRadius: AppRadius.segmented, style: .continuous)
+                        .fill(AppSurface.controlFill)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: AppRadius.segmented, style: .continuous)
+                        .stroke(AppSurface.sectionStroke, lineWidth: 1)
                 )
             }
         }

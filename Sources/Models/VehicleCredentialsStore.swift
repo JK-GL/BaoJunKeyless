@@ -8,7 +8,7 @@ final class VehicleCredentialsStore: ObservableObject {
     static let shared = VehicleCredentialsStore()
 
     @Published var accessToken: String {
-        didSet { UserDefaults.standard.set(accessToken, forKey: AppDefaultsKey.VehicleCredentials.accessToken) }
+        didSet { persistAccessToken(accessToken) }
     }
     @Published var vin: String {
         didSet { UserDefaults.standard.set(vin, forKey: AppDefaultsKey.VehicleCredentials.vin) }
@@ -31,12 +31,39 @@ final class VehicleCredentialsStore: ObservableObject {
     }
 
     init() {
-        self.accessToken = UserDefaults.standard.string(forKey: AppDefaultsKey.VehicleCredentials.accessToken) ?? ""
+        self.accessToken = Self.loadAccessToken()
         self.vin = UserDefaults.standard.string(forKey: AppDefaultsKey.VehicleCredentials.vin) ?? ""
         self.phone = UserDefaults.standard.string(forKey: AppDefaultsKey.VehicleCredentials.phone) ?? ""
         self.autoReadWulingToken = UserDefaults.standard.object(forKey: AppDefaultsKey.VehicleCredentials.autoReadWulingToken) as? Bool ?? true
         self.tokenSourceLabel = UserDefaults.standard.string(forKey: AppDefaultsKey.VehicleCredentials.tokenSourceLabel) ?? ""
         self.tokenSourcePath = UserDefaults.standard.string(forKey: AppDefaultsKey.VehicleCredentials.tokenSourcePath) ?? ""
+    }
+
+    private static func loadAccessToken() -> String {
+        let service = AppDefaultsKey.Keychain.vehicleCredentialService
+        let account = AppDefaultsKey.Keychain.accessTokenAccount
+        if let secureToken = KeychainStringStore.read(service: service, account: account), !secureToken.isEmpty {
+            UserDefaults.standard.removeObject(forKey: AppDefaultsKey.VehicleCredentials.accessToken)
+            return secureToken
+        }
+
+        let legacyToken = UserDefaults.standard.string(forKey: AppDefaultsKey.VehicleCredentials.accessToken) ?? ""
+        guard !legacyToken.isEmpty else { return "" }
+        if KeychainStringStore.write(legacyToken, service: service, account: account) {
+            UserDefaults.standard.removeObject(forKey: AppDefaultsKey.VehicleCredentials.accessToken)
+        }
+        return legacyToken
+    }
+
+    private func persistAccessToken(_ token: String) {
+        let service = AppDefaultsKey.Keychain.vehicleCredentialService
+        let account = AppDefaultsKey.Keychain.accessTokenAccount
+        if token.isEmpty {
+            KeychainStringStore.delete(service: service, account: account)
+            UserDefaults.standard.removeObject(forKey: AppDefaultsKey.VehicleCredentials.accessToken)
+        } else if KeychainStringStore.write(token, service: service, account: account) {
+            UserDefaults.standard.removeObject(forKey: AppDefaultsKey.VehicleCredentials.accessToken)
+        }
     }
 
     func reset() {

@@ -3,12 +3,12 @@ import SwiftUI
 // MARK: - 车辆配置
 struct SettingsVehicleConfigSection: View {
     private enum Style {
-        static let outerRadius: CGFloat = 18
-        static let innerRadius: CGFloat = 16
-        static let outerFill = Color.white.opacity(0.04)
-        static let outerStroke = Color.white.opacity(0.06)
+        static let outerRadius: CGFloat = AppRadius.section
+        static let innerRadius: CGFloat = AppRadius.segmented
+        static let outerFill = AppSurface.sectionFill
+        static let outerStroke = AppSurface.sectionStroke
         static let innerFill = Color.white.opacity(0.035)
-        static let innerStroke = Color.white.opacity(0.05)
+        static let innerStroke = AppSurface.controlStroke
     }
     @EnvironmentObject var theme: ThemeManager
     let vehicleCredentials: VehicleCredentialsStore

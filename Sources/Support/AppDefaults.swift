@@ -1,11 +1,16 @@
 import Foundation
 
-// MARK: - 统一 UserDefaults Key
+// MARK: - 统一持久化 Key
 // 说明：
 // - 只收口本项目内部持久化 key
 // - 与外部五菱 App plist 对接时，复用同一组字符串，避免多处手写
 
 enum AppDefaultsKey {
+    enum Keychain {
+        static let vehicleCredentialService = "com.baojun.keyless.vehicle-credentials"
+        static let accessTokenAccount = "accessToken"
+    }
+
     enum AddressService {
         static let amapWebKey = "AddressService.AmapWebKey"
     }

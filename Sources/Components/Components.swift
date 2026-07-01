@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - CardView (cornerRadius 24)
+// MARK: - CardView
 struct CardView<Content: View>: View {
     @EnvironmentObject var theme: ThemeManager
     let title: String?
@@ -25,17 +25,17 @@ struct CardView<Content: View>: View {
             }
             content()
         }
-        .padding(16)
+        .padding(AppSpacing.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(Color.white.opacity(0.06))
+            RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
+                .fill(AppSurface.cardFill)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
+                .stroke(AppSurface.cardStroke, lineWidth: 1)
         )
-        .padding(.horizontal, 18)
+        .padding(.horizontal, AppSpacing.screenHorizontal)
     }
 }
 
@@ -72,17 +72,17 @@ struct CollapsibleCard<Header: View, Content: View>: View {
                 }.transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(16)
+        .padding(AppSpacing.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(Color.white.opacity(0.06))
+            RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
+                .fill(AppSurface.cardFill)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
+                .stroke(AppSurface.cardStroke, lineWidth: 1)
         )
-        .padding(.horizontal, 18)
+        .padding(.horizontal, AppSpacing.screenHorizontal)
     }
 }
 extension CollapsibleCard where Header == EmptyView {
@@ -203,8 +203,8 @@ struct SettingsRowView: View {
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 1))
+        .background(AppSurface.controlFill, in: RoundedRectangle(cornerRadius: AppRadius.control, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: AppRadius.control, style: .continuous).stroke(AppSurface.controlStroke, lineWidth: 1))
     }
 }
 
@@ -241,7 +241,7 @@ struct SettingsActionButton: View {
             }
             .foregroundStyle(color)
             .frame(maxWidth: .infinity).padding(.vertical, 12)
-            .background(RoundedRectangle(cornerRadius: 18).stroke(color.opacity(0.3), lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: AppRadius.control).stroke(color.opacity(0.3), lineWidth: 1))
         }
     }
 }
