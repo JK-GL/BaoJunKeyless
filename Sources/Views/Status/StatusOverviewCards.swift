@@ -239,17 +239,20 @@ struct BodyStatusView: View {
     let dashboard: VehicleDashboardState
 
     var body: some View {
-        CardView(title: "车身状态", icon: "car.fill", iconColor: AppTheme.green) {
+        CardView(
+            title: "车身状态",
+            icon: "car.fill",
+            iconColor: AppTheme.green,
+            headerAccessory: {
+                Text(dashboard.bodyStatusNormalText)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(dashboard.warningMessages.isEmpty ? AppTheme.green : AppTheme.orange)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill((dashboard.warningMessages.isEmpty ? AppTheme.green : AppTheme.orange).opacity(0.12)))
+            }
+        ) {
             VStack(spacing: 10) {
-                HStack {
-                    Spacer()
-                    Text(dashboard.bodyStatusNormalText)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(dashboard.warningMessages.isEmpty ? AppTheme.green : AppTheme.orange)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill((dashboard.warningMessages.isEmpty ? AppTheme.green : AppTheme.orange).opacity(0.12)))
-                }
                 VehicleStatusMetricGrid(items: dashboard.metrics.bodyStatus)
 
                 let warnings = dashboard.warningMessages

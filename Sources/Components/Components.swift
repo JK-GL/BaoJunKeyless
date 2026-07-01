@@ -6,10 +6,25 @@ struct CardView<Content: View>: View {
     let title: String?
     let icon: String?
     let iconColor: Color
+    let headerAccessory: AnyView?
     @ViewBuilder let content: () -> Content
     init(title: String? = nil, icon: String? = nil, iconColor: Color = .white,
          @ViewBuilder content: @escaping () -> Content) {
-        self.title = title; self.icon = icon; self.iconColor = iconColor; self.content = content
+        self.title = title
+        self.icon = icon
+        self.iconColor = iconColor
+        self.headerAccessory = nil
+        self.content = content
+    }
+
+    init<Accessory: View>(title: String? = nil, icon: String? = nil, iconColor: Color = .white,
+                          @ViewBuilder headerAccessory: @escaping () -> Accessory,
+                          @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.icon = icon
+        self.iconColor = iconColor
+        self.headerAccessory = AnyView(headerAccessory())
+        self.content = content
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -21,6 +36,10 @@ struct CardView<Content: View>: View {
                     }
                     Text(title).font(.title3.weight(.bold))
                         .foregroundStyle(.white)
+                    if let headerAccessory {
+                        Spacer(minLength: 8)
+                        headerAccessory
+                    }
                 }
             }
             content()
