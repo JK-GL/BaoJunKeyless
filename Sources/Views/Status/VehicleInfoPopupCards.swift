@@ -42,7 +42,7 @@ struct VehicleInfoMergedCard: View {
                 if isEmbedded {
                     AnyView(
                         CollapsibleCard(
-                            title: "车辆信息",
+                            title: "钥匙信息",
                             icon: "car.fill",
                             iconColor: AppTheme.accent,
                             isExpanded: $isExpanded,
@@ -99,23 +99,43 @@ struct MQTTInfoMergedCard: View {
     let tokenSource: String
     let topics: [String]
 
-    private var rows: [PopupInfoRowItem] {
+    private var statusRows: [PopupInfoRowItem] {
         [
-            PopupInfoRowItem("antenna.radiowaves.left.and.right", "状态", status.text, color: status.color),
-            PopupInfoRowItem("network", "Broker", broker, mono: true),
+            PopupInfoRowItem("antenna.radiowaves.left.and.right", "状态", status.text, color: status.color)
+        ]
+    }
+
+    private var authRows: [PopupInfoRowItem] {
+        [
             PopupInfoRowItem("iphone.radiowaves.left.and.right", "ClientID", clientId, mono: true),
             PopupInfoRowItem("person.fill", "Username", username, mono: true),
             PopupInfoRowItem("key.fill", "Password", password, mono: true)
         ]
     }
 
+    private var serverRows: [PopupInfoRowItem] {
+        [
+            PopupInfoRowItem("network", "Broker", broker, mono: true)
+        ]
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            rowsContent
+        VStack(alignment: .leading, spacing: 14) {
+            infoGroup(title: "连接状态") {
+                PopupInfoRowsView(rows: statusRows, labelWidth: 72)
+            }
+
+            infoGroup(title: "认证信息") {
+                PopupInfoRowsView(rows: authRows, labelWidth: 72)
+            }
+
+            infoGroup(title: "服务器") {
+                PopupInfoRowsView(rows: serverRows, labelWidth: 72)
+            }
 
             PopupInfoTextBlock(
                 icon: "doc.text.fill",
-                title: "来源",
+                title: "凭证来源",
                 value: tokenSource
             )
 
@@ -132,10 +152,13 @@ struct MQTTInfoMergedCard: View {
     }
 
     @ViewBuilder
-    private var rowsContent: some View {
-        PopupInfoRowsView(
-            rows: rows,
-            labelWidth: 72
-        )
+    private func infoGroup<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.5))
+                .padding(.horizontal, 2)
+            content()
+        }
     }
 }

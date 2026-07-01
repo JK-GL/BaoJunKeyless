@@ -6,11 +6,20 @@ struct SettingsFuelDisplaySection: View {
     var body: some View {
         SettingsPanelView(title: "油量显示") {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     fuelModeButton(.auto, title: "自动")
                     fuelModeButton(.show, title: "强制显示")
                     fuelModeButton(.hide, title: "强制隐藏")
                 }
+                .padding(4)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color.white.opacity(0.045))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                )
             }
         }
     }
@@ -27,8 +36,8 @@ struct SettingsFuelDisplaySection: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 11)
                 .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(selected ? AppTheme.orange : Color.white.opacity(0.08))
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(selected ? AppTheme.orange : Color.white.opacity(0.02))
                 )
         }
         .buttonStyle(.plain)

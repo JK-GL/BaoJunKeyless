@@ -341,7 +341,7 @@ struct StatusView: View {
         FloatingPopupCard(
             icon: liveBLEStatus.icon,
             iconColor: liveBLEStatus.color,
-            title: "车辆信息"
+            title: "钥匙信息"
         ) {
             VehicleInfoMergedCard(dashboard: vehicleStore.dashboard, isEmbedded: false)
         } actions: {

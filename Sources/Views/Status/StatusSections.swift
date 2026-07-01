@@ -247,6 +247,15 @@ struct StatusPillsSection: View {
     var onBLETap: (() -> Void)? = nil
     var onMQTTTap: (() -> Void)? = nil
 
+    private var compactPhysicalKeyText: String {
+        switch physicalKeyState {
+        case .farAway: return "钥匙远离"
+        case .outside: return "钥匙车外"
+        case .inCar: return "钥匙车内"
+        case .unknown: return "钥匙未知"
+        }
+    }
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
@@ -267,7 +276,7 @@ struct StatusPillsSection: View {
                     StatusPill(icon: mqttStatus.icon, text: mqttStatus.text, color: mqttStatus.color)
                 }
                 StatusPill(icon: modeIcon, text: modeText, color: modeColor)
-                StatusPill(icon: physicalKeyState.icon, text: physicalKeyState.text, color: physicalKeyState.color)
+                StatusPill(icon: physicalKeyState.icon, text: compactPhysicalKeyText, color: physicalKeyState.color)
                 StatusPill(icon: gearState.icon, text: gearState.text, color: gearState.color)
             }
             .padding(.horizontal, 20)
