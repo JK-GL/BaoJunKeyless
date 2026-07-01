@@ -279,13 +279,13 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         let token = store.accessToken
         guard !token.isEmpty else { return }
 
-        SGMWApiClient.shared.queryVehicleStatusResult(accessToken: token) { [weak self] result in
+        VehicleHTTPRefreshRequester.shared.fetch(accessToken: token) { [weak self] result in
             guard let self else { return }
             DispatchQueue.main.async {
-                guard case .success(let payload) = result else { return }
-                self.lastHTTPUpdate = Date()
-                let newState = self.mapHTTPToVehicleState(payload.carStatus)
-                let newDashboard = self.mapHTTPToDashboard(payload.carStatus)
+                guard case .success(let refreshResult) = result else { return }
+                self.lastHTTPUpdate = refreshResult.fetchedAt
+                let newState = self.mapHTTPToVehicleState(refreshResult.carStatus)
+                let newDashboard = self.mapHTTPToDashboard(refreshResult.carStatus)
                 let shouldUseHTTP = self.lastMQTTUpdate.map { Date().timeIntervalSince($0) >= 60 } ?? true
 
                 self.mergeHTTPBaseState(newState: newState, dashboard: newDashboard)
@@ -294,7 +294,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                     self.applyDashboard(newDashboard)
                 }
 
-                self.applyHTTPMeta(carInfo: payload.carInfo, carStatus: payload.carStatus)
+                self.applyHTTPMeta(carInfo: refreshResult.carInfo, carStatus: refreshResult.carStatus)
                 CrashLogger.shared.mark("HTTP", "status updated")
             }
         }
