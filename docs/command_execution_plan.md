@@ -28,6 +28,12 @@
 ### 执行器
 
 - `VehicleCommandExecutor.executeFeedbackOnly(...)`
+- `VehicleCommandExecutor.execute(...transport:refresher:)`
+
+### transport 层
+
+- `FeedbackOnlyTransport`
+- `PlaceholderControlTransport`
 
 ---
 

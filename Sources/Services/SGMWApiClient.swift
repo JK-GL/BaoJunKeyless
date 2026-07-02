@@ -64,6 +64,13 @@ final class SGMWApiClient {
         let topics: [String]
     }
 
+    struct VehicleControlRequestPlan {
+        let command: VehicleCommandKind
+        let endpointCandidates: [String]
+        let bodyKeys: [String]
+        let note: String
+    }
+
     // MARK: - Token 读取
 
     /// 从本地读取 access_token
@@ -127,6 +134,33 @@ final class SGMWApiClient {
                 let carStatus = self.stringifyDictionary(dataObj["carStatus"] as? [String: Any] ?? [:])
                 completion(.success(VehicleHTTPPayload(carInfo: carInfo, carStatus: carStatus)))
             }
+        }
+    }
+
+    /// 根据命令生成未来真实控制接口的占位计划。
+    /// 当前只返回候选 endpoint / body key，不发请求，用于后续真实接入时收口 transport 层。
+    func makeVehicleControlRequestPlan(for command: VehicleCommand) -> VehicleControlRequestPlan {
+        switch command.kind {
+        case .lock:
+            return VehicleControlRequestPlan(command: .lock, endpointCandidates: ["car/control/lock", "car/control/door/lock"], bodyKeys: ["vin"], note: "占位：真实锁车接口待确认")
+        case .unlock:
+            return VehicleControlRequestPlan(command: .unlock, endpointCandidates: ["car/control/unlock", "car/control/door/unlock"], bodyKeys: ["vin"], note: "占位：真实解锁接口待确认")
+        case .remoteStart:
+            return VehicleControlRequestPlan(command: .remoteStart, endpointCandidates: ["car/control/engine/start", "car/control/remote/start"], bodyKeys: ["vin"], note: "占位：真实远程启动接口待确认")
+        case .remoteStop:
+            return VehicleControlRequestPlan(command: .remoteStop, endpointCandidates: ["car/control/engine/stop", "car/control/remote/stop"], bodyKeys: ["vin"], note: "占位：真实远程熄火接口待确认")
+        case .findCar:
+            return VehicleControlRequestPlan(command: .findCar, endpointCandidates: ["car/control/find", "car/control/horn/light"], bodyKeys: ["vin"], note: "占位：真实寻车接口待确认")
+        case .acOn:
+            return VehicleControlRequestPlan(command: .acOn, endpointCandidates: ["car/control/ac/on", "car/control/air/open"], bodyKeys: ["vin", "temperature"], note: "占位：真实空调开启接口待确认")
+        case .acOff:
+            return VehicleControlRequestPlan(command: .acOff, endpointCandidates: ["car/control/ac/off", "car/control/air/close"], bodyKeys: ["vin"], note: "占位：真实空调关闭接口待确认")
+        case .openWindows:
+            return VehicleControlRequestPlan(command: .openWindows, endpointCandidates: ["car/control/window/open", "car/control/windows/open"], bodyKeys: ["vin"], note: "占位：真实开窗接口待确认")
+        case .closeWindows:
+            return VehicleControlRequestPlan(command: .closeWindows, endpointCandidates: ["car/control/window/close", "car/control/windows/close"], bodyKeys: ["vin"], note: "占位：真实关窗接口待确认")
+        case .quickCool:
+            return VehicleControlRequestPlan(command: .quickCool, endpointCandidates: ["car/control/ac/quickCool", "car/control/air/quickCool"], bodyKeys: ["vin", "temperature"], note: "占位：真实快速降温接口待确认")
         }
     }
 
