@@ -29,6 +29,7 @@
 
 - `VehicleCommandExecutor.executeFeedbackOnly(...)`
 - `VehicleCommandExecutor.execute(...transport:refresher:)`
+- `VehicleCommandExecutor.executeAsync(...transport:refresher:completion:)`
 
 ### transport 层
 
@@ -47,24 +48,26 @@
 
 ## 当前行为
 
-现阶段执行器仍是：
+现阶段执行器已经进入**小范围试接**：
 
 ```text
-反馈型执行
+快捷操作 lock / unlock → HTTPControlTransport → SGMW HTTP 控制草稿发送
+其它快捷操作 → FeedbackOnlyTransport
+无感 → 尚未接真实控制
 ```
 
-即：
+快捷操作确认弹窗现在会等待执行层回调：
 
 1. 生成 `VehicleCommand`
-2. 调用 `VehicleCommandExecutor`
-3. 只触发 `refreshNow()`
-4. UI 继续显示“已反馈，状态以真实回报为准”
+2. lock / unlock 使用 `HTTPControlTransport` 发送 HTTP 请求
+3. 其它命令只触发 `refreshNow()` 并显示反馈
+4. 请求成功后刷新车辆状态；失败/超时会在确认弹窗展示结果
 
 这保证：
 
-- 不破坏现有快捷操作行为
-- 不引入未知控制接口风险
-- 不影响后续无感接入
+- 只让锁车 / 解锁进入真实 HTTP 试运行
+- 远程启动、寻车、空调、车窗、快速降温仍保持原有反馈型行为
+- 无感决策链路暂不下发真实车控，避免误触发
 
 ---
 
@@ -96,20 +99,23 @@ KeylessDecisionEngine.allow(...)
 
 ### 1. 真实控制接口
 
-源码中暂未发现已接入的真实车控 API 封装，只有：
+当前已能把 lock / unlock 候选 endpoint 的请求发出，但候选路径仍需实车验证：
 
-- 状态查询
-- 胎压查询
-- BLE 钥匙查询
-- MQTT token 查询
+- `car/control/lock`
+- `car/control/door/lock`
+- `car/control/unlock`
+- `car/control/door/unlock`
+
+其它命令仍只有 endpoint / body key 占位。
 
 ### 2. 控制回执
 
-当前没有统一的：
+当前确认弹窗已能展示：
 
-- command request
-- command result
-- timeout / failed binding
+- sent / completed / failed / timeout 的基础结果
+- `HTTPControlTransport` 返回的错误文案
+
+仍缺少官方业务级命令 ID、车辆端最终执行完成回执与更精确的 timeout / polling 绑定。
 
 ### 3. 执行 transport 选择
 
@@ -127,6 +133,7 @@ KeylessDecisionEngine.allow(...)
 
 当前骨架已经能保证：
 
+- 快捷操作已可小范围验证 lock / unlock 的真实 HTTP 下发
 - 后续加无感，不需要另起一套执行模型
-- 后续加快捷操作真实执行，不需要推倒现有确认链路
-- 只需继续在执行器中补 transport 和结果回执即可
+- 后续扩展其它快捷操作真实执行，不需要推倒现有确认链路
+- 只需继续校准 endpoint / body / 回执解析即可

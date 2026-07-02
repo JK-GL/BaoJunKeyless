@@ -5,7 +5,7 @@ import CocoaMQTT
 // 双通道：
 // - HTTP：电量/续航/位置/档位/温度等基础状态（稳定兜底）
 // - MQTT：门锁/车窗/空调/控制结果等实时变化
-// 控制和无感暂不接入真实执行
+// - 控制：快捷操作 lock / unlock 进入 HTTP 试接，其它命令和无感暂不接真实执行
 
 final class MQTTVehicleStateStore: VehicleStateStore {
 

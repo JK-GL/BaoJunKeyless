@@ -6,6 +6,7 @@ enum VehicleCommandExecutionState: Equatable {
     case sent
     case completed
     case failed(String)
+    case timedOut(String)
 }
 
 struct VehicleCommandExecutionResult: Equatable {
@@ -113,25 +114,47 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
         refresher: VehicleCommandRefreshing?,
         completion: @escaping (VehicleCommandExecutionResult) -> Void
     ) {
+        func finish(_ result: VehicleCommandExecutionResult) {
+            DispatchQueue.main.async {
+                completion(result)
+            }
+        }
+
         guard let credentials else {
-            completion(VehicleCommandExecutionResult(command: command, state: .failed("缺少车辆凭证提供者"), userMessage: "未配置车辆凭证，无法发送控制请求", shouldRefresh: false, refreshDelay: 0))
+            finish(VehicleCommandExecutionResult(command: command, state: .failed("缺少车辆凭证提供者"), userMessage: "未配置车辆凭证，无法发送控制请求", shouldRefresh: false, refreshDelay: 0))
+            return
+        }
+        let accessToken = credentials.accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let vin = credentials.vin.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !accessToken.isEmpty, !vin.isEmpty else {
+            finish(VehicleCommandExecutionResult(command: command, state: .failed("缺少 accessToken 或 VIN"), userMessage: "缺少 accessToken 或 VIN，无法发送控制请求", shouldRefresh: false, refreshDelay: 0))
             return
         }
         guard command.kind == .lock || command.kind == .unlock else {
-            completion(VehicleCommandExecutionResult(command: command, state: .failed("仅开放 lock / unlock HTTP transport 骨架"), userMessage: "当前仅为 lock / unlock 提供 HTTP transport 骨架", shouldRefresh: false, refreshDelay: 0))
+            finish(VehicleCommandExecutionResult(command: command, state: .failed("仅开放 lock / unlock HTTP transport 骨架"), userMessage: "当前仅为 lock / unlock 提供 HTTP transport 骨架", shouldRefresh: false, refreshDelay: 0))
             return
         }
-        switch apiClient.makeVehicleControlRequestDraft(accessToken: credentials.accessToken, vin: credentials.vin, command: command) {
+        switch apiClient.makeVehicleControlRequestDraft(accessToken: accessToken, vin: vin, command: command) {
         case .failure(let error):
-            completion(VehicleCommandExecutionResult(command: command, state: .failed(error.localizedDescription), userMessage: error.localizedDescription, shouldRefresh: false, refreshDelay: 0))
+            finish(VehicleCommandExecutionResult(command: command, state: .failed(error.localizedDescription), userMessage: error.localizedDescription, shouldRefresh: false, refreshDelay: 0))
         case .success(let draft):
             apiClient.sendVehicleControlRequestDraft(draft) { result in
                 switch result {
                 case .success:
-                    refresher?.refreshNow()
-                    completion(VehicleCommandExecutionResult(command: command, state: .sent, userMessage: "控制请求已发送，等待车辆真实回报", shouldRefresh: true, refreshDelay: 0))
+                    DispatchQueue.main.async {
+                        refresher?.refreshNow()
+                        completion(VehicleCommandExecutionResult(command: command, state: .sent, userMessage: "控制请求已发送，等待车辆真实回报", shouldRefresh: true, refreshDelay: 0))
+                    }
                 case .failure(let error):
-                    completion(VehicleCommandExecutionResult(command: command, state: .failed(error.localizedDescription), userMessage: error.localizedDescription, shouldRefresh: false, refreshDelay: 0))
+                    let state: VehicleCommandExecutionState
+                    if case .network(let underlying) = error,
+                       let urlError = underlying as? URLError,
+                       urlError.code == .timedOut {
+                        state = .timedOut(error.localizedDescription)
+                    } else {
+                        state = .failed(error.localizedDescription)
+                    }
+                    finish(VehicleCommandExecutionResult(command: command, state: state, userMessage: error.localizedDescription, shouldRefresh: false, refreshDelay: 0))
                 }
             }
         }

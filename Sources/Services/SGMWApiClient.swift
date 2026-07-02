@@ -206,6 +206,12 @@ final class SGMWApiClient {
                 completion(.failure(.network(nil)))
                 return
             }
+            if let httpResponse = response as? HTTPURLResponse,
+               !(200...299).contains(httpResponse.statusCode) {
+                let preview = String(data: data, encoding: .utf8).map { String($0.prefix(100)) }
+                completion(.failure(.invalidResponse("HTTP \(httpResponse.statusCode)\(preview.map { "：\($0)" } ?? "")")))
+                return
+            }
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 let preview = String(data: data, encoding: .utf8).map { String($0.prefix(100)) }
                 completion(.failure(.parseFailed(preview)))

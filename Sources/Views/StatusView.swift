@@ -5,6 +5,7 @@ struct StatusView: View {
     @EnvironmentObject var settingsStore: KeylessSettingsStore
     @EnvironmentObject var addressSettings: AddressServiceSettings
     @EnvironmentObject var locationManager: LocationManager
+    @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
     @EnvironmentObject var vehicleStore: VehicleStateStore
     @State private var isRefreshing = false
@@ -278,8 +279,8 @@ struct StatusView: View {
                         get: { activeCommand != nil },
                         set: { if !$0 { activeCommand = nil } }
                     )
-                ) { cmd, temp in
-                    handleQuickActionConfirm(action: cmd, temperature: temp)
+                ) { cmd, temp, completion in
+                    handleQuickActionConfirm(action: cmd, temperature: temp, completion: completion)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .transition(.scale.combined(with: .opacity))
@@ -520,8 +521,24 @@ struct StatusView: View {
         }
     }
 
-    private func handleQuickActionConfirm(action: CommandAction, temperature: Double?) {
+    private func handleQuickActionConfirm(
+        action: CommandAction,
+        temperature: Double?,
+        completion: @escaping (VehicleCommandExecutionResult) -> Void
+    ) {
         let command = action.asVehicleCommand(state: vehicleStore.state, temperature: temperature, source: .quickAction)
-        _ = VehicleCommandExecutor.executeFeedbackOnly(command, refresher: mqttStore)
+
+        switch command.kind {
+        case .lock, .unlock:
+            let transport = HTTPControlTransport(credentials: vehicleCredentials)
+            VehicleCommandExecutor.executeAsync(command, transport: transport, refresher: mqttStore) { result in
+                DispatchQueue.main.async {
+                    completion(result)
+                }
+            }
+        default:
+            let result = VehicleCommandExecutor.executeFeedbackOnly(command, refresher: mqttStore)
+            completion(result)
+        }
     }
 }

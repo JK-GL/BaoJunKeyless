@@ -156,13 +156,20 @@ struct CommandConfirmPopup: View {
     let action: CommandAction
     let vehicleState: VehicleState
     @Binding var isPresented: Bool
-    let onConfirm: (CommandAction, Double?) -> Void
+    let onConfirm: (CommandAction, Double?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
 
     @State private var temperature: Double
     @State private var isExecuting = false
     @State private var commandResult: CommandResult? = nil
+    @State private var resultMessage: String? = nil
+    @State private var resultButtonTitle: String? = nil
 
-    init(action: CommandAction, vehicleState: VehicleState, isPresented: Binding<Bool>, onConfirm: @escaping (CommandAction, Double?) -> Void) {
+    init(
+        action: CommandAction,
+        vehicleState: VehicleState,
+        isPresented: Binding<Bool>,
+        onConfirm: @escaping (CommandAction, Double?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
+    ) {
         self.action = action
         self.vehicleState = vehicleState
         self._isPresented = isPresented
@@ -181,7 +188,7 @@ struct CommandConfirmPopup: View {
 
     private var resultSubtitle: String {
         if let result = commandResult {
-            return result.message
+            return resultMessage ?? result.message
         }
         return action.confirmMessage(state: vehicleState)
     }
@@ -227,7 +234,7 @@ struct CommandConfirmPopup: View {
             if let result = commandResult {
                 // 执行后：结果按钮（disabled，用对应颜色背景）
                 FloatingPopupPrimaryButton(
-                    title: result == .success ? "已反馈 ✓" : action.failureTitle(result: result),
+                    title: resultButtonTitle ?? result.title,
                     color: result.color,
                     isLoading: false,
                     isDisabled: true,
@@ -341,22 +348,102 @@ struct CommandConfirmPopup: View {
         impact.impactOccurred()
 
         isExecuting = true
+        commandResult = nil
+        resultMessage = nil
+        resultButtonTitle = nil
+
         let temperatureToUse = temperature
         let label = action.label(state: vehicleState)
+        let temperatureDetail = action.needsTemperatureSlider ? " \(Int(temperatureToUse))°C" : ""
+        vehicleLog.add(.action, "快捷操作执行", detail: "\(label)\(temperatureDetail)")
 
-        vehicleLog.add(.action, "快捷操作反馈", detail: "\(label) \(action.needsTemperatureSlider ? "\(Int(temperatureToUse))°C" : "")")
+        let startTime = Date()
+        let minimumLoadingDuration: TimeInterval = 0.35
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            isExecuting = false
-            commandResult = .success
-            VibrationPattern.shortSingle.play(intensity: 0.55)
-            onConfirm(action, action.needsTemperatureSlider ? temperatureToUse : nil)
+        onConfirm(action, action.needsTemperatureSlider ? temperatureToUse : nil) { executionResult in
+            let elapsed = Date().timeIntervalSince(startTime)
+            let delay = max(0, minimumLoadingDuration - elapsed)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                isExecuting = false
+                commandResult = executionResult.popupResult
+                resultMessage = executionResult.popupMessage
+                resultButtonTitle = executionResult.popupButtonTitle
+                vehicleLog.add(executionResult.logCategory, executionResult.logTitle, detail: executionResult.logDetail)
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                withAnimation(.easeOut(duration: 0.2)) { isPresented = false }
+                switch executionResult.state {
+                case .feedbackOnly, .planned, .sent, .completed:
+                    VibrationPattern.shortSingle.play(intensity: 0.55)
+                case .failed(_), .timedOut(_):
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                }
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + executionResult.autoDismissDelay) {
+                    withAnimation(.easeOut(duration: 0.2)) { isPresented = false }
+                }
             }
         }
     }
 }
 
+private extension VehicleCommandExecutionResult {
+    var popupResult: CommandResult {
+        switch state {
+        case .feedbackOnly, .sent, .completed: return .success
+        case .planned: return .success
+        case .failed(_): return .failure
+        case .timedOut(_): return .timeout
+        }
+    }
 
+    var popupButtonTitle: String {
+        switch state {
+        case .feedbackOnly: return "已反馈 ✓"
+        case .sent, .completed: return "已下发 ✓"
+        case .planned: return "已生成"
+        case .failed(_): return "执行失败"
+        case .timedOut(_): return "连接超时"
+        }
+    }
+
+    var popupMessage: String {
+        switch state {
+        case .feedbackOnly:
+            return userMessage.isEmpty ? "已收到点击反馈，状态以车辆真实回报为准" : userMessage
+        case .sent, .completed:
+            return userMessage.isEmpty ? "指令已下发，状态以车辆真实回报为准" : userMessage
+        case .planned:
+            return userMessage.isEmpty ? "已生成控制请求，等待后续下发" : userMessage
+        case .failed(_), .timedOut(_):
+            return userMessage.isEmpty ? "指令未成功，请稍后重试" : userMessage
+        }
+    }
+
+    var autoDismissDelay: TimeInterval {
+        switch state {
+        case .feedbackOnly, .planned, .sent, .completed: return 1.0
+        case .failed(_), .timedOut(_): return 1.6
+        }
+    }
+
+    var logCategory: VehicleEventLogCategory {
+        switch state {
+        case .failed(_), .timedOut(_): return .error
+        default: return .action
+        }
+    }
+
+    var logTitle: String {
+        switch state {
+        case .feedbackOnly: return "快捷操作反馈完成"
+        case .planned: return "控制请求已生成"
+        case .sent, .completed: return "控制请求已下发"
+        case .failed(_): return "控制请求失败"
+        case .timedOut(_): return "控制请求超时"
+        }
+    }
+
+    var logDetail: String {
+        let message = popupMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        return message.isEmpty ? command.title : "\(command.title)：\(message)"
+    }
+}
