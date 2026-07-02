@@ -76,13 +76,4 @@ class VehicleStateStore: ObservableObject, VehicleStateReader {
             cachedDashboardMetrics = dashboard.metrics
         }
     }
-
-    // MARK: - Mock 模拟接口（基类空实现，子类可覆盖）
-
-    func simulateUnlock() {}
-    func simulateLock() {}
-    func simulateToggleAC() {}
-    func simulateSetACTemperature(_ temperature: Double) {}
-    func simulateRemoteStart() {}
-    func simulateToggleWindows() {}
 }

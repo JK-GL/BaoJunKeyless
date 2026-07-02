@@ -193,6 +193,55 @@ enum VehicleStateMerger {
         return merged
     }
 
+    static func mergeHTTPBaseDashboard(current dashboard: VehicleDashboardState, newDashboard: VehicleDashboardState) -> VehicleDashboardState {
+        var dash = dashboard
+        dash.updatedAt = newDashboard.updatedAt
+        dash.updatedAtText = newDashboard.updatedAtText
+
+        dash.energyType = newDashboard.energyType
+        dash.electricRangeKm = newDashboard.electricRangeKm
+        dash.electricFullRangeKm = newDashboard.electricFullRangeKm
+        dash.fuelRangeKm = newDashboard.fuelRangeKm
+        dash.fuelFullRangeKm = newDashboard.fuelFullRangeKm
+        dash.batteryPercentValue = newDashboard.batteryPercentValue
+        dash.fuelPercentValue = newDashboard.fuelPercentValue
+
+        dash.batteryRemainingText = newDashboard.batteryRemainingText
+        dash.batteryHealthPercentText = newDashboard.batteryHealthPercentText
+        dash.batteryVoltageText = newDashboard.batteryVoltageText
+        dash.batteryAuxText = newDashboard.batteryAuxText
+
+        dash.cabinTemperatureText = newDashboard.cabinTemperatureText
+        dash.batteryTemperatureText = newDashboard.batteryTemperatureText
+        dash.motorTemperatureText = newDashboard.motorTemperatureText
+        dash.inverterTemperatureText = newDashboard.inverterTemperatureText
+
+        dash.isCharging = newDashboard.isCharging
+        dash.chargingPowerText = newDashboard.chargingPowerText
+        dash.chargingStatusText = newDashboard.chargingStatusText
+        dash.chargingPowerValueText = newDashboard.chargingPowerValueText
+        dash.obcCurrentText = newDashboard.obcCurrentText
+        dash.obcTemperatureText = newDashboard.obcTemperatureText
+        dash.chargingStateText = newDashboard.chargingStateText
+
+        dash.steeringAngleText = newDashboard.steeringAngleText
+        dash.throttlePercentText = newDashboard.throttlePercentText
+        dash.brakePercentText = newDashboard.brakePercentText
+        dash.totalMileageText = newDashboard.totalMileageText
+        dash.yesterdayMileageText = newDashboard.yesterdayMileageText
+        dash.fuelRemainingText = newDashboard.fuelRemainingText
+        dash.averageFuelConsumptionText = newDashboard.averageFuelConsumptionText
+        dash.averagePowerConsumptionText = newDashboard.averagePowerConsumptionText
+
+        dash.lowBeamText = newDashboard.lowBeamText
+        dash.highBeamText = newDashboard.highBeamText
+        dash.leftTurnText = newDashboard.leftTurnText
+        dash.rightTurnText = newDashboard.rightTurnText
+        dash.positionLightText = newDashboard.positionLightText
+        dash.frontFogText = newDashboard.frontFogText
+        return dash
+    }
+
     static func mergeRealtime(current state: VehicleState, newState: VehicleState) -> VehicleState {
         var merged = state
         merged.timestamp = newState.timestamp

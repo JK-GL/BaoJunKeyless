@@ -414,7 +414,9 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     func mergeHTTPBaseState(newState: VehicleState, dashboard newDashboard: VehicleDashboardState) {
         let merged = VehicleStateMerger.mergeHTTPBase(current: state, newState: newState)
         apply(merged)
-        applyDashboard(newDashboard)
+
+        let dash = VehicleStateMerger.mergeHTTPBaseDashboard(current: dashboard, newDashboard: newDashboard)
+        applyDashboard(dash)
     }
 
     func mergeRealtimeState(newState: VehicleState, dashboard newDashboard: VehicleDashboardState) {
@@ -508,55 +510,5 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     func handleMQTTDisconnect(error: Error?) {
         mqttStatus = .error
         CrashLogger.shared.mark("MQTT", "disconnected: \(error?.localizedDescription ?? "no error")")
-    }
-
-    // MARK: - 暂保留 mock 控制联动
-
-    override func simulateUnlock() {
-        var next = state
-        next.locked = false
-        apply(next)
-        var dash = dashboard
-        dash.lockStatusText = "未锁"
-        applyDashboard(dash)
-    }
-
-    override func simulateLock() {
-        var next = state
-        next.locked = true
-        apply(next)
-        var dash = dashboard
-        dash.lockStatusText = "已锁车"
-        applyDashboard(dash)
-    }
-
-    override func simulateToggleAC() {
-        var next = state
-        next.acOn = !(state.acOn ?? false)
-        apply(next)
-        var dash = dashboard
-        dash.acTemperatureText = next.acOn == true ? "开启" : "关闭"
-        applyDashboard(dash)
-    }
-
-    override func simulateSetACTemperature(_ temperature: Double) {
-        var next = state
-        next.acTemperature = temperature
-        apply(next)
-    }
-
-    override func simulateRemoteStart() {
-        var next = state
-        next.power = (next.power == .on || next.power == .ready) ? .off : .ready
-        apply(next)
-    }
-
-    override func simulateToggleWindows() {
-        var next = state
-        next.windowsClosed = !(state.windowsClosed ?? true)
-        apply(next)
-        var dash = dashboard
-        dash.windowStatusText = next.windowsClosed == true ? "全关" : "未关"
-        applyDashboard(dash)
     }
 }
