@@ -14,7 +14,7 @@ enum VehicleGear: String, Codable, CaseIterable {
         case .r: return "R"
         case .n: return "N"
         case .d: return "D"
-        case .unknown: return "—"
+        case .unknown: return "--"
         }
     }
 }
@@ -33,7 +33,7 @@ enum VehiclePowerState: String, Codable, CaseIterable {
         case .acc:    return "ACC"
         case .on:     return "通电"
         case .ready:  return "就绪"
-        case .unknown: return "—"
+        case .unknown: return "--"
         }
     }
 }
@@ -100,7 +100,7 @@ struct VehicleState: Equatable {
             doorsClosed: true,
             driverDoorOpen: false,
             trunkOpen: false,
-            windowsClosed: false,
+            windowsClosed: true,
             fuelRange: 680,
             fuelLevel: 85,
             oilRange: 680,

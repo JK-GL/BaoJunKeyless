@@ -57,6 +57,14 @@ struct VehicleDashboardState {
     var doorStatusText: String = "--"
     var windowStatusText: String = "--"
     var tailgateStatusText: String = "--"
+    var driverDoorStatusText: String = "--"
+    var passengerDoorStatusText: String = "--"
+    var leftRearDoorStatusText: String = "--"
+    var rightRearDoorStatusText: String = "--"
+    var leftFrontWindowStatusText: String = "--"
+    var rightFrontWindowStatusText: String = "--"
+    var leftRearWindowStatusText: String = "--"
+    var rightRearWindowStatusText: String = "--"
 
     // 行驶 / 能耗
     var averageFuelConsumptionText: String = "--"
@@ -68,7 +76,11 @@ struct VehicleDashboardState {
 
     var bodyStatusNormalText: String {
         let badStatuses: [String] = ["未关", "未锁", "已开", "打开", "异常", "故障"]
-        let statuses = [lockStatusText, doorStatusText, windowStatusText, tailgateStatusText]
+        let statuses = [
+            lockStatusText, doorStatusText, windowStatusText, tailgateStatusText,
+            driverDoorStatusText, passengerDoorStatusText, leftRearDoorStatusText, rightRearDoorStatusText,
+            leftFrontWindowStatusText, rightFrontWindowStatusText, leftRearWindowStatusText, rightRearWindowStatusText
+        ]
         if statuses.contains(where: { badStatuses.contains($0) }) {
             return "异常"
         }
@@ -80,9 +92,17 @@ struct VehicleDashboardState {
         let badStatuses: [String] = ["未关", "未锁", "已开", "打开", "异常", "故障"]
         for (label, value) in [
             ("车锁", lockStatusText),
+            ("尾门", tailgateStatusText),
             ("车门", doorStatusText),
             ("车窗", windowStatusText),
-            ("尾门", tailgateStatusText)
+            ("主驾门", driverDoorStatusText),
+            ("副驾门", passengerDoorStatusText),
+            ("左后门", leftRearDoorStatusText),
+            ("右后门", rightRearDoorStatusText),
+            ("左前窗", leftFrontWindowStatusText),
+            ("右前窗", rightFrontWindowStatusText),
+            ("左后窗", leftRearWindowStatusText),
+            ("右后窗", rightRearWindowStatusText)
         ] {
             if badStatuses.contains(value) {
                 warnings.append("\(label)\(value)")
@@ -117,7 +137,7 @@ struct VehicleDashboardMetrics {
 
 extension VehicleDashboardState {
     var metrics: VehicleDashboardMetrics {
-        let closedColors = ["全关", "已锁", "已锁车"]
+        let closedColors = ["全关", "已关", "已锁", "已锁车"]
         let openColors = ["未关", "未锁", "已开", "打开", "异常", "故障"]
 
         func colorForStatus(_ status: String) -> Color {
@@ -153,15 +173,23 @@ extension VehicleDashboardState {
             ],
             bodyStatus: [
                 PopupStatusItem(icon: "lock.fill", label: "车锁", value: lockStatusText, color: colorForStatus(lockStatusText)),
+                PopupStatusItem(icon: "rectangle.portrait.fill", label: "尾门", value: tailgateStatusText, color: colorForStatus(tailgateStatusText)),
                 PopupStatusItem(icon: "car.fill", label: "车门", value: doorStatusText, color: colorForStatus(doorStatusText)),
                 PopupStatusItem(icon: "rectangle.split.2x2.fill", label: "车窗", value: windowStatusText, color: colorForStatus(windowStatusText)),
-                PopupStatusItem(icon: "rectangle.portrait.fill", label: "尾门", value: tailgateStatusText, color: colorForStatus(tailgateStatusText))
+                PopupStatusItem(icon: "car.fill", label: "主驾门", value: driverDoorStatusText, color: colorForStatus(driverDoorStatusText)),
+                PopupStatusItem(icon: "rectangle.split.2x2.fill", label: "左前窗", value: leftFrontWindowStatusText, color: colorForStatus(leftFrontWindowStatusText)),
+                PopupStatusItem(icon: "car.fill", label: "副驾门", value: passengerDoorStatusText, color: colorForStatus(passengerDoorStatusText)),
+                PopupStatusItem(icon: "rectangle.split.2x2.fill", label: "右前窗", value: rightFrontWindowStatusText, color: colorForStatus(rightFrontWindowStatusText)),
+                PopupStatusItem(icon: "car.fill", label: "左后门", value: leftRearDoorStatusText, color: colorForStatus(leftRearDoorStatusText)),
+                PopupStatusItem(icon: "rectangle.split.2x2.fill", label: "左后窗", value: leftRearWindowStatusText, color: colorForStatus(leftRearWindowStatusText)),
+                PopupStatusItem(icon: "car.fill", label: "右后门", value: rightRearDoorStatusText, color: colorForStatus(rightRearDoorStatusText)),
+                PopupStatusItem(icon: "rectangle.split.2x2.fill", label: "右后窗", value: rightRearWindowStatusText, color: colorForStatus(rightRearWindowStatusText))
             ],
             driving: [
                 PopupStatusItem(icon: "scope", label: "方向盘", value: steeringAngleText, color: AppTheme.accent),
                 PopupStatusItem(icon: "arrow.up.circle.fill", label: "油门", value: throttlePercentText, color: AppTheme.green),
                 PopupStatusItem(icon: "stop.circle.fill", label: "刹车", value: brakePercentText, color: AppTheme.green),
-                PopupStatusItem(icon: "speedometer", label: "平均车速", value: averageSpeedText, color: Color.white.opacity(0.45))
+                PopupStatusItem(icon: "speedometer", label: "实时车速", value: speedText, color: Color.white.opacity(0.45))
             ],
             lighting: [
                 PopupStatusItem(icon: "lightbulb.fill", label: "近光灯", value: lowBeamText, color: AppTheme.orange),

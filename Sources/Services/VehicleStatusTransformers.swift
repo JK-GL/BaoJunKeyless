@@ -29,7 +29,7 @@ enum VehicleStatusMapper {
         if let ac = parseACStatus(s["acStatus"]) { next.acOn = ac }
         if let temp = parseDouble(s["accCntTemp"] ?? s["interiorTemperature"]) { next.acTemperature = temp }
         if let gear = parseGear(s["autoGearStatus"]) { next.gear = gear }
-        if let speed = parseDouble(s["vehSpdAvgDrvn"] ?? s["speed"]) { next.speed = speed }
+        if let speed = parseDouble(s["speed"] ?? s["vehSpd"] ?? s["vehSpdAvgDrvn"]) { next.speed = speed }
         let physicalKeyPosition = parsePhysicalKeyPosition(s["keyStatus"])
         next.physicalKeyPosition = physicalKeyPosition
         next.phoneNearby = (physicalKeyPosition != .farAway && physicalKeyPosition != .unknown)
@@ -74,12 +74,20 @@ enum VehicleStatusMapper {
         d.obcTemperatureText = displayValue(s["obcTemp"], suffix: "°C")
         d.chargingStateText = displayText(s["rechargeStatus"]) ?? displayText(s["vecChrgingSts"]) ?? "--"
 
-        d.lockStatusText = (parseLocked(s["doorLockStatus"]) == true) ? "已锁车" : ((parseLocked(s["doorLockStatus"]) == false) ? "未锁" : "未知")
-        d.doorStatusText = (parseDoorClosed(s) == true) ? "全关" : ((parseDoorClosed(s) == false) ? "未关" : "未知")
-        d.windowStatusText = (parseWindowsClosed(s) == true) ? "全关" : ((parseWindowsClosed(s) == false) ? "未关" : "未知")
-        d.tailgateStatusText = (parseOpen(s["tailDoorOpenStatus"]) == true) ? "已开" : ((parseOpen(s["tailDoorOpenStatus"]) == false) ? "已锁" : "未知")
+        d.lockStatusText = (parseLocked(s["doorLockStatus"]) == true) ? "已锁车" : ((parseLocked(s["doorLockStatus"]) == false) ? "未锁" : "--")
+        d.doorStatusText = (parseDoorClosed(s) == true) ? "全关" : ((parseDoorClosed(s) == false) ? "未关" : "--")
+        d.windowStatusText = (parseWindowsClosed(s) == true) ? "全关" : ((parseWindowsClosed(s) == false) ? "未关" : "--")
+        d.tailgateStatusText = displayOpenStatus(s["tailDoorOpenStatus"], closedText: "已锁", openText: "已开")
+        d.driverDoorStatusText = displayOpenStatus(s["door1OpenStatus"], closedText: "已关", openText: "未关")
+        d.passengerDoorStatusText = displayOpenStatus(s["door2OpenStatus"], closedText: "已关", openText: "未关")
+        d.leftRearDoorStatusText = displayOpenStatus(s["door3OpenStatus"], closedText: "已关", openText: "未关")
+        d.rightRearDoorStatusText = displayOpenStatus(s["door4OpenStatus"], closedText: "已关", openText: "未关")
+        d.leftFrontWindowStatusText = displayOpenStatus(s["window1Status"], closedText: "已关", openText: "已开")
+        d.rightFrontWindowStatusText = displayOpenStatus(s["window2Status"], closedText: "已关", openText: "已开")
+        d.leftRearWindowStatusText = displayOpenStatus(s["window3Status"], closedText: "已关", openText: "已开")
+        d.rightRearWindowStatusText = displayOpenStatus(s["window4Status"], closedText: "已关", openText: "已开")
 
-        d.speedText = displayValue(s["vehSpdAvgDrvn"] ?? s["speed"], suffix: "km/h")
+        d.speedText = displayValue(s["speed"] ?? s["vehSpd"] ?? s["vehSpdAvgDrvn"], suffix: "km/h")
         d.averageSpeedText = displayValue(s["vehSpdAvgDrvn"], suffix: "km/h")
         d.steeringAngleText = displayValue(s["strWhAng"], suffix: "°")
         d.throttlePercentText = displayValue(s["accActPos"], suffix: "%")
@@ -109,6 +117,7 @@ enum VehicleStatusMapper {
         if let trunkOpen = parseOpen(s["tailDoorOpenStatus"]) { next.trunkOpen = trunkOpen }
         if let windowsClosed = parseWindowsClosed(s) { next.windowsClosed = windowsClosed }
         if let ac = parseACStatus(s["acStatus"]) { next.acOn = ac }
+        if let speed = parseDouble(s["speed"] ?? s["vehSpd"] ?? s["vehSpdAvgDrvn"]) { next.speed = speed }
         return next
     }
 
@@ -117,8 +126,17 @@ enum VehicleStatusMapper {
         if let locked = parseLocked(s["doorLockStatus"]) { d.lockStatusText = locked ? "已锁车" : "未锁" }
         if let doorsClosed = parseDoorClosed(s) { d.doorStatusText = doorsClosed ? "全关" : "未关" }
         if let windowsClosed = parseWindowsClosed(s) { d.windowStatusText = windowsClosed ? "全关" : "未关" }
-        if let tailOpen = parseOpen(s["tailDoorOpenStatus"]) { d.tailgateStatusText = tailOpen ? "已开" : "已锁" }
+        if s["tailDoorOpenStatus"] != nil { d.tailgateStatusText = displayOpenStatus(s["tailDoorOpenStatus"], closedText: "已锁", openText: "已开") }
+        if s["door1OpenStatus"] != nil { d.driverDoorStatusText = displayOpenStatus(s["door1OpenStatus"], closedText: "已关", openText: "未关") }
+        if s["door2OpenStatus"] != nil { d.passengerDoorStatusText = displayOpenStatus(s["door2OpenStatus"], closedText: "已关", openText: "未关") }
+        if s["door3OpenStatus"] != nil { d.leftRearDoorStatusText = displayOpenStatus(s["door3OpenStatus"], closedText: "已关", openText: "未关") }
+        if s["door4OpenStatus"] != nil { d.rightRearDoorStatusText = displayOpenStatus(s["door4OpenStatus"], closedText: "已关", openText: "未关") }
+        if s["window1Status"] != nil { d.leftFrontWindowStatusText = displayOpenStatus(s["window1Status"], closedText: "已关", openText: "已开") }
+        if s["window2Status"] != nil { d.rightFrontWindowStatusText = displayOpenStatus(s["window2Status"], closedText: "已关", openText: "已开") }
+        if s["window3Status"] != nil { d.leftRearWindowStatusText = displayOpenStatus(s["window3Status"], closedText: "已关", openText: "已开") }
+        if s["window4Status"] != nil { d.rightRearWindowStatusText = displayOpenStatus(s["window4Status"], closedText: "已关", openText: "已开") }
         if let ac = parseACStatus(s["acStatus"]) { d.acTemperatureText = ac ? "开启" : "关闭" }
+        if let speed = s["speed"] ?? s["vehSpd"], !speed.isEmpty { d.speedText = "\(speed)km/h" }
         if let averageSpeed = s["vehSpdAvgDrvn"], !averageSpeed.isEmpty { d.averageSpeedText = "\(averageSpeed)km/h" }
         d.updatedAt = parseTimestamp(s["collectTime"]) ?? Date()
         d.updatedAtText = formatTime(d.updatedAt)
@@ -168,7 +186,17 @@ enum VehicleStateMerger {
         dash.doorStatusText = newDashboard.doorStatusText
         dash.windowStatusText = newDashboard.windowStatusText
         dash.tailgateStatusText = newDashboard.tailgateStatusText
+        dash.driverDoorStatusText = newDashboard.driverDoorStatusText
+        dash.passengerDoorStatusText = newDashboard.passengerDoorStatusText
+        dash.leftRearDoorStatusText = newDashboard.leftRearDoorStatusText
+        dash.rightRearDoorStatusText = newDashboard.rightRearDoorStatusText
+        dash.leftFrontWindowStatusText = newDashboard.leftFrontWindowStatusText
+        dash.rightFrontWindowStatusText = newDashboard.rightFrontWindowStatusText
+        dash.leftRearWindowStatusText = newDashboard.leftRearWindowStatusText
+        dash.rightRearWindowStatusText = newDashboard.rightRearWindowStatusText
         dash.acTemperatureText = newDashboard.acTemperatureText
+        dash.speedText = newDashboard.speedText
+        dash.averageSpeedText = newDashboard.averageSpeedText
         dash.updatedAt = newDashboard.updatedAt
         dash.updatedAtText = newDashboard.updatedAtText
         return dash

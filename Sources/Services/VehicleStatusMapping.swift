@@ -89,6 +89,11 @@ func parseACStatus(_ raw: String?) -> Bool? {
     }
 }
 
+func displayOpenStatus(_ raw: String?, closedText: String = "已关", openText: String = "已开") -> String {
+    guard let open = parseOpen(raw) else { return "--" }
+    return open ? openText : closedText
+}
+
 func parseGear(_ raw: String?) -> VehicleGear? {
     guard let raw else { return nil }
     switch raw {
