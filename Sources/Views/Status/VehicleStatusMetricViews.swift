@@ -62,17 +62,17 @@ struct VehicleStatusMetricCard: View {
         HStack(spacing: 10) {
             ZStack {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(metric.color.opacity(0.12))
+                    .fill(metric.color.opacity(0.09))
                     .frame(width: 34, height: 34)
                 Image(systemName: metric.icon)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(metric.color)
+                    .foregroundColor(metric.color.opacity(0.95))
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(metric.label)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Color.white.opacity(0.56))
                     .lineLimit(1)
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(metric.value)

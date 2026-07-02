@@ -143,6 +143,15 @@ struct VehicleDashboardMetrics {
     let lighting: [PopupStatusItem]
 }
 
+enum StatusTint {
+    static let infoBlue = Color(red: 0.42, green: 0.74, blue: 0.98)
+    static let successGreen = Color(red: 0.40, green: 0.82, blue: 0.60)
+    static let warningAmber = Color(red: 0.95, green: 0.72, blue: 0.35)
+    static let dangerRed = Color(red: 0.95, green: 0.43, blue: 0.40)
+    static let coolCyan = Color(red: 0.44, green: 0.88, blue: 0.92)
+    static let muted = Color.white.opacity(0.45)
+}
+
 extension VehicleDashboardState {
     var metrics: VehicleDashboardMetrics {
         let closedColors = ["全关", "已关", "已锁", "已锁车"]
@@ -150,34 +159,34 @@ extension VehicleDashboardState {
 
         func colorForStatus(_ status: String) -> Color {
             if closedColors.contains(status) {
-                return AppTheme.green
+                return StatusTint.successGreen
             }
             if openColors.contains(status) {
-                return AppTheme.red
+                return StatusTint.dangerRed
             }
-            return Color.white.opacity(0.45)
+            return StatusTint.muted
         }
 
         return VehicleDashboardMetrics(
             battery: [
-                PopupStatusItem(icon: "battery.100", label: "剩余", value: batteryRemainingText, color: AppTheme.accent),
-                PopupStatusItem(icon: "checkmark.seal.fill", label: "健康", value: batteryHealthPercentText, color: AppTheme.green),
-                PopupStatusItem(icon: "bolt.fill", label: "电压", value: batteryVoltageText, color: AppTheme.accent),
-                PopupStatusItem(icon: "battery.25", label: "小电瓶", value: batteryAuxText, color: AppTheme.accent)
+                PopupStatusItem(icon: "battery.100", label: "剩余", value: batteryRemainingText, color: StatusTint.infoBlue),
+                PopupStatusItem(icon: "checkmark.seal.fill", label: "健康", value: batteryHealthPercentText, color: StatusTint.successGreen),
+                PopupStatusItem(icon: "bolt.fill", label: "电压", value: batteryVoltageText, color: StatusTint.infoBlue),
+                PopupStatusItem(icon: "battery.25", label: "小电瓶", value: batteryAuxText, color: StatusTint.infoBlue)
             ],
             temperature: [
-                PopupStatusItem(icon: "thermometer", label: "车内", value: cabinTemperatureText, color: AppTheme.accent),
-                PopupStatusItem(icon: "snowflake", label: "空调", value: acTemperatureText, color: AppTheme.orange),
-                PopupStatusItem(icon: "thermometer", label: "电池", value: batteryTemperatureText, color: AppTheme.green),
-                PopupStatusItem(icon: "gearshape.fill", label: "电机", value: motorTemperatureText, color: AppTheme.green),
-                PopupStatusItem(icon: "cpu.fill", label: "逆变", value: inverterTemperatureText, color: AppTheme.green)
+                PopupStatusItem(icon: "thermometer", label: "车内", value: cabinTemperatureText, color: StatusTint.infoBlue),
+                PopupStatusItem(icon: "snowflake", label: "空调", value: acTemperatureText, color: StatusTint.coolCyan),
+                PopupStatusItem(icon: "thermometer", label: "电池", value: batteryTemperatureText, color: StatusTint.warningAmber),
+                PopupStatusItem(icon: "gearshape.fill", label: "电机", value: motorTemperatureText, color: StatusTint.warningAmber),
+                PopupStatusItem(icon: "cpu.fill", label: "逆变", value: inverterTemperatureText, color: StatusTint.warningAmber)
             ],
             charging: [
-                PopupStatusItem(icon: "bolt.fill", label: "充电中", value: chargingStatusText, color: AppTheme.orange),
-                PopupStatusItem(icon: "gauge", label: "功率", value: chargingPowerValueText, color: Color.white.opacity(0.45)),
-                PopupStatusItem(icon: "bolt.fill", label: "OBC电流", value: obcCurrentText, color: AppTheme.orange),
-                PopupStatusItem(icon: "thermometer", label: "OBC温度", value: obcTemperatureText, color: Color.white.opacity(0.45)),
-                PopupStatusItem(icon: "bolt.circle.fill", label: "状态", value: chargingStateText, color: Color.white.opacity(0.45))
+                PopupStatusItem(icon: "bolt.fill", label: "充电中", value: chargingStatusText, color: StatusTint.warningAmber),
+                PopupStatusItem(icon: "gauge", label: "功率", value: chargingPowerValueText, color: StatusTint.infoBlue),
+                PopupStatusItem(icon: "bolt.fill", label: "OBC电流", value: obcCurrentText, color: StatusTint.infoBlue),
+                PopupStatusItem(icon: "thermometer", label: "OBC温度", value: obcTemperatureText, color: StatusTint.warningAmber),
+                PopupStatusItem(icon: "bolt.circle.fill", label: "状态", value: chargingStateText, color: StatusTint.muted)
             ],
             bodyStatus: [
                 PopupStatusItem(icon: "lock.fill", label: "车锁", value: lockStatusText, color: colorForStatus(lockStatusText)),
@@ -194,24 +203,24 @@ extension VehicleDashboardState {
                 PopupStatusItem(icon: "rectangle.split.3x1", label: "右后窗", value: rightRearWindowStatusText, color: colorForStatus(rightRearWindowStatusText))
             ],
             tirePressure: [
-                PopupStatusItem(icon: "circle.fill", label: "左前", value: leftFrontTirePressureText, color: leftFrontTirePressureText == "--" ? Color.white.opacity(0.45) : AppTheme.green),
-                PopupStatusItem(icon: "circle.fill", label: "右前", value: rightFrontTirePressureText, color: rightFrontTirePressureText == "--" ? Color.white.opacity(0.45) : AppTheme.green),
-                PopupStatusItem(icon: "circle.fill", label: "左后", value: leftRearTirePressureText, color: leftRearTirePressureText == "--" ? Color.white.opacity(0.45) : AppTheme.green),
-                PopupStatusItem(icon: "circle.fill", label: "右后", value: rightRearTirePressureText, color: rightRearTirePressureText == "--" ? Color.white.opacity(0.45) : AppTheme.green)
+                PopupStatusItem(icon: "circle.fill", label: "左前", value: leftFrontTirePressureText, color: leftFrontTirePressureText == "--" ? StatusTint.muted : StatusTint.infoBlue),
+                PopupStatusItem(icon: "circle.fill", label: "右前", value: rightFrontTirePressureText, color: rightFrontTirePressureText == "--" ? StatusTint.muted : StatusTint.infoBlue),
+                PopupStatusItem(icon: "circle.fill", label: "左后", value: leftRearTirePressureText, color: leftRearTirePressureText == "--" ? StatusTint.muted : StatusTint.infoBlue),
+                PopupStatusItem(icon: "circle.fill", label: "右后", value: rightRearTirePressureText, color: rightRearTirePressureText == "--" ? StatusTint.muted : StatusTint.infoBlue)
             ],
             driving: [
-                PopupStatusItem(icon: "scope", label: "方向盘", value: steeringAngleText, color: AppTheme.accent),
-                PopupStatusItem(icon: "arrow.up.circle.fill", label: "油门", value: throttlePercentText, color: AppTheme.green),
-                PopupStatusItem(icon: "stop.circle.fill", label: "刹车", value: brakePercentText, color: AppTheme.green),
-                PopupStatusItem(icon: "speedometer", label: "实时车速", value: speedText, color: Color.white.opacity(0.45))
+                PopupStatusItem(icon: "scope", label: "方向盘", value: steeringAngleText, color: StatusTint.infoBlue),
+                PopupStatusItem(icon: "arrow.up.circle.fill", label: "油门", value: throttlePercentText, color: StatusTint.successGreen),
+                PopupStatusItem(icon: "stop.circle.fill", label: "刹车", value: brakePercentText, color: StatusTint.dangerRed),
+                PopupStatusItem(icon: "speedometer", label: "实时车速", value: speedText, color: StatusTint.muted)
             ],
             lighting: [
-                PopupStatusItem(icon: "lightbulb.fill", label: "近光灯", value: lowBeamText, color: AppTheme.orange),
-                PopupStatusItem(icon: "sun.max.fill", label: "远光灯", value: highBeamText, color: AppTheme.orange),
-                PopupStatusItem(icon: "arrow.left.arrow.right", label: "左转向", value: leftTurnText, color: AppTheme.accent),
-                PopupStatusItem(icon: "arrow.left.arrow.right", label: "右转向", value: rightTurnText, color: AppTheme.accent),
-                PopupStatusItem(icon: "sun.min.fill", label: "示宽灯", value: positionLightText, color: AppTheme.orange),
-                PopupStatusItem(icon: "cloud.fog", label: "前雾灯", value: frontFogText, color: AppTheme.orange)
+                PopupStatusItem(icon: "lightbulb.fill", label: "近光灯", value: lowBeamText, color: StatusTint.warningAmber),
+                PopupStatusItem(icon: "sun.max.fill", label: "远光灯", value: highBeamText, color: StatusTint.warningAmber),
+                PopupStatusItem(icon: "arrow.left.arrow.right", label: "左转向", value: leftTurnText, color: StatusTint.infoBlue),
+                PopupStatusItem(icon: "arrow.left.arrow.right", label: "右转向", value: rightTurnText, color: StatusTint.infoBlue),
+                PopupStatusItem(icon: "sun.min.fill", label: "示宽灯", value: positionLightText, color: StatusTint.warningAmber),
+                PopupStatusItem(icon: "cloud.fog", label: "前雾灯", value: frontFogText, color: StatusTint.warningAmber)
             ]
         )
     }

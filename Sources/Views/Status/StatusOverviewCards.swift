@@ -263,14 +263,14 @@ struct BodyStatusView: View {
         CardView(
             title: "车身状态",
             icon: "car.fill",
-            iconColor: AppTheme.green,
+            iconColor: StatusTint.successGreen,
             headerAccessory: {
                 Text(dashboard.bodyStatusNormalText)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(dashboard.warningMessages.isEmpty ? AppTheme.green : AppTheme.orange)
+                    .foregroundColor(dashboard.warningMessages.isEmpty ? StatusTint.successGreen : StatusTint.warningAmber)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(Capsule().fill((dashboard.warningMessages.isEmpty ? AppTheme.green : AppTheme.orange).opacity(0.12)))
+                    .background(Capsule().fill((dashboard.warningMessages.isEmpty ? StatusTint.successGreen : StatusTint.warningAmber).opacity(0.12)))
             }
         ) {
             VStack(spacing: 10) {
@@ -338,11 +338,19 @@ struct TirePressureView: View {
     let dashboard: VehicleDashboardState
     let metrics: [PopupStatusItem]
 
+    private var tireTemperatureColor: Color {
+        let digits = dashboard.tireTemperatureText.filter { $0.isNumber }
+        guard let value = Int(digits), !digits.isEmpty else { return StatusTint.muted }
+        if value <= 40 { return StatusTint.successGreen }
+        if value <= 55 { return StatusTint.warningAmber }
+        return StatusTint.dangerRed
+    }
+
     var body: some View {
         CardView(
             title: "胎压状态",
             icon: "sun.max.fill",
-            iconColor: AppTheme.green,
+            iconColor: StatusTint.infoBlue,
             headerAccessory: {
                 if dashboard.tireTemperatureText != "--" {
                     HStack(spacing: 4) {
@@ -351,7 +359,7 @@ struct TirePressureView: View {
                         Text(dashboard.tireTemperatureText)
                             .font(.system(size: 11, weight: .semibold))
                     }
-                    .foregroundStyle(AppTheme.orange)
+                    .foregroundStyle(tireTemperatureColor)
                 }
             }
         ) {
@@ -369,10 +377,10 @@ private struct TirePressureMetricCard: View {
 
     private var pressureColor: Color {
         let digits = item.value.filter { $0.isNumber }
-        guard let value = Int(digits), !digits.isEmpty else { return Color.white.opacity(0.45) }
-        if value >= 220 && value <= 260 { return AppTheme.green }
-        if (value >= 200 && value < 220) || (value > 260 && value <= 280) { return AppTheme.orange }
-        return AppTheme.red
+        guard let value = Int(digits), !digits.isEmpty else { return StatusTint.muted }
+        if value >= 220 && value <= 260 { return StatusTint.successGreen }
+        if (value >= 200 && value < 220) || (value > 260 && value <= 280) { return StatusTint.warningAmber }
+        return StatusTint.dangerRed
     }
 
     var body: some View {
