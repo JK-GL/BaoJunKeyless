@@ -16,7 +16,7 @@ enum CommandResult {
 
     var title: String {
         switch self {
-        case .success:  return "执行成功"
+        case .success:  return "已反馈"
         case .failure:  return "执行失败"
         case .timeout:  return "连接超时"
         }
@@ -24,7 +24,7 @@ enum CommandResult {
 
     var message: String {
         switch self {
-        case .success:  return "状态已更新"
+        case .success:  return "已收到点击反馈，状态以车辆真实回报为准"
         case .failure:  return "指令未成功，请稍后重试"
         case .timeout:  return "车辆未响应，请检查网络后重试"
         }
@@ -48,24 +48,6 @@ enum CommandAction: String, Identifiable {
         case .failure:  return "执行失败"
         case .timeout:  return "连接超时"
         default:        return "执行失败"
-        }
-    }
-
-    /// 执行成功后按钮标题（官方风格）
-    func successTitle(state: VehicleState) -> String {
-        switch self {
-        case .lockUnlock:
-            return state.locked == true ? "车辆已锁车 ✓" : "车辆已解锁 ✓"
-        case .remoteStart:
-            return state.power == .off ? "已远程熄火 ✓" : "车辆已启动 ✓"
-        case .findCar:
-            return "已触发寻车 ✓"
-        case .acToggle:
-            return state.acOn == true ? "空调已关闭 ✓" : "空调已开启 ✓"
-        case .windowToggle:
-            return state.windowsClosed == true ? "车窗已关闭 ✓" : "车窗已打开 ✓"
-        case .quickCool:
-            return "快速降温已开启 ✓"
         }
     }
 
@@ -178,7 +160,6 @@ struct CommandConfirmPopup: View {
 
     @State private var temperature: Double
     @State private var isExecuting = false
-    @State private var executedState: VehicleState? = nil
     @State private var commandResult: CommandResult? = nil
 
     init(action: CommandAction, vehicleState: VehicleState, isPresented: Binding<Bool>, onConfirm: @escaping (CommandAction, Double?) -> Void) {
@@ -189,9 +170,9 @@ struct CommandConfirmPopup: View {
         self._temperature = State(initialValue: vehicleState.acTemperature ?? (action == .quickCool ? 17 : 22))
     }
 
-    /// 执行后显示新状态，否则显示原始状态
+    /// 始终显示真实状态源传入的车辆状态，点击反馈不再模拟覆盖。
     private var displayState: VehicleState {
-        executedState ?? vehicleState
+        vehicleState
     }
 
     private var accentColor: Color {
@@ -246,7 +227,7 @@ struct CommandConfirmPopup: View {
             if let result = commandResult {
                 // 执行后：结果按钮（disabled，用对应颜色背景）
                 FloatingPopupPrimaryButton(
-                    title: result == .success ? action.successTitle(state: executedState ?? vehicleState) : action.failureTitle(result: result),
+                    title: result == .success ? "已反馈 ✓" : action.failureTitle(result: result),
                     color: result.color,
                     isLoading: false,
                     isDisabled: true,
@@ -353,28 +334,6 @@ struct CommandConfirmPopup: View {
         }
     }
 
-    /// 根据动作类型，模拟执行后的车辆状态
-    private func vehicleStateAfterAction(_ action: CommandAction, temperature: Double?) -> VehicleState {
-        var newState = vehicleState
-        switch action {
-        case .lockUnlock:
-            newState.locked = !(vehicleState.locked ?? true)
-        case .remoteStart:
-            newState.power = (vehicleState.power == .on || vehicleState.power == .ready) ? .off : .ready
-        case .acToggle:
-            newState.acOn = !(vehicleState.acOn ?? false)
-            if let t = temperature { newState.acTemperature = t }
-        case .windowToggle:
-            newState.windowsClosed = !(vehicleState.windowsClosed ?? true)
-        case .quickCool:
-            newState.acOn = true
-            newState.acTemperature = temperature ?? 17
-        case .findCar:
-            break
-        }
-        return newState
-    }
-
     private func executeCommand() {
         guard !isExecuting else { return }
 
@@ -385,29 +344,15 @@ struct CommandConfirmPopup: View {
         let temperatureToUse = temperature
         let label = action.label(state: vehicleState)
 
-        vehicleLog.add(.action, "发送指令", detail: "\(label) \(action.needsTemperatureSlider ? "\(Int(temperatureToUse))°C" : "")")
+        vehicleLog.add(.action, "快捷操作反馈", detail: "\(label) \(action.needsTemperatureSlider ? "\(Int(temperatureToUse))°C" : "")")
 
-        // Mock: 模拟执行延迟 + 随机成功/失败/超时
-        let delay: Double = Double.random(in: 0.8...1.5)
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
             isExecuting = false
+            commandResult = .success
+            VibrationPattern.shortSingle.play(intensity: 0.55)
+            onConfirm(action, action.needsTemperatureSlider ? temperatureToUse : nil)
 
-            // Mock 结果：90% 成功，10% 失败
-            let mockResult: CommandResult = Bool.random() && Int.random(in: 0...9) == 0 ? .failure : .success
-            commandResult = mockResult
-
-            if mockResult == .success {
-                executedState = vehicleStateAfterAction(action, temperature: temperatureToUse)
-                VibrationPattern.longShortDouble.play(intensity: 0.7)
-                vehicleLog.add(.action, "指令成功", detail: "\(action.label(state: vehicleStateAfterAction(action, temperature: temperatureToUse)))")
-                onConfirm(action, action.needsTemperatureSlider ? temperatureToUse : nil)
-            } else {
-                VibrationPattern.shortSingle.play(intensity: 0.5)
-                vehicleLog.add(.error, "指令失败", detail: "\(label) \(mockResult == .timeout ? "连接超时" : "执行失败")")
-            }
-
-            // 2 秒后自动关闭
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 withAnimation(.easeOut(duration: 0.2)) { isPresented = false }
             }
         }

@@ -9,7 +9,6 @@ enum AppDiagnosticsSettings {
     static let useSFRadarCarIconKey = "Diagnostics.UseSFRadarCarIcon"
     static let enableRadarScanKey = "Diagnostics.EnableRadarScan"
     static let enableRadarGradientKey = "Diagnostics.EnableRadarGradient"
-    static let quickActionsDebugModeKey = "Diagnostics.QuickActionsDebugMode"
 
     static var isDiagnosticsEnabled: Bool {
         UserDefaults.standard.object(forKey: diagnosticsEnabledKey) as? Bool ?? false
@@ -27,14 +26,6 @@ enum AppDiagnosticsSettings {
         UserDefaults.standard.object(forKey: enableRadarGradientKey) as? Bool ?? false
     }
 
-    static var isQuickActionsDebugModeEnabled: Bool {
-        UserDefaults.standard.object(forKey: quickActionsDebugModeKey) as? Bool ?? false
-    }
-
-    static func setQuickActionsDebugMode(_ enabled: Bool) {
-        UserDefaults.standard.set(enabled, forKey: quickActionsDebugModeKey)
-    }
-
     static func resetHiddenDiagnosticsToggles() {
         let defaults = UserDefaults.standard
         defaults.set(false, forKey: diagnosticsEnabledKey)
@@ -45,6 +36,5 @@ enum AppDiagnosticsSettings {
         defaults.set(false, forKey: useSFRadarCarIconKey)
         defaults.set(false, forKey: enableRadarScanKey)
         defaults.set(false, forKey: enableRadarGradientKey)
-        defaults.set(false, forKey: quickActionsDebugModeKey)
     }
 }
