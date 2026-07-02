@@ -71,6 +71,13 @@ final class SGMWApiClient {
         let note: String
     }
 
+    struct VehicleControlRequestDraft {
+        let plan: VehicleControlRequestPlan
+        let url: URL
+        let headers: [String: String]
+        let body: [String: String]
+    }
+
     // MARK: - Token 读取
 
     /// 从本地读取 access_token
@@ -162,6 +169,23 @@ final class SGMWApiClient {
         case .quickCool:
             return VehicleControlRequestPlan(command: .quickCool, endpointCandidates: ["car/control/ac/quickCool", "car/control/air/quickCool"], bodyKeys: ["vin", "temperature"], note: "占位：真实快速降温接口待确认")
         }
+    }
+
+    /// 根据命令生成请求草稿。
+    /// 当前只构造 URL / headers / body，不发请求，供 transport 层后续真实接入复用。
+    func makeVehicleControlRequestDraft(accessToken: String, vin: String, command: VehicleCommand) -> Result<VehicleControlRequestDraft, SGMWApiError> {
+        let plan = makeVehicleControlRequestPlan(for: command)
+        guard let endpoint = plan.endpointCandidates.first,
+              let url = URL(string: "\(baseUrl)/\(endpoint)") else {
+            return .failure(.invalidResponse("控制接口 URL 构造失败"))
+        }
+        var body: [String: String] = [:]
+        if plan.bodyKeys.contains("vin") { body["vin"] = vin }
+        if plan.bodyKeys.contains("temperature"), let temperature = command.requestedTemperature {
+            body["temperature"] = String(Int(temperature))
+        }
+        let headers = buildSignedHeaders(accessToken: accessToken)
+        return .success(VehicleControlRequestDraft(plan: plan, url: url, headers: headers, body: body))
     }
 
     /// 查询胎压信息（Result 版本）

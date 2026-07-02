@@ -35,6 +35,12 @@
 - `FeedbackOnlyTransport`
 - `PlaceholderControlTransport`
 
+### 控制草稿层
+
+- `VehicleControlRequestPlan`
+- `VehicleControlRequestDraft`
+- `makeVehicleControlRequestDraft(accessToken:vin:command:)`
+
 ---
 
 ## 当前行为
