@@ -6,6 +6,7 @@ struct StatusView: View {
     @EnvironmentObject var addressSettings: AddressServiceSettings
     @EnvironmentObject var locationManager: LocationManager
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
+    @AppStorage(AppDiagnosticsSettings.quickActionsDebugModeKey) private var quickActionsDebugMode = false
     @EnvironmentObject var vehicleStore: VehicleStateStore
     @State private var isRefreshing = false
     @State private var refreshScale: CGFloat = 1.0
@@ -520,6 +521,7 @@ struct StatusView: View {
     }
 
     private func handleQuickActionConfirm(action: CommandAction, temperature: Double?) {
+        guard quickActionsDebugMode else { return }
         switch action {
         case .lockUnlock:
             if vehicleStore.state.locked == true {

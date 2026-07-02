@@ -28,7 +28,7 @@ enum AppDiagnosticsSettings {
     }
 
     static var isQuickActionsDebugModeEnabled: Bool {
-        UserDefaults.standard.object(forKey: quickActionsDebugModeKey) as? Bool ?? true
+        UserDefaults.standard.object(forKey: quickActionsDebugModeKey) as? Bool ?? false
     }
 
     static func setQuickActionsDebugMode(_ enabled: Bool) {
@@ -45,6 +45,6 @@ enum AppDiagnosticsSettings {
         defaults.set(false, forKey: useSFRadarCarIconKey)
         defaults.set(false, forKey: enableRadarScanKey)
         defaults.set(false, forKey: enableRadarGradientKey)
-        defaults.set(true, forKey: quickActionsDebugModeKey)
+        defaults.set(false, forKey: quickActionsDebugModeKey)
     }
 }

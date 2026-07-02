@@ -73,9 +73,9 @@ enum CommandAction: String, Identifiable {
     func icon(state: VehicleState) -> String {
         switch self {
         case .lockUnlock:
-            return state.locked == true ? "lock.fill" : "lock.open.fill"
+            return state.locked == false ? "lock.open.fill" : "lock.fill"
         case .remoteStart:
-            return state.power == .off ? "power" : "power.circle.fill"
+            return (state.power == .on || state.power == .ready) ? "power.circle.fill" : "power"
         case .findCar:
             return "location.fill"
         case .acToggle:
@@ -90,9 +90,9 @@ enum CommandAction: String, Identifiable {
     func label(state: VehicleState) -> String {
         switch self {
         case .lockUnlock:
-            return state.locked == true ? "锁车" : "已开锁"
+            return state.locked == false ? "已开锁" : "锁车"
         case .remoteStart:
-            return state.power == .off ? "熄火" : "已启动"
+            return (state.power == .on || state.power == .ready) ? "已启动" : "熄火"
         case .findCar:
             return "寻车"
         case .acToggle:
@@ -119,13 +119,13 @@ enum CommandAction: String, Identifiable {
     func resolvedColor(state: VehicleState) -> Color {
         switch self {
         case .lockUnlock:
-            return state.locked == true ? AppTheme.green : AppTheme.red
+            return state.locked == false ? AppTheme.red : AppTheme.green
         case .remoteStart:
-            return state.power == .off ? Color(red: 0.55, green: 0.58, blue: 0.62) : AppTheme.green
+            return (state.power == .on || state.power == .ready) ? AppTheme.green : Color(red: 0.55, green: 0.58, blue: 0.62)
         case .acToggle:
             return state.acOn == true ? AppTheme.accent : Color(red: 0.55, green: 0.58, blue: 0.62)
         case .windowToggle:
-            return state.windowsClosed == true ? Color(red: 0.55, green: 0.58, blue: 0.62) : Color(red: 0.22, green: 0.74, blue: 1.0)
+            return state.windowsClosed == false ? Color(red: 0.22, green: 0.74, blue: 1.0) : Color(red: 0.55, green: 0.58, blue: 0.62)
         default:
             return color
         }
@@ -135,8 +135,8 @@ enum CommandAction: String, Identifiable {
     func confirmTitle(state: VehicleState) -> String {
         switch self {
         case .lockUnlock:
-            return state.locked == true ? "解锁车辆" : "锁车"
-        case .remoteStart:   return state.power == .off ? "远程启动" : "远程熄火"
+            return state.locked == false ? "锁车" : "解锁车辆"
+        case .remoteStart:   return (state.power == .on || state.power == .ready) ? "远程熄火" : "远程启动"
         case .findCar:       return "寻车"
         case .acToggle:
             return state.acOn == true ? "关闭空调" : "开启空调"
@@ -150,8 +150,8 @@ enum CommandAction: String, Identifiable {
     func confirmMessage(state: VehicleState) -> String {
         switch self {
         case .lockUnlock:
-            return state.locked == true ? "车辆将远程解锁，车门锁会解除" : "车辆将远程上锁，确保车门已关闭"
-        case .remoteStart:   return state.power == .off ? "通过蓝牙鉴权，远程启动发动机" : "车辆将远程熄火，发动机停止运转"
+            return state.locked == false ? "车辆将远程上锁，确保车门已关闭" : "车辆将远程解锁，车门锁会解除"
+        case .remoteStart:   return (state.power == .on || state.power == .ready) ? "车辆将远程熄火，发动机停止运转" : "通过蓝牙鉴权，远程启动发动机"
         case .findCar:       return "车辆将双闪鸣笛，方便您定位"
         case .acToggle:
             return state.acOn == true ? "关闭空调压缩机，停止送风" : "开启空调，可调节设定温度"
@@ -294,32 +294,29 @@ struct CommandConfirmPopup: View {
         switch action {
         case .lockUnlock:
             return [
-                PopupStatusItem(icon: state.locked == true ? "lock.fill" : "lock.open.fill",
-                                label: "车锁", value: state.locked == true ? "已锁" : "未锁",
-                                color: state.locked == true ? AppTheme.green : AppTheme.red),
+                PopupStatusItem(icon: state.locked == false ? "lock.open.fill" : "lock.fill",
+                                label: "车锁", value: state.locked == false ? "未锁" : "已锁",
+                                color: state.locked == false ? AppTheme.red : AppTheme.green),
                 PopupStatusItem(icon: "gearshape.fill", label: "档位",
                                 value: state.gear.title, color: AppTheme.accent),
                 PopupStatusItem(icon: "car.fill", label: "车门",
-                                value: state.doorsClosed == true ? "全关" : "未关",
-                                color: state.doorsClosed == true ? AppTheme.green : AppTheme.orange)
+                                value: state.doorsClosed == false ? "未关" : "全关",
+                                color: state.doorsClosed == false ? AppTheme.orange : AppTheme.green)
             ]
         case .remoteStart:
             let startStatusText: String
             let startStatusColor: Color
             switch state.power {
-            case .off, .acc:
-                startStatusText = "待启动"
-                startStatusColor = AppTheme.orange
             case .on, .ready:
                 startStatusText = "已启动"
                 startStatusColor = AppTheme.green
-            case .unknown:
-                startStatusText = "未知"
-                startStatusColor = Color.white.opacity(0.45)
+            case .off, .acc, .unknown:
+                startStatusText = "待启动"
+                startStatusColor = AppTheme.orange
             }
             return [
                 PopupStatusItem(icon: "key.fill", label: "电源",
-                                value: state.power.title, color: AppTheme.orange),
+                                value: state.power == .unknown ? "熄火" : state.power.title, color: AppTheme.orange),
                 PopupStatusItem(icon: "dot.radiowaves.left.and.right", label: "启动",
                                 value: startStatusText, color: startStatusColor),
                 PopupStatusItem(icon: "gearshape.fill", label: "档位",
@@ -340,11 +337,11 @@ struct CommandConfirmPopup: View {
             return [
                 PopupStatusItem(icon: "rectangle.split.2x2.fill",
                                 label: "车窗",
-                                value: state.windowsClosed == true ? "已关" : "未关",
-                                color: state.windowsClosed == true ? AppTheme.green : AppTheme.orange),
+                                value: state.windowsClosed == false ? "未关" : "已关",
+                                color: state.windowsClosed == false ? AppTheme.orange : AppTheme.green),
                 PopupStatusItem(icon: "car.fill", label: "车门",
-                                value: state.doorsClosed == true ? "全关" : "未关",
-                                color: state.doorsClosed == true ? AppTheme.green : AppTheme.orange)
+                                value: state.doorsClosed == false ? "未关" : "全关",
+                                color: state.doorsClosed == false ? AppTheme.orange : AppTheme.green)
             ]
         case .quickCool:
             return [
@@ -363,7 +360,7 @@ struct CommandConfirmPopup: View {
         case .lockUnlock:
             newState.locked = !(vehicleState.locked ?? true)
         case .remoteStart:
-            newState.power = vehicleState.power == .off ? .ready : .off
+            newState.power = (vehicleState.power == .on || vehicleState.power == .ready) ? .off : .ready
         case .acToggle:
             newState.acOn = !(vehicleState.acOn ?? false)
             if let t = temperature { newState.acTemperature = t }

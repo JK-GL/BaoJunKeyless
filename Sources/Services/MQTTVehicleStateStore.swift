@@ -544,13 +544,13 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     override func simulateRemoteStart() {
         var next = state
-        next.power = next.power == .off ? .ready : .off
+        next.power = (next.power == .on || next.power == .ready) ? .off : .ready
         apply(next)
     }
 
     override func simulateToggleWindows() {
         var next = state
-        next.windowsClosed = !(state.windowsClosed ?? false)
+        next.windowsClosed = !(state.windowsClosed ?? true)
         apply(next)
         var dash = dashboard
         dash.windowStatusText = next.windowsClosed == true ? "全关" : "未关"

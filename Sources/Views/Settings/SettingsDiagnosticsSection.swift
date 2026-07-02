@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SettingsDiagnosticsSection: View {
     @EnvironmentObject var vehicleStore: VehicleStateStore
-    @AppStorage(AppDiagnosticsSettings.quickActionsDebugModeKey) private var quickActionsDebugMode = true
+    @AppStorage(AppDiagnosticsSettings.quickActionsDebugModeKey) private var quickActionsDebugMode = false
 
     var body: some View {
         SettingsPanelView(
