@@ -98,9 +98,8 @@ func displayTirePressure(_ raw: String?) -> String {
     guard let raw, !raw.isEmpty else { return "--" }
     if raw.rangeOfCharacter(from: CharacterSet.letters) != nil { return raw }
     guard let value = Double(raw) else { return raw }
-    if value == 0 { return "0" }
-    if value < 10 { return "\(raw)bar" }
-    return "\(raw)kPa"
+    if value > 10 { return String(Int(round(value))) }
+    return String(Int(round(value * 100)))
 }
 
 func firstDisplayTirePressure(_ s: [String: String], keys: [String]) -> String {

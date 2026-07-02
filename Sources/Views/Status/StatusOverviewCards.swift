@@ -338,9 +338,53 @@ struct TirePressureView: View {
     let metrics: [PopupStatusItem]
 
     var body: some View {
-        CardView(title: "胎压状态", icon: "gauge", iconColor: AppTheme.green) {
-            VehicleStatusMetricGrid(items: metrics)
+        CardView(title: "胎压状态", icon: "sun.max.fill", iconColor: AppTheme.green) {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                ForEach(metrics) { metric in
+                    TirePressureMetricCard(item: metric)
+                }
+            }
         }
+    }
+}
+
+private struct TirePressureMetricCard: View {
+    let item: PopupStatusItem
+
+    private var pressureColor: Color {
+        let digits = item.value.filter { $0.isNumber }
+        guard let value = Int(digits), !digits.isEmpty else { return Color.white.opacity(0.45) }
+        if value >= 220 && value <= 260 { return AppTheme.green }
+        if (value >= 200 && value < 220) || (value > 260 && value <= 280) { return AppTheme.orange }
+        return AppTheme.red
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                    .frame(width: 24, height: 24)
+                Image(systemName: "sun.max.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.78))
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.label)
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.52))
+                Text(item.value)
+                    .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(pressureColor)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.035))
+        )
     }
 }
 

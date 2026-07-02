@@ -130,6 +130,26 @@ final class SGMWApiClient {
         }
     }
 
+    /// 查询胎压信息（Result 版本）
+    func queryTirePressureResult(accessToken: String, vin: String, completion: @escaping (Result<[String: String], SGMWApiError>) -> Void) {
+        apiCallResult(
+            endpoint: "car/info/tire/pressure",
+            body: ["vin": vin],
+            accessToken: accessToken
+        ) { result in
+            switch result {
+            case .failure(let err):
+                completion(.failure(err))
+            case .success(let json):
+                guard let dataObj = json["data"] as? [String: Any] else {
+                    completion(.failure(.parseFailed("缺少 tirePressure data")))
+                    return
+                }
+                completion(.success(self.stringifyDictionary(dataObj)))
+            }
+        }
+    }
+
     /// 查询 BLE 钥匙信息（Result 版本）
     func queryBleKeyResult(accessToken: String, vin: String, phone: String, completion: @escaping (Result<[String: String], SGMWApiError>) -> Void) {
         apiCallResult(

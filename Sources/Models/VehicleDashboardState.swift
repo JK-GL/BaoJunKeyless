@@ -180,17 +180,17 @@ extension VehicleDashboardState {
             ],
             bodyStatus: [
                 PopupStatusItem(icon: "lock.fill", label: "车锁", value: lockStatusText, color: colorForStatus(lockStatusText)),
-                PopupStatusItem(icon: "rectangle.portrait.fill", label: "尾门", value: tailgateStatusText, color: colorForStatus(tailgateStatusText)),
-                PopupStatusItem(icon: "car.fill", label: "车门", value: doorStatusText, color: colorForStatus(doorStatusText)),
-                PopupStatusItem(icon: "rectangle.split.2x2.fill", label: "车窗", value: windowStatusText, color: colorForStatus(windowStatusText)),
-                PopupStatusItem(icon: "car.fill", label: "主驾门", value: driverDoorStatusText, color: colorForStatus(driverDoorStatusText)),
-                PopupStatusItem(icon: "rectangle.split.2x2.fill", label: "左前窗", value: leftFrontWindowStatusText, color: colorForStatus(leftFrontWindowStatusText)),
-                PopupStatusItem(icon: "car.fill", label: "副驾门", value: passengerDoorStatusText, color: colorForStatus(passengerDoorStatusText)),
-                PopupStatusItem(icon: "rectangle.split.2x2.fill", label: "右前窗", value: rightFrontWindowStatusText, color: colorForStatus(rightFrontWindowStatusText)),
-                PopupStatusItem(icon: "car.fill", label: "左后门", value: leftRearDoorStatusText, color: colorForStatus(leftRearDoorStatusText)),
-                PopupStatusItem(icon: "rectangle.split.2x2.fill", label: "左后窗", value: leftRearWindowStatusText, color: colorForStatus(leftRearWindowStatusText)),
-                PopupStatusItem(icon: "car.fill", label: "右后门", value: rightRearDoorStatusText, color: colorForStatus(rightRearDoorStatusText)),
-                PopupStatusItem(icon: "rectangle.split.2x2.fill", label: "右后窗", value: rightRearWindowStatusText, color: colorForStatus(rightRearWindowStatusText))
+                PopupStatusItem(icon: "train.side.middle.car", label: "尾门", value: tailgateStatusText, color: colorForStatus(tailgateStatusText)),
+                PopupStatusItem(icon: "train.side.front.car", label: "车门", value: doorStatusText, color: colorForStatus(doorStatusText)),
+                PopupStatusItem(icon: "rectangle.split.3x1", label: "车窗", value: windowStatusText, color: colorForStatus(windowStatusText)),
+                PopupStatusItem(icon: "train.side.front.car", label: "主驾门", value: driverDoorStatusText, color: colorForStatus(driverDoorStatusText)),
+                PopupStatusItem(icon: "rectangle.split.3x1", label: "左前窗", value: leftFrontWindowStatusText, color: colorForStatus(leftFrontWindowStatusText)),
+                PopupStatusItem(icon: "train.side.front.car", label: "副驾门", value: passengerDoorStatusText, color: colorForStatus(passengerDoorStatusText)),
+                PopupStatusItem(icon: "rectangle.split.3x1", label: "右前窗", value: rightFrontWindowStatusText, color: colorForStatus(rightFrontWindowStatusText)),
+                PopupStatusItem(icon: "train.side.front.car", label: "左后门", value: leftRearDoorStatusText, color: colorForStatus(leftRearDoorStatusText)),
+                PopupStatusItem(icon: "rectangle.split.3x1", label: "左后窗", value: leftRearWindowStatusText, color: colorForStatus(leftRearWindowStatusText)),
+                PopupStatusItem(icon: "train.side.front.car", label: "右后门", value: rightRearDoorStatusText, color: colorForStatus(rightRearDoorStatusText)),
+                PopupStatusItem(icon: "rectangle.split.3x1", label: "右后窗", value: rightRearWindowStatusText, color: colorForStatus(rightRearWindowStatusText))
             ],
             tirePressure: [
                 PopupStatusItem(icon: "circle.fill", label: "左前", value: leftFrontTirePressureText, color: leftFrontTirePressureText == "--" ? Color.white.opacity(0.45) : AppTheme.green),

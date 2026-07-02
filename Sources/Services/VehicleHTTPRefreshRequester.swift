@@ -3,6 +3,7 @@ import Foundation
 // MARK: - HTTP 刷新结果（只承载请求结果，不写状态）
 struct VehicleHTTPRefreshResult {
     let payload: SGMWApiClient.VehicleHTTPPayload
+    let tirePressure: [String: String]
     let fetchedAt: Date
 
     var carInfo: [String: String] { payload.carInfo }
@@ -21,7 +22,19 @@ final class VehicleHTTPRefreshRequester {
             case .failure(let error):
                 completion(.failure(error))
             case .success(let payload):
-                completion(.success(VehicleHTTPRefreshResult(payload: payload, fetchedAt: Date())))
+                let vin = payload.carInfo["vin"] ?? ""
+                guard !vin.isEmpty else {
+                    completion(.success(VehicleHTTPRefreshResult(payload: payload, tirePressure: [:], fetchedAt: Date())))
+                    return
+                }
+                apiClient.queryTirePressureResult(accessToken: accessToken, vin: vin) { tireResult in
+                    switch tireResult {
+                    case .success(let tirePressure):
+                        completion(.success(VehicleHTTPRefreshResult(payload: payload, tirePressure: tirePressure, fetchedAt: Date())))
+                    case .failure:
+                        completion(.success(VehicleHTTPRefreshResult(payload: payload, tirePressure: [:], fetchedAt: Date())))
+                    }
+                }
             }
         }
     }

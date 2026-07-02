@@ -111,6 +111,15 @@ enum VehicleStatusMapper {
         return d
     }
 
+    static func tirePressureDashboard(from s: [String: String], base dashboard: VehicleDashboardState) -> VehicleDashboardState {
+        var d = dashboard
+        d.leftFrontTirePressureText = firstDisplayTirePressure(s, keys: ["lfTirPrsVal", "fl", "leftFrontTirePressure", "frontLeftTirePressure", "lfTirePressure", "flTirePressure", "tirePressureLF", "tirePressureFL", "tyrePressureLF", "tyrePressureFL", "tirePressure1"])
+        d.rightFrontTirePressureText = firstDisplayTirePressure(s, keys: ["rfTirPrVal", "fr", "rightFrontTirePressure", "frontRightTirePressure", "rfTirePressure", "frTirePressure", "tirePressureRF", "tirePressureFR", "tyrePressureRF", "tyrePressureFR", "tirePressure2"])
+        d.leftRearTirePressureText = firstDisplayTirePressure(s, keys: ["lrTirPrVal", "rl", "leftRearTirePressure", "rearLeftTirePressure", "lrTirePressure", "rlTirePressure", "tirePressureLR", "tirePressureRL", "tyrePressureLR", "tyrePressureRL", "tirePressure3"])
+        d.rightRearTirePressureText = firstDisplayTirePressure(s, keys: ["rrTirPrVal", "rr", "rightRearTirePressure", "rearRightTirePressure", "rrTirePressure", "tirePressureRR", "tyrePressureRR", "tirePressure4"])
+        return d
+    }
+
     static func mqttState(from s: [String: String], base state: VehicleState) -> VehicleState {
         var next = state
         next.timestamp = parseTimestamp(s["collectTime"]) ?? Date()
