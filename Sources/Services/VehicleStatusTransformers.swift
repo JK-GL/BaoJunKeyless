@@ -90,6 +90,7 @@ enum VehicleStatusMapper {
         d.rightFrontTirePressureText = firstDisplayTirePressure(s, keys: ["rightFrontTirePressure", "frontRightTirePressure", "rfTirePressure", "frTirePressure", "tirePressureRF", "tirePressureFR", "tyrePressureRF", "tyrePressureFR", "tirePressure2"])
         d.leftRearTirePressureText = firstDisplayTirePressure(s, keys: ["leftRearTirePressure", "rearLeftTirePressure", "lrTirePressure", "rlTirePressure", "tirePressureLR", "tirePressureRL", "tyrePressureLR", "tyrePressureRL", "tirePressure3"])
         d.rightRearTirePressureText = firstDisplayTirePressure(s, keys: ["rightRearTirePressure", "rearRightTirePressure", "rrTirePressure", "tirePressureRR", "tyrePressureRR", "tirePressure4"])
+        if let tireTemp = s["tirTemp"], !tireTemp.isEmpty { d.tireTemperatureText = displayValue(tireTemp, suffix: "°C") }
 
         d.speedText = displayValue(s["speed"] ?? s["vehSpd"] ?? s["vehSpdAvgDrvn"], suffix: "km/h")
         d.averageSpeedText = displayValue(s["vehSpdAvgDrvn"], suffix: "km/h")
@@ -113,6 +114,9 @@ enum VehicleStatusMapper {
 
     static func tirePressureDashboard(from s: [String: String], base dashboard: VehicleDashboardState) -> VehicleDashboardState {
         var d = dashboard
+        if let tireTemp = s["tirTemp"], !tireTemp.isEmpty {
+            d.tireTemperatureText = displayValue(tireTemp, suffix: "°C")
+        }
         d.leftFrontTirePressureText = firstDisplayTirePressure(s, keys: ["lfTirPrsVal", "fl", "leftFrontTirePressure", "frontLeftTirePressure", "lfTirePressure", "flTirePressure", "tirePressureLF", "tirePressureFL", "tyrePressureLF", "tyrePressureFL", "tirePressure1"])
         d.rightFrontTirePressureText = firstDisplayTirePressure(s, keys: ["rfTirPrVal", "fr", "rightFrontTirePressure", "frontRightTirePressure", "rfTirePressure", "frTirePressure", "tirePressureRF", "tirePressureFR", "tyrePressureRF", "tyrePressureFR", "tirePressure2"])
         d.leftRearTirePressureText = firstDisplayTirePressure(s, keys: ["lrTirPrVal", "rl", "leftRearTirePressure", "rearLeftTirePressure", "lrTirePressure", "rlTirePressure", "tirePressureLR", "tirePressureRL", "tyrePressureLR", "tyrePressureRL", "tirePressure3"])
@@ -156,6 +160,7 @@ enum VehicleStatusMapper {
         if leftRearTirePressure != "--" { d.leftRearTirePressureText = leftRearTirePressure }
         let rightRearTirePressure = firstDisplayTirePressure(s, keys: ["rightRearTirePressure", "rearRightTirePressure", "rrTirePressure", "tirePressureRR", "tyrePressureRR", "tirePressure4"])
         if rightRearTirePressure != "--" { d.rightRearTirePressureText = rightRearTirePressure }
+        if let tireTemp = s["tirTemp"], !tireTemp.isEmpty { d.tireTemperatureText = displayValue(tireTemp, suffix: "°C") }
         if let ac = parseACStatus(s["acStatus"]) { d.acTemperatureText = ac ? "开启" : "关闭" }
         if let speed = s["speed"] ?? s["vehSpd"], !speed.isEmpty { d.speedText = "\(speed)km/h" }
         if let averageSpeed = s["vehSpdAvgDrvn"], !averageSpeed.isEmpty { d.averageSpeedText = "\(averageSpeed)km/h" }
@@ -215,6 +220,7 @@ enum VehicleStateMerger {
         dash.rightFrontWindowStatusText = newDashboard.rightFrontWindowStatusText
         dash.leftRearWindowStatusText = newDashboard.leftRearWindowStatusText
         dash.rightRearWindowStatusText = newDashboard.rightRearWindowStatusText
+        dash.tireTemperatureText = newDashboard.tireTemperatureText
         dash.leftFrontTirePressureText = newDashboard.leftFrontTirePressureText
         dash.rightFrontTirePressureText = newDashboard.rightFrontTirePressureText
         dash.leftRearTirePressureText = newDashboard.leftRearTirePressureText

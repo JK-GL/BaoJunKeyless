@@ -112,6 +112,7 @@ struct VehicleDashboardState {
     }
 
     // 胎压
+    var tireTemperatureText: String = "--"
     var leftFrontTirePressureText: String = "--"
     var rightFrontTirePressureText: String = "--"
     var leftRearTirePressureText: String = "--"

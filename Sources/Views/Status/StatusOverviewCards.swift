@@ -335,10 +335,26 @@ struct BodyStatusDetailGrid: View {
 }
 
 struct TirePressureView: View {
+    let dashboard: VehicleDashboardState
     let metrics: [PopupStatusItem]
 
     var body: some View {
-        CardView(title: "胎压状态", icon: "sun.max.fill", iconColor: AppTheme.green) {
+        CardView(
+            title: "胎压状态",
+            icon: "sun.max.fill",
+            iconColor: AppTheme.green,
+            headerAccessory: {
+                if dashboard.tireTemperatureText != "--" {
+                    HStack(spacing: 4) {
+                        Image(systemName: "thermometer.sun")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(dashboard.tireTemperatureText)
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(AppTheme.orange)
+                }
+            }
+        ) {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                 ForEach(metrics) { metric in
                     TirePressureMetricCard(item: metric)
@@ -360,27 +376,27 @@ private struct TirePressureMetricCard: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 7) {
             ZStack {
                 Circle()
                     .stroke(Color.white.opacity(0.14), lineWidth: 1)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 22, height: 22)
                 Image(systemName: "sun.max.fill")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.78))
             }
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.label)
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.52))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.5))
                 Text(item.value)
-                    .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(pressureColor)
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.white.opacity(0.035))
