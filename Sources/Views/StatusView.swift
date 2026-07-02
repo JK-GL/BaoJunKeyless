@@ -521,6 +521,7 @@ struct StatusView: View {
     }
 
     private func handleQuickActionConfirm(action: CommandAction, temperature: Double?) {
-        mqttStore?.refreshNow()
+        let command = action.asVehicleCommand(state: vehicleStore.state, temperature: temperature, source: .quickAction)
+        _ = VehicleCommandExecutor.executeFeedbackOnly(command, refresher: mqttStore)
     }
 }
