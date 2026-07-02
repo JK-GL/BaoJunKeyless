@@ -199,6 +199,7 @@ struct StatusView: View {
 
                     VStack(alignment: .leading, spacing: AppSpacing.section) {
                         BodyStatusView(dashboard: vehicleStore.dashboard)
+                        TirePressureView(metrics: vehicleStore.cachedDashboardMetrics.tirePressure)
                         StatusDashboardPair {
                             DrivingStatusView(metrics: vehicleStore.cachedDashboardMetrics.driving)
                         } right: {

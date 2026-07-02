@@ -94,6 +94,23 @@ func displayOpenStatus(_ raw: String?, closedText: String = "已关", openText: 
     return open ? openText : closedText
 }
 
+func displayTirePressure(_ raw: String?) -> String {
+    guard let raw, !raw.isEmpty else { return "--" }
+    if raw.rangeOfCharacter(from: CharacterSet.letters) != nil { return raw }
+    guard let value = Double(raw) else { return raw }
+    if value == 0 { return "0" }
+    if value < 10 { return "\(raw)bar" }
+    return "\(raw)kPa"
+}
+
+func firstDisplayTirePressure(_ s: [String: String], keys: [String]) -> String {
+    for key in keys {
+        let text = displayTirePressure(s[key])
+        if text != "--" { return text }
+    }
+    return "--"
+}
+
 func parseGear(_ raw: String?) -> VehicleGear? {
     guard let raw else { return nil }
     switch raw {

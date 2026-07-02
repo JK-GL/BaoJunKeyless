@@ -274,7 +274,8 @@ struct BodyStatusView: View {
             }
         ) {
             VStack(spacing: 10) {
-                VehicleStatusMetricGrid(items: dashboard.metrics.bodyStatus)
+                VehicleStatusMetricGrid(items: Array(dashboard.metrics.bodyStatus.prefix(4)))
+                BodyStatusDetailGrid(items: Array(dashboard.metrics.bodyStatus.dropFirst(4)))
 
                 let warnings = dashboard.warningMessages
                 if !warnings.isEmpty {
@@ -292,6 +293,53 @@ struct BodyStatusView: View {
                     .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(AppTheme.orange.opacity(0.08)))
                 }
             }
+        }
+    }
+}
+
+struct BodyStatusDetailGrid: View {
+    let items: [PopupStatusItem]
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 8),
+        GridItem(.flexible(), spacing: 8)
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 8) {
+            ForEach(items) { item in
+                HStack(spacing: 7) {
+                    Image(systemName: item.icon)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(item.color.opacity(0.82))
+                        .frame(width: 16)
+                    Text(item.label)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.52))
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(item.value)
+                        .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.white.opacity(0.035))
+                )
+            }
+        }
+    }
+}
+
+struct TirePressureView: View {
+    let metrics: [PopupStatusItem]
+
+    var body: some View {
+        CardView(title: "胎压状态", icon: "gauge", iconColor: AppTheme.green) {
+            VehicleStatusMetricGrid(items: metrics)
         }
     }
 }

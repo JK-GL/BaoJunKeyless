@@ -111,6 +111,12 @@ struct VehicleDashboardState {
         return warnings
     }
 
+    // 胎压
+    var leftFrontTirePressureText: String = "--"
+    var rightFrontTirePressureText: String = "--"
+    var leftRearTirePressureText: String = "--"
+    var rightRearTirePressureText: String = "--"
+
     // 驾驶
     var steeringAngleText: String = "--"
     var throttlePercentText: String = "--"
@@ -131,6 +137,7 @@ struct VehicleDashboardMetrics {
     let temperature: [PopupStatusItem]
     let charging: [PopupStatusItem]
     let bodyStatus: [PopupStatusItem]
+    let tirePressure: [PopupStatusItem]
     let driving: [PopupStatusItem]
     let lighting: [PopupStatusItem]
 }
@@ -184,6 +191,12 @@ extension VehicleDashboardState {
                 PopupStatusItem(icon: "rectangle.split.2x2.fill", label: "左后窗", value: leftRearWindowStatusText, color: colorForStatus(leftRearWindowStatusText)),
                 PopupStatusItem(icon: "car.fill", label: "右后门", value: rightRearDoorStatusText, color: colorForStatus(rightRearDoorStatusText)),
                 PopupStatusItem(icon: "rectangle.split.2x2.fill", label: "右后窗", value: rightRearWindowStatusText, color: colorForStatus(rightRearWindowStatusText))
+            ],
+            tirePressure: [
+                PopupStatusItem(icon: "circle.fill", label: "左前", value: leftFrontTirePressureText, color: leftFrontTirePressureText == "--" ? Color.white.opacity(0.45) : AppTheme.green),
+                PopupStatusItem(icon: "circle.fill", label: "右前", value: rightFrontTirePressureText, color: rightFrontTirePressureText == "--" ? Color.white.opacity(0.45) : AppTheme.green),
+                PopupStatusItem(icon: "circle.fill", label: "左后", value: leftRearTirePressureText, color: leftRearTirePressureText == "--" ? Color.white.opacity(0.45) : AppTheme.green),
+                PopupStatusItem(icon: "circle.fill", label: "右后", value: rightRearTirePressureText, color: rightRearTirePressureText == "--" ? Color.white.opacity(0.45) : AppTheme.green)
             ],
             driving: [
                 PopupStatusItem(icon: "scope", label: "方向盘", value: steeringAngleText, color: AppTheme.accent),
