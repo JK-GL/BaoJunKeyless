@@ -34,6 +34,8 @@
 
 - `FeedbackOnlyTransport`
 - `PlaceholderControlTransport`
+- `HTTPControlTransport`（当前只开放 lock / unlock 骨架）
+- `VehicleCommandAsyncTransport`
 
 ### 控制草稿层
 

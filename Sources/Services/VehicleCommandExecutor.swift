@@ -29,6 +29,14 @@ protocol VehicleCommandTransport {
     func execute(_ command: VehicleCommand, refresher: VehicleCommandRefreshing?) -> VehicleCommandExecutionResult
 }
 
+protocol VehicleCommandAsyncTransport {
+    func executeAsync(
+        _ command: VehicleCommand,
+        refresher: VehicleCommandRefreshing?,
+        completion: @escaping (VehicleCommandExecutionResult) -> Void
+    )
+}
+
 struct FeedbackOnlyTransport: VehicleCommandTransport {
     func execute(_ command: VehicleCommand, refresher: VehicleCommandRefreshing?) -> VehicleCommandExecutionResult {
         refresher?.refreshNow()
@@ -91,6 +99,45 @@ struct PlaceholderControlTransport: VehicleCommandTransport {
     }
 }
 
+struct HTTPControlTransport: VehicleCommandAsyncTransport {
+    let apiClient: SGMWApiClient
+    weak var credentials: VehicleCommandCredentialProviding?
+
+    init(apiClient: SGMWApiClient = .shared, credentials: VehicleCommandCredentialProviding?) {
+        self.apiClient = apiClient
+        self.credentials = credentials
+    }
+
+    func executeAsync(
+        _ command: VehicleCommand,
+        refresher: VehicleCommandRefreshing?,
+        completion: @escaping (VehicleCommandExecutionResult) -> Void
+    ) {
+        guard let credentials else {
+            completion(VehicleCommandExecutionResult(command: command, state: .failed("缺少车辆凭证提供者"), userMessage: "未配置车辆凭证，无法发送控制请求", shouldRefresh: false, refreshDelay: 0))
+            return
+        }
+        guard command.kind == .lock || command.kind == .unlock else {
+            completion(VehicleCommandExecutionResult(command: command, state: .failed("仅开放 lock / unlock HTTP transport 骨架"), userMessage: "当前仅为 lock / unlock 提供 HTTP transport 骨架", shouldRefresh: false, refreshDelay: 0))
+            return
+        }
+        switch apiClient.makeVehicleControlRequestDraft(accessToken: credentials.accessToken, vin: credentials.vin, command: command) {
+        case .failure(let error):
+            completion(VehicleCommandExecutionResult(command: command, state: .failed(error.localizedDescription), userMessage: error.localizedDescription, shouldRefresh: false, refreshDelay: 0))
+        case .success(let draft):
+            apiClient.sendVehicleControlRequestDraft(draft) { result in
+                switch result {
+                case .success:
+                    refresher?.refreshNow()
+                    completion(VehicleCommandExecutionResult(command: command, state: .sent, userMessage: "控制请求已发送，等待车辆真实回报", shouldRefresh: true, refreshDelay: 0))
+                case .failure(let error):
+                    completion(VehicleCommandExecutionResult(command: command, state: .failed(error.localizedDescription), userMessage: error.localizedDescription, shouldRefresh: false, refreshDelay: 0))
+                }
+            }
+        }
+    }
+}
+
 struct VehicleCommandExecutor {
     static func executeFeedbackOnly(
         _ command: VehicleCommand,
@@ -105,6 +152,15 @@ struct VehicleCommandExecutor {
         refresher: VehicleCommandRefreshing?
     ) -> VehicleCommandExecutionResult {
         transport.execute(command, refresher: refresher)
+    }
+
+    static func executeAsync(
+        _ command: VehicleCommand,
+        transport: VehicleCommandAsyncTransport,
+        refresher: VehicleCommandRefreshing?,
+        completion: @escaping (VehicleCommandExecutionResult) -> Void
+    ) {
+        transport.executeAsync(command, refresher: refresher, completion: completion)
     }
 }
 

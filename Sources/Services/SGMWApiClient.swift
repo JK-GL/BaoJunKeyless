@@ -188,6 +188,42 @@ final class SGMWApiClient {
         return .success(VehicleControlRequestDraft(plan: plan, url: url, headers: headers, body: body))
     }
 
+    /// 发送控制请求草稿。
+    /// 当前用于 lock / unlock 的 HTTP transport 骨架，是否真正代表车辆执行成功以后续回执为准。
+    func sendVehicleControlRequestDraft(_ draft: VehicleControlRequestDraft, completion: @escaping (Result<[String: Any], SGMWApiError>) -> Void) {
+        var request = URLRequest(url: draft.url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 15
+        request.allHTTPHeaderFields = draft.headers
+        request.httpBody = try? JSONSerialization.data(withJSONObject: draft.body)
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(.network(error)))
+                return
+            }
+            guard let data else {
+                completion(.failure(.network(nil)))
+                return
+            }
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                let preview = String(data: data, encoding: .utf8).map { String($0.prefix(100)) }
+                completion(.failure(.parseFailed(preview)))
+                return
+            }
+            if let result = json["result"] as? Bool, result == true {
+                completion(.success(json))
+                return
+            }
+            let msg = (json["msg"] as? String) ?? (json["message"] as? String) ?? "未知错误"
+            if msg.contains("token") || msg.contains("Token") || json["code"] as? String == "2002" {
+                completion(.failure(.invalidToken))
+            } else {
+                completion(.failure(.serverMessage(msg)))
+            }
+        }.resume()
+    }
+
     /// 查询胎压信息（Result 版本）
     func queryTirePressureResult(accessToken: String, vin: String, completion: @escaping (Result<[String: String], SGMWApiError>) -> Void) {
         apiCallResult(
