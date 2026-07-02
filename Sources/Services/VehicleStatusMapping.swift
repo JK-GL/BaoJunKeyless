@@ -110,6 +110,54 @@ func firstDisplayTirePressure(_ s: [String: String], keys: [String]) -> String {
     return "--"
 }
 
+enum TireCorner {
+    case leftFront
+    case rightFront
+    case leftRear
+    case rightRear
+
+    var carStatusKeys: [String] {
+        switch self {
+        case .leftFront:
+            return ["leftFrontTirePressure", "frontLeftTirePressure", "lfTirePressure", "flTirePressure", "tirePressureLF", "tirePressureFL", "tyrePressureLF", "tyrePressureFL", "tirePressure1"]
+        case .rightFront:
+            return ["rightFrontTirePressure", "frontRightTirePressure", "rfTirePressure", "frTirePressure", "tirePressureRF", "tirePressureFR", "tyrePressureRF", "tyrePressureFR", "tirePressure2"]
+        case .leftRear:
+            return ["leftRearTirePressure", "rearLeftTirePressure", "lrTirePressure", "rlTirePressure", "tirePressureLR", "tirePressureRL", "tyrePressureLR", "tyrePressureRL", "tirePressure3"]
+        case .rightRear:
+            return ["rightRearTirePressure", "rearRightTirePressure", "rrTirePressure", "tirePressureRR", "tyrePressureRR", "tirePressure4"]
+        }
+    }
+
+    var tirePayloadKeys: [String] {
+        switch self {
+        case .leftFront:
+            return ["lfTirPrsVal", "fl"]
+        case .rightFront:
+            return ["rfTirPrVal", "fr"]
+        case .leftRear:
+            return ["lrTirPrVal", "rl"]
+        case .rightRear:
+            return ["rrTirPrVal", "rr"]
+        }
+    }
+}
+
+func firstDisplayTirePressure(_ s: [String: String], corner: TireCorner, preferTirePayload: Bool = false) -> String {
+    let keys = preferTirePayload ? (corner.tirePayloadKeys + corner.carStatusKeys) : corner.carStatusKeys
+    return firstDisplayTirePressure(s, keys: keys)
+}
+
+func displayTireTemperature(_ tirePressure: [String: String], fallbackCarStatus: [String: String]? = nil) -> String {
+    if let tireTemp = tirePressure["tirTemp"], !tireTemp.isEmpty {
+        return displayValue(tireTemp, suffix: "°C")
+    }
+    if let fallbackCarStatus, let tireTemp = fallbackCarStatus["tirTemp"], !tireTemp.isEmpty {
+        return displayValue(tireTemp, suffix: "°C")
+    }
+    return "--"
+}
+
 func parseGear(_ raw: String?) -> VehicleGear? {
     guard let raw else { return nil }
     switch raw {

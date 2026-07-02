@@ -86,11 +86,11 @@ enum VehicleStatusMapper {
         d.rightFrontWindowStatusText = displayOpenStatus(s["window2Status"], closedText: "已关", openText: "已开")
         d.leftRearWindowStatusText = displayOpenStatus(s["window3Status"], closedText: "已关", openText: "已开")
         d.rightRearWindowStatusText = displayOpenStatus(s["window4Status"], closedText: "已关", openText: "已开")
-        d.leftFrontTirePressureText = firstDisplayTirePressure(s, keys: ["leftFrontTirePressure", "frontLeftTirePressure", "lfTirePressure", "flTirePressure", "tirePressureLF", "tirePressureFL", "tyrePressureLF", "tyrePressureFL", "tirePressure1"])
-        d.rightFrontTirePressureText = firstDisplayTirePressure(s, keys: ["rightFrontTirePressure", "frontRightTirePressure", "rfTirePressure", "frTirePressure", "tirePressureRF", "tirePressureFR", "tyrePressureRF", "tyrePressureFR", "tirePressure2"])
-        d.leftRearTirePressureText = firstDisplayTirePressure(s, keys: ["leftRearTirePressure", "rearLeftTirePressure", "lrTirePressure", "rlTirePressure", "tirePressureLR", "tirePressureRL", "tyrePressureLR", "tyrePressureRL", "tirePressure3"])
-        d.rightRearTirePressureText = firstDisplayTirePressure(s, keys: ["rightRearTirePressure", "rearRightTirePressure", "rrTirePressure", "tirePressureRR", "tyrePressureRR", "tirePressure4"])
-        if let tireTemp = s["tirTemp"], !tireTemp.isEmpty { d.tireTemperatureText = displayValue(tireTemp, suffix: "°C") }
+        d.leftFrontTirePressureText = firstDisplayTirePressure(s, corner: .leftFront)
+        d.rightFrontTirePressureText = firstDisplayTirePressure(s, corner: .rightFront)
+        d.leftRearTirePressureText = firstDisplayTirePressure(s, corner: .leftRear)
+        d.rightRearTirePressureText = firstDisplayTirePressure(s, corner: .rightRear)
+        d.tireTemperatureText = displayTireTemperature([:], fallbackCarStatus: s)
 
         d.speedText = displayValue(s["speed"] ?? s["vehSpd"] ?? s["vehSpdAvgDrvn"], suffix: "km/h")
         d.averageSpeedText = displayValue(s["vehSpdAvgDrvn"], suffix: "km/h")
@@ -114,13 +114,11 @@ enum VehicleStatusMapper {
 
     static func tirePressureDashboard(from s: [String: String], base dashboard: VehicleDashboardState) -> VehicleDashboardState {
         var d = dashboard
-        if let tireTemp = s["tirTemp"], !tireTemp.isEmpty {
-            d.tireTemperatureText = displayValue(tireTemp, suffix: "°C")
-        }
-        d.leftFrontTirePressureText = firstDisplayTirePressure(s, keys: ["lfTirPrsVal", "fl", "leftFrontTirePressure", "frontLeftTirePressure", "lfTirePressure", "flTirePressure", "tirePressureLF", "tirePressureFL", "tyrePressureLF", "tyrePressureFL", "tirePressure1"])
-        d.rightFrontTirePressureText = firstDisplayTirePressure(s, keys: ["rfTirPrVal", "fr", "rightFrontTirePressure", "frontRightTirePressure", "rfTirePressure", "frTirePressure", "tirePressureRF", "tirePressureFR", "tyrePressureRF", "tyrePressureFR", "tirePressure2"])
-        d.leftRearTirePressureText = firstDisplayTirePressure(s, keys: ["lrTirPrVal", "rl", "leftRearTirePressure", "rearLeftTirePressure", "lrTirePressure", "rlTirePressure", "tirePressureLR", "tirePressureRL", "tyrePressureLR", "tyrePressureRL", "tirePressure3"])
-        d.rightRearTirePressureText = firstDisplayTirePressure(s, keys: ["rrTirPrVal", "rr", "rightRearTirePressure", "rearRightTirePressure", "rrTirePressure", "tirePressureRR", "tyrePressureRR", "tirePressure4"])
+        d.tireTemperatureText = displayTireTemperature(s)
+        d.leftFrontTirePressureText = firstDisplayTirePressure(s, corner: .leftFront, preferTirePayload: true)
+        d.rightFrontTirePressureText = firstDisplayTirePressure(s, corner: .rightFront, preferTirePayload: true)
+        d.leftRearTirePressureText = firstDisplayTirePressure(s, corner: .leftRear, preferTirePayload: true)
+        d.rightRearTirePressureText = firstDisplayTirePressure(s, corner: .rightRear, preferTirePayload: true)
         return d
     }
 
@@ -152,15 +150,16 @@ enum VehicleStatusMapper {
         if s["window2Status"] != nil { d.rightFrontWindowStatusText = displayOpenStatus(s["window2Status"], closedText: "已关", openText: "已开") }
         if s["window3Status"] != nil { d.leftRearWindowStatusText = displayOpenStatus(s["window3Status"], closedText: "已关", openText: "已开") }
         if s["window4Status"] != nil { d.rightRearWindowStatusText = displayOpenStatus(s["window4Status"], closedText: "已关", openText: "已开") }
-        let leftFrontTirePressure = firstDisplayTirePressure(s, keys: ["leftFrontTirePressure", "frontLeftTirePressure", "lfTirePressure", "flTirePressure", "tirePressureLF", "tirePressureFL", "tyrePressureLF", "tyrePressureFL", "tirePressure1"])
+        let leftFrontTirePressure = firstDisplayTirePressure(s, corner: .leftFront)
         if leftFrontTirePressure != "--" { d.leftFrontTirePressureText = leftFrontTirePressure }
-        let rightFrontTirePressure = firstDisplayTirePressure(s, keys: ["rightFrontTirePressure", "frontRightTirePressure", "rfTirePressure", "frTirePressure", "tirePressureRF", "tirePressureFR", "tyrePressureRF", "tyrePressureFR", "tirePressure2"])
+        let rightFrontTirePressure = firstDisplayTirePressure(s, corner: .rightFront)
         if rightFrontTirePressure != "--" { d.rightFrontTirePressureText = rightFrontTirePressure }
-        let leftRearTirePressure = firstDisplayTirePressure(s, keys: ["leftRearTirePressure", "rearLeftTirePressure", "lrTirePressure", "rlTirePressure", "tirePressureLR", "tirePressureRL", "tyrePressureLR", "tyrePressureRL", "tirePressure3"])
+        let leftRearTirePressure = firstDisplayTirePressure(s, corner: .leftRear)
         if leftRearTirePressure != "--" { d.leftRearTirePressureText = leftRearTirePressure }
-        let rightRearTirePressure = firstDisplayTirePressure(s, keys: ["rightRearTirePressure", "rearRightTirePressure", "rrTirePressure", "tirePressureRR", "tyrePressureRR", "tirePressure4"])
+        let rightRearTirePressure = firstDisplayTirePressure(s, corner: .rightRear)
         if rightRearTirePressure != "--" { d.rightRearTirePressureText = rightRearTirePressure }
-        if let tireTemp = s["tirTemp"], !tireTemp.isEmpty { d.tireTemperatureText = displayValue(tireTemp, suffix: "°C") }
+        let tireTemperatureText = displayTireTemperature(s)
+        if tireTemperatureText != "--" { d.tireTemperatureText = tireTemperatureText }
         if let ac = parseACStatus(s["acStatus"]) { d.acTemperatureText = ac ? "开启" : "关闭" }
         if let speed = s["speed"] ?? s["vehSpd"], !speed.isEmpty { d.speedText = "\(speed)km/h" }
         if let averageSpeed = s["vehSpdAvgDrvn"], !averageSpeed.isEmpty { d.averageSpeedText = "\(averageSpeed)km/h" }
