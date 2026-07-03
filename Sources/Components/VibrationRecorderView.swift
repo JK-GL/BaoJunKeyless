@@ -179,7 +179,7 @@ struct VibrationRecorderView: View {
 
                     // 保存
                     if hapticManager.hasRecording {
-                        Button(action: { showSaveDialog = true }) {
+                        Button(action: { withAnimation(PopupMotion.presentSpring) { showSaveDialog = true } }) {
                             HStack(spacing: 8) {
                                 Image(systemName: "square.and.arrow.down")
                                 Text("保存模式")
@@ -205,7 +205,7 @@ struct VibrationRecorderView: View {
             if showSaveDialog {
                 Color.clear
                     .ignoresSafeArea()
-                    .onTapGesture { showSaveDialog = false }
+                    .onTapGesture { withAnimation(PopupMotion.dismissEase) { showSaveDialog = false } }
 
                 FloatingPopupCard(
                     icon: "waveform",
@@ -248,12 +248,12 @@ struct VibrationRecorderView: View {
                             title: "取消",
                             textColor: Color.white.opacity(0.62)
                         ) {
-                            showSaveDialog = false
+                            withAnimation(PopupMotion.dismissEase) { showSaveDialog = false }
                         }
                     }
                 }
-                .transition(.scale.combined(with: .opacity))
-                .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showSaveDialog)
+                .transition(PopupMotion.transition)
+                .animation(PopupMotion.presentSpring, value: showSaveDialog)
             }
         }
     }

@@ -277,7 +277,7 @@ struct CommandConfirmPopup: View {
                     disabledBackgroundColor: result.color,
                     action: {}
                 )
-                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                .transition(PopupMotion.transition)
             } else if isExecuting {
                 // 执行中：仅显示执行按钮，隐藏取消
                 FloatingPopupPrimaryButton(
@@ -287,7 +287,7 @@ struct CommandConfirmPopup: View {
                     isDisabled: true,
                     action: {}
                 )
-                .transition(.opacity)
+                .transition(PopupMotion.transition)
             } else {
                 // 执行前：确认 + 取消
                 VStack(spacing: 8) {
@@ -303,14 +303,14 @@ struct CommandConfirmPopup: View {
                         title: "取消",
                         textColor: Color.white.opacity(0.6)
                     ) {
-                        withAnimation(.easeOut(duration: 0.14)) { isPresented = false }
+                        withAnimation(PopupMotion.dismissEase) { isPresented = false }
                     }
                 }
-                .transition(.opacity)
+                .transition(PopupMotion.transition)
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: isExecuting)
-        .animation(.easeInOut(duration: 0.25), value: commandResult != nil)
+        .animation(PopupMotion.contentEase, value: isExecuting)
+        .animation(PopupMotion.contentEase, value: commandResult != nil)
         .onAppear(perform: logPopupAppearIfNeeded)
     }
 
@@ -439,7 +439,7 @@ struct CommandConfirmPopup: View {
                 }
 
                 DispatchQueue.main.asyncAfter(deadline: .now() + executionResult.autoDismissDelay) {
-                    withAnimation(.easeOut(duration: 0.14)) { isPresented = false }
+                    withAnimation(PopupMotion.dismissEase) { isPresented = false }
                 }
             }
         }
@@ -487,7 +487,8 @@ private extension VehicleCommandExecutionResult {
     var popupButtonTitle: String {
         switch state {
         case .feedbackOnly: return "已反馈 ✓"
-        case .sent, .completed: return "已下发 ✓"
+        case .sent: return "已下发 ✓"
+        case .completed: return "已回包 ✓"
         case .planned: return "已生成"
         case .failed(_): return "执行失败"
         case .timedOut(_): return "连接超时"
@@ -498,8 +499,10 @@ private extension VehicleCommandExecutionResult {
         switch state {
         case .feedbackOnly:
             return userMessage.isEmpty ? "已收到点击反馈，状态以车辆真实回报为准" : userMessage
-        case .sent, .completed:
+        case .sent:
             return userMessage.isEmpty ? "指令已下发，状态以车辆真实回报为准" : userMessage
+        case .completed:
+            return userMessage.isEmpty ? "控制回包已收到，状态以车辆真实回报为准" : userMessage
         case .planned:
             return userMessage.isEmpty ? "已生成控制请求，等待后续下发" : userMessage
         case .failed(_), .timedOut(_):
@@ -525,7 +528,8 @@ private extension VehicleCommandExecutionResult {
         switch state {
         case .feedbackOnly: return "快捷操作反馈完成"
         case .planned: return "控制请求已生成"
-        case .sent, .completed: return "控制请求已下发"
+        case .sent: return "控制请求已下发"
+        case .completed: return "控制请求已回包"
         case .failed(_): return "控制请求失败"
         case .timedOut(_): return "控制请求超时"
         }

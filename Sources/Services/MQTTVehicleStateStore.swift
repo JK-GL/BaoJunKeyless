@@ -69,6 +69,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     @Published var liveLongitudeGcj: Double = 0
     @Published var liveAddress: String = ""
     @Published var latestBleKeyInfo: [String: String] = [:]
+    @Published var latestBLEControlReceipt: VehicleBLEManager.BLEControlReceipt?
     @Published var latestControlResult: VehicleControlMQTTResult?
     @Published var tokenSourcePath: String = ""
     @Published var tokenSourceLabel: String = ""
@@ -173,20 +174,27 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 CrashLogger.shared.mark(component, message)
             }
         }
+        bleManager.onControlReceipt = { [weak self] receipt in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                self.latestBLEControlReceipt = receipt
+                self.vehicleEventLogStore.add(.action, "BLE 控制回包", detail: receipt.displayDetail)
+            }
+        }
     }
 
     var canUseBLEForDoorLock: Bool {
         bleManager.canSendDoorLockControl
     }
 
-    func sendDoorLockViaBLE(command: VehicleCommand) -> Result<Void, VehicleBLEManager.BLEControlError> {
+    func sendDoorLockViaBLE(command: VehicleCommand, completion: @escaping (Result<Void, VehicleBLEManager.BLEControlError>) -> Void) {
         switch command.kind {
         case .lock:
-            return bleManager.sendDoorLockCommand(lock: true)
+            bleManager.sendDoorLockCommand(lock: true, completion: completion)
         case .unlock:
-            return bleManager.sendDoorLockCommand(lock: false)
+            bleManager.sendDoorLockCommand(lock: false, completion: completion)
         default:
-            return .failure(.frameBuildFailed)
+            completion(.failure(.frameBuildFailed))
         }
     }
 
@@ -529,11 +537,6 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             command = VehicleCommand(kind: .lock, title: "无感上锁", detail: reason, requestedTemperature: nil, source: .keyless, transportHint: .httpControl)
         }
 
-        isExecutingKeylessCommand = true
-        lastAutoCommandAt = Date()
-        lastAutoCommandKind = command.kind
-        vehicleEventLogStore.add(.keyless, "无感命令发送", detail: "\(command.title) | \(reason)")
-
         guard bleManager.canSendDoorLockControl else {
             if lastBLEWaitCommandKind != command.kind {
                 vehicleEventLogStore.add(.keyless, "无感等待BLE", detail: "\(command.title) | BLE 未鉴权成功")
@@ -542,6 +545,10 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             return
         }
         lastBLEWaitCommandKind = nil
+        isExecutingKeylessCommand = true
+        lastAutoCommandAt = Date()
+        lastAutoCommandKind = command.kind
+        vehicleEventLogStore.add(.keyless, "无感命令发送", detail: "\(command.title) | \(reason)")
 
         let transport = BLEDoorLockTransport(bleController: self)
         VehicleCommandExecutor.executeAsync(command, transport: transport, refresher: self) { [weak self] result in

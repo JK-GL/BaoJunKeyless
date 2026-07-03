@@ -9,6 +9,8 @@ final class VehicleBLEManager: NSObject {
         case invalidConfig
         case frameBuildFailed
         case writeFailed(String)
+        case receiptTimeout
+        case sessionStopped
 
         var errorDescription: String? {
             switch self {
@@ -17,6 +19,8 @@ final class VehicleBLEManager: NSObject {
             case .invalidConfig: return "BLE 控制配置无效"
             case .frameBuildFailed: return "BLE 控制帧构造失败"
             case .writeFailed(let detail): return "BLE 控制写入失败：\(detail)"
+            case .receiptTimeout: return "BLE 控制回包超时"
+            case .sessionStopped: return "BLE 会话已停止"
             }
         }
     }
@@ -44,8 +48,24 @@ final class VehicleBLEManager: NSObject {
         let bleKey: String?
     }
 
+    struct BLEControlReceipt: Equatable {
+        let status: UInt8?
+        let btParam: UInt8?
+        let rawHex: String
+        let decryptedHex: String?
+        let receivedAt: Date
+
+        var displayDetail: String {
+            let statusText = status.map(String.init) ?? "--"
+            let btParamText = btParam.map(String.init) ?? "--"
+            let decryptedText = decryptedHex.map { ", decrypted=\($0.prefix(32))" } ?? ""
+            return "status=\(statusText), btParam=\(btParamText), rawLen=\(rawHex.count / 2)\(decryptedText)"
+        }
+    }
+
     var onStateChange: ((State) -> Void)?
     var onLog: ((String, String?) -> Void)?
+    var onControlReceipt: ((BLEControlReceipt) -> Void)?
 
     private lazy var central = CBCentralManager(delegate: self, queue: nil)
     private var config: SessionConfig?
@@ -58,6 +78,13 @@ final class VehicleBLEManager: NSObject {
     private var didSendAuthFrame = false
     private var pendingDoorLockStatus: UInt8?
     private var pendingDoorLockBtParam: UInt8?
+    private var pendingDoorLockCompletion: ((Result<Void, BLEControlError>) -> Void)?
+    private var pendingControlTimeoutWorkItem: DispatchWorkItem?
+    private var candidatePeripheral: CBPeripheral?
+    private var candidateName: String = "--"
+    private var candidateRSSI: Int = -127
+    private var candidateScore: Int = Int.min
+    private var candidateSelectionWorkItem: DispatchWorkItem?
     private(set) var state: State = .idle {
         didSet {
             guard oldValue != state else { return }
@@ -84,15 +111,25 @@ final class VehicleBLEManager: NSObject {
     private let controlNotify = CBUUID(string: "2A7F")
 
     func start(config: SessionConfig) {
+        if self.config == config {
+            switch state {
+            case .scanning, .connecting, .connected, .authenticating, .authenticated:
+                return
+            case .idle, .unsupported, .bluetoothOff, .authFailed, .error:
+                break
+            }
+        }
+        let configChanged = self.config != config
+        if configChanged {
+            central.stopScan()
+            if let discoveredPeripheral {
+                central.cancelPeripheralConnection(discoveredPeripheral)
+            }
+            completePendingDoorLock(.failure(.sessionStopped))
+        }
         self.config = config
         lastControlError = nil
-        authWriteCharacteristic = nil
-        controlWriteCharacteristic = nil
-        notify181AReady = false
-        notify182AReady = false
-        didSendAuthFrame = false
-        pendingDoorLockStatus = nil
-        pendingDoorLockBtParam = nil
+        clearSessionRuntime(cancelPendingControl: configChanged)
         if !hasStartedCentral {
             hasStartedCentral = true
             _ = central
@@ -102,19 +139,36 @@ final class VehicleBLEManager: NSObject {
     }
 
     func stop() {
+        config = nil
         central.stopScan()
+        candidateSelectionWorkItem?.cancel()
+        candidateSelectionWorkItem = nil
         if let discoveredPeripheral {
             central.cancelPeripheralConnection(discoveredPeripheral)
         }
+        completePendingDoorLock(.failure(.sessionStopped))
+        clearSessionRuntime(cancelPendingControl: true)
+        state = .idle
+    }
+
+    private func clearSessionRuntime(cancelPendingControl: Bool) {
         discoveredPeripheral = nil
         authWriteCharacteristic = nil
         controlWriteCharacteristic = nil
         notify181AReady = false
         notify182AReady = false
         didSendAuthFrame = false
-        pendingDoorLockStatus = nil
-        pendingDoorLockBtParam = nil
-        state = .idle
+        candidatePeripheral = nil
+        candidateName = "--"
+        candidateRSSI = -127
+        candidateScore = Int.min
+        if cancelPendingControl {
+            pendingControlTimeoutWorkItem?.cancel()
+            pendingControlTimeoutWorkItem = nil
+            pendingDoorLockStatus = nil
+            pendingDoorLockBtParam = nil
+            pendingDoorLockCompletion = nil
+        }
     }
 
     private func handleCentralState() {
@@ -138,9 +192,15 @@ final class VehicleBLEManager: NSObject {
             return
         }
         guard discoveredPeripheral == nil else { return }
+        candidateSelectionWorkItem?.cancel()
+        candidateSelectionWorkItem = nil
+        candidatePeripheral = nil
+        candidateName = "--"
+        candidateRSSI = -127
+        candidateScore = Int.min
         central.stopScan()
         state = .scanning
-        onLog?("BLE", "scanning services 181A/182A")
+        onLog?("BLE", "scanning services 181A/182A target=\(config?.bleMac ?? "--")")
         central.scanForPeripherals(withServices: [authService, controlService], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
     }
 
@@ -151,29 +211,53 @@ final class VehicleBLEManager: NSObject {
         sendAuthFrameIfPossible()
     }
 
-    func sendDoorLockCommand(lock: Bool) -> Result<Void, BLEControlError> {
+    func sendDoorLockCommand(lock: Bool, completion: @escaping (Result<Void, BLEControlError>) -> Void) {
         guard case .authenticated = state else {
             lastControlError = .notAuthenticated
-            return .failure(.notAuthenticated)
+            completion(.failure(.notAuthenticated))
+            return
         }
         guard let config,
               let peripheral = discoveredPeripheral,
               let controlWriteCharacteristic else {
             lastControlError = .writeCharacteristicMissing
-            return .failure(.writeCharacteristicMissing)
+            completion(.failure(.writeCharacteristicMissing))
+            return
         }
         guard let frame = makeDoorLockControlFrame(config: config, lock: lock) else {
             lastControlError = .frameBuildFailed
-            return .failure(.frameBuildFailed)
+            completion(.failure(.frameBuildFailed))
+            return
         }
         lastControlError = nil
         let statusValue: UInt8 = lock ? 1 : 0
         let btParam: UInt8 = lock ? 0 : 1
+        pendingControlTimeoutWorkItem?.cancel()
+        pendingDoorLockCompletion = completion
         pendingDoorLockStatus = statusValue
         pendingDoorLockBtParam = btParam
+        let timeout = DispatchWorkItem { [weak self] in
+            guard let self, self.pendingDoorLockCompletion != nil else { return }
+            self.onLog?("BLE", "doorLock control receipt timeout status=\(statusValue) btParam=\(btParam)")
+            self.completePendingDoorLock(.failure(.receiptTimeout))
+        }
+        pendingControlTimeoutWorkItem = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: timeout)
         onLog?("BLE", "send doorLock control status=\(statusValue) btParam=\(btParam) len=\(frame.count) bleType=\(config.bleType ?? "--") bleKey=\(config.bleKey ?? "--")")
         peripheral.writeValue(frame, for: controlWriteCharacteristic, type: .withResponse)
-        return .success(())
+    }
+
+    private func completePendingDoorLock(_ result: Result<Void, BLEControlError>) {
+        pendingControlTimeoutWorkItem?.cancel()
+        pendingControlTimeoutWorkItem = nil
+        let completion = pendingDoorLockCompletion
+        pendingDoorLockCompletion = nil
+        pendingDoorLockStatus = nil
+        pendingDoorLockBtParam = nil
+        if case .failure(let error) = result {
+            lastControlError = error
+        }
+        completion?(result)
     }
 
     private func sendAuthFrameIfPossible() {
@@ -332,13 +416,86 @@ final class VehicleBLEManager: NSObject {
     }
 
     private func handleControlNotification(_ data: Data) {
+        let rawHex = data.hexString
+        let decryptedHex = decryptControlNotification(data)
+        let receipt = BLEControlReceipt(
+            status: pendingDoorLockStatus,
+            btParam: pendingDoorLockBtParam,
+            rawHex: rawHex,
+            decryptedHex: decryptedHex,
+            receivedAt: Date()
+        )
         let context: String
         if let status = pendingDoorLockStatus, let btParam = pendingDoorLockBtParam {
             context = "pendingDoorLock status=\(status) btParam=\(btParam)"
         } else {
             context = "no pending control context"
         }
-        onLog?("BLE", "control notify received | \(context) | rawLen=\(data.count)")
+        onLog?("BLE", "control notify received | \(context) | \(receipt.displayDetail)")
+        onControlReceipt?(receipt)
+        completePendingDoorLock(.success(()))
+    }
+
+    private func decryptControlNotification(_ data: Data) -> String? {
+        guard let config else { return nil }
+        let controlKeyHex = config.controlAes128Key?.isEmpty == false ? config.controlAes128Key! : config.masterKey
+        guard let key = Data(hex: controlKeyHex), key.count == 16,
+              let encrypted = extractEncryptedPayload(from: data),
+              let plain = aesECBDecrypt(encrypted, key: key),
+              !plain.isEmpty else { return nil }
+        return plain.hexString
+    }
+
+    private func scheduleBestCandidateConnectionIfNeeded() {
+        guard candidateSelectionWorkItem == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            self?.connectBestCandidate()
+        }
+        candidateSelectionWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+    }
+
+    private func connectBestCandidate() {
+        candidateSelectionWorkItem = nil
+        guard discoveredPeripheral == nil else { return }
+        guard let peripheral = candidatePeripheral else {
+            if config != nil {
+                startScanning()
+            }
+            return
+        }
+        discoveredPeripheral = peripheral
+        peripheral.delegate = self
+        central.stopScan()
+        state = .connecting
+        onLog?("BLE", "connecting \(candidateName) rssi=\(candidateRSSI) score=\(candidateScore)")
+        central.connect(peripheral, options: nil)
+    }
+
+    private func discoveryScore(localName: String, advertisementData: [String: Any], rssi: Int) -> Int {
+        var score = 0
+        if let serviceUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] {
+            if serviceUUIDs.contains(authService) { score += 6 }
+            if serviceUUIDs.contains(controlService) { score += 6 }
+        }
+        if let manufacturerData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data,
+           manufacturerData.count >= 2,
+           manufacturerData[0] == 0x55,
+           manufacturerData[1] == 0x2B {
+            score += 8
+        }
+        let normalizedName = localName.lowercased().filter { $0.isLetter || $0.isNumber }
+        let normalizedMac = (config?.bleMac ?? "").lowercased().filter { $0.isLetter || $0.isNumber }
+        if normalizedMac.count >= 4 {
+            let suffix4 = String(normalizedMac.suffix(4))
+            if normalizedName.contains(suffix4) { score += 12 }
+        }
+        if normalizedMac.count >= 6 {
+            let suffix6 = String(normalizedMac.suffix(6))
+            if normalizedName.contains(suffix6) { score += 18 }
+        }
+        score += max(-10, min(10, (rssi + 90) / 4))
+        return score
     }
 
     private func crc32(_ data: Data) -> UInt32 {
@@ -372,6 +529,10 @@ private func parseUInt32(_ string: String) -> UInt32? {
 }
 
 private extension Data {
+    var hexString: String {
+        map { String(format: "%02X", $0) }.joined()
+    }
+
     func readUInt32BE(at offset: Int) -> UInt32 {
         let range = offset..<(offset + 4)
         return self.subdata(in: range).reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
@@ -401,14 +562,17 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         let localName = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? peripheral.name ?? "--"
-        onLog?("BLE", "discovered name=\(localName) rssi=\(RSSI)")
+        let score = discoveryScore(localName: localName, advertisementData: advertisementData, rssi: RSSI.intValue)
+        let manufacturerHex = (advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data)?.hexString ?? "--"
+        onLog?("BLE", "discovered name=\(localName) rssi=\(RSSI) score=\(score) mfg=\(manufacturerHex.prefix(20))")
         guard discoveredPeripheral == nil else { return }
-        discoveredPeripheral = peripheral
-        peripheral.delegate = self
-        central.stopScan()
-        state = .connecting
-        onLog?("BLE", "connecting \(localName)")
-        central.connect(peripheral, options: nil)
+        if candidatePeripheral == nil || score > candidateScore || (score == candidateScore && RSSI.intValue > candidateRSSI) {
+            candidatePeripheral = peripheral
+            candidateName = localName
+            candidateRSSI = RSSI.intValue
+            candidateScore = score
+        }
+        scheduleBestCandidateConnectionIfNeeded()
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
@@ -426,6 +590,7 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
         discoveredPeripheral = nil
         notify181AReady = false
         notify182AReady = false
+        completePendingDoorLock(.failure(.sessionStopped))
         onLog?("BLE", "disconnected | \(error?.localizedDescription ?? "no error")")
         if config != nil, central.state == .poweredOn {
             startScanning()
@@ -487,12 +652,20 @@ extension VehicleBLEManager: CBPeripheralDelegate {
 
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         if let error {
-            lastControlError = .writeFailed(error.localizedDescription)
+            let controlError = BLEControlError.writeFailed(error.localizedDescription)
+            lastControlError = controlError
             state = .error(error.localizedDescription)
-            onLog?("BLE", "write value failed | \(error.localizedDescription)")
+            onLog?("BLE", "write value failed uuid=\(characteristic.uuid.uuidString) | \(error.localizedDescription)")
+            if characteristic.uuid == controlWrite {
+                completePendingDoorLock(.failure(controlError))
+            }
             return
         }
-        onLog?("BLE", "write ok uuid=\(characteristic.uuid.uuidString)")
+        if characteristic.uuid == controlWrite {
+            onLog?("BLE", "control write ok uuid=\(characteristic.uuid.uuidString), waiting 2A7F")
+        } else {
+            onLog?("BLE", "write ok uuid=\(characteristic.uuid.uuidString)")
+        }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {

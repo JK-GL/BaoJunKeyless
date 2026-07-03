@@ -77,7 +77,7 @@ struct VehicleInfoMergedCard: View {
 
             if showCopiedToast {
                 ToastView(text: "已复制到剪贴板")
-                    .transition(.scale.combined(with: .opacity))
+                    .transition(PopupMotion.transition)
                     .zIndex(1)
                     .offset(y: -40)
             }

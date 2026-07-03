@@ -186,8 +186,8 @@ struct StatusView: View {
                             mqttStatus: liveMQTTStatus,
                             physicalKeyState: livePhysicalKeyState,
                             gearState: liveGearState,
-                            onBLETap: { isVehicleInfoFloatingPresented = true },
-                            onMQTTTap: { isMQTTFloatingPresented = true }
+                            onBLETap: { withAnimation(PopupMotion.presentSpring) { isVehicleInfoFloatingPresented = true } },
+                            onMQTTTap: { withAnimation(PopupMotion.presentSpring) { isMQTTFloatingPresented = true } }
                         )
                     }
 
@@ -210,7 +210,7 @@ struct StatusView: View {
 
                     QuickActionsView(onCommand: { command in
                         quickActionTapStartedAt = Date()
-                        withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
+                        withAnimation(PopupMotion.presentSpring) {
                             activeCommand = command
                         }
                     }, vehicleState: vehicleStore.state)
@@ -256,12 +256,12 @@ struct StatusView: View {
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.2)) { isAddressFloatingPresented = false }
+                        withAnimation(PopupMotion.dismissEase) { isAddressFloatingPresented = false }
                     }
 
                 addressFloatingWindow()
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    .transition(.scale.combined(with: .opacity))
+                    .transition(PopupMotion.transition)
                     .zIndex(10)
             }
 
@@ -270,12 +270,12 @@ struct StatusView: View {
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.2)) { isMQTTFloatingPresented = false }
+                        withAnimation(PopupMotion.dismissEase) { isMQTTFloatingPresented = false }
                     }
 
                 mqttFloatingWindow()
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    .transition(.scale.combined(with: .opacity))
+                    .transition(PopupMotion.transition)
                     .zIndex(12)
             }
 
@@ -284,12 +284,12 @@ struct StatusView: View {
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.2)) { isVehicleInfoFloatingPresented = false }
+                        withAnimation(PopupMotion.dismissEase) { isVehicleInfoFloatingPresented = false }
                     }
 
                 vehicleInfoFloatingWindow()
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    .transition(.scale.combined(with: .opacity))
+                    .transition(PopupMotion.transition)
                     .zIndex(14)
             }
 
@@ -312,16 +312,19 @@ struct StatusView: View {
                     handleQuickActionConfirm(action: cmd, temperature: temp, durationMinutes: duration, completion: completion)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .transition(.opacity)
+                .transition(PopupMotion.transition)
                 .zIndex(20)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .openAddressFloatingWindow)) { _ in
             isEditingAmapKey = false
             amapKeyDraft = addressSettings.amapWebKey
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { isAddressFloatingPresented = true }
+            withAnimation(PopupMotion.presentSpring) { isAddressFloatingPresented = true }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isAddressFloatingPresented)
+        .animation(PopupMotion.presentSpring, value: isAddressFloatingPresented)
+        .animation(PopupMotion.presentSpring, value: isMQTTFloatingPresented)
+        .animation(PopupMotion.presentSpring, value: isVehicleInfoFloatingPresented)
+        .animation(PopupMotion.presentSpring, value: activeCommand != nil)
         .onAppear {
             syncCarLocationToManager(forceAddressRefresh: true)
         }
@@ -363,7 +366,7 @@ struct StatusView: View {
                     mqttStore?.reconnect()
                 }
                 FloatingPopupSecondaryButton(title: "关闭", textColor: .white) {
-                    withAnimation(.easeOut(duration: 0.2)) { isMQTTFloatingPresented = false }
+                    withAnimation(PopupMotion.dismissEase) { isMQTTFloatingPresented = false }
                 }
             }
         }
@@ -384,7 +387,7 @@ struct StatusView: View {
                     mqttStore?.refreshNow()
                 }
                 FloatingPopupSecondaryButton(title: "关闭", textColor: .white) {
-                    withAnimation(.easeOut(duration: 0.2)) { isVehicleInfoFloatingPresented = false }
+                    withAnimation(PopupMotion.dismissEase) { isVehicleInfoFloatingPresented = false }
                 }
             }
         }
@@ -479,7 +482,7 @@ struct StatusView: View {
                     title: "确定",
                     color: AppTheme.accent
                 ) {
-                    withAnimation(.easeOut(duration: 0.2)) { isAddressFloatingPresented = false }
+                    withAnimation(PopupMotion.dismissEase) { isAddressFloatingPresented = false }
                     if isEditingAmapKey {
                         addressSettings.setAmapWebKey(amapKeyDraft)
                     }
@@ -495,7 +498,7 @@ struct StatusView: View {
                     title: "高德",
                     textColor: .white
                 ) {
-                    withAnimation(.easeOut(duration: 0.2)) { isAddressFloatingPresented = false }
+                    withAnimation(PopupMotion.dismissEase) { isAddressFloatingPresented = false }
                     if isEditingAmapKey {
                         addressSettings.setAmapWebKey(amapKeyDraft)
                     }
@@ -515,7 +518,7 @@ struct StatusView: View {
                     title: "关闭",
                     textColor: .white
                 ) {
-                    withAnimation(.easeOut(duration: 0.2)) { isAddressFloatingPresented = false }
+                    withAnimation(PopupMotion.dismissEase) { isAddressFloatingPresented = false }
                 }
             }
         }
@@ -614,12 +617,13 @@ struct StatusView: View {
         completion: @escaping (VehicleCommandExecutionResult) -> Void
     ) {
         let command = action.asVehicleCommand(state: vehicleStore.state, temperature: temperature, durationMinutes: durationMinutes, source: .quickAction)
-        pendingControlServiceCode = controlServiceCode(for: command.kind)
+        let willUseBLE = (command.kind == .lock || command.kind == .unlock) && mqttStore?.canUseBLEForDoorLock == true
+        pendingControlServiceCode = willUseBLE ? nil : controlServiceCode(for: command.kind)
         pendingControlTitle = command.title
         pendingControlSentAt = nil
 
         let transport: VehicleCommandAsyncTransport
-        if (command.kind == .lock || command.kind == .unlock), let mqttStore, mqttStore.canUseBLEForDoorLock {
+        if willUseBLE, let mqttStore {
             transport = BLEDoorLockTransport(bleController: mqttStore)
         } else {
             transport = HTTPControlTransport(credentials: vehicleCredentials)
@@ -628,8 +632,10 @@ struct StatusView: View {
             DispatchQueue.main.async {
                 switch result.state {
                 case .sent, .completed:
-                    pendingControlSentAt = Date()
-                    beginControlReceiptWaitIfNeeded()
+                    if !willUseBLE {
+                        pendingControlSentAt = Date()
+                        beginControlReceiptWaitIfNeeded()
+                    }
                 case .failed(_), .timedOut(_):
                     pendingControlServiceCode = nil
                     pendingControlTitle = nil

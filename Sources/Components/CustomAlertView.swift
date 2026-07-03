@@ -17,23 +17,23 @@ struct DarkAlertModifier: ViewModifier {
                     Color.clear
                         .ignoresSafeArea()
                         .contentShape(Rectangle())
-                        .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { isPresented = false } }
+                        .onTapGesture { withAnimation(PopupMotion.dismissEase) { isPresented = false } }
 
                     CustomAlertView(
                         title: title,
                         message: message,
                         confirmTitle: confirmTitle,
                         confirmColor: confirmColor,
-                        onCancel: { withAnimation(.easeOut(duration: 0.2)) { isPresented = false } },
+                        onCancel: { withAnimation(PopupMotion.dismissEase) { isPresented = false } },
                         onConfirm: {
-                            withAnimation(.easeOut(duration: 0.2)) { isPresented = false }
+                            withAnimation(PopupMotion.dismissEase) { isPresented = false }
                             onConfirm()
                         }
                     )
-                    .transition(.scale.combined(with: .opacity))
+                    .transition(PopupMotion.transition)
                 }
             }
-            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isPresented)
+            .animation(PopupMotion.presentSpring, value: isPresented)
     }
 }
 

@@ -50,7 +50,7 @@ protocol VehicleCommandAsyncTransport {
 
 protocol VehicleBLEDoorLockControlling: AnyObject {
     var canUseBLEForDoorLock: Bool { get }
-    func sendDoorLockViaBLE(command: VehicleCommand) -> Result<Void, VehicleBLEManager.BLEControlError>
+    func sendDoorLockViaBLE(command: VehicleCommand, completion: @escaping (Result<Void, VehicleBLEManager.BLEControlError>) -> Void)
 }
 
 struct FeedbackOnlyTransport: VehicleCommandTransport {
@@ -141,12 +141,21 @@ struct BLEDoorLockTransport: VehicleCommandAsyncTransport {
             finish(VehicleCommandExecutionResult(command: command, state: .failed("缺少 BLE 控制器"), userMessage: "未配置 BLE 控制器", shouldRefresh: false, refreshDelay: 0))
             return
         }
-        switch bleController.sendDoorLockViaBLE(command: command) {
-        case .success:
-            let message = "BLE 控制命令已发送：\(command.title)，等待车辆真实回报"
-            finish(VehicleCommandExecutionResult(command: command, state: .sent, userMessage: message, shouldRefresh: false, refreshDelay: 0))
-        case .failure(let error):
-            finish(VehicleCommandExecutionResult(command: command, state: .failed(error.localizedDescription), userMessage: error.localizedDescription, shouldRefresh: false, refreshDelay: 0))
+        bleController.sendDoorLockViaBLE(command: command) { result in
+            switch result {
+            case .success:
+                let message = "BLE 控制回包已收到：\(command.title)，状态以车辆真实回报为准"
+                finish(VehicleCommandExecutionResult(command: command, state: .completed, userMessage: message, shouldRefresh: false, refreshDelay: 0))
+            case .failure(let error):
+                let state: VehicleCommandExecutionState
+                switch error {
+                case .receiptTimeout:
+                    state = .timedOut(error.localizedDescription)
+                default:
+                    state = .failed(error.localizedDescription)
+                }
+                finish(VehicleCommandExecutionResult(command: command, state: state, userMessage: error.localizedDescription, shouldRefresh: false, refreshDelay: 0))
+            }
         }
     }
 }

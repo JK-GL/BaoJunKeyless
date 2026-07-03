@@ -92,14 +92,14 @@ struct SettingsView: View {
                     message: "将重置主题、背景图、无感车控和自定义震动。错误日志不会清空。",
                     confirmTitle: "确认重置",
                     confirmColor: .red,
-                    onCancel: { withAnimation(.easeOut(duration: 0.2)) { showingResetAlert = false } },
+                    onCancel: { withAnimation(PopupMotion.dismissEase) { showingResetAlert = false } },
                     onConfirm: {
-                        withAnimation(.easeOut(duration: 0.2)) { showingResetAlert = false }
+                        withAnimation(PopupMotion.dismissEase) { showingResetAlert = false }
                         resetAllSettings()
                     }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .transition(.scale.combined(with: .opacity))
+                .transition(PopupMotion.transition)
             }
         }
         .overlay {
@@ -108,14 +108,14 @@ struct SettingsView: View {
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.2)) { credentialConfirmPayload = nil }
+                        withAnimation(PopupMotion.dismissEase) { credentialConfirmPayload = nil }
                     }
 
                 SettingsCredentialConfirmPopup(payload: payload) {
-                    withAnimation(.easeOut(duration: 0.2)) { credentialConfirmPayload = nil }
+                    withAnimation(PopupMotion.dismissEase) { credentialConfirmPayload = nil }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .transition(.scale.combined(with: .opacity))
+                .transition(PopupMotion.transition)
                 .zIndex(10)
             }
         }
@@ -131,8 +131,8 @@ struct SettingsView: View {
                     }
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showingResetAlert)
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: credentialConfirmPayload != nil)
+        .animation(PopupMotion.presentSpring, value: showingResetAlert)
+        .animation(PopupMotion.presentSpring, value: credentialConfirmPayload != nil)
         .onChange(of: vehicleCredentials.accessToken) { _ in connectMQTTIfNeeded() }
         .onChange(of: vehicleCredentials.vin) { _ in connectMQTTIfNeeded() }
     }
