@@ -194,6 +194,9 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         let keyId = latestBleKeyInfo["keyId"] ?? ""
         let masterKey = latestBleKeyInfo["masterKey"] ?? ""
         let keyMasterRandom = latestBleKeyInfo["keyMasterRandom"] ?? latestBleKeyInfo["random"] ?? ""
+        let controlAes128Key = latestBleKeyInfo["controlAes128Key"]
+        let bleType = latestBleKeyInfo["bleType"]
+        let bleKey = latestBleKeyInfo["bleKey"]
         guard !bleMac.isEmpty, !keyId.isEmpty, !masterKey.isEmpty, !keyMasterRandom.isEmpty else {
             bleManager.stop()
             if bleStatus != .connected {
@@ -201,7 +204,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             }
             return
         }
-        bleManager.start(config: .init(bleMac: bleMac, keyId: keyId, masterKey: masterKey, keyMasterRandom: keyMasterRandom))
+        bleManager.start(config: .init(bleMac: bleMac, keyId: keyId, masterKey: masterKey, keyMasterRandom: keyMasterRandom, controlAes128Key: controlAes128Key, bleType: bleType, bleKey: bleKey))
     }
 
     private func setupLifecycleObservers() {

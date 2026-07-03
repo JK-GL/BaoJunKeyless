@@ -39,6 +39,9 @@ final class VehicleBLEManager: NSObject {
         let keyId: String
         let masterKey: String
         let keyMasterRandom: String
+        let controlAes128Key: String?
+        let bleType: String?
+        let bleKey: String?
     }
 
     var onStateChange: ((State) -> Void)?
@@ -53,6 +56,8 @@ final class VehicleBLEManager: NSObject {
     private var notify182AReady = false
     private var hasStartedCentral = false
     private var didSendAuthFrame = false
+    private var pendingDoorLockStatus: UInt8?
+    private var pendingDoorLockBtParam: UInt8?
     private(set) var state: State = .idle {
         didSet {
             guard oldValue != state else { return }
@@ -86,6 +91,8 @@ final class VehicleBLEManager: NSObject {
         notify181AReady = false
         notify182AReady = false
         didSendAuthFrame = false
+        pendingDoorLockStatus = nil
+        pendingDoorLockBtParam = nil
         if !hasStartedCentral {
             hasStartedCentral = true
             _ = central
@@ -105,6 +112,8 @@ final class VehicleBLEManager: NSObject {
         notify181AReady = false
         notify182AReady = false
         didSendAuthFrame = false
+        pendingDoorLockStatus = nil
+        pendingDoorLockBtParam = nil
         state = .idle
     }
 
@@ -160,7 +169,9 @@ final class VehicleBLEManager: NSObject {
         lastControlError = nil
         let statusValue = lock ? 1 : 0
         let btParam = lock ? 0 : 1
-        onLog?("BLE", "send doorLock control status=\(statusValue) btParam=\(btParam) len=\(frame.count)")
+        pendingDoorLockStatus = statusValue
+        pendingDoorLockBtParam = btParam
+        onLog?("BLE", "send doorLock control status=\(statusValue) btParam=\(btParam) len=\(frame.count) bleType=\(config.bleType ?? "--") bleKey=\(config.bleKey ?? "--")")
         peripheral.writeValue(frame, for: controlWriteCharacteristic, type: .withResponse)
         return .success(())
     }
@@ -201,17 +212,19 @@ final class VehicleBLEManager: NSObject {
     }
 
     private func makeDoorLockControlFrame(config: SessionConfig, lock: Bool) -> Data? {
-        guard let controlKey = Data(hex: config.masterKey), controlKey.count == 16 else {
+        let controlKeyHex = config.controlAes128Key?.isEmpty == false ? config.controlAes128Key! : config.masterKey
+        guard let controlKey = Data(hex: controlKeyHex), controlKey.count == 16 else {
             onLog?("BLE", "control key invalid")
             return nil
         }
         let serviceId: UInt16 = 1
-        let subfunction: UInt8 = lock ? 1 : 0
+        let statusValue: UInt8 = lock ? 1 : 0
         let btParam: UInt8 = lock ? 0 : 1
         var controlData = Data()
         controlData.append(contentsOf: serviceId.bigEndianBytes)
-        controlData.append(subfunction)
+        controlData.append(statusValue)
         controlData.append(btParam)
+        onLog?("BLE", "doorLock payload serviceId=1 status=\(statusValue) btParam=\(btParam) keySource=\(config.controlAes128Key?.isEmpty == false ? "controlAes128Key" : "masterKey")")
         guard let encrypted = aesECBEncrypt(controlData, key: controlKey) else {
             onLog?("BLE", "control aes encrypt failed")
             return nil
@@ -316,6 +329,16 @@ final class VehicleBLEManager: NSObject {
             return frame.subdata(in: start..<end)
         }
         return frame
+    }
+
+    private func handleControlNotification(_ data: Data) {
+        let context: String
+        if let status = pendingDoorLockStatus, let btParam = pendingDoorLockBtParam {
+            context = "pendingDoorLock status=\(status) btParam=\(btParam)"
+        } else {
+            context = "no pending control context"
+        }
+        onLog?("BLE", "control notify received | \(context) | rawLen=\(data.count)")
     }
 
     private func crc32(_ data: Data) -> UInt32 {
@@ -483,6 +506,8 @@ extension VehicleBLEManager: CBPeripheralDelegate {
         onLog?("BLE", "notify uuid=\(characteristic.uuid.uuidString) len=\(data.count) hex=\(hex)")
         if characteristic.uuid == authNotify {
             handleAuthNotification(data)
+        } else if characteristic.uuid == controlNotify {
+            handleControlNotification(data)
         }
     }
 }
