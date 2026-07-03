@@ -49,17 +49,28 @@ final class VehicleBLEManager: NSObject {
     }
 
     struct BLEControlReceipt: Equatable {
-        let status: UInt8?
-        let btParam: UInt8?
+        let sentStatus: UInt8?
+        let sentBtParam: UInt8?
+        let responseServiceId: UInt16?
+        let responseStatus: UInt8?
+        let responseBtParam: UInt8?
+        let resultCode: UInt8?
+        let elapsedMillis: Int?
         let rawHex: String
         let decryptedHex: String?
         let receivedAt: Date
 
         var displayDetail: String {
-            let statusText = status.map(String.init) ?? "--"
-            let btParamText = btParam.map(String.init) ?? "--"
-            let decryptedText = decryptedHex.map { ", decrypted=\($0.prefix(32))" } ?? ""
-            return "status=\(statusText), btParam=\(btParamText), rawLen=\(rawHex.count / 2)\(decryptedText)"
+            var parts: [String] = []
+            parts.append("sent=\(sentStatus.map(String.init) ?? "--")/\(sentBtParam.map(String.init) ?? "--")")
+            if let responseServiceId { parts.append("serviceId=\(responseServiceId)") }
+            if let responseStatus { parts.append("respStatus=\(responseStatus)") }
+            if let responseBtParam { parts.append("respBtParam=\(responseBtParam)") }
+            if let resultCode { parts.append("code=\(resultCode)") }
+            if let elapsedMillis { parts.append("2A7E→2A7F=\(elapsedMillis)ms") }
+            parts.append("rawLen=\(rawHex.count / 2)")
+            if let decryptedHex { parts.append("decrypted=\(decryptedHex.prefix(32))") }
+            return parts.joined(separator: ", ")
         }
     }
 
@@ -78,6 +89,7 @@ final class VehicleBLEManager: NSObject {
     private var didSendAuthFrame = false
     private var pendingDoorLockStatus: UInt8?
     private var pendingDoorLockBtParam: UInt8?
+    private var pendingDoorLockSentAt: Date?
     private var pendingDoorLockCompletion: ((Result<Void, BLEControlError>) -> Void)?
     private var pendingControlTimeoutWorkItem: DispatchWorkItem?
     private var candidatePeripheral: CBPeripheral?
@@ -167,6 +179,7 @@ final class VehicleBLEManager: NSObject {
             pendingControlTimeoutWorkItem = nil
             pendingDoorLockStatus = nil
             pendingDoorLockBtParam = nil
+            pendingDoorLockSentAt = nil
             pendingDoorLockCompletion = nil
         }
     }
@@ -236,6 +249,7 @@ final class VehicleBLEManager: NSObject {
         pendingDoorLockCompletion = completion
         pendingDoorLockStatus = statusValue
         pendingDoorLockBtParam = btParam
+        pendingDoorLockSentAt = Date()
         let timeout = DispatchWorkItem { [weak self] in
             guard let self, self.pendingDoorLockCompletion != nil else { return }
             self.onLog?("BLE", "doorLock control receipt timeout status=\(statusValue) btParam=\(btParam)")
@@ -254,6 +268,7 @@ final class VehicleBLEManager: NSObject {
         pendingDoorLockCompletion = nil
         pendingDoorLockStatus = nil
         pendingDoorLockBtParam = nil
+        pendingDoorLockSentAt = nil
         if case .failure(let error) = result {
             lastControlError = error
         }
@@ -417,12 +432,18 @@ final class VehicleBLEManager: NSObject {
 
     private func handleControlNotification(_ data: Data) {
         let rawHex = data.hexString
-        let decryptedHex = decryptControlNotification(data)
+        let plain = decryptControlNotificationData(data)
+        let parsed = parseControlResponse(plain)
         let receipt = BLEControlReceipt(
-            status: pendingDoorLockStatus,
-            btParam: pendingDoorLockBtParam,
+            sentStatus: pendingDoorLockStatus,
+            sentBtParam: pendingDoorLockBtParam,
+            responseServiceId: parsed.serviceId,
+            responseStatus: parsed.status,
+            responseBtParam: parsed.btParam,
+            resultCode: parsed.resultCode,
+            elapsedMillis: pendingDoorLockSentAt.map { Int(Date().timeIntervalSince($0) * 1000) },
             rawHex: rawHex,
-            decryptedHex: decryptedHex,
+            decryptedHex: plain?.hexString,
             receivedAt: Date()
         )
         let context: String
@@ -436,14 +457,23 @@ final class VehicleBLEManager: NSObject {
         completePendingDoorLock(.success(()))
     }
 
-    private func decryptControlNotification(_ data: Data) -> String? {
+    private func decryptControlNotificationData(_ data: Data) -> Data? {
         guard let config else { return nil }
         let controlKeyHex = config.controlAes128Key?.isEmpty == false ? config.controlAes128Key! : config.masterKey
         guard let key = Data(hex: controlKeyHex), key.count == 16,
               let encrypted = extractEncryptedPayload(from: data),
               let plain = aesECBDecrypt(encrypted, key: key),
               !plain.isEmpty else { return nil }
-        return plain.hexString
+        return plain.removingPKCS7PaddingIfPresent()
+    }
+
+    private func parseControlResponse(_ data: Data?) -> (serviceId: UInt16?, status: UInt8?, btParam: UInt8?, resultCode: UInt8?) {
+        guard let data, !data.isEmpty else { return (nil, nil, nil, nil) }
+        let serviceId = data.count >= 2 ? data.readUInt16BE(at: 0) : nil
+        let status = data.count >= 3 ? data[2] : nil
+        let btParam = data.count >= 4 ? data[3] : nil
+        let resultCode = data.count >= 5 ? data[4] : nil
+        return (serviceId, status, btParam, resultCode)
     }
 
     private func scheduleBestCandidateConnectionIfNeeded() {
@@ -533,9 +563,23 @@ private extension Data {
         map { String(format: "%02X", $0) }.joined()
     }
 
+    func readUInt16BE(at offset: Int) -> UInt16 {
+        let range = offset..<(offset + 2)
+        return self.subdata(in: range).reduce(UInt16(0)) { ($0 << 8) | UInt16($1) }
+    }
+
     func readUInt32BE(at offset: Int) -> UInt32 {
         let range = offset..<(offset + 4)
         return self.subdata(in: range).reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+    }
+
+    func removingPKCS7PaddingIfPresent() -> Data {
+        guard let last = self.last else { return self }
+        let padding = Int(last)
+        guard padding > 0, padding <= 16, padding <= count else { return self }
+        let suffix = self.suffix(padding)
+        guard suffix.allSatisfy({ $0 == last }) else { return self }
+        return Data(self.dropLast(padding))
     }
 
     init?(hex: String) {

@@ -380,7 +380,12 @@ struct StatusView: View {
             title: "钥匙信息",
             contentScrollEnabled: false
         ) {
-            VehicleInfoMergedCard(dashboard: vehicleStore.dashboard, bleStatusText: liveBLEStatus.text, isEmbedded: false)
+            VehicleInfoMergedCard(
+                dashboard: vehicleStore.dashboard,
+                bleStatusText: liveBLEStatus.text,
+                latestBLEControlText: mqttStore?.latestBLEControlReceipt?.displayDetail ?? "--",
+                isEmbedded: false
+            )
         } actions: {
             VStack(spacing: 8) {
                 FloatingPopupPrimaryButton(title: "刷新信息", color: AppTheme.accent) {
