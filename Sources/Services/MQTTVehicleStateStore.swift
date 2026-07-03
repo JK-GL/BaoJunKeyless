@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import Combine
 import CocoaMQTT
 
 struct VehicleControlMQTTResult: Equatable, Identifiable {
@@ -109,6 +110,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     private var didLogManualForegroundSkip = false
     private var foregroundObserver: NSObjectProtocol?
     private var backgroundObserver: NSObjectProtocol?
+    private var cancellables = Set<AnyCancellable>()
 
     init(
         addressSettings: AddressServiceSettings = .shared,
@@ -128,6 +130,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         loadPersistedDisplayCache()
         setupBLECallbacks()
         setupLifecycleObservers()
+        setupKeylessSettingsObserver()
         DispatchQueue.main.async { [weak self] in
             self?.autoConnect()
         }
@@ -232,6 +235,27 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             self.isAppInForeground = false
             self.didLogManualForegroundSkip = false
         }
+    }
+
+    private func setupKeylessSettingsObserver() {
+        keylessSettingsStore.$settings
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] settings in
+                guard let self else { return }
+                self.refreshBLESessionIfNeeded()
+                guard !settings.keylessEnabled else { return }
+                self.resetKeylessRuntimeState()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func resetKeylessRuntimeState() {
+        lastUnlockDecision = nil
+        lastLockDecision = nil
+        phoneFarAwaySince = nil
+        didLogManualForegroundSkip = false
+        lastBLEWaitCommandKind = nil
+        isExecutingKeylessCommand = false
     }
 
     private func updateTokenSource(label: String, path: String = "") {
@@ -412,11 +436,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         let settings = keylessSettingsStore.settings
         refreshBLESessionIfNeeded()
         guard settings.keylessEnabled else {
-            lastUnlockDecision = nil
-            lastLockDecision = nil
-            phoneFarAwaySince = nil
-            didLogManualForegroundSkip = false
-            lastBLEWaitCommandKind = nil
+            resetKeylessRuntimeState()
             return
         }
         if settings.appManual {
