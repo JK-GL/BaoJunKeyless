@@ -160,6 +160,25 @@ struct KeylessDecisionEngine {
         return .allow(action: .lock, reason: "满足无感上锁条件")
     }
 
+    static func evaluateLockWithDelay(
+        state: VehicleState,
+        settings: KeylessSettings,
+        phoneFarAwaySince: Date?
+    ) -> KeylessDecision {
+        let decision = evaluateLock(state: state, settings: settings)
+        guard case .allow = decision else { return decision }
+        let delay = max(settings.lockDelay, 0)
+        guard delay > 0 else { return decision }
+        guard let phoneFarAwaySince else {
+            return .wait(action: .lock, reason: "手机远离，等待上锁延迟")
+        }
+        let elapsed = Date().timeIntervalSince(phoneFarAwaySince)
+        guard elapsed >= delay else {
+            return .wait(action: .lock, reason: "手机远离，等待上锁延迟")
+        }
+        return decision
+    }
+
     // MARK: - 日志输出
     /// 将决策结果格式化为日志详情字符串
     static func logDetail(
