@@ -9,12 +9,22 @@ enum VehicleCommandExecutionState: Equatable {
     case timedOut(String)
 }
 
+struct VehicleCommandTiming: Equatable {
+    let requestBuildMillis: Int
+    let httpRoundTripMillis: Int
+
+    var summary: String {
+        "build=\(requestBuildMillis)ms, http=\(httpRoundTripMillis)ms"
+    }
+}
+
 struct VehicleCommandExecutionResult: Equatable {
     let command: VehicleCommand
     let state: VehicleCommandExecutionState
     let userMessage: String
     let shouldRefresh: Bool
     let refreshDelay: TimeInterval
+    var timing: VehicleCommandTiming? = nil
 }
 
 protocol VehicleCommandRefreshing: AnyObject {
@@ -130,11 +140,15 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
             finish(VehicleCommandExecutionResult(command: command, state: .failed("缺少 accessToken 或 VIN"), userMessage: "缺少 accessToken 或 VIN，无法发送控制请求", shouldRefresh: false, refreshDelay: 0))
             return
         }
+        let buildStart = Date()
         switch apiClient.makeVehicleControlRequestDraft(accessToken: accessToken, vin: vin, command: command) {
         case .failure(let error):
-            finish(VehicleCommandExecutionResult(command: command, state: .failed(error.localizedDescription), userMessage: error.localizedDescription, shouldRefresh: false, refreshDelay: 0))
+            let buildMillis = Int(Date().timeIntervalSince(buildStart) * 1000)
+            finish(VehicleCommandExecutionResult(command: command, state: .failed(error.localizedDescription), userMessage: error.localizedDescription, shouldRefresh: false, refreshDelay: 0, timing: VehicleCommandTiming(requestBuildMillis: buildMillis, httpRoundTripMillis: 0)))
         case .success(let draft):
+            let buildMillis = Int(Date().timeIntervalSince(buildStart) * 1000)
             let requestSummary = draft.redactedRequestSummary
+            let httpStart = Date()
             apiClient.sendVehicleControlRequestDraft(draft) { result in
                 switch result {
                 case .success:
@@ -145,7 +159,8 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
                         } else {
                             message = "控制请求已发送：\(requestSummary)，等待车辆真实回报"
                         }
-                        completion(VehicleCommandExecutionResult(command: command, state: .sent, userMessage: message, shouldRefresh: true, refreshDelay: 0))
+                        let timing = VehicleCommandTiming(requestBuildMillis: buildMillis, httpRoundTripMillis: Int(Date().timeIntervalSince(httpStart) * 1000))
+                        completion(VehicleCommandExecutionResult(command: command, state: .sent, userMessage: message, shouldRefresh: true, refreshDelay: 0, timing: timing))
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                             refresher?.refreshNow()
                         }
@@ -160,7 +175,8 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
                         state = .failed(error.localizedDescription)
                     }
                     let message = "\(requestSummary)；\(error.localizedDescription)"
-                    finish(VehicleCommandExecutionResult(command: command, state: state, userMessage: message, shouldRefresh: false, refreshDelay: 0))
+                    let timing = VehicleCommandTiming(requestBuildMillis: buildMillis, httpRoundTripMillis: Int(Date().timeIntervalSince(httpStart) * 1000))
+                    finish(VehicleCommandExecutionResult(command: command, state: state, userMessage: message, shouldRefresh: false, refreshDelay: 0, timing: timing))
                 }
             }
         }

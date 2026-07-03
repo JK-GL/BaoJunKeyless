@@ -6,6 +6,7 @@ struct StatusView: View {
     @EnvironmentObject var addressSettings: AddressServiceSettings
     @EnvironmentObject var locationManager: LocationManager
     @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
+    @EnvironmentObject var vehicleLog: VehicleEventLogStore
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
     @EnvironmentObject var vehicleStore: VehicleStateStore
     @State private var isRefreshing = false
@@ -14,6 +15,10 @@ struct StatusView: View {
     @State private var isMQTTFloatingPresented = false
     @State private var isVehicleInfoFloatingPresented = false
     @State private var activeCommand: CommandAction? = nil
+    @State private var quickActionTapStartedAt: Date? = nil
+    @State private var pendingControlServiceCode: String? = nil
+    @State private var pendingControlTitle: String? = nil
+    @State private var pendingControlSentAt: Date? = nil
     @State private var isEditingAmapKey = false
     @State private var amapKeyDraft = ""
 
@@ -189,6 +194,7 @@ struct StatusView: View {
                     }
 
                     QuickActionsView(onCommand: { command in
+                        quickActionTapStartedAt = Date()
                         withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
                             activeCommand = command
                         }
@@ -277,9 +283,15 @@ struct StatusView: View {
                 CommandConfirmPopup(
                     action: command,
                     vehicleState: vehicleStore.state,
+                    tapStartedAt: quickActionTapStartedAt,
                     isPresented: Binding(
                         get: { activeCommand != nil },
-                        set: { if !$0 { activeCommand = nil } }
+                        set: {
+                            if !$0 {
+                                activeCommand = nil
+                                quickActionTapStartedAt = nil
+                            }
+                        }
                     )
                 ) { cmd, temp, duration, completion in
                     handleQuickActionConfirm(action: cmd, temperature: temp, durationMinutes: duration, completion: completion)
@@ -306,6 +318,9 @@ struct StatusView: View {
         }
         .onChange(of: displayCarAddress) { _ in
             syncCarLocationToManager(forceAddressRefresh: true)
+        }
+        .onChange(of: mqttStore?.latestControlResult) { result in
+            handleMQTTControlResult(result)
         }
     }
 
@@ -522,6 +537,42 @@ struct StatusView: View {
         }
     }
 
+    private func handleMQTTControlResult(_ result: VehicleControlMQTTResult?) {
+        guard let result else { return }
+        let matched = result.serviceCode == pendingControlServiceCode
+        let elapsedText: String
+        if matched, let sentAt = pendingControlSentAt {
+            elapsedText = ", sent→mqtt=\(Int(Date().timeIntervalSince(sentAt) * 1000))ms"
+        } else {
+            elapsedText = ""
+        }
+        let title = matched ? "MQTT 控制回执（匹配当前命令）" : "MQTT 控制回执"
+        let commandText = matched ? "command=\(pendingControlTitle ?? "--"), " : ""
+        vehicleLog.add(result.isSuccess ? .action : .error, title, detail: "\(commandText)\(result.displayDetail)\(elapsedText)")
+        if matched {
+            pendingControlServiceCode = nil
+            pendingControlTitle = nil
+            pendingControlSentAt = nil
+        }
+    }
+
+    private func controlServiceCode(for kind: VehicleCommandKind) -> String? {
+        switch kind {
+        case .lock, .unlock:
+            return "doorLockStatus"
+        case .findCar:
+            return "CarSearch"
+        case .acOn, .acOff, .quickCool:
+            return "acStatus"
+        case .openWindows, .closeWindows:
+            return "windowStatus"
+        case .remoteStart:
+            return "RemotePowerUp"
+        case .remoteStop:
+            return nil
+        }
+    }
+
     private func handleQuickActionConfirm(
         action: CommandAction,
         temperature: Double?,
@@ -529,10 +580,23 @@ struct StatusView: View {
         completion: @escaping (VehicleCommandExecutionResult) -> Void
     ) {
         let command = action.asVehicleCommand(state: vehicleStore.state, temperature: temperature, durationMinutes: durationMinutes, source: .quickAction)
+        pendingControlServiceCode = controlServiceCode(for: command.kind)
+        pendingControlTitle = command.title
+        pendingControlSentAt = nil
 
         let transport = HTTPControlTransport(credentials: vehicleCredentials)
         VehicleCommandExecutor.executeAsync(command, transport: transport, refresher: mqttStore) { result in
             DispatchQueue.main.async {
+                switch result.state {
+                case .sent, .completed:
+                    pendingControlSentAt = Date()
+                case .failed(_), .timedOut(_):
+                    pendingControlServiceCode = nil
+                    pendingControlTitle = nil
+                    pendingControlSentAt = nil
+                case .feedbackOnly, .planned:
+                    break
+                }
                 completion(result)
             }
         }

@@ -160,11 +160,13 @@ struct CommandConfirmPopup: View {
 
     let action: CommandAction
     let vehicleState: VehicleState
+    let tapStartedAt: Date?
     @Binding var isPresented: Bool
     let onConfirm: (CommandAction, Double?, Int?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
 
     @State private var temperature: Double
     @State private var durationMinutes: Double
+    @State private var didLogPopupAppear = false
     @State private var isExecuting = false
     @State private var commandResult: CommandResult? = nil
     @State private var resultMessage: String? = nil
@@ -173,11 +175,13 @@ struct CommandConfirmPopup: View {
     init(
         action: CommandAction,
         vehicleState: VehicleState,
+        tapStartedAt: Date? = nil,
         isPresented: Binding<Bool>,
         onConfirm: @escaping (CommandAction, Double?, Int?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
     ) {
         self.action = action
         self.vehicleState = vehicleState
+        self.tapStartedAt = tapStartedAt
         self._isPresented = isPresented
         self.onConfirm = onConfirm
         let initialTemperature: Int
@@ -307,6 +311,15 @@ struct CommandConfirmPopup: View {
         }
         .animation(.easeInOut(duration: 0.25), value: isExecuting)
         .animation(.easeInOut(duration: 0.25), value: commandResult != nil)
+        .onAppear(perform: logPopupAppearIfNeeded)
+    }
+
+    private func logPopupAppearIfNeeded() {
+        guard !didLogPopupAppear else { return }
+        didLogPopupAppear = true
+        guard let tapStartedAt else { return }
+        let elapsedMs = Int(Date().timeIntervalSince(tapStartedAt) * 1000)
+        vehicleLog.add(.action, "快捷弹窗已显示", detail: "\(action.label(state: vehicleState)) tap→popup=\(elapsedMs)ms")
     }
 
     private var statusItemsForCurrentAction: [PopupStatusItem] {
@@ -409,6 +422,14 @@ struct CommandConfirmPopup: View {
                 resultMessage = executionResult.popupMessage
                 resultButtonTitle = executionResult.popupButtonTitle
                 vehicleLog.add(executionResult.logCategory, executionResult.logTitle, detail: executionResult.logDetail)
+                let resultShownMs = Int(Date().timeIntervalSince(startTime) * 1000)
+                let timingDetail: String
+                if let timing = executionResult.timing {
+                    timingDetail = "confirm→result=\(resultShownMs)ms, \(timing.summary)"
+                } else {
+                    timingDetail = "confirm→result=\(resultShownMs)ms"
+                }
+                vehicleLog.add(.action, "快捷操作耗时", detail: "\(executionResult.command.title)：\(timingDetail)")
 
                 switch executionResult.state {
                 case .feedbackOnly, .planned, .sent, .completed:

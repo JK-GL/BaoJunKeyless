@@ -1,6 +1,27 @@
 import Foundation
 import CocoaMQTT
 
+struct VehicleControlMQTTResult: Equatable, Identifiable {
+    let id = UUID()
+    let resultCode: String
+    let message: String
+    let serviceCode: String
+    let timestampMillis: Int64?
+    let receivedAt: Date
+
+    var isSuccess: Bool {
+        let normalized = resultCode.lowercased()
+        return normalized == "0" || normalized == "1" || normalized == "true" || normalized == "success"
+    }
+
+    var displayDetail: String {
+        let codeText = resultCode.isEmpty ? "--" : resultCode
+        let serviceText = serviceCode.isEmpty ? "--" : serviceCode
+        let messageText = message.isEmpty ? "--" : message
+        return "serviceCode=\(serviceText), resultCode=\(codeText), message=\(messageText)"
+    }
+}
+
 // MARK: - MQTT + HTTP 车辆状态 Store
 // 双通道：
 // - HTTP：电量/续航/位置/档位/温度等基础状态（稳定兜底）
@@ -44,6 +65,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     @Published var liveLongitudeGcj: Double = 0
     @Published var liveAddress: String = ""
     @Published var latestBleKeyInfo: [String: String] = [:]
+    @Published var latestControlResult: VehicleControlMQTTResult?
     @Published var tokenSourcePath: String = ""
     @Published var tokenSourceLabel: String = ""
 
@@ -371,6 +393,79 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         }
     }
 
+    private func handleVehicleControlResult(_ data: Data) {
+        guard let result = decodeControlResult(data) else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.mqttStatus = .connected
+            self.latestControlResult = result
+            CrashLogger.shared.mark("MQTT", "control result: \(result.displayDetail)")
+        }
+    }
+
+    private func decodeControlResult(_ data: Data) -> VehicleControlMQTTResult? {
+        let decoded = ProtobufDecoder.decode(data)
+        guard !decoded.isEmpty else { return decodeJSONControlResult(data) }
+        var resultCode = ""
+        var message = ""
+        var serviceCode = ""
+        var timestampMillis: Int64?
+
+        for field in decoded {
+            switch field.fieldNumber {
+            case 1:
+                resultCode = ProtobufDecoder.string(field) ?? ProtobufDecoder.int64(field).map { String($0) } ?? resultCode
+            case 2:
+                message = ProtobufDecoder.string(field) ?? message
+            case 3:
+                serviceCode = ProtobufDecoder.string(field) ?? serviceCode
+            case 4:
+                timestampMillis = ProtobufDecoder.int64(field) ?? timestampMillis
+            default:
+                continue
+            }
+        }
+
+        guard !resultCode.isEmpty || !message.isEmpty || !serviceCode.isEmpty else { return decodeJSONControlResult(data) }
+        return VehicleControlMQTTResult(resultCode: resultCode, message: message, serviceCode: serviceCode, timestampMillis: timestampMillis, receivedAt: Date())
+    }
+
+    private func decodeJSONControlResult(_ data: Data) -> VehicleControlMQTTResult? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        let dataObject = json["data"] as? [String: Any]
+        let source = dataObject ?? json
+        let resultCode = stringValue(source["resultCode"] ?? source["code"] ?? source["result"])
+        let message = stringValue(source["message"] ?? source["msg"])
+        let serviceCode = stringValue(source["serviceCode"] ?? source["service"] ?? source["field"])
+        let timestampMillis = int64Value(source["timestamp"] ?? source["time"] ?? source["ts"])
+        guard !resultCode.isEmpty || !message.isEmpty || !serviceCode.isEmpty else { return nil }
+        return VehicleControlMQTTResult(resultCode: resultCode, message: message, serviceCode: serviceCode, timestampMillis: timestampMillis, receivedAt: Date())
+    }
+
+    private func stringValue(_ value: Any?) -> String {
+        switch value {
+        case let string as String:
+            return string
+        case let number as NSNumber:
+            return number.stringValue
+        case let bool as Bool:
+            return bool ? "true" : "false"
+        default:
+            return ""
+        }
+    }
+
+    private func int64Value(_ value: Any?) -> Int64? {
+        switch value {
+        case let number as NSNumber:
+            return number.int64Value
+        case let string as String:
+            return Int64(string)
+        default:
+            return nil
+        }
+    }
+
     private func decodeMQTTFields(_ data: Data) -> [String: String] {
         let decoded = ProtobufDecoder.decode(data)
         let nameMap: [Int: String] = [
@@ -500,6 +595,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         let payload = Data(message.payload)
         if message.topic.hasSuffix("/vehicle/app/status") {
             handleVehicleStatus(payload)
+        } else if message.topic.hasSuffix("/vehicle/control") {
+            handleVehicleControlResult(payload)
         }
     }
 
