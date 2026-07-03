@@ -42,16 +42,18 @@ struct KeylessView: View {
                     latestFailureText: latestKeylessFailureText,
                     latestRejectText: latestKeylessRejectText
                 )
-                UnlockSettingsSection(
-                    showRecorder: $showUnlockRecorder,
-                    choice: unlockVibChoiceBinding,
-                    customStore: customStore
-                )
-                LockSettingsSection(
-                    showRecorder: $showLockRecorder,
-                    choice: lockVibChoiceBinding,
-                    customStore: customStore
-                )
+                if settingsStore.settings.keylessEnabled {
+                    UnlockSettingsSection(
+                        showRecorder: $showUnlockRecorder,
+                        choice: unlockVibChoiceBinding,
+                        customStore: customStore
+                    )
+                    LockSettingsSection(
+                        showRecorder: $showLockRecorder,
+                        choice: lockVibChoiceBinding,
+                        customStore: customStore
+                    )
+                }
 
                 Spacer(minLength: 100)
             }
