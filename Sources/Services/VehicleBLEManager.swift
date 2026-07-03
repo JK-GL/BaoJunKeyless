@@ -10,6 +10,9 @@ final class VehicleBLEManager: NSObject {
         case scanning
         case connecting
         case connected
+        case authenticating
+        case authenticated
+        case authFailed(String)
         case error(String)
     }
 
@@ -119,6 +122,7 @@ final class VehicleBLEManager: NSObject {
               let authWriteCharacteristic,
               let frame = makeAuthFrame(config: config) else { return }
         didSendAuthFrame = true
+        state = .authenticating
         onLog?("BLE", "send auth frame len=\(frame.count) keyId=\(config.keyId)")
         peripheral.writeValue(frame, for: authWriteCharacteristic, type: .withResponse)
     }
@@ -161,21 +165,27 @@ final class VehicleBLEManager: NSObject {
     }
 
     private func aesECBEncrypt(_ plain: Data, key: Data) -> Data? {
-        let blockSize = kCCBlockSizeAES128
-        let paddedLength = ((plain.count / blockSize) + 1) * blockSize
-        var out = Data(count: paddedLength)
+        cryptECB(input: plain, key: key, operation: CCOperation(kCCEncrypt), outputLength: ((plain.count / kCCBlockSizeAES128) + 1) * kCCBlockSizeAES128)
+    }
+
+    private func aesECBDecrypt(_ encrypted: Data, key: Data) -> Data? {
+        cryptECB(input: encrypted, key: key, operation: CCOperation(kCCDecrypt), outputLength: encrypted.count)
+    }
+
+    private func cryptECB(input: Data, key: Data, operation: CCOperation, outputLength: Int) -> Data? {
+        var out = Data(count: outputLength)
         let outCount = out.count
         var outLength: size_t = 0
         let status = out.withUnsafeMutableBytes { outBytes in
-            plain.withUnsafeBytes { plainBytes in
+            input.withUnsafeBytes { inputBytes in
                 key.withUnsafeBytes { keyBytes in
                     CCCrypt(
-                        CCOperation(kCCEncrypt),
+                        operation,
                         CCAlgorithm(kCCAlgorithmAES),
                         CCOptions(kCCOptionPKCS7Padding | kCCOptionECBMode),
                         keyBytes.baseAddress, key.count,
                         nil,
-                        plainBytes.baseAddress, plain.count,
+                        inputBytes.baseAddress, input.count,
                         outBytes.baseAddress, outCount,
                         &outLength
                     )
@@ -185,6 +195,58 @@ final class VehicleBLEManager: NSObject {
         guard status == kCCSuccess else { return nil }
         out.removeSubrange(outLength..<out.count)
         return out
+    }
+
+    private func handleAuthNotification(_ data: Data) {
+        guard let config,
+              let aesKey = Data(hex: config.masterKey), aesKey.count == 16,
+              let nonce = Data(hex: config.keyMasterRandom), nonce.count == 16,
+              let expectedKeyId = parseUInt32(config.keyId) else {
+            state = .authFailed("鉴权配置无效")
+            onLog?("BLE", "auth response skipped: invalid config")
+            return
+        }
+        guard let encrypted = extractEncryptedPayload(from: data),
+              let plain = aesECBDecrypt(encrypted, key: aesKey),
+              plain.count >= 28 else {
+            state = .authFailed("鉴权响应解密失败")
+            onLog?("BLE", "auth response decrypt failed")
+            return
+        }
+        let keyId = plain.readUInt32BE(at: 0)
+        let echoedNonce = plain.subdata(in: 8..<24)
+        let crc = plain.readUInt32BE(at: 24)
+        let payload = Data(plain.prefix(24))
+        let calculatedCRC = crc32(payload)
+        guard keyId == expectedKeyId else {
+            state = .authFailed("keyId 不匹配")
+            onLog?("BLE", "auth failed keyId expected=\(expectedKeyId) got=\(keyId)")
+            return
+        }
+        guard echoedNonce == nonce else {
+            state = .authFailed("nonce 不匹配")
+            onLog?("BLE", "auth failed nonce mismatch")
+            return
+        }
+        guard crc == calculatedCRC else {
+            state = .authFailed("CRC32 不匹配")
+            onLog?("BLE", "auth failed crc expected=\(String(format: "%08X", calculatedCRC)) got=\(String(format: "%08X", crc))")
+            return
+        }
+        state = .authenticated
+        onLog?("BLE", "auth success keyId=\(keyId)")
+    }
+
+    private func extractEncryptedPayload(from frame: Data) -> Data? {
+        guard frame.count >= 38 else { return nil }
+        if frame.first == 0xAA {
+            let length = Int(UInt16(frame[1]) << 8 | UInt16(frame[2]))
+            let start = 3
+            let end = start + length
+            guard end <= frame.count else { return nil }
+            return frame.subdata(in: start..<end)
+        }
+        return frame
     }
 
     private func crc32(_ data: Data) -> UInt32 {
@@ -218,6 +280,11 @@ private func parseUInt32(_ string: String) -> UInt32? {
 }
 
 private extension Data {
+    func readUInt32BE(at offset: Int) -> UInt32 {
+        let range = offset..<(offset + 4)
+        return self.subdata(in: range).reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+    }
+
     init?(hex: String) {
         let cleaned = hex.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: " ", with: "")
@@ -344,5 +411,8 @@ extension VehicleBLEManager: CBPeripheralDelegate {
         let data = characteristic.value ?? Data()
         let hex = data.map { String(format: "%02X", $0) }.joined()
         onLog?("BLE", "notify uuid=\(characteristic.uuid.uuidString) len=\(data.count) hex=\(hex)")
+        if characteristic.uuid == authNotify {
+            handleAuthNotification(data)
+        }
     }
 }

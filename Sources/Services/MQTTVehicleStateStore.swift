@@ -150,11 +150,11 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 self.bleStatus = .disconnected
             case .unsupported, .bluetoothOff:
                 self.bleStatus = .error
-            case .scanning, .connecting:
+            case .scanning, .connecting, .authenticating:
                 self.bleStatus = .connecting
-            case .connected:
+            case .connected, .authenticated:
                 self.bleStatus = .connected
-            case .error:
+            case .authFailed, .error:
                 self.bleStatus = .error
             }
         }
