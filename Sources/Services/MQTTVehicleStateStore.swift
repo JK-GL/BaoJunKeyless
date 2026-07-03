@@ -106,7 +106,10 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     private var lastAutoCommandAt: Date?
     private var lastAutoCommandKind: VehicleCommandKind?
     private var lastBLEWaitCommandKind: VehicleCommandKind?
+    private var liveBLERawRSSI: Int?
     private var liveBLERSSI: Int?
+    private var liveBLELastSeenAt: Date?
+    private var bleSignalLossWorkItem: DispatchWorkItem?
     private var isExecutingKeylessCommand = false
     private var isAppInForeground = true
     private var didLogManualForegroundSkip = false
@@ -273,6 +276,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         phoneFarAwaySince = nil
         didLogManualForegroundSkip = false
         lastBLEWaitCommandKind = nil
+        bleSignalLossWorkItem?.cancel()
+        bleSignalLossWorkItem = nil
         isExecutingKeylessCommand = false
     }
 
@@ -280,33 +285,73 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         guard let rssi = liveBLERSSI else { return baseState }
         var next = baseState
         next.bleRssi = rssi
-        if next.phoneNearby {
-            if Double(rssi) <= keylessSettingsStore.settings.lockThreshold {
-                next.phoneNearby = false
-            }
-        } else if Double(rssi) >= keylessSettingsStore.settings.unlockThreshold {
-            next.phoneNearby = true
-        }
+        next.phoneNearby = resolvedPhoneNearby(for: rssi, previous: baseState.phoneNearby)
         return next
     }
 
-    private func applyLiveBLERSSI(_ rssi: Int?) {
-        liveBLERSSI = rssi
-        var next = state
-        next.bleRssi = rssi
-        if let rssi {
-            if next.phoneNearby {
-                if Double(rssi) <= keylessSettingsStore.settings.lockThreshold {
-                    next.phoneNearby = false
-                }
-            } else if Double(rssi) >= keylessSettingsStore.settings.unlockThreshold {
-                next.phoneNearby = true
-            }
-        } else {
-            next.phoneNearby = false
+    private func resolvedPhoneNearby(for smoothedRSSI: Int, previous: Bool) -> Bool {
+        if previous {
+            return Double(smoothedRSSI) > keylessSettingsStore.settings.lockThreshold
         }
+        return Double(smoothedRSSI) >= keylessSettingsStore.settings.unlockThreshold
+    }
+
+    private func scheduleBLESignalLossTimeout() {
+        bleSignalLossWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.liveBLERawRSSI = nil
+            self.liveBLERSSI = nil
+            self.liveBLELastSeenAt = nil
+            self.vehicleEventLogStore.add(.warning, "BLE信号丢失", detail: "连续 3s 未收到 RSSI，按远离处理")
+            var next = self.state
+            next.bleRssi = nil
+            next.phoneNearby = false
+            self.apply(next)
+            self.evaluateKeylessAutomation(for: next)
+        }
+        bleSignalLossWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: work)
+    }
+
+    private func applyLiveBLERSSI(_ rawRSSI: Int?) {
+        guard let rawRSSI else {
+            liveBLERawRSSI = nil
+            liveBLERSSI = nil
+            liveBLELastSeenAt = nil
+            bleSignalLossWorkItem?.cancel()
+            bleSignalLossWorkItem = nil
+            var next = state
+            next.bleRssi = nil
+            next.phoneNearby = false
+            apply(next)
+            evaluateKeylessAutomation(for: next)
+            return
+        }
+
+        let previousNearby = state.phoneNearby
+        liveBLERawRSSI = rawRSSI
+        liveBLELastSeenAt = Date()
+        if let current = liveBLERSSI {
+            let alpha = 0.35
+            let smoothed = Int((Double(current) * (1 - alpha) + Double(rawRSSI) * alpha).rounded())
+            liveBLERSSI = smoothed
+        } else {
+            liveBLERSSI = rawRSSI
+        }
+        scheduleBLESignalLossTimeout()
+
+        let smoothedRSSI = liveBLERSSI ?? rawRSSI
+        var next = state
+        next.bleRssi = smoothedRSSI
+        next.phoneNearby = resolvedPhoneNearby(for: smoothedRSSI, previous: previousNearby)
         apply(next)
         evaluateKeylessAutomation(for: next)
+
+        if previousNearby != next.phoneNearby {
+            let detail = "raw=\(rawRSSI), smoothed=\(smoothedRSSI), unlock=\(Int(keylessSettingsStore.settings.unlockThreshold)), lock=\(Int(keylessSettingsStore.settings.lockThreshold))"
+            vehicleEventLogStore.add(.keyless, next.phoneNearby ? "BLE判定靠近" : "BLE判定远离", detail: detail)
+        }
     }
 
     private func updateTokenSource(label: String, path: String = "") {
