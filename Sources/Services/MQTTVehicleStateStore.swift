@@ -189,7 +189,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     private func refreshBLESessionIfNeeded() {
         let settings = keylessSettingsStore.settings
-        guard settings.keylessEnabled, !settings.pluginTakeover else {
+        guard settings.keylessEnabled else {
             bleManager.stop()
             if bleStatus != .authenticated {
                 bleStatus = .disconnected
@@ -419,7 +419,6 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             lastBLEWaitCommandKind = nil
             return
         }
-        if settings.pluginTakeover { return }
         if settings.appManual {
             guard !isAppInForeground else {
                 if !didLogManualForegroundSkip {
@@ -431,7 +430,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         } else {
             didLogManualForegroundSkip = false
         }
-        guard settings.smartSwitch || settings.appManual else { return }
+        guard settings.pluginTakeover || settings.smartSwitch || settings.appManual else { return }
 
         if currentState.phoneFarAway {
             if phoneFarAwaySince == nil {

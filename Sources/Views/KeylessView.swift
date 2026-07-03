@@ -98,7 +98,7 @@ struct KeylessView: View {
     }
 
     private var appExecutionEnabled: Bool {
-        if settingsStore.settings.pluginTakeover { return false }
+        if settingsStore.settings.pluginTakeover { return true }
         if settingsStore.settings.smartSwitch { return true }
         if settingsStore.settings.appManual { return false }
         return false
