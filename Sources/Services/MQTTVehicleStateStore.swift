@@ -44,8 +44,10 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     enum LiveBLEStatus: Equatable {
         case disconnected
+        case scanning
         case connecting
-        case connected
+        case authenticating
+        case authenticated
         case error
     }
 
@@ -151,10 +153,14 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 self.bleStatus = .disconnected
             case .unsupported, .bluetoothOff:
                 self.bleStatus = .error
-            case .scanning, .connecting, .authenticating:
+            case .scanning:
+                self.bleStatus = .scanning
+            case .connecting, .connected:
                 self.bleStatus = .connecting
-            case .connected, .authenticated:
-                self.bleStatus = .connected
+            case .authenticating:
+                self.bleStatus = .authenticating
+            case .authenticated:
+                self.bleStatus = .authenticated
             case .authFailed, .error:
                 self.bleStatus = .error
             }

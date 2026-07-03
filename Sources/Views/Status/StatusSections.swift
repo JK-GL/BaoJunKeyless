@@ -22,13 +22,16 @@ enum StatusAuthState {
 enum StatusBLEState: Equatable {
     case disconnected
     case scanning
-    case connected
+    case connecting
+    case authenticating
+    case authenticated
     case weak
     case error
 
     var icon: String {
         switch self {
-        case .connected: return "antenna.radiowaves.left.and.right"
+        case .authenticated: return "checkmark.seal.fill"
+        case .connecting, .authenticating: return "dot.radiowaves.left.and.right"
         case .disconnected, .scanning, .weak, .error: return "antenna.radiowaves.left.and.right.slash"
         }
     }
@@ -37,7 +40,9 @@ enum StatusBLEState: Equatable {
         switch self {
         case .disconnected: return "BLE未连接"
         case .scanning: return "BLE扫描中"
-        case .connected: return "BLE已连接"
+        case .connecting: return "BLE连接中"
+        case .authenticating: return "BLE鉴权中"
+        case .authenticated: return "BLE已鉴权"
         case .weak: return "BLE信号弱"
         case .error: return "BLE异常"
         }
@@ -46,8 +51,9 @@ enum StatusBLEState: Equatable {
     var color: Color {
         switch self {
         case .disconnected: return Color.white.opacity(0.45)
-        case .scanning: return AppTheme.accent
-        case .connected: return AppTheme.green
+        case .scanning, .connecting: return AppTheme.accent
+        case .authenticating: return AppTheme.orange
+        case .authenticated: return AppTheme.green
         case .weak: return AppTheme.orange
         case .error: return AppTheme.red
         }

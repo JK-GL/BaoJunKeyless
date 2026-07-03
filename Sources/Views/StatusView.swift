@@ -34,9 +34,13 @@ struct StatusView: View {
 
     private var liveBLEStatus: StatusBLEState {
         switch mqttStore?.bleStatus {
-        case .connected:
-            return .connected
+        case .authenticated:
+            return .authenticated
+        case .authenticating:
+            return .authenticating
         case .connecting:
+            return .connecting
+        case .scanning:
             return .scanning
         case .error:
             return .error
@@ -362,7 +366,7 @@ struct StatusView: View {
             iconColor: liveBLEStatus.color,
             title: "钥匙信息"
         ) {
-            VehicleInfoMergedCard(dashboard: vehicleStore.dashboard, isEmbedded: false)
+            VehicleInfoMergedCard(dashboard: vehicleStore.dashboard, bleStatusText: liveBLEStatus.text, isEmbedded: false)
         } actions: {
             VStack(spacing: 8) {
                 FloatingPopupPrimaryButton(title: "刷新信息", color: AppTheme.accent) {
