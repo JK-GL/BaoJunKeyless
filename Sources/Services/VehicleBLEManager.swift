@@ -124,14 +124,14 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         discoveredPeripheral = nil
         state = .error(error?.localizedDescription ?? "connect failed")
-        onLog?("BLE", "connect failed", error?.localizedDescription)
+        onLog?("BLE", "connect failed | \(error?.localizedDescription ?? "unknown")")
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         discoveredPeripheral = nil
         notify181AReady = false
         notify182AReady = false
-        onLog?("BLE", "disconnected", error?.localizedDescription)
+        onLog?("BLE", "disconnected | \(error?.localizedDescription ?? "no error")")
         if config != nil, central.state == .poweredOn {
             startScanning()
         } else {
@@ -144,7 +144,7 @@ extension VehicleBLEManager: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         if let error {
             state = .error(error.localizedDescription)
-            onLog?("BLE", "discover services failed", error.localizedDescription)
+            onLog?("BLE", "discover services failed | \(error.localizedDescription)")
             return
         }
         peripheral.services?.forEach { service in
@@ -159,7 +159,7 @@ extension VehicleBLEManager: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         if let error {
             state = .error(error.localizedDescription)
-            onLog?("BLE", "discover characteristics failed", error.localizedDescription)
+            onLog?("BLE", "discover characteristics failed | \(error.localizedDescription)")
             return
         }
         service.characteristics?.forEach { characteristic in
@@ -172,7 +172,7 @@ extension VehicleBLEManager: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
         if let error {
             state = .error(error.localizedDescription)
-            onLog?("BLE", "set notify failed", error.localizedDescription)
+            onLog?("BLE", "set notify failed | \(error.localizedDescription)")
             return
         }
         if characteristic.uuid == authNotify, characteristic.isNotifying {
