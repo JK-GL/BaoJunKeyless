@@ -71,6 +71,10 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     @Published var latestBleKeyInfo: [String: String] = [:]
     @Published var latestBLEControlReceipt: VehicleBLEManager.BLEControlReceipt?
     @Published var latestControlResult: VehicleControlMQTTResult?
+    @Published var debugBLERawRSSI: Int?
+    @Published var debugBLESmoothedRSSI: Int?
+    @Published var debugBLELastSeenText: String = "--"
+    @Published var debugBLELastTransitionText: String = "--"
     @Published var tokenSourcePath: String = ""
     @Published var tokenSourceLabel: String = ""
 
@@ -303,6 +307,10 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             self.liveBLERawRSSI = nil
             self.liveBLERSSI = nil
             self.liveBLELastSeenAt = nil
+            self.debugBLERawRSSI = nil
+            self.debugBLESmoothedRSSI = nil
+            self.debugBLELastSeenText = "--"
+            self.debugBLELastTransitionText = "BLE信号丢失 · \(formatTime(Date()))"
             self.vehicleEventLogStore.add(.warning, "BLE信号丢失", detail: "连续 3s 未收到 RSSI，按远离处理")
             var next = self.state
             next.bleRssi = nil
@@ -319,6 +327,9 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             liveBLERawRSSI = nil
             liveBLERSSI = nil
             liveBLELastSeenAt = nil
+            debugBLERawRSSI = nil
+            debugBLESmoothedRSSI = nil
+            debugBLELastSeenText = "--"
             bleSignalLossWorkItem?.cancel()
             bleSignalLossWorkItem = nil
             var next = state
@@ -339,9 +350,12 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         } else {
             liveBLERSSI = rawRSSI
         }
+        let smoothedRSSI = liveBLERSSI ?? rawRSSI
+        debugBLERawRSSI = rawRSSI
+        debugBLESmoothedRSSI = smoothedRSSI
+        debugBLELastSeenText = formatTime(Date())
         scheduleBLESignalLossTimeout()
 
-        let smoothedRSSI = liveBLERSSI ?? rawRSSI
         var next = state
         next.bleRssi = smoothedRSSI
         next.phoneNearby = resolvedPhoneNearby(for: smoothedRSSI, previous: previousNearby)
@@ -350,6 +364,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
         if previousNearby != next.phoneNearby {
             let detail = "raw=\(rawRSSI), smoothed=\(smoothedRSSI), unlock=\(Int(keylessSettingsStore.settings.unlockThreshold)), lock=\(Int(keylessSettingsStore.settings.lockThreshold))"
+            debugBLELastTransitionText = "\(next.phoneNearby ? "靠近" : "远离") · \(formatTime(Date()))"
             vehicleEventLogStore.add(.keyless, next.phoneNearby ? "BLE判定靠近" : "BLE判定远离", detail: detail)
         }
     }

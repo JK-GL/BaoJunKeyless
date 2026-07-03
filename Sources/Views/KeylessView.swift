@@ -18,6 +18,10 @@ struct KeylessView: View {
     @State private var keylessPhoneFarAwaySince: Date? = nil
     @State private var showLockRecorder = false
 
+    private var mqttStore: MQTTVehicleStateStore? {
+        vehicleStore as? MQTTVehicleStateStore
+    }
+
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
@@ -30,6 +34,12 @@ struct KeylessView: View {
                     modeText: currentModeText,
                     appExecEnabled: appExecutionEnabled,
                     state: vehicleStore.state,
+                    rawRSSI: mqttStore?.debugBLERawRSSI,
+                    smoothedRSSI: mqttStore?.debugBLESmoothedRSSI,
+                    lastSeenText: mqttStore?.debugBLELastSeenText ?? "--",
+                    lastTransitionText: mqttStore?.debugBLELastTransitionText ?? "--",
+                    unlockThreshold: Int(settingsStore.settings.unlockThreshold),
+                    lockThreshold: Int(settingsStore.settings.lockThreshold),
                     unlockDecision: currentUnlockDecision,
                     lockDecision: currentLockDecision,
                     lockDelayRemainingText: lockDelayRemainingText,
@@ -203,6 +213,12 @@ private struct KeylessRealtimeStatusSection: View {
     let modeText: String
     let appExecEnabled: Bool
     let state: VehicleState
+    let rawRSSI: Int?
+    let smoothedRSSI: Int?
+    let lastSeenText: String
+    let lastTransitionText: String
+    let unlockThreshold: Int
+    let lockThreshold: Int
     let unlockDecision: KeylessDecision
     let lockDecision: KeylessDecision
     let lockDelayRemainingText: String
@@ -216,7 +232,11 @@ private struct KeylessRealtimeStatusSection: View {
                     PopupInfoRowItem("slider.horizontal.3", "当前模式", modeText),
                     PopupInfoRowItem("checkmark.shield", "App执行", appExecEnabled ? "允许" : "关闭", color: appExecEnabled ? AppTheme.green : AppTheme.orange),
                     PopupInfoRowItem("iphone.radiowaves.left.and.right", "手机距离", state.phoneNearby ? "已靠近" : "已远离"),
-                    PopupInfoRowItem("dot.radiowaves.left.and.right", "蓝牙RSSI", state.bleRssi.map { "\($0) dBm" } ?? "--"),
+                    PopupInfoRowItem("dot.radiowaves.left.and.right", "平滑RSSI", (smoothedRSSI ?? state.bleRssi).map { "\($0) dBm" } ?? "--"),
+                    PopupInfoRowItem("waveform.path.ecg", "原始RSSI", rawRSSI.map { "\($0) dBm" } ?? "--"),
+                    PopupInfoRowItem("slider.horizontal.below.rectangle", "判定阈值", "unlock \(unlockThreshold) / lock \(lockThreshold) dBm", color: AppTheme.accent),
+                    PopupInfoRowItem("clock.badge.checkmark", "最近RSSI", lastSeenText),
+                    PopupInfoRowItem("arrow.left.arrow.right", "最近翻转", lastTransitionText, color: AppTheme.orange),
                     PopupInfoRowItem("lock.fill", "车锁状态", state.locked == true ? "已锁" : (state.locked == false ? "未锁" : "--")),
                     PopupInfoRowItem("lock.open.fill", "解锁判定", "\(unlockDecision.logLevel) · \(unlockDecision.reason)", color: decisionColor(unlockDecision)),
                     PopupInfoRowItem("lock.fill", "上锁判定", "\(lockDecision.logLevel) · \(lockDecision.reason)", color: decisionColor(lockDecision)),
