@@ -106,6 +106,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     private var lastUnlockDecision: KeylessDecision?
     private var lastLockDecision: KeylessDecision?
+    private var phoneNearbySince: Date?
     private var phoneFarAwaySince: Date?
     private var lastAutoCommandAt: Date?
     private var lastAutoCommandKind: VehicleCommandKind?
@@ -277,6 +278,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     private func resetKeylessRuntimeState() {
         lastUnlockDecision = nil
         lastLockDecision = nil
+        phoneNearbySince = nil
         phoneFarAwaySince = nil
         didLogManualForegroundSkip = false
         lastBLEWaitCommandKind = nil
@@ -563,6 +565,14 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         }
         guard settings.pluginTakeover || settings.smartSwitch || settings.appManual else { return }
 
+        if currentState.phoneNearby {
+            if phoneNearbySince == nil {
+                phoneNearbySince = Date()
+            }
+        } else {
+            phoneNearbySince = nil
+        }
+
         if currentState.phoneFarAway {
             if phoneFarAwaySince == nil {
                 phoneFarAwaySince = Date()
@@ -574,7 +584,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             phoneFarAwaySince = nil
         }
 
-        let unlockDecision = KeylessDecisionEngine.evaluateUnlock(state: currentState, settings: settings)
+        let unlockDecision = KeylessDecisionEngine.evaluateUnlockWithDelay(state: currentState, settings: settings, phoneNearbySince: phoneNearbySince)
         if unlockDecision != lastUnlockDecision {
             let detail = KeylessDecisionEngine.logDetail(decision: unlockDecision, state: currentState, settings: settings)
             switch unlockDecision {

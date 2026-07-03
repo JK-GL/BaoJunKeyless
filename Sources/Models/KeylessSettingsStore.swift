@@ -13,6 +13,7 @@ struct KeylessSettings: Codable {
     // 解锁
     var unlockEnabled: Bool = true
     var unlockThreshold: Double = -48
+    var unlockApproachDuration: Double = 2
     var unlockPopup: Bool = true
     var unlockVibrate: Bool = true
     var unlockVibPreset: String = "shortSingle"

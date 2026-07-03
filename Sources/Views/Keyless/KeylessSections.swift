@@ -67,6 +67,12 @@ struct UnlockSettingsSection: View {
                         vehicleLog.add(.keyless, "修改解锁阈值", detail: "\(Int(value)) dBm")
                     }
 
+                    SliderRow(icon: "timer", label: "靠近确认",
+                              value: $settingsStore.settings.unlockApproachDuration, range: 0...5, step: 0.5,
+                              format: String(format: "%.1fs", settingsStore.settings.unlockApproachDuration), tint: AppTheme.green) { value in
+                        vehicleLog.add(.keyless, "修改解锁确认时长", detail: String(format: "%.1fs", value))
+                    }
+
                     ToggleRow(icon: "iphone.radiowaves.left.and.right", label: "震动反馈", isOn: Binding(
                         get: { settingsStore.settings.unlockVibrate },
                         set: { enabled in

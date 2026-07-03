@@ -15,6 +15,7 @@ struct KeylessView: View {
     @EnvironmentObject var vehicleStore: VehicleStateStore
 
     @State private var showUnlockRecorder = false
+    @State private var keylessPhoneNearbySince: Date? = nil
     @State private var keylessPhoneFarAwaySince: Date? = nil
     @State private var showLockRecorder = false
 
@@ -87,12 +88,23 @@ struct KeylessView: View {
             }
         }
         .onAppear(perform: syncKeylessPhoneDistanceState)
+        .onChange(of: vehicleStore.state.phoneNearby) { _ in
+            syncKeylessPhoneDistanceState()
+        }
         .onChange(of: vehicleStore.state.phoneFarAway) { _ in
             syncKeylessPhoneDistanceState()
         }
     }
 
     private func syncKeylessPhoneDistanceState() {
+        if vehicleStore.state.phoneNearby {
+            if keylessPhoneNearbySince == nil {
+                keylessPhoneNearbySince = Date()
+            }
+        } else {
+            keylessPhoneNearbySince = nil
+        }
+
         if vehicleStore.state.phoneFarAway {
             if keylessPhoneFarAwaySince == nil {
                 keylessPhoneFarAwaySince = Date()
@@ -119,7 +131,7 @@ struct KeylessView: View {
     }
 
     private var currentUnlockDecision: KeylessDecision {
-        KeylessDecisionEngine.evaluateUnlock(state: vehicleStore.state, settings: settingsStore.settings)
+        KeylessDecisionEngine.evaluateUnlockWithDelay(state: vehicleStore.state, settings: settingsStore.settings, phoneNearbySince: keylessPhoneNearbySince)
     }
 
     private var currentLockDecision: KeylessDecision {

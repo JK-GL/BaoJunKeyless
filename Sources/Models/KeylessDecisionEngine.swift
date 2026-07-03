@@ -92,9 +92,18 @@ struct KeylessDecisionEngine {
         guard state.gear == .p else {
             return .deny(action: .unlock, reason: "档位 \(state.gear.title)，不允许无感解锁")
         }
-        // 8. 电源熄火
-        guard state.power == .off || state.power == .unknown else {
-            return .deny(action: .unlock, reason: "车辆未熄火 (\(state.power.title))")
+        // 8. 电源必须熄火，unknown 不允许
+        guard state.power == .off else {
+            return .deny(action: .unlock, reason: "车辆未熄火或电源状态未知 (\(state.power.title))")
+        }
+        // 9. 物理钥匙 unknown / inside 一律禁止
+        switch state.physicalKeyPosition {
+        case .inside:
+            return .deny(action: .unlock, reason: "物理钥匙在车内")
+        case .unknown:
+            return .deny(action: .unlock, reason: "物理钥匙状态未知")
+        case .outside, .farAway:
+            break
         }
 
         return .allow(action: .unlock, reason: "满足无感解锁条件")
@@ -148,16 +157,40 @@ struct KeylessDecisionEngine {
         guard state.gear == .p else {
             return .deny(action: .lock, reason: "档位 \(state.gear.title)，不允许无感上锁")
         }
-        // 10. 电源熄火
-        guard state.power == .off || state.power == .unknown else {
-            return .deny(action: .lock, reason: "车辆未熄火 (\(state.power.title))")
+        // 10. 电源必须熄火，unknown 不允许
+        guard state.power == .off else {
+            return .deny(action: .lock, reason: "车辆未熄火或电源状态未知 (\(state.power.title))")
         }
-        // 11. 物理钥匙不在车内
-        if state.physicalKeyPosition == .inside {
+        // 11. 物理钥匙不在车内，unknown 也禁止
+        switch state.physicalKeyPosition {
+        case .inside:
             return .deny(action: .lock, reason: "物理钥匙在车内")
+        case .unknown:
+            return .deny(action: .lock, reason: "物理钥匙状态未知")
+        case .outside, .farAway:
+            break
         }
 
         return .allow(action: .lock, reason: "满足无感上锁条件")
+    }
+
+    static func evaluateUnlockWithDelay(
+        state: VehicleState,
+        settings: KeylessSettings,
+        phoneNearbySince: Date?
+    ) -> KeylessDecision {
+        let decision = evaluateUnlock(state: state, settings: settings)
+        guard case .allow = decision else { return decision }
+        let delay = max(settings.unlockApproachDuration, 0)
+        guard delay > 0 else { return decision }
+        guard let phoneNearbySince else {
+            return .wait(action: .unlock, reason: "手机靠近，等待解锁确认")
+        }
+        let elapsed = Date().timeIntervalSince(phoneNearbySince)
+        guard elapsed >= delay else {
+            return .wait(action: .unlock, reason: "手机靠近，等待解锁确认")
+        }
+        return decision
     }
 
     static func evaluateLockWithDelay(
