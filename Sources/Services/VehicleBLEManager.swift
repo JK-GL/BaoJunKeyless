@@ -164,6 +164,7 @@ final class VehicleBLEManager: NSObject {
         let blockSize = kCCBlockSizeAES128
         let paddedLength = ((plain.count / blockSize) + 1) * blockSize
         var out = Data(count: paddedLength)
+        let outCount = out.count
         var outLength: size_t = 0
         let status = out.withUnsafeMutableBytes { outBytes in
             plain.withUnsafeBytes { plainBytes in
@@ -175,7 +176,7 @@ final class VehicleBLEManager: NSObject {
                         keyBytes.baseAddress, key.count,
                         nil,
                         plainBytes.baseAddress, plain.count,
-                        outBytes.baseAddress, out.count,
+                        outBytes.baseAddress, outCount,
                         &outLength
                     )
                 }
