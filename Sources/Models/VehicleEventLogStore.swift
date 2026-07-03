@@ -83,6 +83,7 @@ final class VehicleEventLogStore: ObservableObject {
 
     private let key = AppDefaultsKey.VehicleEventLog.entries
     private let maxEntries = 500
+    private let saveQueue = DispatchQueue(label: "BaoJunKeyless.VehicleEventLogStore.save", qos: .utility)
 
     init() {
         load()
@@ -107,7 +108,10 @@ final class VehicleEventLogStore: ObservableObject {
 
     func clearAll() {
         entries.removeAll()
-        UserDefaults.standard.removeObject(forKey: key)
+        let key = self.key
+        saveQueue.async {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
     }
 
     var todayEntries: [VehicleEventLogEntry] {
@@ -139,8 +143,12 @@ final class VehicleEventLogStore: ObservableObject {
     }
 
     private func save() {
-        if let data = try? JSONEncoder().encode(entries) {
-            UserDefaults.standard.set(data, forKey: key)
+        let snapshot = entries
+        let key = self.key
+        saveQueue.async {
+            if let data = try? JSONEncoder().encode(snapshot) {
+                UserDefaults.standard.set(data, forKey: key)
+            }
         }
     }
 

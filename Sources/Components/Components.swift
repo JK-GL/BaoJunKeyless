@@ -1,5 +1,17 @@
 import SwiftUI
 
+struct ResponsiveButtonStyle: ButtonStyle {
+    var pressedScale: CGFloat = 0.985
+    var pressedOpacity: Double = 0.86
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? pressedScale : 1)
+            .opacity(configuration.isPressed ? pressedOpacity : 1)
+            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+    }
+}
+
 // MARK: - CardView
 struct CardView<Content: View>: View {
     @EnvironmentObject var theme: ThemeManager

@@ -238,7 +238,8 @@ struct CommandConfirmPopup: View {
             icon: resultIcon,
             iconColor: resultColor,
             title: commandTitle,
-            subtitle: resultSubtitle
+            subtitle: resultSubtitle,
+            contentScrollEnabled: false
         ) {
             VStack(spacing: 12) {
                 PopupStatusSummaryView(items: statusItemsForCurrentAction)

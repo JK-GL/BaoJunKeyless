@@ -72,12 +72,13 @@ struct FloatingPopupCard<Content: View, Actions: View>: View {
                         measuredContent
                     }
                     .frame(height: min(max(measuredContentHeight, 1), maxContentHeight), alignment: .top)
+                    .onPreferenceChange(FloatingPopupContentHeightKey.self) { value in
+                        measuredContentHeight = max(value, 1)
+                    }
                 } else {
-                    measuredContent
+                    content()
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-            }
-            .onPreferenceChange(FloatingPopupContentHeightKey.self) { value in
-                measuredContentHeight = max(value, 1)
             }
 
             actions()
@@ -130,7 +131,7 @@ struct FloatingPopupPrimaryButton: View {
                     .fill(isDisabled ? (disabledBackgroundColor ?? Color.white.opacity(0.45)) : color)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ResponsiveButtonStyle())
         .disabled(isDisabled)
     }
 }
@@ -157,6 +158,6 @@ struct FloatingPopupSecondaryButton: View {
                         )
                 )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ResponsiveButtonStyle())
     }
 }

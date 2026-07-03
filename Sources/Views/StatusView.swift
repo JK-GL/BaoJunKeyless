@@ -189,7 +189,9 @@ struct StatusView: View {
                     }
 
                     QuickActionsView(onCommand: { command in
-                        activeCommand = command
+                        withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
+                            activeCommand = command
+                        }
                     }, vehicleState: vehicleStore.state)
 
                     QuickStatusTripletView(
@@ -292,7 +294,6 @@ struct StatusView: View {
             amapKeyDraft = addressSettings.amapWebKey
             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { isAddressFloatingPresented = true }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: activeCommand != nil)
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isAddressFloatingPresented)
         .onAppear {
             syncCarLocationToManager(forceAddressRefresh: true)

@@ -23,9 +23,11 @@ struct QuickActionsView: View {
                         action: action,
                         state: vehicleState
                     ) {
-                        let impact = UIImpactFeedbackGenerator(style: .light)
-                        impact.impactOccurred()
                         onCommand(action)
+                        DispatchQueue.main.async {
+                            let impact = UIImpactFeedbackGenerator(style: .light)
+                            impact.impactOccurred()
+                        }
                     }
                 }
             }
@@ -74,6 +76,6 @@ private struct CommandGridButton: View {
             )
             .contentShape(RoundedRectangle(cornerRadius: AppRadius.segmented, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ResponsiveButtonStyle())
     }
 }
