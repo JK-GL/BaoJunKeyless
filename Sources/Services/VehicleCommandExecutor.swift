@@ -138,12 +138,13 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
         case .failure(let error):
             finish(VehicleCommandExecutionResult(command: command, state: .failed(error.localizedDescription), userMessage: error.localizedDescription, shouldRefresh: false, refreshDelay: 0))
         case .success(let draft):
+            let requestSummary = draft.redactedRequestSummary
             apiClient.sendVehicleControlRequestDraft(draft) { result in
                 switch result {
                 case .success:
                     DispatchQueue.main.async {
                         refresher?.refreshNow()
-                        completion(VehicleCommandExecutionResult(command: command, state: .sent, userMessage: "控制请求已发送，等待车辆真实回报", shouldRefresh: true, refreshDelay: 0))
+                        completion(VehicleCommandExecutionResult(command: command, state: .sent, userMessage: "控制请求已发送：\(requestSummary)，等待车辆真实回报", shouldRefresh: true, refreshDelay: 0))
                     }
                 case .failure(let error):
                     let state: VehicleCommandExecutionState
@@ -154,10 +155,23 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
                     } else {
                         state = .failed(error.localizedDescription)
                     }
-                    finish(VehicleCommandExecutionResult(command: command, state: state, userMessage: error.localizedDescription, shouldRefresh: false, refreshDelay: 0))
+                    let message = "\(requestSummary)；\(error.localizedDescription)"
+                    finish(VehicleCommandExecutionResult(command: command, state: state, userMessage: message, shouldRefresh: false, refreshDelay: 0))
                 }
             }
         }
+    }
+}
+
+private extension SGMWApiClient.VehicleControlRequestDraft {
+    var redactedRequestSummary: String {
+        let endpoint = plan.endpointCandidates.first ?? url.lastPathComponent
+        let bodySummary = body
+            .filter { $0.key.lowercased() != "vin" }
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: ",")
+        return bodySummary.isEmpty ? "POST \(endpoint)" : "POST \(endpoint) body={\(bodySummary)}"
     }
 }
 

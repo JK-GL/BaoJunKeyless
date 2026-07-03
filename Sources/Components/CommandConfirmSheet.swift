@@ -55,7 +55,7 @@ enum CommandAction: String, Identifiable {
     func icon(state: VehicleState) -> String {
         switch self {
         case .lockUnlock:
-            return state.locked == false ? "lock.open.fill" : "lock.fill"
+            return state.locked == true ? "lock.open.fill" : "lock.fill"
         case .remoteStart:
             return (state.power == .on || state.power == .ready) ? "power.circle.fill" : "power"
         case .findCar:
@@ -72,15 +72,15 @@ enum CommandAction: String, Identifiable {
     func label(state: VehicleState) -> String {
         switch self {
         case .lockUnlock:
-            return state.locked == false ? "已开锁" : "锁车"
+            return state.locked == true ? "解锁" : "锁车"
         case .remoteStart:
-            return (state.power == .on || state.power == .ready) ? "已启动" : "熄火"
+            return (state.power == .on || state.power == .ready) ? "熄火" : "启动"
         case .findCar:
             return "寻车"
         case .acToggle:
-            return state.acOn == true ? "已开空调" : "空调"
+            return state.acOn == true ? "关空调" : "开空调"
         case .windowToggle:
-            return state.windowsClosed == false ? "已开窗" : "车窗"
+            return state.windowsClosed == false ? "关窗" : "开窗"
         case .quickCool:
             return "快冷"
         }
@@ -211,11 +211,19 @@ struct CommandConfirmPopup: View {
         return accentColor
     }
 
+    private var commandTitle: String {
+        action.asVehicleCommand(
+            state: vehicleState,
+            temperature: action.needsTemperatureSlider ? temperature : nil,
+            source: .quickAction
+        ).title
+    }
+
     var body: some View {
         FloatingPopupCard(
             icon: resultIcon,
             iconColor: resultColor,
-            title: action.label(state: displayState),
+            title: commandTitle,
             subtitle: resultSubtitle
         ) {
             VStack(spacing: 12) {
@@ -353,7 +361,7 @@ struct CommandConfirmPopup: View {
         resultButtonTitle = nil
 
         let temperatureToUse = temperature
-        let label = action.label(state: vehicleState)
+        let label = commandTitle
         let temperatureDetail = action.needsTemperatureSlider ? " \(Int(temperatureToUse))°C" : ""
         vehicleLog.add(.action, "快捷操作执行", detail: "\(label)\(temperatureDetail)")
 
