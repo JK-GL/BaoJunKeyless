@@ -36,6 +36,12 @@ struct KeylessView: View {
                     onSimulateUnlock: simulateUnlockDecision,
                     onSimulateLock: simulateLockDecision
                 )
+                KeylessRecentActivitySection(
+                    latestUnlockText: latestKeylessUnlockText,
+                    latestLockText: latestKeylessLockText,
+                    latestFailureText: latestKeylessFailureText,
+                    latestRejectText: latestKeylessRejectText
+                )
                 UnlockSettingsSection(
                     showRecorder: $showUnlockRecorder,
                     choice: unlockVibChoiceBinding,
@@ -127,6 +133,39 @@ struct KeylessView: View {
         vehicleLog.add(.keyless, "上锁试算", detail: detail)
     }
 
+    private var latestKeylessUnlockText: String {
+        latestDetail(titles: ["无感命令结果", "无感命令发送"], keyword: "解锁")
+    }
+
+    private var latestKeylessLockText: String {
+        latestDetail(titles: ["无感命令结果", "无感命令发送"], keyword: "上锁")
+    }
+
+    private var latestKeylessFailureText: String {
+        latestDetail(categories: [.error], titles: ["无感命令结果"], keyword: "无感")
+    }
+
+    private var latestKeylessRejectText: String {
+        latestDetail(titles: ["解锁拒绝", "上锁拒绝"])
+    }
+
+    private func latestDetail(
+        categories: Set<VehicleEventLogCategory>? = nil,
+        titles: [String],
+        keyword: String? = nil
+    ) -> String {
+        for entry in vehicleLog.entries {
+            if let categories, !categories.contains(entry.category) { continue }
+            if !titles.contains(entry.title) { continue }
+            if let keyword {
+                let haystack = entry.detail + " " + entry.title
+                if !haystack.localizedCaseInsensitiveContains(keyword) { continue }
+            }
+            return entry.detail.isEmpty ? entry.timeText : "\(entry.timeText) · \(entry.detail)"
+        }
+        return "--"
+    }
+
     private func setMode(_ mode: KeylessControlMode) {
         settingsStore.settings.pluginTakeover = (mode == .plugin)
         settingsStore.settings.smartSwitch = (mode == .smart)
@@ -200,6 +239,30 @@ private struct KeylessRealtimeStatusSection: View {
             return AppTheme.red
         case .wait:
             return AppTheme.orange
+        }
+    }
+}
+
+private struct KeylessRecentActivitySection: View {
+    let latestUnlockText: String
+    let latestLockText: String
+    let latestFailureText: String
+    let latestRejectText: String
+
+    var body: some View {
+        CardView(title: "无感历史状态", icon: "clock.arrow.circlepath", iconColor: AppTheme.purple) {
+            PopupInfoRowsView(
+                rows: [
+                    PopupInfoRowItem("lock.open.fill", "最近解锁", latestUnlockText, color: AppTheme.green),
+                    PopupInfoRowItem("lock.fill", "最近上锁", latestLockText, color: AppTheme.red),
+                    PopupInfoRowItem("xmark.octagon.fill", "最近失败", latestFailureText, color: AppTheme.red),
+                    PopupInfoRowItem("exclamationmark.triangle.fill", "最近拒绝", latestRejectText, color: AppTheme.orange)
+                ],
+                labelWidth: 74,
+                valueLineLimit: nil,
+                valueMinimumScaleFactor: 0.78,
+                rowVerticalPadding: 8
+            )
         }
     }
 }
