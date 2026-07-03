@@ -167,7 +167,7 @@ final class SGMWApiClient {
         case .closeWindows:
             return VehicleControlRequestPlan(command: .closeWindows, endpointCandidates: ["car/control/window"], bodyKeys: ["vin", "status"], note: "BLE_SPEC v7.1：车窗 status=1 关车窗")
         case .quickCool:
-            return VehicleControlRequestPlan(command: .quickCool, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature", "blowerLvl", "duration"], note: "BLE_SPEC v7.1：快速降温 status=4，temperature=17，blowerLvl=7，duration=10")
+            return VehicleControlRequestPlan(command: .quickCool, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature", "blowerLvl", "duration"], note: "BLE_SPEC v7.1：快速降温 status=4，temperature=目标温度，blowerLvl=7，duration=5~20")
         }
     }
 
@@ -215,7 +215,10 @@ final class SGMWApiClient {
             body["temperature"] = max(17, min(33, rawTemperature))
         }
         if plan.bodyKeys.contains("blowerLvl") { body["blowerLvl"] = 7 }
-        if plan.bodyKeys.contains("duration") { body["duration"] = 10 }
+        if plan.bodyKeys.contains("duration") {
+            let rawDuration = command.requestedDurationMinutes ?? 10
+            body["duration"] = max(5, min(20, rawDuration))
+        }
         let headers = buildSignedHeaders(accessToken: accessToken)
         return .success(VehicleControlRequestDraft(plan: plan, url: url, headers: headers, body: body))
     }

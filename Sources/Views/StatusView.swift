@@ -279,8 +279,8 @@ struct StatusView: View {
                         get: { activeCommand != nil },
                         set: { if !$0 { activeCommand = nil } }
                     )
-                ) { cmd, temp, completion in
-                    handleQuickActionConfirm(action: cmd, temperature: temp, completion: completion)
+                ) { cmd, temp, duration, completion in
+                    handleQuickActionConfirm(action: cmd, temperature: temp, durationMinutes: duration, completion: completion)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .transition(.scale.combined(with: .opacity))
@@ -524,9 +524,10 @@ struct StatusView: View {
     private func handleQuickActionConfirm(
         action: CommandAction,
         temperature: Double?,
+        durationMinutes: Int?,
         completion: @escaping (VehicleCommandExecutionResult) -> Void
     ) {
-        let command = action.asVehicleCommand(state: vehicleStore.state, temperature: temperature, source: .quickAction)
+        let command = action.asVehicleCommand(state: vehicleStore.state, temperature: temperature, durationMinutes: durationMinutes, source: .quickAction)
 
         let transport = HTTPControlTransport(credentials: vehicleCredentials)
         VehicleCommandExecutor.executeAsync(command, transport: transport, refresher: mqttStore) { result in

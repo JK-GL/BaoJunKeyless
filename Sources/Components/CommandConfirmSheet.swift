@@ -139,13 +139,18 @@ enum CommandAction: String, Identifiable {
             return state.acOn == true ? "关闭空调压缩机，停止送风" : "开启空调，可调节设定温度"
         case .windowToggle:
             return state.windowsClosed == false ? "关闭全部车窗，确保安全" : "打开全部车窗，便于通风"
-        case .quickCool:     return "一键降温至 17°C · 风量 7 · 持续 10 分钟"
+        case .quickCool:     return "按设定温度快速降温 · 风量 7 · 可调 5～20 分钟"
         }
     }
 
     /// 是否需要温度滑块
     var needsTemperatureSlider: Bool {
-        self == .acToggle
+        self == .acToggle || self == .quickCool
+    }
+
+    /// 是否需要持续时间滑块
+    var needsDurationSlider: Bool {
+        self == .quickCool
     }
 }
 
@@ -156,9 +161,10 @@ struct CommandConfirmPopup: View {
     let action: CommandAction
     let vehicleState: VehicleState
     @Binding var isPresented: Bool
-    let onConfirm: (CommandAction, Double?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
+    let onConfirm: (CommandAction, Double?, Int?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
 
     @State private var temperature: Double
+    @State private var durationMinutes: Double
     @State private var isExecuting = false
     @State private var commandResult: CommandResult? = nil
     @State private var resultMessage: String? = nil
@@ -168,7 +174,7 @@ struct CommandConfirmPopup: View {
         action: CommandAction,
         vehicleState: VehicleState,
         isPresented: Binding<Bool>,
-        onConfirm: @escaping (CommandAction, Double?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
+        onConfirm: @escaping (CommandAction, Double?, Int?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
     ) {
         self.action = action
         self.vehicleState = vehicleState
@@ -181,6 +187,7 @@ struct CommandConfirmPopup: View {
             initialTemperature = Int(vehicleState.acTemperature ?? 22)
         }
         self._temperature = State(initialValue: Double(max(17, min(33, initialTemperature))))
+        self._durationMinutes = State(initialValue: 10)
     }
 
     /// 始终显示真实状态源传入的车辆状态，点击反馈不再模拟覆盖。
@@ -221,6 +228,7 @@ struct CommandConfirmPopup: View {
         action.asVehicleCommand(
             state: vehicleState,
             temperature: action.needsTemperatureSlider ? temperature : nil,
+            durationMinutes: action.needsDurationSlider ? Int(durationMinutes) : nil,
             source: .quickAction
         ).title
     }
@@ -240,6 +248,15 @@ struct CommandConfirmPopup: View {
                         title: "设定温度",
                         temperature: $temperature,
                         range: 17...33,
+                        tint: accentColor
+                    )
+                }
+
+                if action.needsDurationSlider && commandResult == nil {
+                    PopupDurationSlider(
+                        title: "持续时间",
+                        durationMinutes: $durationMinutes,
+                        range: 5...20,
                         tint: accentColor
                     )
                 }
@@ -350,7 +367,9 @@ struct CommandConfirmPopup: View {
                 PopupStatusItem(icon: "thermometer", label: "设定温度",
                                 value: "\(Int(temperature))°C", color: AppTheme.accent),
                 PopupStatusItem(icon: "snowflake", label: "风量",
-                                value: "7", color: AppTheme.accent)
+                                value: "7", color: AppTheme.accent),
+                PopupStatusItem(icon: "timer", label: "持续时间",
+                                value: "\(Int(durationMinutes)) 分钟", color: AppTheme.accent)
             ]
         }
     }
@@ -367,14 +386,20 @@ struct CommandConfirmPopup: View {
         resultButtonTitle = nil
 
         let temperatureToUse = temperature
+        let durationToUse = Int(durationMinutes)
         let label = commandTitle
         let temperatureDetail = action.needsTemperatureSlider ? " \(Int(temperatureToUse))°C" : ""
-        vehicleLog.add(.action, "快捷操作执行", detail: "\(label)\(temperatureDetail)")
+        let durationDetail = action.needsDurationSlider ? " \(durationToUse)分钟" : ""
+        vehicleLog.add(.action, "快捷操作执行", detail: "\(label)\(temperatureDetail)\(durationDetail)")
 
         let startTime = Date()
         let minimumLoadingDuration: TimeInterval = 0.35
 
-        onConfirm(action, action.needsTemperatureSlider ? temperatureToUse : nil) { executionResult in
+        onConfirm(
+            action,
+            action.needsTemperatureSlider ? temperatureToUse : nil,
+            action.needsDurationSlider ? durationToUse : nil
+        ) { executionResult in
             let elapsed = Date().timeIntervalSince(startTime)
             let delay = max(0, minimumLoadingDuration - elapsed)
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
@@ -396,6 +421,34 @@ struct CommandConfirmPopup: View {
                 }
             }
         }
+    }
+}
+
+private struct PopupDurationSlider: View {
+    let title: String
+    @Binding var durationMinutes: Double
+    let range: ClosedRange<Double>
+    let tint: Color
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Color.white.opacity(0.55))
+                Spacer()
+                Text("\(Int(durationMinutes)) 分钟")
+                    .font(.system(size: 20, weight: .bold, design: .monospaced))
+                    .foregroundColor(tint)
+            }
+            Slider(value: $durationMinutes, in: range, step: 1)
+                .tint(tint)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
     }
 }
 

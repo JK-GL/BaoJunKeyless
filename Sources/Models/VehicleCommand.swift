@@ -30,14 +30,34 @@ struct VehicleCommand: Codable, Equatable {
     let title: String
     let detail: String
     let requestedTemperature: Double?
+    let requestedDurationMinutes: Int?
     let source: VehicleCommandSource
     let transportHint: VehicleCommandTransportHint
+
+    init(
+        kind: VehicleCommandKind,
+        title: String,
+        detail: String,
+        requestedTemperature: Double?,
+        source: VehicleCommandSource,
+        transportHint: VehicleCommandTransportHint,
+        requestedDurationMinutes: Int? = nil
+    ) {
+        self.kind = kind
+        self.title = title
+        self.detail = detail
+        self.requestedTemperature = requestedTemperature
+        self.requestedDurationMinutes = requestedDurationMinutes
+        self.source = source
+        self.transportHint = transportHint
+    }
 }
 
 extension CommandAction {
     func asVehicleCommand(
         state: VehicleState,
         temperature: Double?,
+        durationMinutes: Int? = nil,
         source: VehicleCommandSource = .quickAction
     ) -> VehicleCommand {
         switch self {
@@ -64,7 +84,7 @@ extension CommandAction {
             }
             return VehicleCommand(kind: .openWindows, title: "打开车窗", detail: "快捷操作打开车窗", requestedTemperature: nil, source: source, transportHint: .httpControl)
         case .quickCool:
-            return VehicleCommand(kind: .quickCool, title: "快速降温", detail: "快捷操作快速降温", requestedTemperature: temperature ?? 17, source: source, transportHint: .httpControl)
+            return VehicleCommand(kind: .quickCool, title: "快速降温", detail: "快捷操作快速降温", requestedTemperature: temperature ?? 17, source: source, transportHint: .httpControl, requestedDurationMinutes: durationMinutes ?? 10)
         }
     }
 }

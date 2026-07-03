@@ -105,7 +105,7 @@ KeylessDecisionEngine.allow(...)
 - 寻车：`POST car/control/searchCar`，`status=0`
 - 车窗：`POST car/control/window`，开窗 `status=0`，关窗 `status=1`
 - 空调：`POST car/control/acc`，开空调 `status=6`，关空调 `status=7`
-- 快速降温：`POST car/control/acc`，`status=4`，`temperature=17`，`blowerLvl=7`，`duration=10`
+- 快速降温：`POST car/control/acc`，`status=4`，`temperature=17...33`（默认 17），`blowerLvl=7`，`duration=5...20`（默认 10）
 - 远程启动：`POST car/control/ignition/authorize` 只覆盖 PEPS 授权；真正启动的 BLE CMD 仍待确认
 - 远程熄火：文档未提供云端 endpoint，当前禁止发送占位请求。
 
@@ -134,7 +134,7 @@ KeylessDecisionEngine.allow(...)
 
 当前骨架已经能保证：
 
-- 快捷操作已可小范围验证 lock / unlock 的真实 HTTP 下发
+- 快捷操作已可小范围验证文档确认命令的真实 HTTP 下发
 - 后续加无感，不需要另起一套执行模型
 - 后续扩展其它快捷操作真实执行，不需要推倒现有确认链路
 - 只需继续校准 endpoint / body / 回执解析即可
