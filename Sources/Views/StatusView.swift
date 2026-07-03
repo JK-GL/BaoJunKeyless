@@ -135,6 +135,23 @@ struct StatusView: View {
         return "pause.circle.fill"
     }
 
+    private var livePhysicalKeyState: StatusPhysicalKeyState {
+        switch vehicleStore.state.physicalKeyPosition {
+        case .inside:
+            return .inCar
+        case .outside:
+            return .outside
+        case .farAway:
+            return .farAway
+        case .unknown:
+            return .unknown
+        }
+    }
+
+    private var liveGearState: StatusGearState {
+        StatusGearState(gear: vehicleStore.state.gear)
+    }
+
     var body: some View {
         ZStack {
             ScrollView(.vertical, showsIndicators: false) {
@@ -167,15 +184,8 @@ struct StatusView: View {
                             modeColor: modeColor,
                             bleStatus: liveBLEStatus,
                             mqttStatus: liveMQTTStatus,
-                            physicalKeyState: {
-                                switch vehicleStore.state.physicalKeyPosition {
-                                case .inside: return .inCar
-                                case .outside: return .outside
-                                case .farAway: return .farAway
-                                case .unknown: return .unknown
-                                }
-                            }(),
-                            gearState: StatusGearState(gear: vehicleStore.state.gear),
+                            physicalKeyState: livePhysicalKeyState,
+                            gearState: liveGearState,
                             onBLETap: { isVehicleInfoFloatingPresented = true },
                             onMQTTTap: { isMQTTFloatingPresented = true }
                         )
@@ -190,7 +200,7 @@ struct StatusView: View {
                     } else {
                         RadarCardView(
                             locationManager: locationManager,
-                            bleConnected: liveBLEStatus == .connected,
+                            bleConnected: liveBLEStatus == .authenticated,
                             carLat: displayCarLatitude,
                             carLng: displayCarLongitude,
                             carAddress: displayCarAddress,

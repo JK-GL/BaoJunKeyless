@@ -246,7 +246,7 @@ struct StatusPillsSection: View {
     let modeIcon: String
     let modeText: String
     let modeColor: Color
-    var bleStatus: StatusBLEState = .connected
+    var bleStatus: StatusBLEState = .authenticated
     var mqttStatus: StatusMQTTState = .disconnected
     var physicalKeyState: StatusPhysicalKeyState = .outside
     var gearState: StatusGearState = .park

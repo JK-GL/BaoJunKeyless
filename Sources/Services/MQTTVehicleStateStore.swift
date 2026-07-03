@@ -191,7 +191,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         let settings = keylessSettingsStore.settings
         guard settings.keylessEnabled, !settings.pluginTakeover else {
             bleManager.stop()
-            if bleStatus != .connected {
+            if bleStatus != .authenticated {
                 bleStatus = .disconnected
             }
             return
@@ -205,7 +205,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         let bleKey = latestBleKeyInfo["bleKey"]
         guard !bleMac.isEmpty, !keyId.isEmpty, !masterKey.isEmpty, !keyMasterRandom.isEmpty else {
             bleManager.stop()
-            if bleStatus != .connected {
+            if bleStatus != .authenticated {
                 bleStatus = .disconnected
             }
             return
@@ -648,7 +648,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 guard case .success(let info) = result else { return }
                 self.latestBleKeyInfo = info
                 self.refreshBLESessionIfNeeded()
-                if self.bleStatus != .connected {
+                if self.bleStatus != .authenticated {
                     self.bleStatus = .disconnected
                 }
                 var dash = self.dashboard
