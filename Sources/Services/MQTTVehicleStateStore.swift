@@ -101,6 +101,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     private var phoneFarAwaySince: Date?
     private var lastAutoCommandAt: Date?
     private var lastAutoCommandKind: VehicleCommandKind?
+    private var lastBLEWaitCommandKind: VehicleCommandKind?
     private var isExecutingKeylessCommand = false
     private var isAppInForeground = true
     private var didLogManualForegroundSkip = false
@@ -162,6 +163,21 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             if let message {
                 CrashLogger.shared.mark(component, message)
             }
+        }
+    }
+
+    var canUseBLEForDoorLock: Bool {
+        bleManager.canSendDoorLockControl
+    }
+
+    func sendDoorLockViaBLE(command: VehicleCommand) -> Result<Void, VehicleBLEManager.BLEControlError> {
+        switch command.kind {
+        case .lock:
+            return bleManager.sendDoorLockCommand(lock: true)
+        case .unlock:
+            return bleManager.sendDoorLockCommand(lock: false)
+        default:
+            return .failure(.frameBuildFailed)
         }
     }
 
@@ -391,6 +407,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             lastLockDecision = nil
             phoneFarAwaySince = nil
             didLogManualForegroundSkip = false
+            lastBLEWaitCommandKind = nil
             return
         }
         if settings.pluginTakeover { return }
@@ -489,7 +506,16 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         lastAutoCommandKind = command.kind
         vehicleEventLogStore.add(.keyless, "无感命令发送", detail: "\(command.title) | \(reason)")
 
-        let transport = HTTPControlTransport(credentials: credentialsStore)
+        guard bleManager.canSendDoorLockControl else {
+            if lastBLEWaitCommandKind != command.kind {
+                vehicleEventLogStore.add(.keyless, "无感等待BLE", detail: "\(command.title) | BLE 未鉴权成功")
+                lastBLEWaitCommandKind = command.kind
+            }
+            return
+        }
+        lastBLEWaitCommandKind = nil
+
+        let transport = BLEDoorLockTransport(bleController: self)
         VehicleCommandExecutor.executeAsync(command, transport: transport, refresher: self) { [weak self] result in
             guard let self else { return }
             DispatchQueue.main.async {

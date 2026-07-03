@@ -48,6 +48,11 @@ protocol VehicleCommandAsyncTransport {
     )
 }
 
+protocol VehicleBLEDoorLockControlling: AnyObject {
+    var canUseBLEForDoorLock: Bool { get }
+    func sendDoorLockViaBLE(command: VehicleCommand) -> Result<Void, VehicleBLEManager.BLEControlError>
+}
+
 struct FeedbackOnlyTransport: VehicleCommandTransport {
     func execute(_ command: VehicleCommand, refresher: VehicleCommandRefreshing?) -> VehicleCommandExecutionResult {
         refresher?.refreshNow()
@@ -106,6 +111,42 @@ struct PlaceholderControlTransport: VehicleCommandTransport {
                 shouldRefresh: false,
                 refreshDelay: 0
             )
+        }
+    }
+}
+
+struct BLEDoorLockTransport: VehicleCommandAsyncTransport {
+    weak var bleController: VehicleBLEDoorLockControlling?
+
+    init(bleController: VehicleBLEDoorLockControlling?) {
+        self.bleController = bleController
+    }
+
+    func executeAsync(
+        _ command: VehicleCommand,
+        refresher: VehicleCommandRefreshing?,
+        completion: @escaping (VehicleCommandExecutionResult) -> Void
+    ) {
+        func finish(_ result: VehicleCommandExecutionResult) {
+            DispatchQueue.main.async {
+                completion(result)
+            }
+        }
+
+        guard command.kind == .lock || command.kind == .unlock else {
+            finish(VehicleCommandExecutionResult(command: command, state: .failed("当前 BLE transport 只支持门锁"), userMessage: "当前 BLE transport 只支持 lock / unlock", shouldRefresh: false, refreshDelay: 0))
+            return
+        }
+        guard let bleController else {
+            finish(VehicleCommandExecutionResult(command: command, state: .failed("缺少 BLE 控制器"), userMessage: "未配置 BLE 控制器", shouldRefresh: false, refreshDelay: 0))
+            return
+        }
+        switch bleController.sendDoorLockViaBLE(command: command) {
+        case .success:
+            let message = "BLE 控制命令已发送：\(command.title)，等待车辆真实回报"
+            finish(VehicleCommandExecutionResult(command: command, state: .sent, userMessage: message, shouldRefresh: false, refreshDelay: 0))
+        case .failure(let error):
+            finish(VehicleCommandExecutionResult(command: command, state: .failed(error.localizedDescription), userMessage: error.localizedDescription, shouldRefresh: false, refreshDelay: 0))
         }
     }
 }
@@ -221,5 +262,5 @@ struct VehicleCommandExecutor {
     }
 }
 
-extension MQTTVehicleStateStore: VehicleCommandRefreshing {}
+extension MQTTVehicleStateStore: VehicleCommandRefreshing, VehicleBLEDoorLockControlling {}
 extension VehicleCredentialsStore: VehicleCommandCredentialProviding {}

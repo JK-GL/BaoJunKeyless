@@ -603,7 +603,12 @@ struct StatusView: View {
         pendingControlTitle = command.title
         pendingControlSentAt = nil
 
-        let transport = HTTPControlTransport(credentials: vehicleCredentials)
+        let transport: VehicleCommandAsyncTransport
+        if (command.kind == .lock || command.kind == .unlock), let mqttStore, mqttStore.canUseBLEForDoorLock {
+            transport = BLEDoorLockTransport(bleController: mqttStore)
+        } else {
+            transport = HTTPControlTransport(credentials: vehicleCredentials)
+        }
         VehicleCommandExecutor.executeAsync(command, transport: transport, refresher: mqttStore) { result in
             DispatchQueue.main.async {
                 switch result.state {

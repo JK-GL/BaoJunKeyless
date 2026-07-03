@@ -3,6 +3,24 @@ import CoreBluetooth
 import CommonCrypto
 
 final class VehicleBLEManager: NSObject {
+    enum BLEControlError: LocalizedError {
+        case notAuthenticated
+        case writeCharacteristicMissing
+        case invalidConfig
+        case frameBuildFailed
+        case writeFailed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .notAuthenticated: return "BLE 未鉴权成功"
+            case .writeCharacteristicMissing: return "BLE 控制写特征不存在"
+            case .invalidConfig: return "BLE 控制配置无效"
+            case .frameBuildFailed: return "BLE 控制帧构造失败"
+            case .writeFailed(let detail): return "BLE 控制写入失败：\(detail)"
+            }
+        }
+    }
+
     enum State: Equatable {
         case idle
         case unsupported
@@ -44,6 +62,14 @@ final class VehicleBLEManager: NSObject {
             }
         }
     }
+    private(set) var lastControlError: BLEControlError?
+
+    var canSendDoorLockControl: Bool {
+        if case .authenticated = state {
+            return controlWriteCharacteristic != nil
+        }
+        return false
+    }
 
     private let authService = CBUUID(string: "181A")
     private let authWrite = CBUUID(string: "2A6E")
@@ -54,6 +80,7 @@ final class VehicleBLEManager: NSObject {
 
     func start(config: SessionConfig) {
         self.config = config
+        lastControlError = nil
         authWriteCharacteristic = nil
         controlWriteCharacteristic = nil
         notify181AReady = false
@@ -115,6 +142,29 @@ final class VehicleBLEManager: NSObject {
         sendAuthFrameIfPossible()
     }
 
+    func sendDoorLockCommand(lock: Bool) -> Result<Void, BLEControlError> {
+        guard case .authenticated = state else {
+            lastControlError = .notAuthenticated
+            return .failure(.notAuthenticated)
+        }
+        guard let config,
+              let peripheral = discoveredPeripheral,
+              let controlWriteCharacteristic else {
+            lastControlError = .writeCharacteristicMissing
+            return .failure(.writeCharacteristicMissing)
+        }
+        guard let frame = makeDoorLockControlFrame(config: config, lock: lock) else {
+            lastControlError = .frameBuildFailed
+            return .failure(.frameBuildFailed)
+        }
+        lastControlError = nil
+        let statusValue = lock ? 1 : 0
+        let btParam = lock ? 0 : 1
+        onLog?("BLE", "send doorLock control status=\(statusValue) btParam=\(btParam) len=\(frame.count)")
+        peripheral.writeValue(frame, for: controlWriteCharacteristic, type: .withResponse)
+        return .success(())
+    }
+
     private func sendAuthFrameIfPossible() {
         guard !didSendAuthFrame,
               let config,
@@ -145,6 +195,25 @@ final class VehicleBLEManager: NSObject {
 
         guard let encrypted = aesECBEncrypt(plain, key: aesKey) else {
             onLog?("BLE", "auth aes encrypt failed")
+            return nil
+        }
+        return wrapBLEFrame(encrypted)
+    }
+
+    private func makeDoorLockControlFrame(config: SessionConfig, lock: Bool) -> Data? {
+        guard let controlKey = Data(hex: config.masterKey), controlKey.count == 16 else {
+            onLog?("BLE", "control key invalid")
+            return nil
+        }
+        let serviceId: UInt16 = 1
+        let subfunction: UInt8 = lock ? 1 : 0
+        let btParam: UInt8 = lock ? 0 : 1
+        var controlData = Data()
+        controlData.append(contentsOf: serviceId.bigEndianBytes)
+        controlData.append(subfunction)
+        controlData.append(btParam)
+        guard let encrypted = aesECBEncrypt(controlData, key: controlKey) else {
+            onLog?("BLE", "control aes encrypt failed")
             return nil
         }
         return wrapBLEFrame(encrypted)
@@ -395,6 +464,7 @@ extension VehicleBLEManager: CBPeripheralDelegate {
 
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         if let error {
+            lastControlError = .writeFailed(error.localizedDescription)
             state = .error(error.localizedDescription)
             onLog?("BLE", "write value failed | \(error.localizedDescription)")
             return
