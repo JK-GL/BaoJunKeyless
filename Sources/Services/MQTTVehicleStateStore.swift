@@ -94,6 +94,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     private let keylessSettingsStore: KeylessSettingsStore
     private let vehicleEventLogStore: VehicleEventLogStore
     private let customVibrationStore: CustomVibrationStore
+    private let bleManager = VehicleBLEManager()
 
     private var lastUnlockDecision: KeylessDecision?
     private var lastLockDecision: KeylessDecision?
@@ -122,6 +123,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         self.customVibrationStore = customVibrationStore
         super.init(state: .placeholder, dashboard: VehicleDashboardState())
         loadPersistedDisplayCache()
+        setupBLECallbacks()
         setupLifecycleObservers()
         DispatchQueue.main.async { [weak self] in
             self?.autoConnect()
@@ -131,12 +133,58 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     deinit {
         httpTimer?.invalidate()
         mqtt?.disconnect()
+        bleManager.stop()
         if let foregroundObserver {
             NotificationCenter.default.removeObserver(foregroundObserver)
         }
         if let backgroundObserver {
             NotificationCenter.default.removeObserver(backgroundObserver)
         }
+    }
+
+    private func setupBLECallbacks() {
+        bleManager.onStateChange = { [weak self] state in
+            guard let self else { return }
+            switch state {
+            case .idle:
+                self.bleStatus = .disconnected
+            case .unsupported, .bluetoothOff:
+                self.bleStatus = .error
+            case .scanning, .connecting:
+                self.bleStatus = .connecting
+            case .connected:
+                self.bleStatus = .connected
+            case .error:
+                self.bleStatus = .error
+            }
+        }
+        bleManager.onLog = { component, message in
+            if let message {
+                CrashLogger.shared.mark(component, message)
+            }
+        }
+    }
+
+    private func refreshBLESessionIfNeeded() {
+        let settings = keylessSettingsStore.settings
+        guard settings.keylessEnabled, !settings.pluginTakeover else {
+            bleManager.stop()
+            if bleStatus != .connected {
+                bleStatus = .disconnected
+            }
+            return
+        }
+        let bleMac = latestBleKeyInfo["bleMac"] ?? latestBleKeyInfo["macAddress"] ?? ""
+        let keyId = latestBleKeyInfo["keyId"] ?? ""
+        let masterKey = latestBleKeyInfo["masterKey"] ?? ""
+        guard !bleMac.isEmpty, !keyId.isEmpty, !masterKey.isEmpty else {
+            bleManager.stop()
+            if bleStatus != .connected {
+                bleStatus = .disconnected
+            }
+            return
+        }
+        bleManager.start(config: .init(bleMac: bleMac, keyId: keyId, masterKey: masterKey))
     }
 
     private func setupLifecycleObservers() {
@@ -336,6 +384,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     private func evaluateKeylessAutomation(for currentState: VehicleState) {
         let settings = keylessSettingsStore.settings
+        refreshBLESessionIfNeeded()
         guard settings.keylessEnabled else {
             lastUnlockDecision = nil
             lastLockDecision = nil
@@ -562,6 +611,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             DispatchQueue.main.async {
                 guard case .success(let info) = result else { return }
                 self.latestBleKeyInfo = info
+                self.refreshBLESessionIfNeeded()
                 if self.bleStatus != .connected {
                     self.bleStatus = .disconnected
                 }
