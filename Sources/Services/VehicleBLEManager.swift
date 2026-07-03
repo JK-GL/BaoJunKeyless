@@ -1,5 +1,6 @@
 import Foundation
 import CoreBluetooth
+import CommonCrypto
 
 final class VehicleBLEManager: NSObject {
     enum State: Equatable {
@@ -16,6 +17,7 @@ final class VehicleBLEManager: NSObject {
         let bleMac: String
         let keyId: String
         let masterKey: String
+        let keyMasterRandom: String
     }
 
     var onStateChange: ((State) -> Void)?
@@ -24,9 +26,12 @@ final class VehicleBLEManager: NSObject {
     private lazy var central = CBCentralManager(delegate: self, queue: nil)
     private var config: SessionConfig?
     private var discoveredPeripheral: CBPeripheral?
+    private var authWriteCharacteristic: CBCharacteristic?
+    private var controlWriteCharacteristic: CBCharacteristic?
     private var notify181AReady = false
     private var notify182AReady = false
     private var hasStartedCentral = false
+    private var didSendAuthFrame = false
     private(set) var state: State = .idle {
         didSet {
             guard oldValue != state else { return }
@@ -38,14 +43,19 @@ final class VehicleBLEManager: NSObject {
     }
 
     private let authService = CBUUID(string: "181A")
+    private let authWrite = CBUUID(string: "2A6E")
     private let authNotify = CBUUID(string: "2A6F")
     private let controlService = CBUUID(string: "182A")
+    private let controlWrite = CBUUID(string: "2A7E")
     private let controlNotify = CBUUID(string: "2A7F")
 
     func start(config: SessionConfig) {
         self.config = config
+        authWriteCharacteristic = nil
+        controlWriteCharacteristic = nil
         notify181AReady = false
         notify182AReady = false
+        didSendAuthFrame = false
         if !hasStartedCentral {
             hasStartedCentral = true
             _ = central
@@ -60,8 +70,11 @@ final class VehicleBLEManager: NSObject {
             central.cancelPeripheralConnection(discoveredPeripheral)
         }
         discoveredPeripheral = nil
+        authWriteCharacteristic = nil
+        controlWriteCharacteristic = nil
         notify181AReady = false
         notify182AReady = false
+        didSendAuthFrame = false
         state = .idle
     }
 
@@ -96,6 +109,128 @@ final class VehicleBLEManager: NSObject {
         guard notify181AReady, notify182AReady else { return }
         state = .connected
         onLog?("BLE", "notify ready 2A6F + 2A7F")
+        sendAuthFrameIfPossible()
+    }
+
+    private func sendAuthFrameIfPossible() {
+        guard !didSendAuthFrame,
+              let config,
+              let peripheral = discoveredPeripheral,
+              let authWriteCharacteristic,
+              let frame = makeAuthFrame(config: config) else { return }
+        didSendAuthFrame = true
+        onLog?("BLE", "send auth frame len=\(frame.count) keyId=\(config.keyId)")
+        peripheral.writeValue(frame, for: authWriteCharacteristic, type: .withResponse)
+    }
+
+    private func makeAuthFrame(config: SessionConfig) -> Data? {
+        guard let keyId = parseUInt32(config.keyId),
+              let nonce = Data(hex: config.keyMasterRandom), nonce.count == 16,
+              let aesKey = Data(hex: config.masterKey), aesKey.count == 16 else {
+            onLog?("BLE", "auth config invalid")
+            return nil
+        }
+
+        let timestamp = UInt32(Date().timeIntervalSince1970)
+        var plain = Data()
+        plain.append(contentsOf: keyId.bigEndianBytes)
+        plain.append(contentsOf: timestamp.bigEndianBytes)
+        plain.append(nonce)
+        let crc = crc32(plain).bigEndian
+        plain.append(contentsOf: crc.bigEndianBytes)
+
+        guard let encrypted = aesECBEncrypt(plain, key: aesKey) else {
+            onLog?("BLE", "auth aes encrypt failed")
+            return nil
+        }
+        return wrapBLEFrame(encrypted)
+    }
+
+    private func wrapBLEFrame(_ encrypted: Data) -> Data {
+        var frame = Data([0xAA])
+        let length = UInt16(encrypted.count).bigEndian
+        frame.append(contentsOf: length.bigEndianBytes)
+        frame.append(encrypted)
+        let checksum = encrypted.reduce(UInt8(0)) { UInt8(($0 &+ $1) & 0xFF) }
+        frame.append(checksum)
+        frame.append(0x55)
+        if frame.count < 49 {
+            frame.append(Data(repeating: 0, count: 49 - frame.count))
+        }
+        return frame
+    }
+
+    private func aesECBEncrypt(_ plain: Data, key: Data) -> Data? {
+        let blockSize = kCCBlockSizeAES128
+        let paddedLength = ((plain.count / blockSize) + 1) * blockSize
+        var out = Data(count: paddedLength)
+        var outLength: size_t = 0
+        let status = out.withUnsafeMutableBytes { outBytes in
+            plain.withUnsafeBytes { plainBytes in
+                key.withUnsafeBytes { keyBytes in
+                    CCCrypt(
+                        CCOperation(kCCEncrypt),
+                        CCAlgorithm(kCCAlgorithmAES),
+                        CCOptions(kCCOptionPKCS7Padding | kCCOptionECBMode),
+                        keyBytes.baseAddress, key.count,
+                        nil,
+                        plainBytes.baseAddress, plain.count,
+                        outBytes.baseAddress, out.count,
+                        &outLength
+                    )
+                }
+            }
+        }
+        guard status == kCCSuccess else { return nil }
+        out.removeSubrange(outLength..<out.count)
+        return out
+    }
+
+    private func crc32(_ data: Data) -> UInt32 {
+        var crc: UInt32 = 0xFFFFFFFF
+        for byte in data {
+            crc ^= UInt32(byte)
+            for _ in 0..<8 {
+                if (crc & 1) != 0 {
+                    crc = (crc >> 1) ^ 0xEDB88320
+                } else {
+                    crc >>= 1
+                }
+            }
+        }
+        return crc ^ 0xFFFFFFFF
+    }
+}
+
+private extension FixedWidthInteger {
+    var bigEndianBytes: [UInt8] {
+        withUnsafeBytes(of: self.bigEndian) { Array($0) }
+    }
+}
+
+private func parseUInt32(_ string: String) -> UInt32? {
+    let cleaned = string.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let value = UInt32(cleaned) {
+        return value
+    }
+    return UInt32(cleaned, radix: 16)
+}
+
+private extension Data {
+    init?(hex: String) {
+        let cleaned = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "-", with: "")
+        guard cleaned.count % 2 == 0 else { return nil }
+        var data = Data(capacity: cleaned.count / 2)
+        var index = cleaned.startIndex
+        while index < cleaned.endIndex {
+            let next = cleaned.index(index, offsetBy: 2)
+            guard let byte = UInt8(cleaned[index..<next], radix: 16) else { return nil }
+            data.append(byte)
+            index = next
+        }
+        self = data
     }
 }
 
@@ -149,9 +284,9 @@ extension VehicleBLEManager: CBPeripheralDelegate {
         }
         peripheral.services?.forEach { service in
             if service.uuid == authService {
-                peripheral.discoverCharacteristics([authNotify], for: service)
+                peripheral.discoverCharacteristics([authWrite, authNotify], for: service)
             } else if service.uuid == controlService {
-                peripheral.discoverCharacteristics([controlNotify], for: service)
+                peripheral.discoverCharacteristics([controlWrite, controlNotify], for: service)
             }
         }
     }
@@ -163,6 +298,12 @@ extension VehicleBLEManager: CBPeripheralDelegate {
             return
         }
         service.characteristics?.forEach { characteristic in
+            if characteristic.uuid == authWrite {
+                authWriteCharacteristic = characteristic
+            }
+            if characteristic.uuid == controlWrite {
+                controlWriteCharacteristic = characteristic
+            }
             if characteristic.uuid == authNotify || characteristic.uuid == controlNotify {
                 peripheral.setNotifyValue(true, for: characteristic)
             }
@@ -182,5 +323,25 @@ extension VehicleBLEManager: CBPeripheralDelegate {
             notify182AReady = true
         }
         finishIfReady()
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+        if let error {
+            state = .error(error.localizedDescription)
+            onLog?("BLE", "write value failed | \(error.localizedDescription)")
+            return
+        }
+        onLog?("BLE", "write ok uuid=\(characteristic.uuid.uuidString)")
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        if let error {
+            state = .error(error.localizedDescription)
+            onLog?("BLE", "notify update failed | \(error.localizedDescription)")
+            return
+        }
+        let data = characteristic.value ?? Data()
+        let hex = data.map { String(format: "%02X", $0) }.joined()
+        onLog?("BLE", "notify uuid=\(characteristic.uuid.uuidString) len=\(data.count) hex=\(hex)")
     }
 }
