@@ -167,8 +167,8 @@ final class VehicleBLEManager: NSObject {
             return .failure(.frameBuildFailed)
         }
         lastControlError = nil
-        let statusValue = lock ? 1 : 0
-        let btParam = lock ? 0 : 1
+        let statusValue: UInt8 = lock ? 1 : 0
+        let btParam: UInt8 = lock ? 0 : 1
         pendingDoorLockStatus = statusValue
         pendingDoorLockBtParam = btParam
         onLog?("BLE", "send doorLock control status=\(statusValue) btParam=\(btParam) len=\(frame.count) bleType=\(config.bleType ?? "--") bleKey=\(config.bleKey ?? "--")")
