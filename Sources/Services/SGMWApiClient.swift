@@ -75,7 +75,7 @@ final class SGMWApiClient {
         let plan: VehicleControlRequestPlan
         let url: URL
         let headers: [String: String]
-        let body: [String: String]
+        let body: [String: Any]
     }
 
     // MARK: - Token 读取
@@ -144,14 +144,14 @@ final class SGMWApiClient {
         }
     }
 
-    /// 根据命令生成未来真实控制接口的占位计划。
-    /// 当前只返回候选 endpoint / body key，不发请求，用于后续真实接入时收口 transport 层。
+    /// 根据命令生成控制接口计划。
+    /// lock / unlock 已按 BLE_SPEC.md 收口到 doorLock，其它命令仍是候选占位。
     func makeVehicleControlRequestPlan(for command: VehicleCommand) -> VehicleControlRequestPlan {
         switch command.kind {
         case .lock:
-            return VehicleControlRequestPlan(command: .lock, endpointCandidates: ["car/control/lock", "car/control/door/lock"], bodyKeys: ["vin"], note: "占位：真实锁车接口待确认")
+            return VehicleControlRequestPlan(command: .lock, endpointCandidates: ["car/control/doorLock"], bodyKeys: ["vin", "status"], note: "BLE_SPEC v7.1：门锁控制 status=1 锁车")
         case .unlock:
-            return VehicleControlRequestPlan(command: .unlock, endpointCandidates: ["car/control/unlock", "car/control/door/unlock"], bodyKeys: ["vin"], note: "占位：真实解锁接口待确认")
+            return VehicleControlRequestPlan(command: .unlock, endpointCandidates: ["car/control/doorLock"], bodyKeys: ["vin", "status"], note: "BLE_SPEC v7.1：门锁控制 status=0 解锁")
         case .remoteStart:
             return VehicleControlRequestPlan(command: .remoteStart, endpointCandidates: ["car/control/engine/start", "car/control/remote/start"], bodyKeys: ["vin"], note: "占位：真实远程启动接口待确认")
         case .remoteStop:
@@ -179,10 +179,20 @@ final class SGMWApiClient {
               let url = URL(string: "\(baseUrl)/\(endpoint)") else {
             return .failure(.invalidResponse("控制接口 URL 构造失败"))
         }
-        var body: [String: String] = [:]
+        var body: [String: Any] = [:]
         if plan.bodyKeys.contains("vin") { body["vin"] = vin }
+        if plan.bodyKeys.contains("status") {
+            switch command.kind {
+            case .lock:
+                body["status"] = 1
+            case .unlock:
+                body["status"] = 0
+            default:
+                break
+            }
+        }
         if plan.bodyKeys.contains("temperature"), let temperature = command.requestedTemperature {
-            body["temperature"] = String(Int(temperature))
+            body["temperature"] = Int(temperature)
         }
         let headers = buildSignedHeaders(accessToken: accessToken)
         return .success(VehicleControlRequestDraft(plan: plan, url: url, headers: headers, body: body))

@@ -99,12 +99,11 @@ KeylessDecisionEngine.allow(...)
 
 ### 1. 真实控制接口
 
-当前已能把 lock / unlock 候选 endpoint 的请求发出，但候选路径仍需实车验证：
+当前 lock / unlock 已按 `BLE_SPEC.md` 4.3 / 5.7.1 收口到门锁接口：
 
-- `car/control/lock`
-- `car/control/door/lock`
-- `car/control/unlock`
-- `car/control/door/unlock`
+- `POST car/control/doorLock`
+- 锁车 body：`{"vin":"...","status":1}`
+- 解锁 body：`{"vin":"...","status":0}`
 
 其它命令仍只有 endpoint / body key 占位。
 
