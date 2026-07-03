@@ -55,7 +55,7 @@ enum CommandAction: String, Identifiable {
     func icon(state: VehicleState) -> String {
         switch self {
         case .lockUnlock:
-            return state.locked == true ? "lock.open.fill" : "lock.fill"
+            return state.locked == false ? "lock.open.fill" : "lock.fill"
         case .remoteStart:
             return (state.power == .on || state.power == .ready) ? "power.circle.fill" : "power"
         case .findCar:
@@ -72,15 +72,15 @@ enum CommandAction: String, Identifiable {
     func label(state: VehicleState) -> String {
         switch self {
         case .lockUnlock:
-            return state.locked == true ? "解锁" : "锁车"
+            return state.locked == false ? "已开锁" : "锁车"
         case .remoteStart:
-            return (state.power == .on || state.power == .ready) ? "熄火" : "启动"
+            return (state.power == .on || state.power == .ready) ? "已启动" : "熄火"
         case .findCar:
             return "寻车"
         case .acToggle:
-            return state.acOn == true ? "关空调" : "开空调"
+            return state.acOn == true ? "已开空调" : "空调"
         case .windowToggle:
-            return state.windowsClosed == false ? "关窗" : "开窗"
+            return state.windowsClosed == false ? "已开窗" : "车窗"
         case .quickCool:
             return "快冷"
         }
