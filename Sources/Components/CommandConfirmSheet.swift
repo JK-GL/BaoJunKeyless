@@ -145,7 +145,7 @@ enum CommandAction: String, Identifiable {
 
     /// 是否需要温度滑块
     var needsTemperatureSlider: Bool {
-        self == .acToggle || self == .quickCool
+        self == .acToggle
     }
 }
 
@@ -174,7 +174,13 @@ struct CommandConfirmPopup: View {
         self.vehicleState = vehicleState
         self._isPresented = isPresented
         self.onConfirm = onConfirm
-        self._temperature = State(initialValue: vehicleState.acTemperature ?? (action == .quickCool ? 17 : 22))
+        let initialTemperature: Int
+        if action == .quickCool {
+            initialTemperature = 17
+        } else {
+            initialTemperature = Int(vehicleState.acTemperature ?? 22)
+        }
+        self._temperature = State(initialValue: Double(max(17, min(33, initialTemperature))))
     }
 
     /// 始终显示真实状态源传入的车辆状态，点击反馈不再模拟覆盖。
@@ -233,7 +239,7 @@ struct CommandConfirmPopup: View {
                     PopupTemperatureSlider(
                         title: "设定温度",
                         temperature: $temperature,
-                        range: 16...32,
+                        range: 17...33,
                         tint: accentColor
                     )
                 }

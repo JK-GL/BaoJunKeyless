@@ -35,7 +35,7 @@
 
 - `FeedbackOnlyTransport`
 - `PlaceholderControlTransport`
-- `HTTPControlTransport`（当前只开放 lock / unlock 骨架）
+- `HTTPControlTransport`（快捷操作使用；未确认 endpoint 会在草稿层阻止）
 - `VehicleCommandAsyncTransport`
 
 ### 控制草稿层
@@ -48,25 +48,25 @@
 
 ## 当前行为
 
-现阶段执行器已经进入**小范围试接**：
+现阶段执行器已经进入**快捷操作 HTTP 试接**：
 
 ```text
-快捷操作 lock / unlock → HTTPControlTransport → SGMW HTTP 控制草稿发送
-其它快捷操作 → FeedbackOnlyTransport
+快捷操作 → HTTPControlTransport → SGMW HTTP 控制草稿发送
 无感 → 尚未接真实控制
 ```
 
 快捷操作确认弹窗现在会等待执行层回调：
 
 1. 生成 `VehicleCommand`
-2. lock / unlock 使用 `HTTPControlTransport` 发送 HTTP 请求
-3. 其它命令只触发 `refreshNow()` 并显示反馈
-4. 请求成功后刷新车辆状态；失败/超时会在确认弹窗展示结果
+2. 使用 `HTTPControlTransport` 发送文档确认的 HTTP 请求
+3. 请求成功后刷新车辆状态；失败/超时会在确认弹窗展示结果
+4. 未确认 endpoint 的命令会在草稿层失败，不发送占位请求
 
 这保证：
 
-- 只让锁车 / 解锁进入真实 HTTP 试运行
-- 远程启动、寻车、空调、车窗、快速降温仍保持原有反馈型行为
+- 锁车 / 解锁 / 寻车 / 车窗 / 空调 / 快速降温进入真实 HTTP 试运行
+- 远程启动只发送 `car/control/ignition/authorize` 授权请求，后续 BLE CMD 仍待确认
+- 远程熄火因 `BLE_SPEC.md v7.1` 未提供云端 endpoint，暂不发送占位请求
 - 无感决策链路暂不下发真实车控，避免误触发
 
 ---
@@ -99,13 +99,15 @@ KeylessDecisionEngine.allow(...)
 
 ### 1. 真实控制接口
 
-当前 lock / unlock 已按 `BLE_SPEC.md` 4.3 / 5.7.1 收口到门锁接口：
+当前快捷操作已按 `/var/minis/shared/BLE_SPEC.md v7.1` 收口到云端接口：
 
-- `POST car/control/doorLock`
-- 锁车 body：`{"vin":"...","status":1}`
-- 解锁 body：`{"vin":"...","status":0}`
-
-其它命令仍只有 endpoint / body key 占位。
+- 门锁：`POST car/control/doorLock`，锁车 `status=1`，解锁 `status=0`
+- 寻车：`POST car/control/searchCar`，`status=0`
+- 车窗：`POST car/control/window`，开窗 `status=0`，关窗 `status=1`
+- 空调：`POST car/control/acc`，开空调 `status=6`，关空调 `status=7`
+- 快速降温：`POST car/control/acc`，`status=4`，`temperature=17`，`blowerLvl=7`，`duration=10`
+- 远程启动：`POST car/control/ignition/authorize` 只覆盖 PEPS 授权；真正启动的 BLE CMD 仍待确认
+- 远程熄火：文档未提供云端 endpoint，当前禁止发送占位请求。
 
 ### 2. 控制回执
 

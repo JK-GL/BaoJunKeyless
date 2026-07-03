@@ -145,7 +145,7 @@ final class SGMWApiClient {
     }
 
     /// 根据命令生成控制接口计划。
-    /// lock / unlock 已按 BLE_SPEC.md 收口到 doorLock，其它命令仍是候选占位。
+    /// 已按 /var/minis/shared/BLE_SPEC.md v7.1 收口云端控制 endpoint。
     func makeVehicleControlRequestPlan(for command: VehicleCommand) -> VehicleControlRequestPlan {
         switch command.kind {
         case .lock:
@@ -153,53 +153,75 @@ final class SGMWApiClient {
         case .unlock:
             return VehicleControlRequestPlan(command: .unlock, endpointCandidates: ["car/control/doorLock"], bodyKeys: ["vin", "status"], note: "BLE_SPEC v7.1：门锁控制 status=0 解锁")
         case .remoteStart:
-            return VehicleControlRequestPlan(command: .remoteStart, endpointCandidates: ["car/control/engine/start", "car/control/remote/start"], bodyKeys: ["vin"], note: "占位：真实远程启动接口待确认")
+            return VehicleControlRequestPlan(command: .remoteStart, endpointCandidates: ["car/control/ignition/authorize"], bodyKeys: ["vin"], note: "BLE_SPEC v7.1：远程启动第一步 PEPS 鉴权；后续 BLE CMD 仍待确认")
         case .remoteStop:
-            return VehicleControlRequestPlan(command: .remoteStop, endpointCandidates: ["car/control/engine/stop", "car/control/remote/stop"], bodyKeys: ["vin"], note: "占位：真实远程熄火接口待确认")
+            return VehicleControlRequestPlan(command: .remoteStop, endpointCandidates: [], bodyKeys: [], note: "BLE_SPEC v7.1 未提供远程熄火云端 endpoint，禁止发送占位请求")
         case .findCar:
-            return VehicleControlRequestPlan(command: .findCar, endpointCandidates: ["car/control/find", "car/control/horn/light"], bodyKeys: ["vin"], note: "占位：真实寻车接口待确认")
+            return VehicleControlRequestPlan(command: .findCar, endpointCandidates: ["car/control/searchCar"], bodyKeys: ["vin", "status"], note: "BLE_SPEC v7.1：寻车 status=0 双闪鸣笛")
         case .acOn:
-            return VehicleControlRequestPlan(command: .acOn, endpointCandidates: ["car/control/ac/on", "car/control/air/open"], bodyKeys: ["vin", "temperature"], note: "占位：真实空调开启接口待确认")
+            return VehicleControlRequestPlan(command: .acOn, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature"], note: "BLE_SPEC v7.1：空调 status=6 开空调，温度下限按快冷 17°C")
         case .acOff:
-            return VehicleControlRequestPlan(command: .acOff, endpointCandidates: ["car/control/ac/off", "car/control/air/close"], bodyKeys: ["vin"], note: "占位：真实空调关闭接口待确认")
+            return VehicleControlRequestPlan(command: .acOff, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status"], note: "BLE_SPEC v7.1：空调 status=7 关空调")
         case .openWindows:
-            return VehicleControlRequestPlan(command: .openWindows, endpointCandidates: ["car/control/window/open", "car/control/windows/open"], bodyKeys: ["vin"], note: "占位：真实开窗接口待确认")
+            return VehicleControlRequestPlan(command: .openWindows, endpointCandidates: ["car/control/window"], bodyKeys: ["vin", "status"], note: "BLE_SPEC v7.1：车窗 status=0 开车窗")
         case .closeWindows:
-            return VehicleControlRequestPlan(command: .closeWindows, endpointCandidates: ["car/control/window/close", "car/control/windows/close"], bodyKeys: ["vin"], note: "占位：真实关窗接口待确认")
+            return VehicleControlRequestPlan(command: .closeWindows, endpointCandidates: ["car/control/window"], bodyKeys: ["vin", "status"], note: "BLE_SPEC v7.1：车窗 status=1 关车窗")
         case .quickCool:
-            return VehicleControlRequestPlan(command: .quickCool, endpointCandidates: ["car/control/ac/quickCool", "car/control/air/quickCool"], bodyKeys: ["vin", "temperature"], note: "占位：真实快速降温接口待确认")
+            return VehicleControlRequestPlan(command: .quickCool, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature", "blowerLvl", "duration"], note: "BLE_SPEC v7.1：快速降温 status=4，temperature=17，blowerLvl=7，duration=10")
         }
     }
 
     /// 根据命令生成请求草稿。
-    /// 当前只构造 URL / headers / body，不发请求，供 transport 层后续真实接入复用。
+    /// 构造 URL / headers / body 后由 transport 层发送，远程熄火等未确认命令会在此处阻止。
     func makeVehicleControlRequestDraft(accessToken: String, vin: String, command: VehicleCommand) -> Result<VehicleControlRequestDraft, SGMWApiError> {
         let plan = makeVehicleControlRequestPlan(for: command)
-        guard let endpoint = plan.endpointCandidates.first,
-              let url = URL(string: "\(baseUrl)/\(endpoint)") else {
+        guard let endpoint = plan.endpointCandidates.first else {
+            return .failure(.invalidResponse(plan.note))
+        }
+        guard let url = URL(string: "\(baseUrl)/\(endpoint)") else {
             return .failure(.invalidResponse("控制接口 URL 构造失败"))
         }
         var body: [String: Any] = [:]
         if plan.bodyKeys.contains("vin") { body["vin"] = vin }
         if plan.bodyKeys.contains("status") {
             switch command.kind {
-            case .lock:
+            case .lock, .closeWindows:
                 body["status"] = 1
-            case .unlock:
+            case .unlock, .findCar, .openWindows:
                 body["status"] = 0
+            case .quickCool:
+                body["status"] = 4
+            case .acOn:
+                body["status"] = 6
+            case .acOff:
+                body["status"] = 7
             default:
                 break
             }
         }
-        if plan.bodyKeys.contains("temperature"), let temperature = command.requestedTemperature {
-            body["temperature"] = Int(temperature)
+        if plan.bodyKeys.contains("accOnOff") {
+            switch command.kind {
+            case .acOn, .quickCool:
+                body["accOnOff"] = "1"
+            case .acOff:
+                body["accOnOff"] = "0"
+            default:
+                break
+            }
         }
+        if plan.bodyKeys.contains("temperature") {
+            let defaultTemperature = command.kind == .quickCool ? 17 : 22
+            let rawTemperature = Int(command.requestedTemperature ?? Double(defaultTemperature))
+            body["temperature"] = max(17, min(33, rawTemperature))
+        }
+        if plan.bodyKeys.contains("blowerLvl") { body["blowerLvl"] = 7 }
+        if plan.bodyKeys.contains("duration") { body["duration"] = 10 }
         let headers = buildSignedHeaders(accessToken: accessToken)
         return .success(VehicleControlRequestDraft(plan: plan, url: url, headers: headers, body: body))
     }
 
     /// 发送控制请求草稿。
-    /// 当前用于 lock / unlock 的 HTTP transport 骨架，是否真正代表车辆执行成功以后续回执为准。
+    /// 是否真正代表车辆执行成功以后续 MQTT / 车辆状态回执为准。
     func sendVehicleControlRequestDraft(_ draft: VehicleControlRequestDraft, completion: @escaping (Result<[String: Any], SGMWApiError>) -> Void) {
         var request = URLRequest(url: draft.url)
         request.httpMethod = "POST"

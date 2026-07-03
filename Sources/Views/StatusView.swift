@@ -528,17 +528,11 @@ struct StatusView: View {
     ) {
         let command = action.asVehicleCommand(state: vehicleStore.state, temperature: temperature, source: .quickAction)
 
-        switch command.kind {
-        case .lock, .unlock:
-            let transport = HTTPControlTransport(credentials: vehicleCredentials)
-            VehicleCommandExecutor.executeAsync(command, transport: transport, refresher: mqttStore) { result in
-                DispatchQueue.main.async {
-                    completion(result)
-                }
+        let transport = HTTPControlTransport(credentials: vehicleCredentials)
+        VehicleCommandExecutor.executeAsync(command, transport: transport, refresher: mqttStore) { result in
+            DispatchQueue.main.async {
+                completion(result)
             }
-        default:
-            let result = VehicleCommandExecutor.executeFeedbackOnly(command, refresher: mqttStore)
-            completion(result)
         }
     }
 }

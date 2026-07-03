@@ -130,10 +130,6 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
             finish(VehicleCommandExecutionResult(command: command, state: .failed("缺少 accessToken 或 VIN"), userMessage: "缺少 accessToken 或 VIN，无法发送控制请求", shouldRefresh: false, refreshDelay: 0))
             return
         }
-        guard command.kind == .lock || command.kind == .unlock else {
-            finish(VehicleCommandExecutionResult(command: command, state: .failed("仅开放 lock / unlock HTTP transport 骨架"), userMessage: "当前仅为 lock / unlock 提供 HTTP transport 骨架", shouldRefresh: false, refreshDelay: 0))
-            return
-        }
         switch apiClient.makeVehicleControlRequestDraft(accessToken: accessToken, vin: vin, command: command) {
         case .failure(let error):
             finish(VehicleCommandExecutionResult(command: command, state: .failed(error.localizedDescription), userMessage: error.localizedDescription, shouldRefresh: false, refreshDelay: 0))
@@ -144,7 +140,13 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
                 case .success:
                     DispatchQueue.main.async {
                         refresher?.refreshNow()
-                        completion(VehicleCommandExecutionResult(command: command, state: .sent, userMessage: "控制请求已发送：\(requestSummary)，等待车辆真实回报", shouldRefresh: true, refreshDelay: 0))
+                        let message: String
+                        if command.kind == .remoteStart {
+                            message = "远程启动授权请求已发送：\(requestSummary)，后续启动仍以车辆 / BLE 回报为准"
+                        } else {
+                            message = "控制请求已发送：\(requestSummary)，等待车辆真实回报"
+                        }
+                        completion(VehicleCommandExecutionResult(command: command, state: .sent, userMessage: message, shouldRefresh: true, refreshDelay: 0))
                     }
                 case .failure(let error):
                     let state: VehicleCommandExecutionState
