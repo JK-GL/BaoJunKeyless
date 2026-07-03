@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import CocoaMQTT
 
 struct VehicleControlMQTTResult: Equatable, Identifiable {
@@ -100,6 +101,10 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     private var lastAutoCommandAt: Date?
     private var lastAutoCommandKind: VehicleCommandKind?
     private var isExecutingKeylessCommand = false
+    private var isAppInForeground = true
+    private var didLogManualForegroundSkip = false
+    private var foregroundObserver: NSObjectProtocol?
+    private var backgroundObserver: NSObjectProtocol?
 
     init(
         addressSettings: AddressServiceSettings = .shared,
@@ -117,6 +122,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         self.customVibrationStore = customVibrationStore
         super.init(state: .placeholder, dashboard: VehicleDashboardState())
         loadPersistedDisplayCache()
+        setupLifecycleObservers()
         DispatchQueue.main.async { [weak self] in
             self?.autoConnect()
         }
@@ -125,6 +131,33 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     deinit {
         httpTimer?.invalidate()
         mqtt?.disconnect()
+        if let foregroundObserver {
+            NotificationCenter.default.removeObserver(foregroundObserver)
+        }
+        if let backgroundObserver {
+            NotificationCenter.default.removeObserver(backgroundObserver)
+        }
+    }
+
+    private func setupLifecycleObservers() {
+        foregroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.isAppInForeground = true
+            self.didLogManualForegroundSkip = false
+        }
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.isAppInForeground = false
+            self.didLogManualForegroundSkip = false
+        }
     }
 
     private func updateTokenSource(label: String, path: String = "") {
@@ -307,9 +340,21 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             lastUnlockDecision = nil
             lastLockDecision = nil
             phoneFarAwaySince = nil
+            didLogManualForegroundSkip = false
             return
         }
-        guard !settings.pluginTakeover else { return }
+        if settings.pluginTakeover { return }
+        if settings.appManual {
+            guard !isAppInForeground else {
+                if !didLogManualForegroundSkip {
+                    vehicleEventLogStore.add(.keyless, "前台手动", detail: "App 在前台时不自动执行无感命令")
+                    didLogManualForegroundSkip = true
+                }
+                return
+            }
+        } else {
+            didLogManualForegroundSkip = false
+        }
         guard settings.smartSwitch || settings.appManual else { return }
 
         if currentState.phoneFarAway {
@@ -408,6 +453,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 }
                 let detail = result.userMessage.isEmpty ? result.command.title : "\(result.command.title)：\(result.userMessage)"
                 self.vehicleEventLogStore.add(category, "无感命令结果", detail: detail)
+                self.postKeylessNotificationIfNeeded(for: action, result: result)
                 if case .sent = result.state {
                     self.playKeylessVibrationIfNeeded(for: action)
                 }
@@ -428,6 +474,31 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             guard settings.lockVibrate else { return }
             playVibration(choice: keylessSettingsStore.lockVibChoice(), intensity: settings.lockVibStrength / 100.0)
         }
+    }
+
+    private func postKeylessNotificationIfNeeded(for action: KeylessAction, result: VehicleCommandExecutionResult) {
+        let settings = keylessSettingsStore.settings
+        let popupEnabled: Bool
+        switch action {
+        case .unlock:
+            popupEnabled = settings.unlockPopup
+        case .lock:
+            popupEnabled = settings.lockPopup
+        }
+        guard popupEnabled else { return }
+
+        let actionTitle = action.title
+        let title: String
+        switch result.state {
+        case .sent, .completed:
+            title = "无感\(actionTitle)已触发"
+        case .failed(_), .timedOut(_):
+            title = "无感\(actionTitle)失败"
+        case .feedbackOnly, .planned:
+            return
+        }
+        let body = result.userMessage.isEmpty ? result.command.detail : result.userMessage
+        AppNotificationManager.shared.postKeylessNotification(title: title, body: body)
     }
 
     private func playVibration(choice: VibrationChoice, intensity: Double) {

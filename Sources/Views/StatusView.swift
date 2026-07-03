@@ -111,7 +111,7 @@ struct StatusView: View {
         guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
         if settingsStore.settings.pluginTakeover { return "插件托管" }
         if settingsStore.settings.smartSwitch { return "智能切换" }
-        if settingsStore.settings.appManual { return "App手动" }
+        if settingsStore.settings.appManual { return "前台手动" }
         return "无感待命"
     }
 

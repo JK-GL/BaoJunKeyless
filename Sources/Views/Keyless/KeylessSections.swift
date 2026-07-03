@@ -25,9 +25,9 @@ struct KeylessMainSection: View {
                         get: { settingsStore.settings.smartSwitch },
                         set: { if $0 { setMode(.smart) } else { settingsStore.settings.smartSwitch = false; vehicleLog.add(.keyless, "关闭智能切换") } }
                     ))
-                    ToggleRow(icon: "iphone", label: "App 手动", isOn: Binding(
+                    ToggleRow(icon: "iphone", label: "前台手动", isOn: Binding(
                         get: { settingsStore.settings.appManual },
-                        set: { if $0 { setMode(.manual) } else { settingsStore.settings.appManual = false; vehicleLog.add(.keyless, "关闭 App 手动") } }
+                        set: { if $0 { setMode(.manual) } else { settingsStore.settings.appManual = false; vehicleLog.add(.keyless, "关闭前台手动") } }
                     ))
 
                     SliderRow(icon: "gauge", label: "重复指令间隔",

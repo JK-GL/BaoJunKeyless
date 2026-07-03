@@ -87,12 +87,15 @@ struct KeylessView: View {
     private var currentModeText: String {
         if settingsStore.settings.pluginTakeover { return "插件托管" }
         if settingsStore.settings.smartSwitch { return "智能切换" }
-        if settingsStore.settings.appManual { return "App手动" }
+        if settingsStore.settings.appManual { return "前台手动" }
         return "未选择"
     }
 
     private var appExecutionEnabled: Bool {
-        !settingsStore.settings.pluginTakeover && (settingsStore.settings.smartSwitch || settingsStore.settings.appManual)
+        if settingsStore.settings.pluginTakeover { return false }
+        if settingsStore.settings.smartSwitch { return true }
+        if settingsStore.settings.appManual { return false }
+        return false
     }
 
     private var currentUnlockDecision: KeylessDecision {
@@ -133,7 +136,7 @@ struct KeylessView: View {
         switch mode {
         case .plugin: text = "插件托管"
         case .smart: text = "智能切换"
-        case .manual: text = "App 手动"
+        case .manual: text = "前台手动"
         }
         vehicleLog.add(.keyless, "切换无感模式", detail: text)
     }
