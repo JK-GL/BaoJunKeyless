@@ -32,6 +32,8 @@ struct KeylessSettings: Codable {
 
 // MARK: - 设置存储管理器
 class KeylessSettingsStore: ObservableObject {
+    static let shared = KeylessSettingsStore()
+
     @Published var settings = KeylessSettings() {
         didSet { save() }
     }

@@ -79,6 +79,8 @@ struct VehicleEventLogEntry: Identifiable, Codable, Equatable {
 }
 
 final class VehicleEventLogStore: ObservableObject {
+    static let shared = VehicleEventLogStore()
+
     @Published private(set) var entries: [VehicleEventLogEntry] = []
 
     private let key = AppDefaultsKey.VehicleEventLog.entries

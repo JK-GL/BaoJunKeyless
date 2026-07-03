@@ -3,9 +3,9 @@ import SwiftUI
 @main
 struct BaoJunKeylessApp: App {
     @StateObject private var theme = ThemeManager()
-    @StateObject private var keylessSettings = KeylessSettingsStore()
-    @StateObject private var customVibrationStore = CustomVibrationStore()
-    @StateObject private var vehicleEventLogStore = VehicleEventLogStore()
+    @StateObject private var keylessSettings = KeylessSettingsStore.shared
+    @StateObject private var customVibrationStore = CustomVibrationStore.shared
+    @StateObject private var vehicleEventLogStore = VehicleEventLogStore.shared
     @StateObject private var addressSettings = AddressServiceSettings.shared
     @StateObject private var vehicleCredentials = VehicleCredentialsStore.shared
     @StateObject private var locationManager = LocationManager(addressSettings: AddressServiceSettings.shared)

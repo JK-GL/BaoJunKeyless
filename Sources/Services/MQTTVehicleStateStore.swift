@@ -90,15 +90,31 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     let locationResolver = LocationResolver.shared
     let addressSettings: AddressServiceSettings
     private let displayCacheStore: VehicleDisplayCacheStore
+    private let keylessSettingsStore: KeylessSettingsStore
+    private let vehicleEventLogStore: VehicleEventLogStore
+    private let customVibrationStore: CustomVibrationStore
+
+    private var lastUnlockDecision: KeylessDecision?
+    private var lastLockDecision: KeylessDecision?
+    private var phoneFarAwaySince: Date?
+    private var lastAutoCommandAt: Date?
+    private var lastAutoCommandKind: VehicleCommandKind?
+    private var isExecutingKeylessCommand = false
 
     init(
         addressSettings: AddressServiceSettings = .shared,
         credentialsStore: VehicleCredentialsStore = .shared,
-        displayCacheStore: VehicleDisplayCacheStore = VehicleDisplayCacheStore()
+        displayCacheStore: VehicleDisplayCacheStore = VehicleDisplayCacheStore(),
+        keylessSettingsStore: KeylessSettingsStore = .shared,
+        vehicleEventLogStore: VehicleEventLogStore = .shared,
+        customVibrationStore: CustomVibrationStore = .shared
     ) {
         self.addressSettings = addressSettings
         self.credentialsStore = credentialsStore
         self.displayCacheStore = displayCacheStore
+        self.keylessSettingsStore = keylessSettingsStore
+        self.vehicleEventLogStore = vehicleEventLogStore
+        self.customVibrationStore = customVibrationStore
         super.init(state: .placeholder, dashboard: VehicleDashboardState())
         loadPersistedDisplayCache()
         DispatchQueue.main.async { [weak self] in
@@ -283,6 +299,146 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         lastMqttFields.removeAll()
         lastMQTTUpdate = nil
         start(with: credentialsStore)
+    }
+
+    private func evaluateKeylessAutomation(for currentState: VehicleState) {
+        let settings = keylessSettingsStore.settings
+        guard settings.keylessEnabled else {
+            lastUnlockDecision = nil
+            lastLockDecision = nil
+            phoneFarAwaySince = nil
+            return
+        }
+        guard !settings.pluginTakeover else { return }
+        guard settings.smartSwitch || settings.appManual else { return }
+
+        if currentState.phoneFarAway {
+            if phoneFarAwaySince == nil {
+                phoneFarAwaySince = Date()
+                if settings.lockEnabled {
+                    vehicleEventLogStore.add(.keyless, "上锁等待", detail: "手机远离，等待 \(Int(settings.lockDelay))s")
+                }
+            }
+        } else {
+            phoneFarAwaySince = nil
+        }
+
+        let unlockDecision = KeylessDecisionEngine.evaluateUnlock(state: currentState, settings: settings)
+        if unlockDecision != lastUnlockDecision {
+            let detail = KeylessDecisionEngine.logDetail(decision: unlockDecision, state: currentState, settings: settings)
+            switch unlockDecision {
+            case .allow:
+                vehicleEventLogStore.add(.keyless, "解锁允许", detail: detail)
+            case .deny:
+                vehicleEventLogStore.add(.keyless, "解锁拒绝", detail: detail)
+            case .wait:
+                vehicleEventLogStore.add(.keyless, "解锁等待", detail: detail)
+            }
+            lastUnlockDecision = unlockDecision
+        }
+        if case .allow = unlockDecision {
+            executeKeylessCommandIfNeeded(action: .unlock, state: currentState, reason: unlockDecision.reason)
+        }
+
+        let lockDecision = evaluateLockDecisionWithDelay(state: currentState, settings: settings)
+        if lockDecision != lastLockDecision {
+            let detail = KeylessDecisionEngine.logDetail(decision: lockDecision, state: currentState, settings: settings)
+            switch lockDecision {
+            case .allow:
+                vehicleEventLogStore.add(.keyless, "上锁允许", detail: detail)
+            case .deny:
+                vehicleEventLogStore.add(.keyless, "上锁拒绝", detail: detail)
+            case .wait:
+                vehicleEventLogStore.add(.keyless, "上锁等待", detail: detail)
+            }
+            lastLockDecision = lockDecision
+        }
+        if case .allow = lockDecision {
+            executeKeylessCommandIfNeeded(action: .lock, state: currentState, reason: lockDecision.reason)
+        }
+    }
+
+    private func evaluateLockDecisionWithDelay(state: VehicleState, settings: KeylessSettings) -> KeylessDecision {
+        let decision = KeylessDecisionEngine.evaluateLock(state: state, settings: settings)
+        guard case .allow = decision else { return decision }
+        let delay = max(settings.lockDelay, 0)
+        guard delay > 0 else { return decision }
+        guard let farSince = phoneFarAwaySince else {
+            return .wait(action: .lock, reason: "手机远离，等待上锁延迟")
+        }
+        let elapsed = Date().timeIntervalSince(farSince)
+        guard elapsed >= delay else {
+            return .wait(action: .lock, reason: "手机远离，等待上锁延迟")
+        }
+        return decision
+    }
+
+    private func executeKeylessCommandIfNeeded(action: KeylessAction, state: VehicleState, reason: String) {
+        guard !isExecutingKeylessCommand else { return }
+        let settings = keylessSettingsStore.settings
+        if let lastAutoCommandAt,
+           Date().timeIntervalSince(lastAutoCommandAt) < settings.cmdInterval {
+            return
+        }
+
+        let command: VehicleCommand
+        switch action {
+        case .unlock:
+            command = VehicleCommand(kind: .unlock, title: "无感解锁", detail: reason, requestedTemperature: nil, source: .keyless, transportHint: .httpControl)
+        case .lock:
+            command = VehicleCommand(kind: .lock, title: "无感上锁", detail: reason, requestedTemperature: nil, source: .keyless, transportHint: .httpControl)
+        }
+
+        isExecutingKeylessCommand = true
+        lastAutoCommandAt = Date()
+        lastAutoCommandKind = command.kind
+        vehicleEventLogStore.add(.keyless, "无感命令发送", detail: "\(command.title) | \(reason)")
+
+        let transport = HTTPControlTransport(credentials: credentialsStore)
+        VehicleCommandExecutor.executeAsync(command, transport: transport, refresher: self) { [weak self] result in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                self.isExecutingKeylessCommand = false
+                let category: VehicleEventLogCategory
+                switch result.state {
+                case .failed(_), .timedOut(_):
+                    category = .error
+                default:
+                    category = .keyless
+                }
+                let detail = result.userMessage.isEmpty ? result.command.title : "\(result.command.title)：\(result.userMessage)"
+                self.vehicleEventLogStore.add(category, "无感命令结果", detail: detail)
+                if case .sent = result.state {
+                    self.playKeylessVibrationIfNeeded(for: action)
+                }
+                if case .completed = result.state {
+                    self.playKeylessVibrationIfNeeded(for: action)
+                }
+            }
+        }
+    }
+
+    private func playKeylessVibrationIfNeeded(for action: KeylessAction) {
+        let settings = keylessSettingsStore.settings
+        switch action {
+        case .unlock:
+            guard settings.unlockVibrate else { return }
+            playVibration(choice: keylessSettingsStore.unlockVibChoice(), intensity: settings.unlockVibStrength / 100.0)
+        case .lock:
+            guard settings.lockVibrate else { return }
+            playVibration(choice: keylessSettingsStore.lockVibChoice(), intensity: settings.lockVibStrength / 100.0)
+        }
+    }
+
+    private func playVibration(choice: VibrationChoice, intensity: Double) {
+        switch choice {
+        case .preset(let pattern):
+            pattern.play(intensity: intensity)
+        case .custom(let id):
+            if let pattern = customVibrationStore.patterns.first(where: { $0.id == id }) {
+                pattern.play(intensity: intensity)
+            }
+        }
     }
 
     // MARK: - HTTP 轮询
@@ -512,6 +668,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
         let dash = VehicleStateMerger.mergeHTTPBaseDashboard(current: dashboard, newDashboard: newDashboard)
         applyDashboard(dash)
+        evaluateKeylessAutomation(for: merged)
     }
 
     func mergeRealtimeState(newState: VehicleState, dashboard newDashboard: VehicleDashboardState) {
@@ -520,6 +677,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
         let dash = VehicleStateMerger.mergeRealtimeDashboard(current: dashboard, newDashboard: newDashboard)
         applyDashboard(dash)
+        evaluateKeylessAutomation(for: merged)
     }
 
     func applyHTTPMeta(carInfo: [String: String], carStatus: [String: String]) {

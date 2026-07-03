@@ -102,6 +102,8 @@ extension CustomVibrationPattern {
 
 // MARK: - 自定义震动存储
 class CustomVibrationStore: ObservableObject {
+    static let shared = CustomVibrationStore()
+
     @Published var patterns: [CustomVibrationPattern] = []
 
     private static let storageKey = AppDefaultsKey.CustomVibration.patterns
