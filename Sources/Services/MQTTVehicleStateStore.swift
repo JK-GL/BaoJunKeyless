@@ -106,6 +106,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     private var lastAutoCommandAt: Date?
     private var lastAutoCommandKind: VehicleCommandKind?
     private var lastBLEWaitCommandKind: VehicleCommandKind?
+    private var liveBLERSSI: Int?
     private var isExecutingKeylessCommand = false
     private var isAppInForeground = true
     private var didLogManualForegroundSkip = false
@@ -155,8 +156,10 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             switch state {
             case .idle:
                 self.bleStatus = .disconnected
+                self.applyLiveBLERSSI(nil)
             case .unsupported, .bluetoothOff:
                 self.bleStatus = .error
+                self.applyLiveBLERSSI(nil)
             case .scanning:
                 self.bleStatus = .scanning
             case .connecting, .connected:
@@ -167,6 +170,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 self.bleStatus = .authenticated
             case .authFailed, .error:
                 self.bleStatus = .error
+                self.applyLiveBLERSSI(nil)
             }
         }
         bleManager.onLog = { component, message in
@@ -179,6 +183,12 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             DispatchQueue.main.async {
                 self.latestBLEControlReceipt = receipt
                 self.vehicleEventLogStore.add(.action, "BLE 控制回包", detail: receipt.displayDetail)
+            }
+        }
+        bleManager.onRSSIUpdate = { [weak self] rssi in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                self.applyLiveBLERSSI(rssi)
             }
         }
     }
@@ -264,6 +274,39 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         didLogManualForegroundSkip = false
         lastBLEWaitCommandKind = nil
         isExecutingKeylessCommand = false
+    }
+
+    private func applyLiveBLEOverlay(to baseState: VehicleState) -> VehicleState {
+        guard let rssi = liveBLERSSI else { return baseState }
+        var next = baseState
+        next.bleRssi = rssi
+        if next.phoneNearby {
+            if Double(rssi) <= keylessSettingsStore.settings.lockThreshold {
+                next.phoneNearby = false
+            }
+        } else if Double(rssi) >= keylessSettingsStore.settings.unlockThreshold {
+            next.phoneNearby = true
+        }
+        return next
+    }
+
+    private func applyLiveBLERSSI(_ rssi: Int?) {
+        liveBLERSSI = rssi
+        var next = state
+        next.bleRssi = rssi
+        if let rssi {
+            if next.phoneNearby {
+                if Double(rssi) <= keylessSettingsStore.settings.lockThreshold {
+                    next.phoneNearby = false
+                }
+            } else if Double(rssi) >= keylessSettingsStore.settings.unlockThreshold {
+                next.phoneNearby = true
+            }
+        } else {
+            next.phoneNearby = false
+        }
+        apply(next)
+        evaluateKeylessAutomation(for: next)
     }
 
     private func updateTokenSource(label: String, path: String = "") {
@@ -846,7 +889,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     func mergeHTTPBaseState(newState: VehicleState, dashboard newDashboard: VehicleDashboardState) {
-        let merged = VehicleStateMerger.mergeHTTPBase(current: state, newState: newState)
+        let mergedBase = VehicleStateMerger.mergeHTTPBase(current: state, newState: newState)
+        let merged = applyLiveBLEOverlay(to: mergedBase)
         apply(merged)
 
         let dash = VehicleStateMerger.mergeHTTPBaseDashboard(current: dashboard, newDashboard: newDashboard)
@@ -855,7 +899,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     func mergeRealtimeState(newState: VehicleState, dashboard newDashboard: VehicleDashboardState) {
-        let merged = VehicleStateMerger.mergeRealtime(current: state, newState: newState)
+        let mergedBase = VehicleStateMerger.mergeRealtime(current: state, newState: newState)
+        let merged = applyLiveBLEOverlay(to: mergedBase)
         apply(merged)
 
         let dash = VehicleStateMerger.mergeRealtimeDashboard(current: dashboard, newDashboard: newDashboard)

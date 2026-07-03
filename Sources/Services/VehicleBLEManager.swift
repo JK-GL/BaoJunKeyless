@@ -77,6 +77,7 @@ final class VehicleBLEManager: NSObject {
     var onStateChange: ((State) -> Void)?
     var onLog: ((String, String?) -> Void)?
     var onControlReceipt: ((BLEControlReceipt) -> Void)?
+    var onRSSIUpdate: ((Int) -> Void)?
 
     private lazy var central = CBCentralManager(delegate: self, queue: nil)
     private var config: SessionConfig?
@@ -92,6 +93,7 @@ final class VehicleBLEManager: NSObject {
     private var pendingDoorLockSentAt: Date?
     private var pendingDoorLockCompletion: ((Result<Void, BLEControlError>) -> Void)?
     private var pendingControlTimeoutWorkItem: DispatchWorkItem?
+    private var rssiReadWorkItem: DispatchWorkItem?
     private var candidatePeripheral: CBPeripheral?
     private var candidateName: String = "--"
     private var candidateRSSI: Int = -127
@@ -170,6 +172,8 @@ final class VehicleBLEManager: NSObject {
         notify181AReady = false
         notify182AReady = false
         didSendAuthFrame = false
+        rssiReadWorkItem?.cancel()
+        rssiReadWorkItem = nil
         candidatePeripheral = nil
         candidateName = "--"
         candidateRSSI = -127
@@ -416,6 +420,7 @@ final class VehicleBLEManager: NSObject {
         }
         state = .authenticated
         onLog?("BLE", "auth success keyId=\(keyId)")
+        startRSSILoop()
     }
 
     private func extractEncryptedPayload(from frame: Data) -> Data? {
@@ -474,6 +479,23 @@ final class VehicleBLEManager: NSObject {
         let btParam = data.count >= 4 ? data[3] : nil
         let resultCode = data.count >= 5 ? data[4] : nil
         return (serviceId, status, btParam, resultCode)
+    }
+
+    private func startRSSILoop() {
+        rssiReadWorkItem?.cancel()
+        rssiReadWorkItem = nil
+        scheduleRSSIRead(after: 0.5)
+    }
+
+    private func scheduleRSSIRead(after delay: TimeInterval) {
+        guard case .authenticated = state, let peripheral = discoveredPeripheral else { return }
+        let work = DispatchWorkItem { [weak self, weak peripheral] in
+            guard let self, let peripheral else { return }
+            guard case .authenticated = self.state else { return }
+            peripheral.readRSSI()
+        }
+        rssiReadWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     private func scheduleBestCandidateConnectionIfNeeded() {
@@ -692,6 +714,18 @@ extension VehicleBLEManager: CBPeripheralDelegate {
             notify182AReady = true
         }
         finishIfReady()
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
+        if let error {
+            onLog?("BLE", "read RSSI failed | \(error.localizedDescription)")
+            scheduleRSSIRead(after: 1.0)
+            return
+        }
+        let value = RSSI.intValue
+        onLog?("BLE", "rssi=\(value)")
+        onRSSIUpdate?(value)
+        scheduleRSSIRead(after: 1.0)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
