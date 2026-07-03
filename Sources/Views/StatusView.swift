@@ -19,6 +19,7 @@ struct StatusView: View {
     @State private var pendingControlServiceCode: String? = nil
     @State private var pendingControlTitle: String? = nil
     @State private var pendingControlSentAt: Date? = nil
+    @State private var pendingControlWaitID: UUID? = nil
     @State private var isEditingAmapKey = false
     @State private var amapKeyDraft = ""
 
@@ -297,7 +298,7 @@ struct StatusView: View {
                     handleQuickActionConfirm(action: cmd, temperature: temp, durationMinutes: duration, completion: completion)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .transition(.scale.combined(with: .opacity))
+                .transition(.opacity)
                 .zIndex(20)
             }
         }
@@ -553,6 +554,24 @@ struct StatusView: View {
             pendingControlServiceCode = nil
             pendingControlTitle = nil
             pendingControlSentAt = nil
+            pendingControlWaitID = nil
+        }
+    }
+
+    private func beginControlReceiptWaitIfNeeded() {
+        guard let serviceCode = pendingControlServiceCode,
+              let commandTitle = pendingControlTitle else { return }
+        let waitID = UUID()
+        pendingControlWaitID = waitID
+        vehicleLog.add(.action, "等待 MQTT 控制回执", detail: "command=\(commandTitle), serviceCode=\(serviceCode), timeout=8s")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+            guard pendingControlWaitID == waitID,
+                  pendingControlServiceCode == serviceCode else { return }
+            vehicleLog.add(.warning, "MQTT 控制回执缺失", detail: "command=\(commandTitle), serviceCode=\(serviceCode), waited=8000ms")
+            pendingControlServiceCode = nil
+            pendingControlTitle = nil
+            pendingControlSentAt = nil
+            pendingControlWaitID = nil
         }
     }
 
@@ -590,10 +609,12 @@ struct StatusView: View {
                 switch result.state {
                 case .sent, .completed:
                     pendingControlSentAt = Date()
+                    beginControlReceiptWaitIfNeeded()
                 case .failed(_), .timedOut(_):
                     pendingControlServiceCode = nil
                     pendingControlTitle = nil
                     pendingControlSentAt = nil
+                    pendingControlWaitID = nil
                 case .feedbackOnly, .planned:
                     break
                 }

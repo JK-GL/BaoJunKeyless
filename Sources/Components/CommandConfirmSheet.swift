@@ -303,7 +303,7 @@ struct CommandConfirmPopup: View {
                         title: "取消",
                         textColor: Color.white.opacity(0.6)
                     ) {
-                        withAnimation(.easeOut(duration: 0.2)) { isPresented = false }
+                        withAnimation(.easeOut(duration: 0.14)) { isPresented = false }
                     }
                 }
                 .transition(.opacity)
@@ -439,7 +439,7 @@ struct CommandConfirmPopup: View {
                 }
 
                 DispatchQueue.main.asyncAfter(deadline: .now() + executionResult.autoDismissDelay) {
-                    withAnimation(.easeOut(duration: 0.2)) { isPresented = false }
+                    withAnimation(.easeOut(duration: 0.14)) { isPresented = false }
                 }
             }
         }
@@ -509,8 +509,8 @@ private extension VehicleCommandExecutionResult {
 
     var autoDismissDelay: TimeInterval {
         switch state {
-        case .feedbackOnly, .planned, .sent, .completed: return 1.0
-        case .failed(_), .timedOut(_): return 1.6
+        case .feedbackOnly, .planned, .sent, .completed: return 1.8
+        case .failed(_), .timedOut(_): return 2.2
         }
     }
 

@@ -161,7 +161,7 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
                         }
                         let timing = VehicleCommandTiming(requestBuildMillis: buildMillis, httpRoundTripMillis: Int(Date().timeIntervalSince(httpStart) * 1000))
                         completion(VehicleCommandExecutionResult(command: command, state: .sent, userMessage: message, shouldRefresh: true, refreshDelay: 0, timing: timing))
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.1) {
                             refresher?.refreshNow()
                         }
                     }
