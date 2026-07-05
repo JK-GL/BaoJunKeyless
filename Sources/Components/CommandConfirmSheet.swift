@@ -133,7 +133,7 @@ enum CommandAction: String, Identifiable {
         switch self {
         case .lockUnlock:
             return state.locked == false ? "车辆将远程上锁，确保车门已关闭" : "车辆将远程解锁，车门锁会解除"
-        case .remoteStart:   return (state.power == .on || state.power == .ready) ? "车辆将远程熄火，发动机停止运转" : "通过蓝牙鉴权，远程启动发动机"
+        case .remoteStart:   return (state.power == .on || state.power == .ready) ? "车辆将优先通过 BLE 熄火；BLE 未连接则尝试 HTTP 远控" : "BLE 已连接走上电/Ready 准备态；未连接走官方启动授权"
         case .findCar:       return "车辆将双闪鸣笛，方便您定位"
         case .acToggle:
             return state.acOn == true ? "关闭空调压缩机，停止送风" : "开启空调，可调节设定温度"

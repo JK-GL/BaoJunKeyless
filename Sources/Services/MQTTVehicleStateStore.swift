@@ -201,19 +201,31 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         }
     }
 
-    var canUseBLEForDoorLock: Bool {
-        bleManager.canSendDoorLockControl
+    var canUseBLEForVehicleControl: Bool {
+        bleManager.canSendVehicleControl
     }
 
-    func sendDoorLockViaBLE(command: VehicleCommand, completion: @escaping (Result<Void, VehicleBLEManager.BLEControlError>) -> Void) {
+    var canUseBLEForDoorLock: Bool {
+        canUseBLEForVehicleControl
+    }
+
+    func sendCommandViaBLE(command: VehicleCommand, completion: @escaping (Result<Void, VehicleBLEManager.BLEControlError>) -> Void) {
         switch command.kind {
         case .lock:
             bleManager.sendDoorLockCommand(lock: true, completion: completion)
         case .unlock:
             bleManager.sendDoorLockCommand(lock: false, completion: completion)
+        case .remoteStart:
+            bleManager.sendPowerOnReadyCommand(completion: completion)
+        case .remoteStop:
+            bleManager.sendPowerOffCommand(completion: completion)
         default:
             completion(.failure(.frameBuildFailed))
         }
+    }
+
+    func sendDoorLockViaBLE(command: VehicleCommand, completion: @escaping (Result<Void, VehicleBLEManager.BLEControlError>) -> Void) {
+        sendCommandViaBLE(command: command, completion: completion)
     }
 
     private func refreshBLESessionIfNeeded() {

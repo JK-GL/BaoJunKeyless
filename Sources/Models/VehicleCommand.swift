@@ -25,6 +25,17 @@ enum VehicleCommandTransportHint: String, Codable {
     case bleControl
 }
 
+extension VehicleCommandKind {
+    var supportsBLEControl: Bool {
+        switch self {
+        case .lock, .unlock, .remoteStart, .remoteStop:
+            return true
+        case .findCar, .acOn, .acOff, .openWindows, .closeWindows, .quickCool:
+            return false
+        }
+    }
+}
+
 struct VehicleCommand: Codable, Equatable {
     let kind: VehicleCommandKind
     let title: String

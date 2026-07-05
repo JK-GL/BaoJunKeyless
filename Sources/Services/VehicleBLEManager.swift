@@ -10,6 +10,7 @@ final class VehicleBLEManager: NSObject {
         case frameBuildFailed
         case writeFailed(String)
         case receiptTimeout
+        case controlRejected(String)
         case sessionStopped
 
         var errorDescription: String? {
@@ -20,6 +21,7 @@ final class VehicleBLEManager: NSObject {
             case .frameBuildFailed: return "BLE 控制帧构造失败"
             case .writeFailed(let detail): return "BLE 控制写入失败：\(detail)"
             case .receiptTimeout: return "BLE 控制回包超时"
+            case .controlRejected(let detail): return "BLE 控制失败：\(detail)"
             case .sessionStopped: return "BLE 会话已停止"
             }
         }
@@ -49,29 +51,116 @@ final class VehicleBLEManager: NSObject {
     }
 
     struct BLEControlReceipt: Equatable {
-        let sentStatus: UInt8?
-        let sentBtParam: UInt8?
+        let commandTitle: String
+        let requestServiceId: UInt16
+        let requestSubfunction: UInt16
+        let requestControlDataHex: String
+        let requestRandomDataHex: String
+        let requestCRC16Hex: String
         let responseServiceId: UInt16?
-        let responseStatus: UInt8?
-        let responseBtParam: UInt8?
-        let resultCode: UInt8?
+        let responseSubfunction: UInt16?
+        let responseRandomDataHex: String?
+        let responsePayloadLength: UInt8?
+        let responseErrorCodeHex: String?
+        let responseType: UInt8?
+        let crcCheckPassed: Bool?
         let elapsedMillis: Int?
         let rawHex: String
         let decryptedHex: String?
         let receivedAt: Date
 
+        var isSuccess: Bool {
+            if let crcCheckPassed, crcCheckPassed == false { return false }
+            if let responseErrorCodeHex { return responseErrorCodeHex == "00000000" }
+            return responseType == 1
+        }
+
         var displayDetail: String {
             var parts: [String] = []
-            parts.append("sent=\(sentStatus.map(String.init) ?? "--")/\(sentBtParam.map(String.init) ?? "--")")
-            if let responseServiceId { parts.append("serviceId=\(responseServiceId)") }
-            if let responseStatus { parts.append("respStatus=\(responseStatus)") }
-            if let responseBtParam { parts.append("respBtParam=\(responseBtParam)") }
-            if let resultCode { parts.append("code=\(resultCode)") }
+            parts.append("command=\(commandTitle)")
+            parts.append("req=\(String(format: "%04X", requestServiceId))/\(String(format: "%04X", requestSubfunction))")
+            parts.append("controlData=\(requestControlDataHex)")
+            parts.append("random=\(requestRandomDataHex)")
+            parts.append("crc=\(requestCRC16Hex)")
+            if let responseServiceId { parts.append("respService=\(String(format: "%04X", responseServiceId))") }
+            if let responseSubfunction { parts.append("respSub=\(String(format: "%04X", responseSubfunction))") }
+            if let responseErrorCodeHex { parts.append("errorCode=\(responseErrorCodeHex)") }
+            if let responseType { parts.append("responseType=\(responseType)") }
+            if let crcCheckPassed { parts.append("crcOK=\(crcCheckPassed ? "1" : "0")") }
             if let elapsedMillis { parts.append("2A7E→2A7F=\(elapsedMillis)ms") }
             parts.append("rawLen=\(rawHex.count / 2)")
             if let decryptedHex { parts.append("decrypted=\(decryptedHex.prefix(32))") }
             return parts.joined(separator: ", ")
         }
+    }
+
+    private enum E300ControlCommand: Equatable {
+        case unlock
+        case lock
+        case powerOff
+        case powerOnReady
+
+        var title: String {
+            switch self {
+            case .unlock: return "解锁"
+            case .lock: return "锁车"
+            case .powerOff: return "远程熄火"
+            case .powerOnReady: return "BLE上电/启动授权"
+            }
+        }
+
+        var serviceId: UInt16 {
+            switch self {
+            case .unlock, .lock: return 0x39D6
+            case .powerOff, .powerOnReady: return 0x40E5
+            }
+        }
+
+        var subfunction: UInt16 {
+            switch self {
+            case .unlock, .lock, .powerOnReady: return 0x0001
+            case .powerOff: return 0x0003
+            }
+        }
+
+        var controlDataHex: String {
+            switch self {
+            case .unlock: return "0101F2000000"
+            case .lock: return "0102F2000000"
+            case .powerOff: return "030900000000"
+            case .powerOnReady: return "031200000000"
+            }
+        }
+    }
+
+    private struct E300PendingControl: Equatable {
+        let command: E300ControlCommand
+        let serviceId: UInt16
+        let subfunction: UInt16
+        let controlDataHex: String
+        let randomDataHex: String
+        let crc16Hex: String
+        let sentAt: Date
+    }
+
+    private struct E300ControlFrameBuildResult {
+        let command: E300ControlCommand
+        let encryptedData: Data
+        let plainData: Data
+        let randomDataHex: String
+        let bleKeyHex: String
+        let crc16Hex: String
+        let keySource: String
+    }
+
+    private struct E300ControlResponse {
+        let serviceId: UInt16?
+        let subfunction: UInt16?
+        let randomDataHex: String?
+        let payloadLength: UInt8?
+        let errorCodeHex: String?
+        let responseType: UInt8?
+        let crcCheckPassed: Bool?
     }
 
     var onStateChange: ((State) -> Void)?
@@ -88,10 +177,8 @@ final class VehicleBLEManager: NSObject {
     private var notify182AReady = false
     private var hasStartedCentral = false
     private var didSendAuthFrame = false
-    private var pendingDoorLockStatus: UInt8?
-    private var pendingDoorLockBtParam: UInt8?
-    private var pendingDoorLockSentAt: Date?
-    private var pendingDoorLockCompletion: ((Result<Void, BLEControlError>) -> Void)?
+    private var pendingControl: E300PendingControl?
+    private var pendingControlCompletion: ((Result<Void, BLEControlError>) -> Void)?
     private var pendingControlTimeoutWorkItem: DispatchWorkItem?
     private var rssiReadWorkItem: DispatchWorkItem?
     private var candidatePeripheral: CBPeripheral?
@@ -110,11 +197,15 @@ final class VehicleBLEManager: NSObject {
     }
     private(set) var lastControlError: BLEControlError?
 
-    var canSendDoorLockControl: Bool {
+    var canSendVehicleControl: Bool {
         if case .authenticated = state {
             return controlWriteCharacteristic != nil
         }
         return false
+    }
+
+    var canSendDoorLockControl: Bool {
+        canSendVehicleControl
     }
 
     private let authService = CBUUID(string: "181A")
@@ -139,7 +230,7 @@ final class VehicleBLEManager: NSObject {
             if let discoveredPeripheral {
                 central.cancelPeripheralConnection(discoveredPeripheral)
             }
-            completePendingDoorLock(.failure(.sessionStopped))
+            completePendingControl(.failure(.sessionStopped))
         }
         self.config = config
         lastControlError = nil
@@ -160,7 +251,7 @@ final class VehicleBLEManager: NSObject {
         if let discoveredPeripheral {
             central.cancelPeripheralConnection(discoveredPeripheral)
         }
-        completePendingDoorLock(.failure(.sessionStopped))
+        completePendingControl(.failure(.sessionStopped))
         clearSessionRuntime(cancelPendingControl: true)
         state = .idle
     }
@@ -181,10 +272,8 @@ final class VehicleBLEManager: NSObject {
         if cancelPendingControl {
             pendingControlTimeoutWorkItem?.cancel()
             pendingControlTimeoutWorkItem = nil
-            pendingDoorLockStatus = nil
-            pendingDoorLockBtParam = nil
-            pendingDoorLockSentAt = nil
-            pendingDoorLockCompletion = nil
+            pendingControl = nil
+            pendingControlCompletion = nil
         }
     }
 
@@ -229,6 +318,18 @@ final class VehicleBLEManager: NSObject {
     }
 
     func sendDoorLockCommand(lock: Bool, completion: @escaping (Result<Void, BLEControlError>) -> Void) {
+        sendE300ControlCommand(lock ? .lock : .unlock, completion: completion)
+    }
+
+    func sendPowerOnReadyCommand(completion: @escaping (Result<Void, BLEControlError>) -> Void) {
+        sendE300ControlCommand(.powerOnReady, completion: completion)
+    }
+
+    func sendPowerOffCommand(completion: @escaping (Result<Void, BLEControlError>) -> Void) {
+        sendE300ControlCommand(.powerOff, completion: completion)
+    }
+
+    private func sendE300ControlCommand(_ command: E300ControlCommand, completion: @escaping (Result<Void, BLEControlError>) -> Void) {
         guard case .authenticated = state else {
             lastControlError = .notAuthenticated
             completion(.failure(.notAuthenticated))
@@ -241,38 +342,40 @@ final class VehicleBLEManager: NSObject {
             completion(.failure(.writeCharacteristicMissing))
             return
         }
-        guard let frame = makeDoorLockControlFrame(config: config, lock: lock) else {
+        guard let build = makeE300ControlFrame(config: config, command: command) else {
             lastControlError = .frameBuildFailed
             completion(.failure(.frameBuildFailed))
             return
         }
         lastControlError = nil
-        let statusValue: UInt8 = lock ? 1 : 0
-        let btParam: UInt8 = lock ? 0 : 1
         pendingControlTimeoutWorkItem?.cancel()
-        pendingDoorLockCompletion = completion
-        pendingDoorLockStatus = statusValue
-        pendingDoorLockBtParam = btParam
-        pendingDoorLockSentAt = Date()
+        pendingControlCompletion = completion
+        pendingControl = E300PendingControl(
+            command: command,
+            serviceId: command.serviceId,
+            subfunction: command.subfunction,
+            controlDataHex: command.controlDataHex,
+            randomDataHex: build.randomDataHex,
+            crc16Hex: build.crc16Hex,
+            sentAt: Date()
+        )
         let timeout = DispatchWorkItem { [weak self] in
-            guard let self, self.pendingDoorLockCompletion != nil else { return }
-            self.onLog?("BLE", "doorLock control receipt timeout status=\(statusValue) btParam=\(btParam)")
-            self.completePendingDoorLock(.failure(.receiptTimeout))
+            guard let self, self.pendingControlCompletion != nil else { return }
+            self.onLog?("BLE", "E300 control receipt timeout command=\(command.title) serviceId=\(String(format: "%04X", command.serviceId)) sub=\(String(format: "%04X", command.subfunction))")
+            self.completePendingControl(.failure(.receiptTimeout))
         }
         pendingControlTimeoutWorkItem = timeout
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: timeout)
-        onLog?("BLE", "send doorLock control status=\(statusValue) btParam=\(btParam) len=\(frame.count) bleType=\(config.bleType ?? "--") bleKey=\(config.bleKey ?? "--")")
-        peripheral.writeValue(frame, for: controlWriteCharacteristic, type: .withResponse)
+        onLog?("BLE", "E300 control send command=\(command.title) serviceId=\(String(format: "%04X", command.serviceId)) sub=\(String(format: "%04X", command.subfunction)) controlData=\(command.controlDataHex) random=\(build.randomDataHex) crc=\(build.crc16Hex) keySource=\(build.keySource) plainLen=\(build.plainData.count) encryptedLen=\(build.encryptedData.count) bleKey=\(build.bleKeyHex.suffix(4))")
+        peripheral.writeValue(build.encryptedData, for: controlWriteCharacteristic, type: .withResponse)
     }
 
-    private func completePendingDoorLock(_ result: Result<Void, BLEControlError>) {
+    private func completePendingControl(_ result: Result<Void, BLEControlError>) {
         pendingControlTimeoutWorkItem?.cancel()
         pendingControlTimeoutWorkItem = nil
-        let completion = pendingDoorLockCompletion
-        pendingDoorLockCompletion = nil
-        pendingDoorLockStatus = nil
-        pendingDoorLockBtParam = nil
-        pendingDoorLockSentAt = nil
+        let completion = pendingControlCompletion
+        pendingControlCompletion = nil
+        pendingControl = nil
         if case .failure(let error) = result {
             lastControlError = error
         }
@@ -314,25 +417,70 @@ final class VehicleBLEManager: NSObject {
         return wrapBLEFrame(encrypted)
     }
 
-    private func makeDoorLockControlFrame(config: SessionConfig, lock: Bool) -> Data? {
-        let controlKeyHex = config.controlAes128Key?.isEmpty == false ? config.controlAes128Key! : config.masterKey
-        guard let controlKey = Data(hex: controlKeyHex), controlKey.count == 16 else {
-            onLog?("BLE", "control key invalid")
+    private func makeE300ControlFrame(config: SessionConfig, command: E300ControlCommand) -> E300ControlFrameBuildResult? {
+        guard let keyInfo = e300ControlKeyData(config: config) else {
+            onLog?("BLE", "E300 control key invalid")
             return nil
         }
-        let serviceId: UInt16 = 1
-        let statusValue: UInt8 = lock ? 1 : 0
-        let btParam: UInt8 = lock ? 0 : 1
-        var controlData = Data()
-        controlData.append(contentsOf: serviceId.bigEndianBytes)
-        controlData.append(statusValue)
-        controlData.append(btParam)
-        onLog?("BLE", "doorLock payload serviceId=1 status=\(statusValue) btParam=\(btParam) keySource=\(config.controlAes128Key?.isEmpty == false ? "controlAes128Key" : "masterKey")")
-        guard let encrypted = aesECBEncrypt(controlData, key: controlKey) else {
-            onLog?("BLE", "control aes encrypt failed")
+        guard let bleKeyHex = e300BleKeyHex(config: config) else {
+            onLog?("BLE", "E300 bleKey invalid")
             return nil
         }
-        return wrapBLEFrame(encrypted)
+        let now = UInt32(Date().timeIntervalSince1970)
+        let randomDataHex = String(format: "%08X", now)
+        let serviceIdHex = String(format: "%04X", command.serviceId)
+        let subfunctionHex = String(format: "%04X", command.subfunction)
+        let crcPrefixHex = serviceIdHex + subfunctionHex + "00000000" + randomDataHex + bleKeyHex + "06" + command.controlDataHex
+        guard let crcPrefixData = Data(hex: crcPrefixHex) else {
+            onLog?("BLE", "E300 crc prefix invalid")
+            return nil
+        }
+        let crc = crc16CcittFalse(crcPrefixData)
+        let crcHex = String(format: "%04X", crc)
+        let finalDataHex = crcPrefixHex + crcHex + "00000000000000"
+        guard let plainData = Data(hex: finalDataHex), plainData.count == 32 else {
+            onLog?("BLE", "E300 plain frame invalid len=\(finalDataHex.count / 2)")
+            return nil
+        }
+        guard let encryptedData = aesECBNoPaddingEncrypt(plainData, key: keyInfo.key), encryptedData.count == 32 else {
+            onLog?("BLE", "E300 control aes encrypt failed")
+            return nil
+        }
+        return E300ControlFrameBuildResult(
+            command: command,
+            encryptedData: encryptedData,
+            plainData: plainData,
+            randomDataHex: randomDataHex,
+            bleKeyHex: bleKeyHex,
+            crc16Hex: crcHex,
+            keySource: keyInfo.source
+        )
+    }
+
+    private func e300ControlKeyData(config: SessionConfig) -> (key: Data, source: String)? {
+        if let controlKeyHex = config.controlAes128Key?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !controlKeyHex.isEmpty,
+           let key = Data(hex: controlKeyHex), key.count == 16 {
+            return (key, "controlAes128Key")
+        }
+        guard let masterKey = Data(hex: config.masterKey), masterKey.count == 16,
+              let random = Data(hex: config.keyMasterRandom), random.count == 16 else {
+            return nil
+        }
+        return (masterKey.xor(with: random), "masterKey XOR keyMasterRandom")
+    }
+
+    private func e300BleKeyHex(config: SessionConfig) -> String? {
+        if let bleKey = config.bleKey?.trimmingCharacters(in: .whitespacesAndNewlines), !bleKey.isEmpty {
+            let raw = bleKey
+                .replacingOccurrences(of: " ", with: "")
+                .replacingOccurrences(of: "-", with: "")
+                .uppercased()
+            guard raw.allSatisfy({ UInt8(String($0), radix: 16) != nil }) else { return nil }
+            return String(raw.suffix(8)).leftPadded(to: 8, with: "0")
+        }
+        guard let value = parseUInt32(config.keyId) else { return nil }
+        return String(format: "%08X", value)
     }
 
     private func wrapBLEFrame(_ encrypted: Data) -> Data {
@@ -350,14 +498,24 @@ final class VehicleBLEManager: NSObject {
     }
 
     private func aesECBEncrypt(_ plain: Data, key: Data) -> Data? {
-        cryptECB(input: plain, key: key, operation: CCOperation(kCCEncrypt), outputLength: ((plain.count / kCCBlockSizeAES128) + 1) * kCCBlockSizeAES128)
+        cryptECB(input: plain, key: key, operation: CCOperation(kCCEncrypt), options: CCOptions(kCCOptionPKCS7Padding | kCCOptionECBMode), outputLength: ((plain.count / kCCBlockSizeAES128) + 1) * kCCBlockSizeAES128)
     }
 
     private func aesECBDecrypt(_ encrypted: Data, key: Data) -> Data? {
-        cryptECB(input: encrypted, key: key, operation: CCOperation(kCCDecrypt), outputLength: encrypted.count)
+        cryptECB(input: encrypted, key: key, operation: CCOperation(kCCDecrypt), options: CCOptions(kCCOptionPKCS7Padding | kCCOptionECBMode), outputLength: encrypted.count)
     }
 
-    private func cryptECB(input: Data, key: Data, operation: CCOperation, outputLength: Int) -> Data? {
+    private func aesECBNoPaddingEncrypt(_ plain: Data, key: Data) -> Data? {
+        guard plain.count % kCCBlockSizeAES128 == 0 else { return nil }
+        return cryptECB(input: plain, key: key, operation: CCOperation(kCCEncrypt), options: CCOptions(kCCOptionECBMode), outputLength: plain.count)
+    }
+
+    private func aesECBNoPaddingDecrypt(_ encrypted: Data, key: Data) -> Data? {
+        guard encrypted.count % kCCBlockSizeAES128 == 0 else { return nil }
+        return cryptECB(input: encrypted, key: key, operation: CCOperation(kCCDecrypt), options: CCOptions(kCCOptionECBMode), outputLength: encrypted.count)
+    }
+
+    private func cryptECB(input: Data, key: Data, operation: CCOperation, options: CCOptions, outputLength: Int) -> Data? {
         var out = Data(count: outputLength)
         let outCount = out.count
         var outLength: size_t = 0
@@ -367,7 +525,7 @@ final class VehicleBLEManager: NSObject {
                     CCCrypt(
                         operation,
                         CCAlgorithm(kCCAlgorithmAES),
-                        CCOptions(kCCOptionPKCS7Padding | kCCOptionECBMode),
+                        options,
                         keyBytes.baseAddress, key.count,
                         nil,
                         inputBytes.baseAddress, input.count,
@@ -438,47 +596,79 @@ final class VehicleBLEManager: NSObject {
     private func handleControlNotification(_ data: Data) {
         let rawHex = data.hexString
         let plain = decryptControlNotificationData(data)
-        let parsed = parseControlResponse(plain)
+        let parsed = parseE300ControlResponse(plain)
+        let pending = pendingControl
         let receipt = BLEControlReceipt(
-            sentStatus: pendingDoorLockStatus,
-            sentBtParam: pendingDoorLockBtParam,
+            commandTitle: pending?.command.title ?? "未知BLE控制",
+            requestServiceId: pending?.serviceId ?? 0,
+            requestSubfunction: pending?.subfunction ?? 0,
+            requestControlDataHex: pending?.controlDataHex ?? "--",
+            requestRandomDataHex: pending?.randomDataHex ?? "--",
+            requestCRC16Hex: pending?.crc16Hex ?? "--",
             responseServiceId: parsed.serviceId,
-            responseStatus: parsed.status,
-            responseBtParam: parsed.btParam,
-            resultCode: parsed.resultCode,
-            elapsedMillis: pendingDoorLockSentAt.map { Int(Date().timeIntervalSince($0) * 1000) },
+            responseSubfunction: parsed.subfunction,
+            responseRandomDataHex: parsed.randomDataHex,
+            responsePayloadLength: parsed.payloadLength,
+            responseErrorCodeHex: parsed.errorCodeHex,
+            responseType: parsed.responseType,
+            crcCheckPassed: parsed.crcCheckPassed,
+            elapsedMillis: pending?.sentAt.map { Int(Date().timeIntervalSince($0) * 1000) },
             rawHex: rawHex,
             decryptedHex: plain?.hexString,
             receivedAt: Date()
         )
-        let context: String
-        if let status = pendingDoorLockStatus, let btParam = pendingDoorLockBtParam {
-            context = "pendingDoorLock status=\(status) btParam=\(btParam)"
-        } else {
-            context = "no pending control context"
-        }
-        onLog?("BLE", "control notify received | \(context) | \(receipt.displayDetail)")
+        let context = pending.map { "pending=\($0.command.title) serviceId=\(String(format: "%04X", $0.serviceId)) sub=\(String(format: "%04X", $0.subfunction))" } ?? "no pending control context"
+        onLog?("BLE", "E300 control notify received | \(context) | \(receipt.displayDetail)")
         onControlReceipt?(receipt)
-        completePendingDoorLock(.success(()))
+        if receipt.isSuccess {
+            completePendingControl(.success(()))
+        } else {
+            completePendingControl(.failure(.controlRejected(receipt.displayDetail)))
+        }
     }
 
     private func decryptControlNotificationData(_ data: Data) -> Data? {
-        guard let config else { return nil }
-        let controlKeyHex = config.controlAes128Key?.isEmpty == false ? config.controlAes128Key! : config.masterKey
-        guard let key = Data(hex: controlKeyHex), key.count == 16,
-              let encrypted = extractEncryptedPayload(from: data),
-              let plain = aesECBDecrypt(encrypted, key: key),
+        guard let config, let keyInfo = e300ControlKeyData(config: config),
+              let encrypted = extractE300ControlEncryptedPayload(from: data),
+              let plain = aesECBNoPaddingDecrypt(encrypted, key: keyInfo.key),
               !plain.isEmpty else { return nil }
-        return plain.removingPKCS7PaddingIfPresent()
+        return plain
     }
 
-    private func parseControlResponse(_ data: Data?) -> (serviceId: UInt16?, status: UInt8?, btParam: UInt8?, resultCode: UInt8?) {
-        guard let data, !data.isEmpty else { return (nil, nil, nil, nil) }
+    private func extractE300ControlEncryptedPayload(from frame: Data) -> Data? {
+        if frame.first == 0xAA, frame.count >= 5 {
+            let length = Int(UInt16(frame[1]) << 8 | UInt16(frame[2]))
+            let start = 3
+            let end = start + length
+            guard end <= frame.count else { return nil }
+            return frame.subdata(in: start..<end)
+        }
+        if frame.first == 0x00, frame.count > 1 {
+            return frame.subdata(in: 1..<frame.count)
+        }
+        return frame
+    }
+
+    private func parseE300ControlResponse(_ data: Data?) -> E300ControlResponse {
+        guard let data, data.count >= 13 else {
+            return E300ControlResponse(serviceId: nil, subfunction: nil, randomDataHex: nil, payloadLength: nil, errorCodeHex: nil, responseType: nil, crcCheckPassed: nil)
+        }
         let serviceId = data.count >= 2 ? data.readUInt16BE(at: 0) : nil
-        let status = data.count >= 3 ? data[2] : nil
-        let btParam = data.count >= 4 ? data[3] : nil
-        let resultCode = data.count >= 5 ? data[4] : nil
-        return (serviceId, status, btParam, resultCode)
+        let subfunction = data.count >= 4 ? data.readUInt16BE(at: 2) : nil
+        let randomDataHex = data.count >= 8 ? data.subdata(in: 4..<8).hexString : nil
+        let payloadLength = data.count >= 9 ? data[8] : nil
+        let errorCodeHex = data.count >= 13 ? data.subdata(in: 9..<13).hexString : nil
+        let responseType: UInt8? = errorCodeHex == "00000000" ? 1 : 0
+        let crcCheckPassed = data.count >= 2 ? (crc16CcittFalse(data) == 0) : nil
+        return E300ControlResponse(
+            serviceId: serviceId,
+            subfunction: subfunction,
+            randomDataHex: randomDataHex,
+            payloadLength: payloadLength,
+            errorCodeHex: errorCodeHex,
+            responseType: responseType,
+            crcCheckPassed: crcCheckPassed
+        )
     }
 
     private func startRSSILoop() {
@@ -564,6 +754,21 @@ final class VehicleBLEManager: NSObject {
         }
         return crc ^ 0xFFFFFFFF
     }
+
+    private func crc16CcittFalse(_ data: Data) -> UInt16 {
+        var crc: UInt16 = 0xFFFF
+        for byte in data {
+            crc ^= UInt16(byte) << 8
+            for _ in 0..<8 {
+                if (crc & 0x8000) != 0 {
+                    crc = (crc << 1) ^ 0x1021
+                } else {
+                    crc <<= 1
+                }
+            }
+        }
+        return crc
+    }
 }
 
 private extension FixedWidthInteger {
@@ -580,6 +785,13 @@ private func parseUInt32(_ string: String) -> UInt32? {
     return UInt32(cleaned, radix: 16)
 }
 
+private extension String {
+    func leftPadded(to length: Int, with character: Character) -> String {
+        guard count < length else { return self }
+        return String(repeating: String(character), count: length - count) + self
+    }
+}
+
 private extension Data {
     var hexString: String {
         map { String(format: "%02X", $0) }.joined()
@@ -593,6 +805,15 @@ private extension Data {
     func readUInt32BE(at offset: Int) -> UInt32 {
         let range = offset..<(offset + 4)
         return self.subdata(in: range).reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+    }
+
+    func xor(with other: Data) -> Data {
+        let count = Swift.min(self.count, other.count)
+        var out = Data(capacity: count)
+        for index in 0..<count {
+            out.append(self[index] ^ other[index])
+        }
+        return out
     }
 
     func removingPKCS7PaddingIfPresent() -> Data {
@@ -656,7 +877,7 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
         discoveredPeripheral = nil
         notify181AReady = false
         notify182AReady = false
-        completePendingDoorLock(.failure(.sessionStopped))
+        completePendingControl(.failure(.sessionStopped))
         onLog?("BLE", "disconnected | \(error?.localizedDescription ?? "no error")")
         if config != nil, central.state == .poweredOn {
             startScanning()
@@ -735,7 +956,7 @@ extension VehicleBLEManager: CBPeripheralDelegate {
             state = .error(error.localizedDescription)
             onLog?("BLE", "write value failed uuid=\(characteristic.uuid.uuidString) | \(error.localizedDescription)")
             if characteristic.uuid == controlWrite {
-                completePendingDoorLock(.failure(controlError))
+                completePendingControl(.failure(controlError))
             }
             return
         }

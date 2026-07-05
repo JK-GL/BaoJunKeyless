@@ -48,7 +48,12 @@ protocol VehicleCommandAsyncTransport {
     )
 }
 
-protocol VehicleBLEDoorLockControlling: AnyObject {
+protocol VehicleBLEControlling: AnyObject {
+    var canUseBLEForVehicleControl: Bool { get }
+    func sendCommandViaBLE(command: VehicleCommand, completion: @escaping (Result<Void, VehicleBLEManager.BLEControlError>) -> Void)
+}
+
+protocol VehicleBLEDoorLockControlling: VehicleBLEControlling {
     var canUseBLEForDoorLock: Bool { get }
     func sendDoorLockViaBLE(command: VehicleCommand, completion: @escaping (Result<Void, VehicleBLEManager.BLEControlError>) -> Void)
 }
@@ -115,10 +120,10 @@ struct PlaceholderControlTransport: VehicleCommandTransport {
     }
 }
 
-struct BLEDoorLockTransport: VehicleCommandAsyncTransport {
-    weak var bleController: VehicleBLEDoorLockControlling?
+struct BLEVehicleControlTransport: VehicleCommandAsyncTransport {
+    weak var bleController: VehicleBLEControlling?
 
-    init(bleController: VehicleBLEDoorLockControlling?) {
+    init(bleController: VehicleBLEControlling?) {
         self.bleController = bleController
     }
 
@@ -133,15 +138,15 @@ struct BLEDoorLockTransport: VehicleCommandAsyncTransport {
             }
         }
 
-        guard command.kind == .lock || command.kind == .unlock else {
-            finish(VehicleCommandExecutionResult(command: command, state: .failed("当前 BLE transport 只支持门锁"), userMessage: "当前 BLE transport 只支持 lock / unlock", shouldRefresh: false, refreshDelay: 0))
+        guard command.kind.supportsBLEControl else {
+            finish(VehicleCommandExecutionResult(command: command, state: .failed("当前 BLE transport 不支持该命令"), userMessage: "当前 BLE transport 不支持 \(command.title)", shouldRefresh: false, refreshDelay: 0))
             return
         }
         guard let bleController else {
             finish(VehicleCommandExecutionResult(command: command, state: .failed("缺少 BLE 控制器"), userMessage: "未配置 BLE 控制器", shouldRefresh: false, refreshDelay: 0))
             return
         }
-        bleController.sendDoorLockViaBLE(command: command) { result in
+        bleController.sendCommandViaBLE(command: command) { result in
             switch result {
             case .success:
                 let message = "BLE 控制回包已收到：\(command.title)，状态以车辆真实回报为准"
@@ -157,6 +162,22 @@ struct BLEDoorLockTransport: VehicleCommandAsyncTransport {
                 finish(VehicleCommandExecutionResult(command: command, state: state, userMessage: error.localizedDescription, shouldRefresh: false, refreshDelay: 0))
             }
         }
+    }
+}
+
+struct BLEDoorLockTransport: VehicleCommandAsyncTransport {
+    private let wrapped: BLEVehicleControlTransport
+
+    init(bleController: VehicleBLEDoorLockControlling?) {
+        self.wrapped = BLEVehicleControlTransport(bleController: bleController)
+    }
+
+    func executeAsync(
+        _ command: VehicleCommand,
+        refresher: VehicleCommandRefreshing?,
+        completion: @escaping (VehicleCommandExecutionResult) -> Void
+    ) {
+        wrapped.executeAsync(command, refresher: refresher, completion: completion)
     }
 }
 

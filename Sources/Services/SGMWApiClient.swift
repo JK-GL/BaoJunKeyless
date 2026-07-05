@@ -155,7 +155,7 @@ final class SGMWApiClient {
         case .remoteStart:
             return VehicleControlRequestPlan(command: .remoteStart, endpointCandidates: ["car/control/ignition/authorize"], bodyKeys: ["vin"], note: "BLE_SPEC v7.1：远程启动第一步 PEPS 鉴权；后续 BLE CMD 仍待确认")
         case .remoteStop:
-            return VehicleControlRequestPlan(command: .remoteStop, endpointCandidates: [], bodyKeys: [], note: "BLE_SPEC v7.1 未提供远程熄火云端 endpoint，禁止发送占位请求")
+            return VehicleControlRequestPlan(command: .remoteStop, endpointCandidates: ["remote/V3/safety/sendVhlCtl"], bodyKeys: ["vin", "qgRemoteStopExtendedObjects"], note: "HTTP_BLE_CONTROL_DIG_RESULT：BLE 未连接时尝试 QG sendVhlCtl 一键关上电+关闭发动机")
         case .findCar:
             return VehicleControlRequestPlan(command: .findCar, endpointCandidates: ["car/control/searchCar"], bodyKeys: ["vin", "status"], note: "BLE_SPEC v7.1：寻车 status=0 双闪鸣笛")
         case .acOn:
@@ -219,6 +219,26 @@ final class SGMWApiClient {
             let rawDuration = command.requestedDurationMinutes ?? 10
             body["duration"] = max(5, min(20, rawDuration))
         }
+        if plan.bodyKeys.contains("qgRemoteStopExtendedObjects") {
+            body["remoteControlExtendedObjectList"] = [
+                [
+                    "controlObjective": "19",
+                    "rctlVhlParams": [
+                        "ctlSwitchStatus": "0",
+                        "ctlMode": "40"
+                    ]
+                ],
+                [
+                    "controlObjective": "17",
+                    "rctlVhlParams": [
+                        "ctlSwitchStatus": "0",
+                        "goalValue2": "10",
+                        "unitOfValue2": "2"
+                    ]
+                ]
+            ]
+            body["rctlSendTime"] = currentRemoteControlTimeString()
+        }
         let headers = buildSignedHeaders(accessToken: accessToken)
         return .success(VehicleControlRequestDraft(plan: plan, url: url, headers: headers, body: body))
     }
@@ -253,6 +273,15 @@ final class SGMWApiClient {
                 return
             }
             if let result = json["result"] as? Bool, result == true {
+                completion(.success(json))
+                return
+            }
+            if let code = (json["code"] as? String) ?? (json["statusCode"] as? String),
+               ["0", "1", "200", "2000"].contains(code) {
+                completion(.success(json))
+                return
+            }
+            if let errorFlag = json["errorFlag"] as? Int, errorFlag == 0 {
                 completion(.success(json))
                 return
             }
@@ -401,6 +430,14 @@ final class SGMWApiClient {
             case .failure: completion(nil)
             }
         }
+    }
+
+    private func currentRemoteControlTimeString() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone.current
+        formatter.dateFormat = "yyyyMMddHHmmss"
+        return formatter.string(from: Date())
     }
 
     private func buildSignedHeaders(accessToken: String) -> [String: String] {

@@ -622,14 +622,14 @@ struct StatusView: View {
         completion: @escaping (VehicleCommandExecutionResult) -> Void
     ) {
         let command = action.asVehicleCommand(state: vehicleStore.state, temperature: temperature, durationMinutes: durationMinutes, source: .quickAction)
-        let willUseBLE = (command.kind == .lock || command.kind == .unlock) && mqttStore?.canUseBLEForDoorLock == true
+        let willUseBLE = command.kind.supportsBLEControl && mqttStore?.canUseBLEForVehicleControl == true
         pendingControlServiceCode = willUseBLE ? nil : controlServiceCode(for: command.kind)
         pendingControlTitle = command.title
         pendingControlSentAt = nil
 
         let transport: VehicleCommandAsyncTransport
         if willUseBLE, let mqttStore {
-            transport = BLEDoorLockTransport(bleController: mqttStore)
+            transport = BLEVehicleControlTransport(bleController: mqttStore)
         } else {
             transport = HTTPControlTransport(credentials: vehicleCredentials)
         }
