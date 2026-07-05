@@ -198,6 +198,7 @@ struct SettingsView: View {
         customVibrationStore.reset()
         theme.resetAppearance()
         AppDiagnosticsSettings.resetHiddenDiagnosticsToggles()
+        VehicleBLEBindingStore.clear()
         addressSettings.reset()
         vehicleLog.add(.system, "重置全部设置", detail: "错误日志保留")
         CrashLogger.shared.logCurrentStatus(tag: "reset")

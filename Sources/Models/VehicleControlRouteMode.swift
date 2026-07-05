@@ -1,5 +1,9 @@
 import Foundation
 
+extension Notification.Name {
+    static let vehicleControlRouteModeChanged = Notification.Name("VehicleControlRouteModeChanged")
+}
+
 enum VehicleControlRouteMode: String, CaseIterable, Codable {
     case auto
     case forceBLE

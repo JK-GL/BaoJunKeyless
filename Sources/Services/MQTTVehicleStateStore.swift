@@ -120,6 +120,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     private var didLogManualForegroundSkip = false
     private var foregroundObserver: NSObjectProtocol?
     private var backgroundObserver: NSObjectProtocol?
+    private var routeModeObserver: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
 
     init(
@@ -140,6 +141,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         loadPersistedDisplayCache()
         setupBLECallbacks()
         setupLifecycleObservers()
+        setupRouteModeObserver()
         setupKeylessSettingsObserver()
         DispatchQueue.main.async { [weak self] in
             self?.autoConnect()
@@ -230,7 +232,9 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     private func refreshBLESessionIfNeeded() {
         let settings = keylessSettingsStore.settings
-        guard settings.keylessEnabled else {
+        let routeMode = AppDiagnosticsSettings.vehicleControlRouteMode
+        let shouldKeepBLESession = settings.keylessEnabled || routeMode == .forceBLE
+        guard shouldKeepBLESession else {
             bleManager.stop()
             if bleStatus != .authenticated {
                 bleStatus = .disconnected
@@ -272,6 +276,18 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             guard let self else { return }
             self.isAppInForeground = false
             self.didLogManualForegroundSkip = false
+        }
+    }
+
+    private func setupRouteModeObserver() {
+        routeModeObserver = NotificationCenter.default.addObserver(
+            forName: .vehicleControlRouteModeChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.bleManager.stop()
+            self.refreshBLESessionIfNeeded()
         }
     }
 

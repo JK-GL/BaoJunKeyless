@@ -163,6 +163,11 @@ final class VehicleBLEManager: NSObject {
         let crcCheckPassed: Bool?
     }
 
+    private enum ConnectionSource: Equatable {
+        case bound
+        case scan
+    }
+
     var onStateChange: ((State) -> Void)?
     var onLog: ((String, String?) -> Void)?
     var onControlReceipt: ((BLEControlReceipt) -> Void)?
@@ -186,6 +191,10 @@ final class VehicleBLEManager: NSObject {
     private var candidateRSSI: Int = -127
     private var candidateScore: Int = Int.min
     private var candidateSelectionWorkItem: DispatchWorkItem?
+    private var scanWatchdogWorkItem: DispatchWorkItem?
+    private var currentConnectionSource: ConnectionSource?
+    private var hasTriedBoundPeripheral = false
+    private let candidateMinimumScore = 8
     private(set) var state: State = .idle {
         didSet {
             guard oldValue != state else { return }
@@ -231,6 +240,7 @@ final class VehicleBLEManager: NSObject {
                 central.cancelPeripheralConnection(discoveredPeripheral)
             }
             completePendingControl(.failure(.sessionStopped))
+            hasTriedBoundPeripheral = false
         }
         self.config = config
         lastControlError = nil
@@ -248,6 +258,10 @@ final class VehicleBLEManager: NSObject {
         central.stopScan()
         candidateSelectionWorkItem?.cancel()
         candidateSelectionWorkItem = nil
+        scanWatchdogWorkItem?.cancel()
+        scanWatchdogWorkItem = nil
+        currentConnectionSource = nil
+        hasTriedBoundPeripheral = false
         if let discoveredPeripheral {
             central.cancelPeripheralConnection(discoveredPeripheral)
         }
@@ -269,6 +283,9 @@ final class VehicleBLEManager: NSObject {
         candidateName = "--"
         candidateRSSI = -127
         candidateScore = Int.min
+        scanWatchdogWorkItem?.cancel()
+        scanWatchdogWorkItem = nil
+        currentConnectionSource = nil
         if cancelPendingControl {
             pendingControlTimeoutWorkItem?.cancel()
             pendingControlTimeoutWorkItem = nil
@@ -280,7 +297,7 @@ final class VehicleBLEManager: NSObject {
     private func handleCentralState() {
         switch central.state {
         case .poweredOn:
-            startScanning()
+            startConnectionFlow()
         case .poweredOff:
             state = .bluetoothOff
         case .unsupported, .unauthorized:
@@ -290,6 +307,42 @@ final class VehicleBLEManager: NSObject {
         @unknown default:
             state = .idle
         }
+    }
+
+    private func startConnectionFlow() {
+        guard config != nil else {
+            state = .idle
+            return
+        }
+        guard discoveredPeripheral == nil else { return }
+        if !hasTriedBoundPeripheral, connectBoundPeripheralIfAvailable() {
+            return
+        }
+        startScanning()
+    }
+
+    private func connectBoundPeripheralIfAvailable() -> Bool {
+        hasTriedBoundPeripheral = true
+        guard let binding = VehicleBLEBindingStore.load(),
+              let uuid = UUID(uuidString: binding.peripheralIdentifier) else {
+            onLog?("BLE", "bound peripheral miss, fallback wide scan")
+            return false
+        }
+        let peripherals = central.retrievePeripherals(withIdentifiers: [uuid])
+        guard let peripheral = peripherals.first else {
+            onLog?("BLE", "bound peripheral not found id=\(binding.shortIdentifier), fallback wide scan")
+            return false
+        }
+        discoveredPeripheral = peripheral
+        currentConnectionSource = .bound
+        peripheral.delegate = self
+        central.stopScan()
+        scanWatchdogWorkItem?.cancel()
+        scanWatchdogWorkItem = nil
+        state = .connecting
+        onLog?("BLE", "connecting bound peripheral name=\(binding.peripheralName) id=\(binding.shortIdentifier) keyId=\(binding.keyId) macSuffix=\(binding.bleMacSuffix)")
+        central.connect(peripheral, options: nil)
+        return true
     }
 
     private func startScanning() {
@@ -306,9 +359,22 @@ final class VehicleBLEManager: NSObject {
         candidateScore = Int.min
         central.stopScan()
         state = .scanning
-        onLog?("BLE", "scanning services 181A/182A target=\(config?.bleMac ?? "--")")
-        central.scanForPeripherals(withServices: [authService, controlService], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+        let targetSuffix = normalizedMacSuffixText(config?.bleMac ?? "")
+        onLog?("BLE", "wide scanning target=\(targetSuffix) minScore=\(candidateMinimumScore)")
+        central.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
+        scheduleScanWatchdog()
     }
+
+    private func scheduleScanWatchdog() {
+        scanWatchdogWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            guard case .scanning = self.state else { return }
+            self.onLog?("BLE", "wide scan still running no candidate target=\(self.normalizedMacSuffixText(self.config?.bleMac ?? "")) minScore=\(self.candidateMinimumScore)")
+            self.scheduleScanWatchdog()
+        }
+        scanWatchdogWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
 
     private func finishIfReady() {
         guard notify181AReady, notify182AReady else { return }
@@ -541,19 +607,26 @@ final class VehicleBLEManager: NSObject {
     }
 
     private func handleAuthNotification(_ data: Data) {
+        func failAuth(_ reason: String, detail: String) {
+            state = .authFailed(reason)
+            onLog?("BLE", detail)
+            if currentConnectionSource == .bound {
+                onLog?("BLE", "bound auth failed, fallback wide scan | \(reason)")
+                fallbackToWideScanAfterBoundFailure()
+            }
+        }
+
         guard let config,
               let aesKey = Data(hex: config.masterKey), aesKey.count == 16,
               let nonce = Data(hex: config.keyMasterRandom), nonce.count == 16,
               let expectedKeyId = parseUInt32(config.keyId) else {
-            state = .authFailed("鉴权配置无效")
-            onLog?("BLE", "auth response skipped: invalid config")
+            failAuth("鉴权配置无效", detail: "auth response skipped: invalid config")
             return
         }
         guard let encrypted = extractEncryptedPayload(from: data),
               let plain = aesECBDecrypt(encrypted, key: aesKey),
               plain.count >= 28 else {
-            state = .authFailed("鉴权响应解密失败")
-            onLog?("BLE", "auth response decrypt failed")
+            failAuth("鉴权响应解密失败", detail: "auth response decrypt failed")
             return
         }
         let keyId = plain.readUInt32BE(at: 0)
@@ -562,23 +635,60 @@ final class VehicleBLEManager: NSObject {
         let payload = Data(plain.prefix(24))
         let calculatedCRC = crc32(payload)
         guard keyId == expectedKeyId else {
-            state = .authFailed("keyId 不匹配")
-            onLog?("BLE", "auth failed keyId expected=\(expectedKeyId) got=\(keyId)")
+            failAuth("keyId 不匹配", detail: "auth failed keyId expected=\(expectedKeyId) got=\(keyId)")
             return
         }
         guard echoedNonce == nonce else {
-            state = .authFailed("nonce 不匹配")
-            onLog?("BLE", "auth failed nonce mismatch")
+            failAuth("nonce 不匹配", detail: "auth failed nonce mismatch")
             return
         }
         guard crc == calculatedCRC else {
-            state = .authFailed("CRC32 不匹配")
-            onLog?("BLE", "auth failed crc expected=\(String(format: "%08X", calculatedCRC)) got=\(String(format: "%08X", crc))")
+            failAuth("CRC32 不匹配", detail: "auth failed crc expected=\(String(format: "%08X", calculatedCRC)) got=\(String(format: "%08X", crc))")
             return
         }
         state = .authenticated
-        onLog?("BLE", "auth success keyId=\(keyId)")
+        onLog?("BLE", "auth success keyId=\(keyId) source=\(currentConnectionSource == .bound ? "bound" : "scan")")
+        persistBindingAfterAuthSuccess(config: config, keyId: keyId)
         startRSSILoop()
+    }
+
+    private func fallbackToWideScanAfterBoundFailure() {
+        guard let peripheral = discoveredPeripheral else {
+            currentConnectionSource = nil
+            startScanning()
+            return
+        }
+        central.cancelPeripheralConnection(peripheral)
+        discoveredPeripheral = nil
+        currentConnectionSource = nil
+        notify181AReady = false
+        notify182AReady = false
+        didSendAuthFrame = false
+        authWriteCharacteristic = nil
+        controlWriteCharacteristic = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            self?.startScanning()
+        }
+    }
+
+    private func persistBindingAfterAuthSuccess(config: SessionConfig, keyId: UInt32) {
+        guard let peripheral = discoveredPeripheral else { return }
+        let binding = VehicleBLEBinding(
+            peripheralIdentifier: peripheral.identifier.uuidString,
+            peripheralName: peripheral.name ?? "--",
+            keyId: String(format: "%08X", keyId),
+            bleMacSuffix: normalizedMacSuffixText(config.bleMac),
+            boundAt: VehicleBLEBindingStore.load()?.boundAt ?? Date(),
+            lastAuthAt: Date()
+        )
+        VehicleBLEBindingStore.save(binding)
+        onLog?("BLE", "bound peripheral saved \(binding.displaySummary)")
+    }
+
+    private func normalizedMacSuffixText(_ mac: String) -> String {
+        let normalized = mac.uppercased().filter { $0.isLetter || $0.isNumber }
+        guard !normalized.isEmpty else { return "--" }
+        return String(normalized.suffix(6))
     }
 
     private func extractEncryptedPayload(from frame: Data) -> Data? {
@@ -700,44 +810,49 @@ final class VehicleBLEManager: NSObject {
     private func connectBestCandidate() {
         candidateSelectionWorkItem = nil
         guard discoveredPeripheral == nil else { return }
-        guard let peripheral = candidatePeripheral else {
-            if config != nil {
-                startScanning()
-            }
+        guard let peripheral = candidatePeripheral, candidateScore >= candidateMinimumScore else {
+            onLog?("BLE", "no connectable candidate score=\(candidateScore), keep wide scanning")
+            candidatePeripheral = nil
+            candidateName = "--"
+            candidateRSSI = -127
+            candidateScore = Int.min
             return
         }
         discoveredPeripheral = peripheral
+        currentConnectionSource = .scan
         peripheral.delegate = self
         central.stopScan()
+        scanWatchdogWorkItem?.cancel()
+        scanWatchdogWorkItem = nil
         state = .connecting
-        onLog?("BLE", "connecting \(candidateName) rssi=\(candidateRSSI) score=\(candidateScore)")
+        onLog?("BLE", "connecting scanned candidate \(candidateName) rssi=\(candidateRSSI) score=\(candidateScore)")
         central.connect(peripheral, options: nil)
     }
 
     private func discoveryScore(localName: String, advertisementData: [String: Any], rssi: Int) -> Int {
-        var score = 0
+        var identityScore = 0
         if let serviceUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] {
-            if serviceUUIDs.contains(authService) { score += 6 }
-            if serviceUUIDs.contains(controlService) { score += 6 }
+            if serviceUUIDs.contains(authService) { identityScore += 6 }
+            if serviceUUIDs.contains(controlService) { identityScore += 6 }
         }
         if let manufacturerData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data,
            manufacturerData.count >= 2,
            manufacturerData[0] == 0x55,
            manufacturerData[1] == 0x2B {
-            score += 8
+            identityScore += 8
         }
         let normalizedName = localName.lowercased().filter { $0.isLetter || $0.isNumber }
         let normalizedMac = (config?.bleMac ?? "").lowercased().filter { $0.isLetter || $0.isNumber }
         if normalizedMac.count >= 4 {
             let suffix4 = String(normalizedMac.suffix(4))
-            if normalizedName.contains(suffix4) { score += 12 }
+            if normalizedName.contains(suffix4) { identityScore += 12 }
         }
         if normalizedMac.count >= 6 {
             let suffix6 = String(normalizedMac.suffix(6))
-            if normalizedName.contains(suffix6) { score += 18 }
+            if normalizedName.contains(suffix6) { identityScore += 18 }
         }
-        score += max(-10, min(10, (rssi + 90) / 4))
-        return score
+        guard identityScore > 0 else { return Int.min / 2 }
+        return identityScore + max(-10, min(10, (rssi + 90) / 4))
     }
 
     private func crc32(_ data: Data) -> UInt32 {
@@ -849,14 +964,18 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         let localName = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? peripheral.name ?? "--"
-        let score = discoveryScore(localName: localName, advertisementData: advertisementData, rssi: RSSI.intValue)
+        let rssi = RSSI.intValue
+        let score = discoveryScore(localName: localName, advertisementData: advertisementData, rssi: rssi)
         let manufacturerHex = (advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data)?.hexString ?? "--"
-        onLog?("BLE", "discovered name=\(localName) rssi=\(RSSI) score=\(score) mfg=\(manufacturerHex.prefix(20))")
-        guard discoveredPeripheral == nil else { return }
-        if candidatePeripheral == nil || score > candidateScore || (score == candidateScore && RSSI.intValue > candidateRSSI) {
+        let serviceText = ((advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]) ?? []).map { $0.uuidString }.joined(separator: ",")
+        if score >= 4 {
+            onLog?("BLE", "candidate name=\(localName) rssi=\(rssi) score=\(score) services=\(serviceText.isEmpty ? "--" : serviceText) mfg=\(manufacturerHex.prefix(20))")
+        }
+        guard discoveredPeripheral == nil, score >= candidateMinimumScore else { return }
+        if candidatePeripheral == nil || score > candidateScore || (score == candidateScore && rssi > candidateRSSI) {
             candidatePeripheral = peripheral
             candidateName = localName
-            candidateRSSI = RSSI.intValue
+            candidateRSSI = rssi
             candidateScore = score
         }
         scheduleBestCandidateConnectionIfNeeded()
@@ -869,16 +988,23 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         discoveredPeripheral = nil
+        let sourceText = currentConnectionSource == .bound ? "bound" : "scan"
+        currentConnectionSource = nil
         state = .error(error?.localizedDescription ?? "connect failed")
-        onLog?("BLE", "connect failed | \(error?.localizedDescription ?? "unknown")")
+        onLog?("BLE", "connect failed source=\(sourceText) | \(error?.localizedDescription ?? "unknown")")
+        if config != nil, central.state == .poweredOn {
+            startScanning()
+        }
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         discoveredPeripheral = nil
+        let sourceText = currentConnectionSource == .bound ? "bound" : "scan"
+        currentConnectionSource = nil
         notify181AReady = false
         notify182AReady = false
         completePendingControl(.failure(.sessionStopped))
-        onLog?("BLE", "disconnected | \(error?.localizedDescription ?? "no error")")
+        onLog?("BLE", "disconnected source=\(sourceText) | \(error?.localizedDescription ?? "no error")")
         if config != nil, central.state == .poweredOn {
             startScanning()
         } else {
@@ -894,12 +1020,20 @@ extension VehicleBLEManager: CBPeripheralDelegate {
             onLog?("BLE", "discover services failed | \(error.localizedDescription)")
             return
         }
+        var hasAuthService = false
+        var hasControlService = false
         peripheral.services?.forEach { service in
             if service.uuid == authService {
+                hasAuthService = true
                 peripheral.discoverCharacteristics([authWrite, authNotify], for: service)
             } else if service.uuid == controlService {
+                hasControlService = true
                 peripheral.discoverCharacteristics([controlWrite, controlNotify], for: service)
             }
+        }
+        if !hasAuthService || !hasControlService {
+            onLog?("BLE", "target services incomplete on \(peripheral.name ?? "--") auth=\(hasAuthService ? 1 : 0) control=\(hasControlService ? 1 : 0), disconnect and continue scanning")
+            central.cancelPeripheralConnection(peripheral)
         }
     }
 
