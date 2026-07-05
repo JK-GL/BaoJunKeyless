@@ -612,7 +612,7 @@ final class VehicleBLEManager: NSObject {
             responseErrorCodeHex: parsed.errorCodeHex,
             responseType: parsed.responseType,
             crcCheckPassed: parsed.crcCheckPassed,
-            elapsedMillis: pending?.sentAt.map { Int(Date().timeIntervalSince($0) * 1000) },
+            elapsedMillis: pending.map { Int(Date().timeIntervalSince($0.sentAt) * 1000) },
             rawHex: rawHex,
             decryptedHex: plain?.hexString,
             receivedAt: Date()
