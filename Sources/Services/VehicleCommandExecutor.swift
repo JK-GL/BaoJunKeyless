@@ -159,7 +159,8 @@ struct BLEVehicleControlTransport: VehicleCommandAsyncTransport {
                 default:
                     state = .failed(error.localizedDescription)
                 }
-                finish(VehicleCommandExecutionResult(command: command, state: state, userMessage: error.localizedDescription, shouldRefresh: false, refreshDelay: 0))
+                let hint = "；如需对比链路，可到设置切换“强制HTTP”后重试"
+                finish(VehicleCommandExecutionResult(command: command, state: state, userMessage: error.localizedDescription + hint, shouldRefresh: false, refreshDelay: 0))
             }
         }
     }

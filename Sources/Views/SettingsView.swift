@@ -11,6 +11,7 @@ struct SettingsView: View {
     @EnvironmentObject var vehicleStore: VehicleStateStore
     @EnvironmentObject var vehicleLog: VehicleEventLogStore
     @EnvironmentObject var addressSettings: AddressServiceSettings
+    @AppStorage(AppDiagnosticsSettings.vehicleControlRouteModeKey) private var vehicleControlRouteModeRaw = VehicleControlRouteMode.auto.rawValue
 
     @State private var showingResetAlert = false
     @State private var toastText: String?
@@ -22,6 +23,13 @@ struct SettingsView: View {
 
     private var currentTheme: AppThemeConfiguration {
         theme.current
+    }
+
+    private var vehicleControlRouteModeBinding: Binding<VehicleControlRouteMode> {
+        Binding(
+            get: { VehicleControlRouteMode(rawValue: vehicleControlRouteModeRaw) ?? .auto },
+            set: { vehicleControlRouteModeRaw = $0.rawValue }
+        )
     }
 
     var body: some View {
@@ -48,6 +56,11 @@ struct SettingsView: View {
                             credentialConfirmPayload = payload
                         }
                     }
+                )
+
+                SettingsVehicleControlDebugSection(
+                    routeMode: vehicleControlRouteModeBinding,
+                    toastText: $toastText
                 )
 
                 SettingsFuelDisplaySection()

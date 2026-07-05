@@ -8,6 +8,7 @@ struct StatusView: View {
     @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
     @EnvironmentObject var vehicleLog: VehicleEventLogStore
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
+    @AppStorage(AppDiagnosticsSettings.vehicleControlRouteModeKey) private var vehicleControlRouteModeRaw = VehicleControlRouteMode.auto.rawValue
     @EnvironmentObject var vehicleStore: VehicleStateStore
     @State private var isRefreshing = false
     @State private var refreshScale: CGFloat = 1.0
@@ -117,6 +118,10 @@ struct StatusView: View {
         if settingsStore.settings.smartSwitch { return "智能切换" }
         if settingsStore.settings.appManual { return "前台手动" }
         return "无感待命"
+    }
+
+    private var vehicleControlRouteMode: VehicleControlRouteMode {
+        VehicleControlRouteMode(rawValue: vehicleControlRouteModeRaw) ?? .auto
     }
 
     private var modeColor: Color {
@@ -622,7 +627,50 @@ struct StatusView: View {
         completion: @escaping (VehicleCommandExecutionResult) -> Void
     ) {
         let command = action.asVehicleCommand(state: vehicleStore.state, temperature: temperature, durationMinutes: durationMinutes, source: .quickAction)
-        let willUseBLE = command.kind.supportsBLEControl && mqttStore?.canUseBLEForVehicleControl == true
+        let supportsBLE = command.kind.supportsBLEControl
+        let bleReady = mqttStore?.canUseBLEForVehicleControl == true
+
+        enum SelectedRoute {
+            case ble
+            case http
+        }
+
+        let selectedRoute: SelectedRoute
+        switch vehicleControlRouteMode {
+        case .forceBLE:
+            guard supportsBLE else {
+                completion(VehicleCommandExecutionResult(
+                    command: command,
+                    state: .failed("当前命令不支持 BLE 强制模式"),
+                    userMessage: "已设为强制BLE，但 \(command.title) 不支持 BLE 通道",
+                    shouldRefresh: false,
+                    refreshDelay: 0
+                ))
+                return
+            }
+            guard bleReady else {
+                vehicleLog.add(.warning, "快捷路由阻止", detail: "\(command.title) | mode=强制BLE | BLE 未鉴权成功")
+                completion(VehicleCommandExecutionResult(
+                    command: command,
+                    state: .failed("强制BLE，但当前 BLE 未鉴权成功"),
+                    userMessage: "强制BLE模式：当前 BLE 未鉴权成功，请先连上蓝牙后重试",
+                    shouldRefresh: false,
+                    refreshDelay: 0
+                ))
+                return
+            }
+            selectedRoute = .ble
+        case .forceHTTP:
+            selectedRoute = .http
+        case .auto:
+            selectedRoute = (supportsBLE && bleReady) ? .ble : .http
+        }
+
+        let routeModeText = vehicleControlRouteMode.title
+        let actualRouteText = selectedRoute == .ble ? "BLE" : "HTTP"
+        vehicleLog.add(.action, "快捷路由选择", detail: "\(command.title) | mode=\(routeModeText) | route=\(actualRouteText)")
+
+        let willUseBLE = selectedRoute == .ble
         pendingControlServiceCode = willUseBLE ? nil : controlServiceCode(for: command.kind)
         pendingControlTitle = command.title
         pendingControlSentAt = nil
@@ -633,9 +681,20 @@ struct StatusView: View {
         } else {
             transport = HTTPControlTransport(credentials: vehicleCredentials)
         }
+
         VehicleCommandExecutor.executeAsync(command, transport: transport, refresher: mqttStore) { result in
             DispatchQueue.main.async {
-                switch result.state {
+                let routePrefix = "[mode=\(routeModeText) route=\(actualRouteText)] "
+                let patchedResult = VehicleCommandExecutionResult(
+                    command: result.command,
+                    state: result.state,
+                    userMessage: routePrefix + result.userMessage,
+                    shouldRefresh: result.shouldRefresh,
+                    refreshDelay: result.refreshDelay,
+                    timing: result.timing
+                )
+
+                switch patchedResult.state {
                 case .sent, .completed:
                     if !willUseBLE {
                         pendingControlSentAt = Date()
@@ -649,7 +708,7 @@ struct StatusView: View {
                 case .feedbackOnly, .planned:
                     break
                 }
-                completion(result)
+                completion(patchedResult)
             }
         }
     }
