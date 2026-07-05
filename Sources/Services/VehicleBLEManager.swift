@@ -375,6 +375,7 @@ final class VehicleBLEManager: NSObject {
         }
         scanWatchdogWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
+    }
 
     private func finishIfReady() {
         guard notify181AReady, notify182AReady else { return }
