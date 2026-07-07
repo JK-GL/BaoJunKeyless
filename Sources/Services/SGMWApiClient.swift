@@ -319,6 +319,7 @@ final class SGMWApiClient {
         apiCallResult(
             endpoint: "car/control/ble/key/query",
             body: [
+                "__app_type": "0",
                 "vin": vin,
                 "userId": phone,
                 "mobile": phone

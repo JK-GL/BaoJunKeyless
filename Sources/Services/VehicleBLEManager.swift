@@ -1201,9 +1201,8 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
-        discoveredPeripheral = nil
         let sourceText = connectionSourceText
-        currentConnectionSource = nil
+        clearSessionRuntime(cancelPendingControl: true)
         state = .error(error?.localizedDescription ?? "connect failed")
         onLog?("BLE", "connect failed source=\(sourceText) | \(error?.localizedDescription ?? "unknown")")
         if config != nil, central.state == .poweredOn {
@@ -1212,12 +1211,9 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        discoveredPeripheral = nil
         let sourceText = connectionSourceText
-        currentConnectionSource = nil
-        notify181AReady = false
-        notify182AReady = false
         completePendingControl(.failure(.sessionStopped))
+        clearSessionRuntime(cancelPendingControl: true)
         onLog?("BLE", "disconnected source=\(sourceText) | \(error?.localizedDescription ?? "no error")")
         if config != nil, central.state == .poweredOn {
             startScanning()
