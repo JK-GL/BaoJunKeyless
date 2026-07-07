@@ -169,6 +169,22 @@ final class VehicleBLEManager: NSObject {
         case debugScore
     }
 
+    private enum E300AuthStage: Equatable {
+        case idle
+        case waitingChallengeResponse
+        case waitingAuthorizeConfirm(localRandom2Hex: String, remoteRandom1Hex: String)
+    }
+
+    private struct E300AuthResponse {
+        let serviceId: UInt16
+        let subfunction: UInt16
+        let randomDataHex: String?
+        let bleKeyHex: String?
+        let payloadLength: UInt8?
+        let rawHex: String
+        let plainHex: String?
+    }
+
     var onStateChange: ((State) -> Void)?
     var onLog: ((String, String?) -> Void)?
     var onControlReceipt: ((BLEControlReceipt) -> Void)?
@@ -183,6 +199,10 @@ final class VehicleBLEManager: NSObject {
     private var notify182AReady = false
     private var hasStartedCentral = false
     private var didSendAuthFrame = false
+    private var authStage: E300AuthStage = .idle
+    private var runtimeAuthRandom1RemoteHex: String?
+    private var runtimeAuthRandom2LocalHex: String?
+    private var runtimeControlAes128KeyHex: String?
     private var pendingControl: E300PendingControl?
     private var pendingControlCompletion: ((Result<Void, BLEControlError>) -> Void)?
     private var pendingControlTimeoutWorkItem: DispatchWorkItem?
@@ -278,6 +298,10 @@ final class VehicleBLEManager: NSObject {
         notify181AReady = false
         notify182AReady = false
         didSendAuthFrame = false
+        authStage = .idle
+        runtimeAuthRandom1RemoteHex = nil
+        runtimeAuthRandom2LocalHex = nil
+        runtimeControlAes128KeyHex = nil
         rssiReadWorkItem?.cancel()
         rssiReadWorkItem = nil
         candidatePeripheral = nil
@@ -430,6 +454,13 @@ final class VehicleBLEManager: NSObject {
             completion(.failure(.writeCharacteristicMissing))
             return
         }
+        let hasPresetControlKey = !(config.controlAes128Key?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        guard runtimeControlAes128KeyHex != nil || hasPresetControlKey else {
+            lastControlError = .notAuthenticated
+            onLog?("BLE", "E300 control blocked: runtimeControlAes128Key missing")
+            completion(.failure(.notAuthenticated))
+            return
+        }
         guard let build = makeE300ControlFrame(config: config, command: command) else {
             lastControlError = .frameBuildFailed
             completion(.failure(.frameBuildFailed))
@@ -477,32 +508,74 @@ final class VehicleBLEManager: NSObject {
               let authWriteCharacteristic,
               let frame = makeAuthFrame(config: config) else { return }
         didSendAuthFrame = true
+        authStage = .waitingChallengeResponse
         state = .authenticating
-        onLog?("BLE", "send auth frame len=\(frame.count) keyId=\(config.keyId)")
+        let bleKeySuffix = e300BleKeyHex(config: config).map { String($0.suffix(4)) } ?? "--"
+        onLog?("BLE", "E300 auth step1 send 38C7/0001 len=\(frame.count) bleKey=\(bleKeySuffix)")
         peripheral.writeValue(frame, for: authWriteCharacteristic, type: .withResponse)
     }
 
     private func makeAuthFrame(config: SessionConfig) -> Data? {
-        guard let keyId = parseUInt32(config.keyId),
-              let nonce = Data(hex: config.keyMasterRandom), nonce.count == 16,
-              let aesKey = Data(hex: config.masterKey), aesKey.count == 16 else {
-            onLog?("BLE", "auth config invalid")
+        guard let bleKeyHex = e300BleKeyHex(config: config) else {
+            onLog?("BLE", "E300 auth bleKey invalid")
             return nil
         }
 
-        let timestamp = UInt32(Date().timeIntervalSince1970)
-        var plain = Data()
-        plain.append(contentsOf: keyId.bigEndianBytes)
-        plain.append(contentsOf: timestamp.bigEndianBytes)
-        plain.append(nonce)
-        let crc = crc32(plain).bigEndian
-        plain.append(contentsOf: crc.bigEndianBytes)
+        let currentTime = UInt32(Date().timeIntervalSince1970)
+        let random1Hex = String(format: "%08X", currentTime)
+        let crcPrefixHex = "38C7" + "0001" + "00000000" + random1Hex + bleKeyHex + "06" + "000000000000"
 
-        guard let encrypted = aesECBEncrypt(plain, key: aesKey) else {
-            onLog?("BLE", "auth aes encrypt failed")
+        guard let crcPrefixData = Data(hex: crcPrefixHex) else {
+            onLog?("BLE", "E300 auth step1 crc prefix invalid")
             return nil
         }
-        return wrapBLEFrame(encrypted)
+        let crcHex = String(format: "%04X", crc16CcittFalse(crcPrefixData))
+        let finalHex = crcPrefixHex + crcHex + "00000000000000"
+
+        guard let frame = Data(hex: finalHex), frame.count == 32 else {
+            onLog?("BLE", "E300 auth step1 frame invalid len=\(finalHex.count / 2)")
+            return nil
+        }
+        return frame
+    }
+
+    private func e300AuthKeyData(config: SessionConfig) -> Data? {
+        guard let masterKey = Data(hex: config.masterKey), masterKey.count == 16,
+              let random = Data(hex: config.keyMasterRandom), random.count == 16 else {
+            return nil
+        }
+        return masterKey.xor(with: random)
+    }
+
+    private func makeAuthChallengeReplyFrame(config: SessionConfig, remoteRandom1Hex: String) -> (data: Data, localRandom2Hex: String)? {
+        guard let bleKeyHex = e300BleKeyHex(config: config) else {
+            onLog?("BLE", "E300 auth step3 bleKey invalid")
+            return nil
+        }
+        guard let authKey = e300AuthKeyData(config: config) else {
+            onLog?("BLE", "E300 auth step3 aes128Key invalid")
+            return nil
+        }
+
+        let localRandom2Hex = String(format: "%08X", UInt32(Date().timeIntervalSince1970))
+        let crcPrefixHex = "38C7" + "0002" + localRandom2Hex + remoteRandom1Hex + bleKeyHex + "06" + "000000000000"
+
+        guard let crcPrefixData = Data(hex: crcPrefixHex) else {
+            onLog?("BLE", "E300 auth step3 crc prefix invalid")
+            return nil
+        }
+        let crcHex = String(format: "%04X", crc16CcittFalse(crcPrefixData))
+        let finalHex = crcPrefixHex + crcHex + "00000000000000"
+
+        guard let plain = Data(hex: finalHex), plain.count == 32 else {
+            onLog?("BLE", "E300 auth step3 plain invalid len=\(finalHex.count / 2)")
+            return nil
+        }
+        guard let encrypted = aesECBNoPaddingEncrypt(plain, key: authKey), encrypted.count == 32 else {
+            onLog?("BLE", "E300 auth step3 aes encrypt failed")
+            return nil
+        }
+        return (encrypted, localRandom2Hex)
     }
 
     private func makeE300ControlFrame(config: SessionConfig, command: E300ControlCommand) -> E300ControlFrameBuildResult? {
@@ -546,16 +619,16 @@ final class VehicleBLEManager: NSObject {
     }
 
     private func e300ControlKeyData(config: SessionConfig) -> (key: Data, source: String)? {
-        if let controlKeyHex = config.controlAes128Key?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !controlKeyHex.isEmpty,
-           let key = Data(hex: controlKeyHex), key.count == 16 {
-            return (key, "controlAes128Key")
+        if let runtime = runtimeControlAes128KeyHex,
+           let key = Data(hex: runtime), key.count == 16 {
+            return (key, "runtimeControlAes128Key")
         }
-        guard let masterKey = Data(hex: config.masterKey), masterKey.count == 16,
-              let random = Data(hex: config.keyMasterRandom), random.count == 16 else {
-            return nil
+        if let preset = config.controlAes128Key?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !preset.isEmpty,
+           let key = Data(hex: preset), key.count == 16 {
+            return (key, "presetControlAes128Key")
         }
-        return (masterKey.xor(with: random), "masterKey XOR keyMasterRandom")
+        return nil
     }
 
     private func e300BleKeyHex(config: SessionConfig) -> String? {
@@ -571,6 +644,7 @@ final class VehicleBLEManager: NSObject {
         return String(format: "%08X", value)
     }
 
+    /// Legacy wrapped49 helper. Not used by current official E300 auth/control path.
     private func wrapBLEFrame(_ encrypted: Data) -> Data {
         var frame = Data([0xAA])
         let length = UInt16(encrypted.count).bigEndian
@@ -631,6 +705,7 @@ final class VehicleBLEManager: NSObject {
     private func handleAuthNotification(_ data: Data) {
         func failAuth(_ reason: String, detail: String) {
             state = .authFailed(reason)
+            authStage = .idle
             onLog?("BLE", detail)
             if currentConnectionSource == .bound {
                 onLog?("BLE", "bound auth failed, fallback wide scan | \(reason)")
@@ -638,40 +713,64 @@ final class VehicleBLEManager: NSObject {
             }
         }
 
-        guard let config,
-              let aesKey = Data(hex: config.masterKey), aesKey.count == 16,
-              let nonce = Data(hex: config.keyMasterRandom), nonce.count == 16,
-              let expectedKeyId = parseUInt32(config.keyId) else {
-            failAuth("鉴权配置无效", detail: "auth response skipped: invalid config")
+        guard let config else {
+            failAuth("鉴权配置无效", detail: "E300 auth response skipped: config missing")
             return
         }
-        guard let encrypted = extractEncryptedPayload(from: data),
-              let plain = aesECBDecrypt(encrypted, key: aesKey),
-              plain.count >= 28 else {
-            failAuth("鉴权响应解密失败", detail: "auth response decrypt failed")
+
+        guard let response = parseE300AuthResponse(data, config: config) else {
+            failAuth("鉴权响应解析失败", detail: "E300 auth response parse failed")
             return
         }
-        let keyId = plain.readUInt32BE(at: 0)
-        let echoedNonce = plain.subdata(in: 8..<24)
-        let crc = plain.readUInt32BE(at: 24)
-        let payload = Data(plain.prefix(24))
-        let calculatedCRC = crc32(payload)
-        guard keyId == expectedKeyId else {
-            failAuth("keyId 不匹配", detail: "auth failed keyId expected=\(expectedKeyId) got=\(keyId)")
+
+        if response.serviceId == 0xA857 && response.subfunction == 0x0001 {
+            guard let remoteRandom1Hex = response.randomDataHex, remoteRandom1Hex.count == 8 else {
+                failAuth("A857/0001 randomData1 无效", detail: "E300 auth failed invalid A857/0001 random1")
+                return
+            }
+            runtimeAuthRandom1RemoteHex = remoteRandom1Hex
+
+            guard let (frame, localRandom2Hex) = makeAuthChallengeReplyFrame(config: config, remoteRandom1Hex: remoteRandom1Hex),
+                  let peripheral = discoveredPeripheral,
+                  let authWriteCharacteristic else {
+                failAuth("38C7/0002 构造失败", detail: "E300 auth failed build 38C7/0002")
+                return
+            }
+
+            runtimeAuthRandom2LocalHex = localRandom2Hex
+            authStage = .waitingAuthorizeConfirm(localRandom2Hex: localRandom2Hex, remoteRandom1Hex: remoteRandom1Hex)
+            onLog?("BLE", "E300 auth step2 recv A857/0001 random1=\(remoteRandom1Hex)")
+            onLog?("BLE", "E300 auth step3 send 38C7/0002 random2=\(localRandom2Hex)")
+            peripheral.writeValue(frame, for: authWriteCharacteristic, type: .withResponse)
             return
         }
-        guard echoedNonce == nonce else {
-            failAuth("nonce 不匹配", detail: "auth failed nonce mismatch")
+
+        if response.serviceId == 0xA857 && response.subfunction == 0x0002 {
+            guard let localRandom2Hex = runtimeAuthRandom2LocalHex,
+                  let remoteRandom1Hex = runtimeAuthRandom1RemoteHex,
+                  let returnedRandom2Hex = response.randomDataHex else {
+                failAuth("A857/0002 状态不完整", detail: "E300 auth failed incomplete A857/0002 state")
+                return
+            }
+            guard returnedRandom2Hex == localRandom2Hex else {
+                failAuth("random2 不匹配", detail: "E300 auth failed random2 local=\(localRandom2Hex) remote=\(returnedRandom2Hex)")
+                return
+            }
+
+            runtimeControlAes128KeyHex = remoteRandom1Hex + localRandom2Hex + remoteRandom1Hex + localRandom2Hex
+            authStage = .idle
+            state = .authenticated
+            onLog?("BLE", "E300 auth success random1=\(remoteRandom1Hex) random2=\(localRandom2Hex) source=\(connectionSourceText)")
+            onLog?("BLE", "runtimeControlAes128Key ready len=\(runtimeControlAes128KeyHex?.count ?? 0)")
+            if let keyId = parseUInt32(config.keyId) {
+                persistBindingAfterAuthSuccess(config: config, keyId: keyId)
+            }
+            startRSSILoop()
             return
         }
-        guard crc == calculatedCRC else {
-            failAuth("CRC32 不匹配", detail: "auth failed crc expected=\(String(format: "%08X", calculatedCRC)) got=\(String(format: "%08X", crc))")
-            return
-        }
-        state = .authenticated
-        onLog?("BLE", "auth success keyId=\(keyId) source=\(connectionSourceText)")
-        persistBindingAfterAuthSuccess(config: config, keyId: keyId)
-        startRSSILoop()
+
+        let plainPreview = response.plainHex.map { String($0.prefix(32)) } ?? "--"
+        onLog?("BLE", "ignore auth notify service=\(String(format: "%04X", response.serviceId)) sub=\(String(format: "%04X", response.subfunction)) rawLen=\(response.rawHex.count / 2) plain=\(plainPreview)")
     }
 
     private func fallbackToWideScanAfterBoundFailure() {
@@ -686,6 +785,10 @@ final class VehicleBLEManager: NSObject {
         notify181AReady = false
         notify182AReady = false
         didSendAuthFrame = false
+        authStage = .idle
+        runtimeAuthRandom1RemoteHex = nil
+        runtimeAuthRandom2LocalHex = nil
+        runtimeControlAes128KeyHex = nil
         authWriteCharacteristic = nil
         controlWriteCharacteristic = nil
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
@@ -725,16 +828,58 @@ final class VehicleBLEManager: NSObject {
         return Data(manufacturerData.suffix(6)).hexString
     }
 
-    private func extractEncryptedPayload(from frame: Data) -> Data? {
-        guard frame.count >= 38 else { return nil }
-        if frame.first == 0xAA {
+    private func extractAuthPayload(from frame: Data) -> Data? {
+        guard !frame.isEmpty else { return nil }
+        if frame.first == 0xAA, frame.count >= 5 {
             let length = Int(UInt16(frame[1]) << 8 | UInt16(frame[2]))
             let start = 3
             let end = start + length
             guard end <= frame.count else { return nil }
             return frame.subdata(in: start..<end)
         }
+        if frame.first == 0x00, frame.count > 1 {
+            let stripped = frame.subdata(in: 1..<frame.count)
+            if stripped.count % 16 == 0 || (stripped.count >= 2 && stripped.readUInt16BE(at: 0) == 0xA857) {
+                return stripped
+            }
+        }
         return frame
+    }
+
+    private func parseE300AuthResponse(_ data: Data, config: SessionConfig) -> E300AuthResponse? {
+        guard let payload = extractAuthPayload(from: data) else { return nil }
+        let rawHex = data.hexString
+        var source = payload
+        var plainHex: String?
+
+        if let authKey = e300AuthKeyData(config: config),
+           payload.count % 16 == 0,
+           let decrypted = aesECBNoPaddingDecrypt(payload, key: authKey),
+           decrypted.count >= 17 {
+            let sid = decrypted.readUInt16BE(at: 0)
+            let sub = decrypted.readUInt16BE(at: 2)
+            if sid == 0xA857 && (sub == 0x0001 || sub == 0x0002) {
+                source = decrypted
+                plainHex = decrypted.hexString
+            }
+        }
+
+        guard source.count >= 17 else { return nil }
+        let serviceId = source.readUInt16BE(at: 0)
+        let subfunction = source.readUInt16BE(at: 2)
+        let randomDataHex = source.count >= 12 ? source.subdata(in: 8..<12).hexString : nil
+        let bleKeyHex = source.count >= 16 ? source.subdata(in: 12..<16).hexString : nil
+        let payloadLength = source.count >= 17 ? source[16] : nil
+
+        return E300AuthResponse(
+            serviceId: serviceId,
+            subfunction: subfunction,
+            randomDataHex: randomDataHex,
+            bleKeyHex: bleKeyHex,
+            payloadLength: payloadLength,
+            rawHex: rawHex,
+            plainHex: plainHex
+        )
     }
 
     private func handleControlNotification(_ data: Data) {
@@ -1188,7 +1333,8 @@ extension VehicleBLEManager: CBPeripheralDelegate {
         }
         let data = characteristic.value ?? Data()
         let hex = data.map { String(format: "%02X", $0) }.joined()
-        onLog?("BLE", "notify uuid=\(characteristic.uuid.uuidString) len=\(data.count) hex=\(hex)")
+        let hexPreview = String(hex.prefix(64))
+        onLog?("BLE", "notify uuid=\(characteristic.uuid.uuidString) len=\(data.count) hex=\(hexPreview)")
         if characteristic.uuid == authNotify {
             handleAuthNotification(data)
         } else if characteristic.uuid == controlNotify {

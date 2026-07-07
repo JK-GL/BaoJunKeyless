@@ -318,7 +318,11 @@ final class SGMWApiClient {
     func queryBleKeyResult(accessToken: String, vin: String, phone: String, completion: @escaping (Result<[String: String], SGMWApiError>) -> Void) {
         apiCallResult(
             endpoint: "car/control/ble/key/query",
-            body: ["vin": vin, "userId": phone],
+            body: [
+                "vin": vin,
+                "userId": phone,
+                "mobile": phone
+            ],
             accessToken: accessToken
         ) { result in
             switch result {
