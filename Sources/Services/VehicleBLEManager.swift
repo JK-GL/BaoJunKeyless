@@ -1,6 +1,7 @@
 import Foundation
 import CoreBluetooth
 import CommonCrypto
+import Security
 
 final class VehicleBLEManager: NSObject {
     enum BLEControlError: LocalizedError {
@@ -70,9 +71,13 @@ final class VehicleBLEManager: NSObject {
         let receivedAt: Date
 
         var isSuccess: Bool {
-            if let crcCheckPassed, crcCheckPassed == false { return false }
-            if let responseErrorCodeHex { return responseErrorCodeHex == "00000000" }
-            return responseType == 1
+            if crcCheckPassed == false { return false }
+            guard responseServiceId == 0xA956,
+                  responseSubfunction == 0x0001,
+                  responseErrorCodeHex == "00000000" else {
+                return false
+            }
+            return true
         }
 
         var displayDetail: String {
@@ -229,7 +234,7 @@ final class VehicleBLEManager: NSObject {
 
     var canSendVehicleControl: Bool {
         if case .authenticated = state {
-            return controlWriteCharacteristic != nil
+            return controlWriteCharacteristic != nil && notify182AReady
         }
         return false
     }
@@ -462,6 +467,12 @@ final class VehicleBLEManager: NSObject {
             completion(.failure(.writeCharacteristicMissing))
             return
         }
+        guard notify182AReady else {
+            lastControlError = .writeCharacteristicMissing
+            onLog?("BLE", "E300 control blocked: 2A7F notify not ready")
+            completion(.failure(.writeCharacteristicMissing))
+            return
+        }
         let hasPresetControlKey = !(config.controlAes128Key?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
         guard runtimeControlAes128KeyHex != nil || hasPresetControlKey else {
             lastControlError = .notAuthenticated
@@ -565,7 +576,7 @@ final class VehicleBLEManager: NSObject {
             return nil
         }
 
-        let localRandom2Hex = String(format: "%08X", UInt32(Date().timeIntervalSince1970))
+        let localRandom2Hex = makeRandomUInt32Hex()
         let crcPrefixHex = "38C7" + "0002" + localRandom2Hex + remoteRandom1Hex + bleKeyHex + "06" + "000000000000"
 
         guard let crcPrefixData = Data(hex: crcPrefixHex) else {
@@ -595,8 +606,7 @@ final class VehicleBLEManager: NSObject {
             onLog?("BLE", "E300 bleKey invalid")
             return nil
         }
-        let now = UInt32(Date().timeIntervalSince1970)
-        let randomDataHex = String(format: "%08X", now)
+        let randomDataHex = makeRandomUInt32Hex()
         let serviceIdHex = String(format: "%04X", command.serviceId)
         let subfunctionHex = String(format: "%04X", command.subfunction)
         let crcPrefixHex = serviceIdHex + subfunctionHex + "00000000" + randomDataHex + bleKeyHex + "06" + command.controlDataHex
@@ -640,6 +650,10 @@ final class VehicleBLEManager: NSObject {
     }
 
     private func e300BleKeyHex(config: SessionConfig) -> String? {
+        if let value = parseUInt32(config.keyId) {
+            return String(format: "%08X", value)
+        }
+
         if let bleKey = config.bleKey?.trimmingCharacters(in: .whitespacesAndNewlines), !bleKey.isEmpty {
             let raw = bleKey
                 .replacingOccurrences(of: " ", with: "")
@@ -648,8 +662,8 @@ final class VehicleBLEManager: NSObject {
             guard raw.allSatisfy({ UInt8(String($0), radix: 16) != nil }) else { return nil }
             return String(raw.suffix(8)).leftPadded(to: 8, with: "0")
         }
-        guard let value = parseUInt32(config.keyId) else { return nil }
-        return String(format: "%08X", value)
+
+        return nil
     }
 
     /// Legacy wrapped49 helper. Not used by current official E300 auth/control path.
@@ -895,6 +909,7 @@ final class VehicleBLEManager: NSObject {
         let plain = decryptControlNotificationData(data)
         let parsed = parseE300ControlResponse(plain)
         let pending = pendingControl
+
         let receipt = BLEControlReceipt(
             commandTitle: pending?.command.title ?? "未知BLE控制",
             requestServiceId: pending?.serviceId ?? 0,
@@ -914,15 +929,46 @@ final class VehicleBLEManager: NSObject {
             decryptedHex: plain?.hexString,
             receivedAt: Date()
         )
-        let context = pending.map { "pending=\($0.command.title) serviceId=\(String(format: "%04X", $0.serviceId)) sub=\(String(format: "%04X", $0.subfunction))" } ?? "no pending control context"
+
+        let context = pending.map {
+            "pending=\($0.command.title) serviceId=\(String(format: "%04X", $0.serviceId)) sub=\(String(format: "%04X", $0.subfunction)) random=\($0.randomDataHex)"
+        } ?? "no pending control context"
+
         onLog?("BLE", "E300 control notify received | \(context) | \(receipt.displayDetail)")
         onControlReceipt?(receipt)
-        if receipt.isSuccess {
+
+        guard let pending else {
+            onLog?("BLE", "E300 control notify ignored: no pending | \(receipt.displayDetail)")
+            return
+        }
+
+        let responseMatchesRequest =
+            parsed.serviceId == 0xA956 &&
+            parsed.subfunction == 0x0001 &&
+            parsed.randomDataHex?.uppercased() == pending.randomDataHex.uppercased()
+
+        let crcOK = parsed.crcCheckPassed != false
+        let errorOK = parsed.errorCodeHex == "00000000"
+
+        if responseMatchesRequest && crcOK && errorOK {
             let serviceText = parsed.serviceId.map { String(format: "%04X", $0) } ?? "--"
-            onLog?("BLE", "E300 control success service=\(serviceText) errorCode=\(parsed.errorCodeHex ?? "--") crc=\(parsed.crcCheckPassed.map { $0 ? "1" : "0" } ?? "--")")
+            onLog?(
+                "BLE",
+                "E300 control success service=\(serviceText) random=\(parsed.randomDataHex ?? "--") errorCode=\(parsed.errorCodeHex ?? "--") crc=\(parsed.crcCheckPassed.map { $0 ? "1" : "0" } ?? "--")"
+            )
             completePendingControl(.success(()))
-        } else {
+        } else if responseMatchesRequest {
+            onLog?(
+                "BLE",
+                "E300 control rejected random=\(parsed.randomDataHex ?? "--") errorCode=\(parsed.errorCodeHex ?? "--") crc=\(parsed.crcCheckPassed.map { $0 ? "1" : "0" } ?? "--")"
+            )
             completePendingControl(.failure(.controlRejected(receipt.displayDetail)))
+        } else {
+            onLog?(
+                "BLE",
+                "E300 control notify ignored: random mismatch | pendingRandom=\(pending.randomDataHex) responseRandom=\(parsed.randomDataHex ?? "--") service=\(parsed.serviceId.map { String(format: "%04X", $0) } ?? "--")"
+            )
+            // 不完成 pending，继续等待正确 ACK 或超时。
         }
     }
 
@@ -949,17 +995,33 @@ final class VehicleBLEManager: NSObject {
     }
 
     private func parseE300ControlResponse(_ data: Data?) -> E300ControlResponse {
-        guard let data, data.count >= 14 else {
-            return E300ControlResponse(serviceId: nil, subfunction: nil, randomDataHex: nil, payloadLength: nil, errorCodeHex: nil, responseType: nil, crcCheckPassed: nil)
+        guard let data, data.count >= 13 else {
+            return E300ControlResponse(
+                serviceId: nil,
+                subfunction: nil,
+                randomDataHex: nil,
+                payloadLength: nil,
+                errorCodeHex: nil,
+                responseType: nil,
+                crcCheckPassed: nil
+            )
         }
-        let serviceId = data.count >= 2 ? data.readUInt16BE(at: 0) : nil
-        let subfunction = data.count >= 4 ? data.readUInt16BE(at: 2) : nil
-        let randomDataHex = data.count >= 8 ? data.subdata(in: 4..<8).hexString : nil
-        let payloadLength = data.count >= 9 ? data[8] : nil
-        // A956/0001 实车规格：0x08=payloadLength, 0x09=reserved, 0x0A-0x0D=errorCode
-        let errorCodeHex = data.count >= 14 ? data.subdata(in: 10..<14).hexString : nil
-        let responseType: UInt8? = errorCodeHex == "00000000" ? 1 : 0
-        let crcCheckPassed = data.count >= 2 ? (crc16CcittFalse(data) == 0) : nil
+
+        let serviceId = data.readUInt16BE(at: 0)
+        let subfunction = data.readUInt16BE(at: 2)
+        let randomDataHex = data.subdata(in: 4..<8).hexString
+        let payloadLength = data[8]
+
+        // A956/0001 官方实车规格：
+        // byte[0..<2]  = serviceId
+        // byte[2..<4]  = subfunction
+        // byte[4..<8]  = randomData，必须回显本次控制帧 random
+        // byte[8]      = payloadLength，实车控制 ACK 为 0x04
+        // byte[9..<13] = errorCode，00000000 表示控制成功
+        let errorCodeHex = data.subdata(in: 9..<13).hexString
+        let responseType: UInt8 = errorCodeHex == "00000000" ? 1 : 0
+        let crcCheckPassed = crc16CcittFalse(data) == 0
+
         return E300ControlResponse(
             serviceId: serviceId,
             subfunction: subfunction,
@@ -1097,8 +1159,20 @@ private extension FixedWidthInteger {
     }
 }
 
+private func makeRandomUInt32Hex() -> String {
+    var value: UInt32 = 0
+    let status = SecRandomCopyBytes(kSecRandomDefault, MemoryLayout<UInt32>.size, &value)
+    if status == errSecSuccess {
+        return String(format: "%08X", UInt32(bigEndian: value))
+    }
+    return String(format: "%08X", UInt32.random(in: UInt32.min...UInt32.max))
+}
+
 private func parseUInt32(_ string: String) -> UInt32? {
-    let cleaned = string.trimmingCharacters(in: .whitespacesAndNewlines)
+    var cleaned = string.trimmingCharacters(in: .whitespacesAndNewlines)
+    if cleaned.lowercased().hasPrefix("0x") {
+        cleaned.removeFirst(2)
+    }
     if let value = UInt32(cleaned) {
         return value
     }
