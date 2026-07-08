@@ -377,6 +377,14 @@ final class VehicleBLEManager: NSObject {
         central.stopScan()
         scanWatchdogWorkItem?.cancel()
         scanWatchdogWorkItem = nil
+
+        if peripheral.state == .connected {
+            state = .connecting
+            onLog?("BLE", "bound peripheral already connected, discover services: \(peripheral.name ?? binding.peripheralName)")
+            peripheral.discoverServices(nil)
+            return true
+        }
+
         state = .connecting
         onLog?("BLE", "connecting bound peripheral name=\(binding.peripheralName) id=\(binding.shortIdentifier) keyId=\(binding.keyId) macSuffix=\(binding.bleMacSuffix)")
         central.connect(peripheral, options: nil)
@@ -910,6 +918,8 @@ final class VehicleBLEManager: NSObject {
         onLog?("BLE", "E300 control notify received | \(context) | \(receipt.displayDetail)")
         onControlReceipt?(receipt)
         if receipt.isSuccess {
+            let serviceText = parsed.serviceId.map { String(format: "%04X", $0) } ?? "--"
+            onLog?("BLE", "E300 control success service=\(serviceText) errorCode=\(parsed.errorCodeHex ?? "--") crc=\(parsed.crcCheckPassed.map { $0 ? "1" : "0" } ?? "--")")
             completePendingControl(.success(()))
         } else {
             completePendingControl(.failure(.controlRejected(receipt.displayDetail)))
@@ -939,14 +949,15 @@ final class VehicleBLEManager: NSObject {
     }
 
     private func parseE300ControlResponse(_ data: Data?) -> E300ControlResponse {
-        guard let data, data.count >= 13 else {
+        guard let data, data.count >= 14 else {
             return E300ControlResponse(serviceId: nil, subfunction: nil, randomDataHex: nil, payloadLength: nil, errorCodeHex: nil, responseType: nil, crcCheckPassed: nil)
         }
         let serviceId = data.count >= 2 ? data.readUInt16BE(at: 0) : nil
         let subfunction = data.count >= 4 ? data.readUInt16BE(at: 2) : nil
         let randomDataHex = data.count >= 8 ? data.subdata(in: 4..<8).hexString : nil
         let payloadLength = data.count >= 9 ? data[8] : nil
-        let errorCodeHex = data.count >= 13 ? data.subdata(in: 9..<13).hexString : nil
+        // A956/0001 实车规格：0x08=payloadLength, 0x09=reserved, 0x0A-0x0D=errorCode
+        let errorCodeHex = data.count >= 14 ? data.subdata(in: 10..<14).hexString : nil
         let responseType: UInt8? = errorCodeHex == "00000000" ? 1 : 0
         let crcCheckPassed = data.count >= 2 ? (crc16CcittFalse(data) == 0) : nil
         return E300ControlResponse(
