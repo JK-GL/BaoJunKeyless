@@ -30,6 +30,12 @@ struct KeylessMainSection: View {
                         set: { if $0 { setMode(.manual) } else { settingsStore.settings.appManual = false; vehicleLog.add(.keyless, "关闭前台手动") } }
                     ))
 
+                    SliderRow(icon: "magnifyingglass", label: "BLE 扫描时长",
+                              value: $settingsStore.settings.bleScanDuration, range: 20...300, step: 5,
+                              format: "\(Int(settingsStore.settings.bleScanDuration))s", tint: AppTheme.orange) { value in
+                        vehicleLog.add(.keyless, "修改BLE扫描时长", detail: "\(Int(value))s")
+                    }
+
                     SliderRow(icon: "gauge", label: "重复指令间隔",
                               value: $settingsStore.settings.cmdInterval, range: 1...15, step: 1,
                               format: "\(Int(settingsStore.settings.cmdInterval))s", tint: AppTheme.purple) { value in
@@ -151,12 +157,6 @@ struct LockSettingsSection: View {
                     }
 
                     ToggleRow(icon: "bell.fill", label: "上锁弹窗", isOn: $settingsStore.settings.lockPopup)
-
-                    SliderRow(icon: "magnifyingglass", label: "扫描时长",
-                              value: $settingsStore.settings.bleScanDuration, range: 20...300, step: 5,
-                              format: "\(Int(settingsStore.settings.bleScanDuration))s", tint: Color.orange) { value in
-                        vehicleLog.add(.keyless, "修改BLE扫描时长", detail: "\(Int(value))s")
-                    }
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }

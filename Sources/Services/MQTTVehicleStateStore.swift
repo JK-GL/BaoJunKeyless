@@ -170,12 +170,13 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             guard let self else { return }
             switch state {
             case .idle:
+                let macSuffix = self.deviceDisplayName
                 if self.bleStatus == .scanning {
                     let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
-                    self.vehicleEventLogStore.add(.action, "BLE 扫描超时", detail: "已扫描 \(duration)，未发现设备")
+                    self.vehicleEventLogStore.add(.action, "BLE 扫描超时", detail: "\(macSuffix) · 已扫描 \(duration)，未发现设备")
                 } else if self.bleStatus == .connecting || self.bleStatus == .authenticating || self.bleStatus == .authenticated {
                     let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
-                    self.vehicleEventLogStore.add(.action, "BLE 已断开", detail: "扫描耗时 \(duration)")
+                    self.vehicleEventLogStore.add(.action, "BLE 已断开", detail: "\(macSuffix) · 扫描耗时 \(duration)")
                 }
                 self.bleStatus = .disconnected
                 self.bleScanStartedAt = nil
@@ -193,12 +194,14 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 }
                 if self.bleStatus != .scanning {
                     let timeout = Int(self.keylessSettingsStore.settings.bleScanDuration)
-                    self.vehicleEventLogStore.add(.action, "BLE 扫描中", detail: "最长扫描 \(timeout)s")
+                    let macSuffix = self.deviceDisplayName
+                    self.vehicleEventLogStore.add(.action, "BLE 扫描中", detail: "目标设备 \(macSuffix) · 最长扫描 \(timeout)s")
                 }
                 self.bleStatus = .scanning
             case .connecting, .connected:
                 if self.bleStatus != .connecting {
-                    self.vehicleEventLogStore.add(.action, "BLE 已连接", detail: "发现服务与特征中")
+                    let macSuffix = self.deviceDisplayName
+                    self.vehicleEventLogStore.add(.action, "BLE 已连接", detail: "\(macSuffix) · 发现服务与特征中")
                 }
                 self.bleStatus = .connecting
             case .authenticating:
@@ -1173,5 +1176,23 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         let minutes = elapsed / 60
         let seconds = elapsed % 60
         return "\(minutes)m\(seconds)s"
+    }
+
+    private var deviceDisplayName: String {
+        let mac = latestBleKeyInfo["bleMac"] ?? latestBleKeyInfo["macAddress"] ?? ""
+        let name = latestBleKeyInfo["bleName"] ?? "E260-BLE"
+        let suffix = mac.filter { $0.isLetter || $0.isNumber }.suffix(6)
+        if suffix.isEmpty { return name }
+        return "\(name) ···\(suffix)"
+    }
+
+    func toggleBLEScanning() {
+        if bleStatus == .scanning || bleStatus == .connecting || bleStatus == .authenticating {
+            bleManager.stop()
+            vehicleEventLogStore.add(.action, "BLE 手动停止", detail: "用户取消扫描")
+        } else {
+            refreshBLESessionIfNeeded()
+            vehicleEventLogStore.add(.action, "BLE 手动扫描", detail: "用户触发扫描")
+        }
     }
 }

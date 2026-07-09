@@ -393,6 +393,14 @@ struct StatusView: View {
             )
         } actions: {
             VStack(spacing: 8) {
+                let isScanning = liveBLEStatus == .scanning || liveBLEStatus == .connecting || liveBLEStatus == .authenticating
+                FloatingPopupPrimaryButton(
+                    title: isScanning ? "停止扫描" : "开始扫描",
+                    color: isScanning ? AppTheme.red : AppTheme.accent
+                ) {
+                    mqttStore?.toggleBLEScanning()
+                    withAnimation(PopupMotion.dismissEase) { isVehicleInfoFloatingPresented = false }
+                }
                 FloatingPopupPrimaryButton(title: "刷新信息", color: AppTheme.accent) {
                     mqttStore?.refreshNow()
                 }
