@@ -229,9 +229,9 @@ final class VehicleBLEManager: NSObject {
     private(set) var state: State = .idle {
         didSet {
             guard oldValue != state else { return }
+            let newState = state
             DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.onStateChange?(self.state)
+                self?.onStateChange?(newState)
             }
         }
     }

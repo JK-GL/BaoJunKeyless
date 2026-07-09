@@ -113,6 +113,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     private var phoneFarAwaySince: Date?
     private var bleScanStartedAt: Date?
     private var hasCompletedBLEAuth = false
+    private var userManuallyStoppedBLE = false
     private var lastAutoCommandAt: Date?
     private var lastAutoCommandKind: VehicleCommandKind?
     private var lastBLEWaitCommandKind: VehicleCommandKind?
@@ -285,6 +286,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             }
             return
         }
+        guard !userManuallyStoppedBLE else { return }
         let bleMac = latestBleKeyInfo["bleMac"] ?? latestBleKeyInfo["macAddress"] ?? ""
         let keyId = latestBleKeyInfo["keyId"] ?? ""
         let masterKey = latestBleKeyInfo["masterKey"] ?? ""
@@ -312,6 +314,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             guard let self else { return }
             self.isAppInForeground = true
             self.didLogManualForegroundSkip = false
+            self.userManuallyStoppedBLE = false
+            self.refreshBLESessionIfNeeded()
         }
         backgroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
@@ -358,6 +362,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         phoneFarAwaySince = nil
         bleScanStartedAt = nil
         hasCompletedBLEAuth = false
+        userManuallyStoppedBLE = false
         didLogManualForegroundSkip = false
         lastBLEWaitCommandKind = nil
         bleSignalLossWorkItem?.cancel()
@@ -523,6 +528,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     private func autoConnect() {
+        userManuallyStoppedBLE = false
         // 离线 BLE：即使没有 token/网络，只要缓存了 BLE key 且无感开启，就走纯 BLE
         if keylessSettingsStore.settings.keylessEnabled || AppDiagnosticsSettings.vehicleControlRouteMode == .forceBLE {
             if let cached = VehicleBLEKeyCacheStore.load(), !cached.isEmpty {
@@ -897,9 +903,6 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             if let cached = VehicleBLEKeyCacheStore.load(), !cached.isEmpty {
                 self.latestBleKeyInfo = cached
                 self.refreshBLESessionIfNeeded()
-                if self.bleStatus != .authenticated {
-                    self.bleStatus = .disconnected
-                }
             }
             return
         }
@@ -911,18 +914,12 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                     if let cached = VehicleBLEKeyCacheStore.load(), !cached.isEmpty {
                         self.latestBleKeyInfo = cached
                         self.refreshBLESessionIfNeeded()
-                        if self.bleStatus != .authenticated {
-                            self.bleStatus = .disconnected
-                        }
                     }
                     return
                 }
                 VehicleBLEKeyCacheStore.save(info)  // 写盘，支持下次离线
                 self.latestBleKeyInfo = info
                 self.refreshBLESessionIfNeeded()
-                if self.bleStatus != .authenticated {
-                    self.bleStatus = .disconnected
-                }
                 var dash = self.dashboard
                 dash.bleMacText = info["bleMac"] ?? info["macAddress"] ?? dash.bleMacText
                 dash.keyIdText = info["keyId"] ?? dash.keyIdText
@@ -1138,9 +1135,6 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         if VehicleHTTPMetaMapper.supportsMQTT(carInfo: carInfo) {
             authStatus = .valid
         }
-        if !latestBleKeyInfo.isEmpty, bleStatus == .connecting {
-            bleStatus = .disconnected
-        }
         applyDashboard(dash)
 
         let profile = VehicleHTTPMetaMapper.profile(carInfo: carInfo, carStatus: carStatus)
@@ -1224,10 +1218,12 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     func toggleBLEScanning() {
         let isActive = bleStatus == .scanning || bleStatus == .connecting || bleStatus == .authenticating || bleStatus == .authenticated
         if isActive {
+            userManuallyStoppedBLE = true
             bleStatus = .disconnected
             bleManager.stop()
             vehicleEventLogStore.add(.action, "BLE 手动停止", detail: "用户取消扫描")
         } else {
+            userManuallyStoppedBLE = false
             bleStatus = .scanning
             refreshBLESessionIfNeeded()
             vehicleEventLogStore.add(.action, "BLE 手动扫描", detail: "用户触发扫描")
