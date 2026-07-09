@@ -106,6 +106,9 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     private var lastUnlockDecision: KeylessDecision?
     private var lastLockDecision: KeylessDecision?
+    private var lastEvalLocked: Bool?
+    private var lastEvalNearby: Bool?
+    private var lastEvalFarAway: Bool?
     private var phoneNearbySince: Date?
     private var phoneFarAwaySince: Date?
     private var lastAutoCommandAt: Date?
@@ -312,6 +315,9 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     private func resetKeylessRuntimeState() {
         lastUnlockDecision = nil
         lastLockDecision = nil
+        lastEvalLocked = nil
+        lastEvalNearby = nil
+        lastEvalFarAway = nil
         phoneNearbySince = nil
         phoneFarAwaySince = nil
         didLogManualForegroundSkip = false
@@ -598,6 +604,28 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             didLogManualForegroundSkip = false
         }
         guard settings.pluginTakeover || settings.smartSwitch || settings.appManual else { return }
+
+        // 指纹去重：车锁状态 + 手机位置都没变 → 不评估
+        // 但如果有延迟计时器在跑（靠近后等待解锁/远离后等待锁车），必须继续评估以检查延迟到期
+        let hasActiveUnlockDelay = currentState.phoneNearby
+            && phoneNearbySince != nil
+            && settings.unlockEnabled
+            && settings.unlockApproachDuration > 0
+        let hasActiveLockDelay = currentState.phoneFarAway
+            && phoneFarAwaySince != nil
+            && settings.lockEnabled
+            && settings.lockDelay > 0
+        let hasActiveDelay = hasActiveUnlockDelay || hasActiveLockDelay
+        let fingerprint = (currentState.locked, currentState.phoneNearby, currentState.phoneFarAway)
+        if fingerprint == (lastEvalLocked, lastEvalNearby, lastEvalFarAway) && !hasActiveDelay {
+            return
+        }
+        lastEvalLocked = fingerprint.0
+        lastEvalNearby = fingerprint.1
+        lastEvalFarAway = fingerprint.2
+
+        // 状态过期 → 不评估，不记日志
+        guard currentState.isFresh() else { return }
 
         if currentState.phoneNearby {
             if phoneNearbySince == nil {
