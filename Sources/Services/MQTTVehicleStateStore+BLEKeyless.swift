@@ -106,6 +106,7 @@ extension MQTTVehicleStateStore {
             bleManager.stop()
             vehicleEventLogStore.add(.action, "BLE 手动停止", detail: "用户取消扫描")
         } else {
+            consecutiveScanTimeouts = 0
             userManuallyStoppedBLE = false
             ensureBLESession(forceRestart: true, optimisticScanning: true)
             vehicleEventLogStore.add(.action, "BLE 手动扫描", detail: "用户触发扫描")

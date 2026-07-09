@@ -64,17 +64,47 @@ struct VehicleEventLogEntry: Identifiable, Codable, Equatable {
     let category: VehicleEventLogCategory
     let title: String
     let detail: String
+    let repeatCount: Int
 
-    init(id: UUID = UUID(), date: Date = Date(), category: VehicleEventLogCategory, title: String, detail: String = "") {
+    init(id: UUID = UUID(), date: Date = Date(), category: VehicleEventLogCategory, title: String, detail: String = "", repeatCount: Int = 1) {
         self.id = id
         self.date = date
         self.category = category
         self.title = title
         self.detail = detail
+        self.repeatCount = max(1, repeatCount)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, date, category, title, detail, repeatCount
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        date = try c.decode(Date.self, forKey: .date)
+        category = try c.decode(VehicleEventLogCategory.self, forKey: .category)
+        title = try c.decode(String.self, forKey: .title)
+        detail = try c.decodeIfPresent(String.self, forKey: .detail) ?? ""
+        repeatCount = max(1, try c.decodeIfPresent(Int.self, forKey: .repeatCount) ?? 1)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(date, forKey: .date)
+        try c.encode(category, forKey: .category)
+        try c.encode(title, forKey: .title)
+        try c.encode(detail, forKey: .detail)
+        try c.encode(repeatCount, forKey: .repeatCount)
     }
 
     var timeText: String {
         AppDateFormatters.logTime.string(from: date)
+    }
+
+    var displayTitle: String {
+        repeatCount > 1 ? "\(title) ×\(repeatCount)" : title
     }
 }
 
@@ -87,6 +117,7 @@ final class VehicleEventLogStore: ObservableObject {
     private let maxEntries = 500
     private let saveQueue = DispatchQueue(label: "BaoJunKeyless.VehicleEventLogStore.save", qos: .utility)
     private var recentEventTimestamps: [String: Date] = [:]
+    private var entryTokens: [UUID: String] = [:]
 
     init() {
         load()
@@ -96,11 +127,8 @@ final class VehicleEventLogStore: ObservableObject {
     }
 
     func add(_ category: VehicleEventLogCategory, _ title: String, detail: String = "") {
-        entries.insert(VehicleEventLogEntry(category: category, title: title, detail: detail), at: 0)
-        if entries.count > maxEntries {
-            entries = Array(entries.prefix(maxEntries))
-        }
-        save()
+        let token = eventToken(category: category, title: title, detail: detail, identity: nil)
+        insertEntry(VehicleEventLogEntry(category: category, title: title, detail: detail), token: token)
     }
 
     func addThrottled(
@@ -111,18 +139,48 @@ final class VehicleEventLogStore: ObservableObject {
         minimumInterval: TimeInterval = 2
     ) {
         let now = Date()
-        let token = [category.rawValue, title, identity ?? detail].joined(separator: "|")
+        let token = eventToken(category: category, title: title, detail: detail, identity: identity)
         if let last = recentEventTimestamps[token], now.timeIntervalSince(last) < minimumInterval {
             return
         }
         recentEventTimestamps[token] = now
         pruneRecentEventIndex(now: now)
-        add(category, title, detail: detail)
+        insertEntry(VehicleEventLogEntry(category: category, title: title, detail: detail), token: token)
+    }
+
+    func addCoalesced(
+        _ category: VehicleEventLogCategory,
+        _ title: String,
+        detail: String = "",
+        identity: String? = nil,
+        mergeWindow: TimeInterval = 180
+    ) {
+        let now = Date()
+        let token = eventToken(category: category, title: title, detail: detail, identity: identity)
+        if let index = entries.firstIndex(where: {
+            let existingToken = entryTokens[$0.id] ?? eventToken(category: $0.category, title: $0.title, detail: $0.detail, identity: nil)
+            return existingToken == token && now.timeIntervalSince($0.date) <= mergeWindow
+        }) {
+            let existing = entries.remove(at: index)
+            let updated = VehicleEventLogEntry(
+                id: existing.id,
+                date: now,
+                category: existing.category,
+                title: existing.title,
+                detail: existing.detail,
+                repeatCount: existing.repeatCount + 1
+            )
+            insertEntry(updated, token: token)
+            return
+        }
+        insertEntry(VehicleEventLogEntry(category: category, title: title, detail: detail), token: token)
     }
 
     func clearToday() {
         let calendar = Calendar.current
+        let removedIDs = Set(entries.filter { calendar.isDateInToday($0.date) }.map(\.id))
         entries.removeAll { calendar.isDateInToday($0.date) }
+        removedIDs.forEach { entryTokens.removeValue(forKey: $0) }
         recentEventTimestamps.removeAll()
         save()
     }
@@ -130,6 +188,7 @@ final class VehicleEventLogStore: ObservableObject {
     func clearAll() {
         entries.removeAll()
         recentEventTimestamps.removeAll()
+        entryTokens.removeAll()
         let key = self.key
         saveQueue.async {
             UserDefaults.standard.removeObject(forKey: key)
@@ -145,7 +204,7 @@ final class VehicleEventLogStore: ObservableObject {
         guard !entries.isEmpty else { return "" }
         return entries.map { entry in
             let detail = entry.detail.isEmpty ? "" : " | \(entry.detail)"
-            return "[\(AppDateFormatters.fullDateTime.string(from: entry.date))] [\(entry.category.title)] \(entry.title)\(detail)"
+            return "[\(AppDateFormatters.fullDateTime.string(from: entry.date))] [\(entry.category.title)] \(entry.displayTitle)\(detail)"
         }.joined(separator: "\n")
     }
 
@@ -174,6 +233,21 @@ final class VehicleEventLogStore: ObservableObject {
         }
     }
 
+    private func insertEntry(_ entry: VehicleEventLogEntry, token: String) {
+        entries.insert(entry, at: 0)
+        entryTokens[entry.id] = token
+        if entries.count > maxEntries {
+            let removed = Array(entries.dropFirst(maxEntries))
+            removed.forEach { entryTokens.removeValue(forKey: $0.id) }
+            entries = Array(entries.prefix(maxEntries))
+        }
+        save()
+    }
+
+    private func eventToken(category: VehicleEventLogCategory, title: String, detail: String, identity: String?) -> String {
+        [category.rawValue, title, identity ?? detail].joined(separator: "|")
+    }
+
     private func pruneRecentEventIndex(now: Date) {
         if recentEventTimestamps.count <= 256 { return }
         recentEventTimestamps = recentEventTimestamps.filter {
@@ -185,5 +259,8 @@ final class VehicleEventLogStore: ObservableObject {
         guard let data = UserDefaults.standard.data(forKey: key),
               let decoded = try? JSONDecoder().decode([VehicleEventLogEntry].self, from: data) else { return }
         entries = decoded.sorted { $0.date > $1.date }
+        entryTokens = Dictionary(uniqueKeysWithValues: entries.map {
+            ($0.id, eventToken(category: $0.category, title: $0.title, detail: $0.detail, identity: nil))
+        })
     }
 }

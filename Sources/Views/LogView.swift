@@ -315,7 +315,7 @@ private struct ConsoleLogRow: View {
                 Text(log.timeText)
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundStyle(Color.white.opacity(0.42))
-                    .frame(width: 48, alignment: .leading)
+                    .frame(width: 66, alignment: .leading)
 
                 Text(log.category.title)
                     .font(.system(size: 9.5, weight: .bold, design: .monospaced))
@@ -327,7 +327,7 @@ private struct ConsoleLogRow: View {
                             .fill(log.category.color.opacity(0.16))
                     )
 
-                Text(log.title)
+                Text(log.displayTitle)
                     .font(.system(size: 12.2, weight: .semibold, design: .monospaced))
                     .foregroundStyle(rowTitleColor)
                     .lineLimit(expanded ? nil : 1)
@@ -336,12 +336,8 @@ private struct ConsoleLogRow: View {
 
                 if !log.detail.isEmpty {
                     Button(action: onToggle) {
-                        HStack(spacing: 3) {
-                            Text(expanded ? "less" : "more")
-                                .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
-                            Image(systemName: expanded ? "chevron.up" : "chevron.right")
-                                .font(.system(size: 8.5, weight: .bold))
-                        }
+                        Image(systemName: expanded ? "chevron.up" : "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(Color.white.opacity(0.48))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)

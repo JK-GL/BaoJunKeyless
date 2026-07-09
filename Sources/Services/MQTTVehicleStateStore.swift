@@ -129,6 +129,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var routeModeObserver: NSObjectProtocol?
     var lastObservedKeylessEnabled: Bool?
     var hasReceivedKeylessSettings = false
+    var consecutiveScanTimeouts = 0
     var cancellables = Set<AnyCancellable>()
 
     init(

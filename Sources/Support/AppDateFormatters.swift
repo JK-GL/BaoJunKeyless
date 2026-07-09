@@ -41,7 +41,7 @@ enum AppDateFormatters {
 
     static let logTime = ThreadSafeDateFormatter {
         $0.locale = Locale(identifier: "en_US_POSIX")
-        $0.dateFormat = "HH:mm"
+        $0.dateFormat = "HH:mm:ss"
     }
 
     static let fileTimestamp = ThreadSafeDateFormatter {

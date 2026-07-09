@@ -16,8 +16,13 @@ extension MQTTVehicleStateStore {
                 }
                 let macSuffix = self.deviceDisplayName
                 if self.bleStatus == .scanning {
+                    self.consecutiveScanTimeouts += 1
                     let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
-                    self.logVehicleEvent(.action, "BLE 扫描超时", detail: "\(macSuffix) · 已扫描 \(duration)，未发现设备", identity: "scan-timeout|\(macSuffix)", minimumInterval: 6)
+                    self.vehicleEventLogStore.addCoalesced(.action, "BLE 扫描超时", detail: "\(macSuffix) · 已扫描 \(duration)，未发现设备", identity: "scan-timeout|\(macSuffix)")
+                    let retryInterval = Int(self.effectiveScanRetryInterval(baseInterval: self.keylessSettingsStore.settings.bleScanInterval))
+                    if self.consecutiveScanTimeouts == 3 || self.consecutiveScanTimeouts == 5 || self.consecutiveScanTimeouts == 7 {
+                        self.logVehicleEvent(.warning, "BLE 扫描退避", detail: "连续超时 \(self.consecutiveScanTimeouts) 次，下轮间隔 \(retryInterval)s", identity: "scan-backoff-\(retryInterval)", minimumInterval: 20)
+                    }
                 } else if self.bleStatus == .connecting || self.bleStatus == .authenticating || self.bleStatus == .authenticated {
                     let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
                     self.logVehicleEvent(.action, "BLE 已断开", detail: "\(macSuffix) · 扫描耗时 \(duration)", identity: "disconnect|\(macSuffix)", minimumInterval: 4)
@@ -38,13 +43,14 @@ extension MQTTVehicleStateStore {
                 }
                 if self.bleStatus != .scanning {
                     let timeout = Int(self.keylessSettingsStore.settings.bleScanDuration)
-                    let interval = Int(self.keylessSettingsStore.settings.bleScanInterval)
+                    let interval = Int(self.effectiveScanRetryInterval(baseInterval: self.keylessSettingsStore.settings.bleScanInterval))
                     let intervalText = interval <= 0 ? "无间隙" : "间隔 \(interval)s"
                     let macSuffix = self.deviceDisplayName
-                    self.logVehicleEvent(.action, "BLE 扫描中", detail: "\(macSuffix) · 最长 \(timeout)s · \(intervalText)", identity: "scan-start|\(macSuffix)|\(timeout)|\(interval)", minimumInterval: 4)
+                    self.vehicleEventLogStore.addCoalesced(.action, "BLE 扫描中", detail: "\(macSuffix) · 最长 \(timeout)s · \(intervalText)", identity: "scan-start|\(macSuffix)")
                 }
                 self.bleStatus = .scanning
             case .connecting, .connected:
+                self.consecutiveScanTimeouts = 0
                 if self.bleStatus != .connecting {
                     let macSuffix = self.deviceDisplayName
                     self.logVehicleEvent(.action, "BLE 已连接", detail: "\(macSuffix) · 发现服务与特征中", identity: "connecting|\(macSuffix)", minimumInterval: 3)
@@ -54,6 +60,7 @@ extension MQTTVehicleStateStore {
                 self.logVehicleEvent(.action, "BLE 鉴权中", detail: "38C7/A857 四步鉴权", identity: "authenticating", minimumInterval: 3)
                 self.bleStatus = .authenticating
             case .authenticated:
+                self.consecutiveScanTimeouts = 0
                 self.hasCompletedBLEAuth = true
                 self.logVehicleEvent(.action, "BLE 鉴权成功", detail: "可发送控车命令", identity: "authenticated", minimumInterval: 3)
                 self.bleStatus = .authenticated
@@ -116,7 +123,7 @@ extension MQTTVehicleStateStore {
             return
         }
         bleManager.scanTimeoutDuration = max(20, min(300, settings.bleScanDuration))
-        bleManager.scanRetryInterval = max(0, min(300, settings.bleScanInterval))
+        bleManager.scanRetryInterval = effectiveScanRetryInterval(baseInterval: settings.bleScanInterval)
         bleManager.start(config: .init(bleMac: bleMac, keyId: keyId, masterKey: masterKey, keyMasterRandom: keyMasterRandom, controlAes128Key: controlAes128Key, bleType: bleType, bleKey: bleKey))
     }
 
@@ -204,6 +211,7 @@ extension MQTTVehicleStateStore {
                 if settings.keylessEnabled {
                     let justEnabled = wasEnabled != true
                     if justEnabled {
+                        self.consecutiveScanTimeouts = 0
                         self.ensureBLESession(forceRestart: true, optimisticScanning: true)
                         self.vehicleEventLogStore.add(.action, "BLE 自动扫描", detail: "无感开关已开启")
                     } else {
@@ -220,5 +228,21 @@ extension MQTTVehicleStateStore {
                 }
             }
             .store(in: &cancellables)
+    }
+
+    func effectiveScanRetryInterval(baseInterval: TimeInterval) -> TimeInterval {
+        let base = max(0, min(300, baseInterval))
+        let backoff: TimeInterval
+        switch consecutiveScanTimeouts {
+        case 0...1:
+            backoff = 0
+        case 2...3:
+            backoff = 10
+        case 4...5:
+            backoff = 30
+        default:
+            backoff = 60
+        }
+        return min(300, max(base, backoff))
     }
 }
