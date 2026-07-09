@@ -633,7 +633,6 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     private func evaluateKeylessAutomation(for currentState: VehicleState) {
         let settings = keylessSettingsStore.settings
-        refreshBLESessionIfNeeded()
         guard settings.keylessEnabled else {
             resetKeylessRuntimeState()
             return
