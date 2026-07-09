@@ -528,9 +528,6 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             if let cached = VehicleBLEKeyCacheStore.load(), !cached.isEmpty {
                 latestBleKeyInfo = cached
                 refreshBLESessionIfNeeded()
-                if bleStatus != .authenticated {
-                    bleStatus = .disconnected
-                }
             }
         }
 
@@ -1226,10 +1223,13 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     func toggleBLEScanning() {
-        if bleStatus == .scanning || bleStatus == .connecting || bleStatus == .authenticating {
+        let isActive = bleStatus == .scanning || bleStatus == .connecting || bleStatus == .authenticating || bleStatus == .authenticated
+        if isActive {
+            bleStatus = .disconnected
             bleManager.stop()
             vehicleEventLogStore.add(.action, "BLE 手动停止", detail: "用户取消扫描")
         } else {
+            bleStatus = .scanning
             refreshBLESessionIfNeeded()
             vehicleEventLogStore.add(.action, "BLE 手动扫描", detail: "用户触发扫描")
         }
