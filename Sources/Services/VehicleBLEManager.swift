@@ -2,6 +2,7 @@ import Foundation
 import CoreBluetooth
 import CommonCrypto
 import Security
+import UIKit
 
 final class VehicleBLEManager: NSObject {
     enum BLEControlError: LocalizedError {
