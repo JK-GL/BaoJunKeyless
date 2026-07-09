@@ -172,7 +172,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             case .idle:
                 if self.bleStatus != .disconnected {
                     let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
-                    self.vehicleEventLogStore.add(.action, "BLE 已断开", detail: "连接结束或超时 · 本次已扫描 \(duration)")
+                    self.vehicleEventLogStore.add(.action, "BLE 已断开", detail: "扫描耗时 \(duration)")
                 }
                 self.bleStatus = .disconnected
                 self.bleScanStartedAt = nil
@@ -188,12 +188,15 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 if self.bleScanStartedAt == nil {
                     self.bleScanStartedAt = Date()
                 }
-                let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
-                self.vehicleEventLogStore.add(.action, "BLE 扫描中", detail: "已扫描 \(duration)")
+                if self.bleStatus != .scanning {
+                    self.vehicleEventLogStore.add(.action, "BLE 扫描中", detail: "搜索车辆 BLE 设备")
+                }
                 self.bleStatus = .scanning
             case .connecting, .connected:
-                let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
-                self.vehicleEventLogStore.add(.action, "BLE 连接中", detail: state == .connected ? "已连接，正在发现服务 · 扫描耗时 \(duration)" : "正在建立连接 · 扫描耗时 \(duration)")
+                if self.bleStatus != .connecting {
+                    let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
+                    self.vehicleEventLogStore.add(.action, "BLE 连接中", detail: "扫描耗时 \(duration)")
+                }
                 self.bleStatus = .connecting
             case .authenticating:
                 self.vehicleEventLogStore.add(.action, "BLE 鉴权中", detail: "38C7/A857 四步鉴权")
