@@ -55,10 +55,21 @@ enum KeylessDecision: Equatable {
 // MARK: - 无感决策引擎
 struct KeylessDecisionEngine {
 
+    /// 无感评估上下文：用于放行 BLE 离线会话、统一新鲜度策略
+    struct Context: Equatable {
+        /// 本次 BLE 会话是否已鉴权成功
+        var bleAuthenticated: Bool = false
+        /// 车况新鲜度窗口（秒）；HTTP 60s 轮询默认 90s
+        var freshnessMaxAge: TimeInterval = 90
+
+        static let `default` = Context()
+    }
+
     // MARK: - 解锁评估
     static func evaluateUnlock(
         state: VehicleState,
-        settings: KeylessSettings
+        settings: KeylessSettings,
+        context: Context = .default
     ) -> KeylessDecision {
         // 1. 无感总开关
         guard settings.keylessEnabled else {
@@ -68,15 +79,13 @@ struct KeylessDecisionEngine {
         guard settings.unlockEnabled else {
             return .deny(action: .unlock, reason: "解锁开关关闭")
         }
-        // 3. 状态新鲜度（在线时才检查；离线直接拒绝）
-        guard state.online else {
-            return .deny(action: .unlock, reason: "车辆离线")
+        // 3. 状态可用性：
+        //    - 在线：要求车况新鲜
+        //    - 离线：仅 BLE 已鉴权且有 live RSSI 时允许使用最后已知车况
+        if let availabilityDeny = denyIfStateUnavailable(action: .unlock, state: state, context: context) {
+            return availabilityDeny
         }
-        guard state.isFresh() else {
-            let age = Int(Date().timeIntervalSince(state.timestamp))
-            return .deny(action: .unlock, reason: "车辆状态 \(age)s 未更新")
-        }
-        // 4. 手机靠近
+        // 4. 手机靠近（只信 BLE RSSI 判定结果）
         guard state.phoneNearby else {
             return .deny(action: .unlock, reason: "手机未进入解锁范围")
         }
@@ -96,23 +105,25 @@ struct KeylessDecisionEngine {
         guard state.power == .off else {
             return .deny(action: .unlock, reason: "车辆未熄火或电源状态未知 (\(state.power.title))")
         }
-        // 9. 物理钥匙 unknown / inside 一律禁止
-        switch state.physicalKeyPosition {
-        case .inside:
+        // 9. 物理钥匙：仅 inside 禁止；unknown 降级放行（依赖 BLE 靠近 + 门/档/电源）
+        if state.physicalKeyPosition == .inside {
             return .deny(action: .unlock, reason: "物理钥匙在车内")
-        case .unknown:
-            return .deny(action: .unlock, reason: "物理钥匙状态未知")
-        case .outside, .farAway:
-            break
         }
 
-        return .allow(action: .unlock, reason: "满足无感解锁条件")
+        let reason: String
+        if !state.online && context.bleAuthenticated {
+            reason = "满足无感解锁条件（BLE 离线会话）"
+        } else {
+            reason = "满足无感解锁条件"
+        }
+        return .allow(action: .unlock, reason: reason)
     }
 
     // MARK: - 上锁评估
     static func evaluateLock(
         state: VehicleState,
-        settings: KeylessSettings
+        settings: KeylessSettings,
+        context: Context = .default
     ) -> KeylessDecision {
         // 1. 无感总开关
         guard settings.keylessEnabled else {
@@ -122,13 +133,9 @@ struct KeylessDecisionEngine {
         guard settings.lockEnabled else {
             return .deny(action: .lock, reason: "上锁开关关闭")
         }
-        // 3. 状态新鲜度
-        guard state.online else {
-            return .deny(action: .lock, reason: "车辆离线")
-        }
-        guard state.isFresh() else {
-            let age = Int(Date().timeIntervalSince(state.timestamp))
-            return .deny(action: .lock, reason: "车辆状态 \(age)s 未更新")
+        // 3. 状态可用性（同解锁）
+        if let availabilityDeny = denyIfStateUnavailable(action: .lock, state: state, context: context) {
+            return availabilityDeny
         }
         // 4. 手机远离
         guard state.phoneFarAway else {
@@ -161,25 +168,57 @@ struct KeylessDecisionEngine {
         guard state.power == .off else {
             return .deny(action: .lock, reason: "车辆未熄火或电源状态未知 (\(state.power.title))")
         }
-        // 11. 物理钥匙不在车内，unknown 也禁止
-        switch state.physicalKeyPosition {
-        case .inside:
+        // 11. 物理钥匙：仅 inside 禁止；unknown 降级放行
+        if state.physicalKeyPosition == .inside {
             return .deny(action: .lock, reason: "物理钥匙在车内")
-        case .unknown:
-            return .deny(action: .lock, reason: "物理钥匙状态未知")
-        case .outside, .farAway:
-            break
         }
 
-        return .allow(action: .lock, reason: "满足无感上锁条件")
+        let reason: String
+        if !state.online && context.bleAuthenticated {
+            reason = "满足无感上锁条件（BLE 离线会话）"
+        } else {
+            reason = "满足无感上锁条件"
+        }
+        return .allow(action: .lock, reason: reason)
+    }
+
+    /// 在线要求新鲜车况；过期时若 BLE 已鉴权可用最后车况。
+    /// 离线仅允许 BLE 已鉴权会话做无感。
+    private static func denyIfStateUnavailable(
+        action: KeylessAction,
+        state: VehicleState,
+        context: Context
+    ) -> KeylessDecision? {
+        if state.online {
+            if state.isFresh(maxAge: context.freshnessMaxAge) {
+                return nil
+            }
+            // 在线但车况过期：BLE 已鉴权 + (有 live RSSI 或上锁远离) 时放行
+            if context.bleAuthenticated && (state.hasLiveBLEProximity || action == .lock) {
+                return nil
+            }
+            let age = Int(Date().timeIntervalSince(state.timestamp))
+            return .deny(action: action, reason: "车辆状态 \(age)s 未更新")
+        }
+
+        // 离线：必须 BLE 已鉴权
+        guard context.bleAuthenticated else {
+            return .deny(action: action, reason: "车辆离线且 BLE 未鉴权")
+        }
+        // 解锁要求 live RSSI；上锁允许信号丢失后的远离评估
+        if action == .unlock && !state.hasLiveBLEProximity {
+            return .deny(action: action, reason: "车辆离线且无 BLE 靠近信号")
+        }
+        return nil
     }
 
     static func evaluateUnlockWithDelay(
         state: VehicleState,
         settings: KeylessSettings,
-        phoneNearbySince: Date?
+        phoneNearbySince: Date?,
+        context: Context = .default
     ) -> KeylessDecision {
-        let decision = evaluateUnlock(state: state, settings: settings)
+        let decision = evaluateUnlock(state: state, settings: settings, context: context)
         guard case .allow = decision else { return decision }
         let delay = max(settings.unlockApproachDuration, 0)
         guard delay > 0 else { return decision }
@@ -196,9 +235,10 @@ struct KeylessDecisionEngine {
     static func evaluateLockWithDelay(
         state: VehicleState,
         settings: KeylessSettings,
-        phoneFarAwaySince: Date?
+        phoneFarAwaySince: Date?,
+        context: Context = .default
     ) -> KeylessDecision {
-        let decision = evaluateLock(state: state, settings: settings)
+        let decision = evaluateLock(state: state, settings: settings, context: context)
         guard case .allow = decision else { return decision }
         let delay = max(settings.lockDelay, 0)
         guard delay > 0 else { return decision }
@@ -223,33 +263,35 @@ struct KeylessDecisionEngine {
 
         parts.append(decision.reason)
 
-        if state.online {
-            if let rssi = state.bleRssi {
-                parts.append("rssi=\(rssi)")
-            }
-            if let locked = state.locked {
-                parts.append("locked=\(locked)")
-            }
-            parts.append("gear=\(state.gear.title)")
-            parts.append("power=\(state.power.title)")
-            if let doors = state.doorsClosed {
-                parts.append("doors=\(doors ? "closed" : "open")")
-            }
-            if let trunk = state.trunkOpen, trunk {
-                parts.append("trunk=open")
-            }
-            switch state.physicalKeyPosition {
-            case .inside:
-                parts.append("key=inside")
-            case .outside:
-                parts.append("key=outside")
-            case .farAway:
-                parts.append("key=far")
-            case .unknown:
-                break
-            }
-        } else {
+        if let rssi = state.bleRssi {
+            parts.append("rssi=\(rssi)")
+        }
+        if let locked = state.locked {
+            parts.append("locked=\(locked)")
+        }
+        parts.append("gear=\(state.gear.title)")
+        parts.append("power=\(state.power.title)")
+        if let doors = state.doorsClosed {
+            parts.append("doors=\(doors ? "closed" : "open")")
+        }
+        if let trunk = state.trunkOpen, trunk {
+            parts.append("trunk=open")
+        }
+        switch state.physicalKeyPosition {
+        case .inside:
+            parts.append("key=inside")
+        case .outside:
+            parts.append("key=outside")
+        case .farAway:
+            parts.append("key=far")
+        case .unknown:
+            parts.append("key=unknown")
+        }
+        if !state.online {
             parts.append("offline")
+        }
+        if state.hasLiveBLEProximity {
+            parts.append("bleLive")
         }
 
         return parts.joined(separator: " | ")
@@ -261,9 +303,10 @@ struct KeylessDecisionEngine {
     static func evaluateAndLog(
         unlock state: VehicleState,
         settings: KeylessSettings,
-        log: VehicleEventLogStore
+        log: VehicleEventLogStore,
+        context: Context = .default
     ) -> KeylessDecision {
-        let decision = evaluateUnlock(state: state, settings: settings)
+        let decision = evaluateUnlock(state: state, settings: settings, context: context)
         let detail = logDetail(decision: decision, state: state, settings: settings)
         switch decision {
         case .allow:
@@ -281,9 +324,10 @@ struct KeylessDecisionEngine {
     static func evaluateAndLog(
         lock state: VehicleState,
         settings: KeylessSettings,
-        log: VehicleEventLogStore
+        log: VehicleEventLogStore,
+        context: Context = .default
     ) -> KeylessDecision {
-        let decision = evaluateLock(state: state, settings: settings)
+        let decision = evaluateLock(state: state, settings: settings, context: context)
         let detail = logDetail(decision: decision, state: state, settings: settings)
         switch decision {
         case .allow:

@@ -115,9 +115,14 @@ struct VehicleState: Equatable {
         )
     }
 
-    /// 状态是否新鲜（默认 10 秒有效）
-    func isFresh(maxAge: TimeInterval = 10) -> Bool {
+    /// 状态是否新鲜（默认 90 秒，覆盖 HTTP 60s 轮询 + 余量）
+    func isFresh(maxAge: TimeInterval = 90) -> Bool {
         Date().timeIntervalSince(timestamp) <= maxAge
+    }
+
+    /// 是否具备可用的 live BLE 靠近判定（仅信手机侧 RSSI，不信 HTTP keyStatus）
+    var hasLiveBLEProximity: Bool {
+        bleRssi != nil
     }
 
     /// 手机是否远离（RSSI 低于阈值或信号丢失）

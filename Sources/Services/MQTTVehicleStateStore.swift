@@ -442,7 +442,15 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     private func applyLiveBLEOverlay(to baseState: VehicleState) -> VehicleState {
-        guard let rssi = liveBLERSSI else { return baseState }
+        // 无 live RSSI 时：明确保持/清零 phoneNearby，不由 HTTP 决定
+        guard let rssi = liveBLERSSI else {
+            var next = baseState
+            if next.bleRssi != nil || next.phoneNearby {
+                next.bleRssi = nil
+                next.phoneNearby = false
+            }
+            return next
+        }
         var next = baseState
         next.bleRssi = rssi
         next.phoneNearby = resolvedPhoneNearby(for: rssi, previous: baseState.phoneNearby)
@@ -744,7 +752,12 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         lastEvalFarAway = fingerprint.2
 
         // 状态过期 → 不评估，不记日志
-        guard currentState.isFresh() else { return }
+        // 例外：BLE 已鉴权时，允许用最后已知车况 + live 靠近/远离继续评估
+        let canUseStaleStateWithBLE = hasCompletedBLEAuth
+            && (currentState.hasLiveBLEProximity || currentState.phoneFarAway)
+        if !canUseStaleStateWithBLE {
+            guard currentState.isFresh() else { return }
+        }
 
         // 无感上锁安全门：必须本次 BLE 会话曾鉴权成功，否则不评估上锁
         if currentState.phoneFarAway && !hasCompletedBLEAuth {
@@ -770,7 +783,17 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             phoneFarAwaySince = nil
         }
 
-        let unlockDecision = KeylessDecisionEngine.evaluateUnlockWithDelay(state: currentState, settings: settings, phoneNearbySince: phoneNearbySince)
+        let decisionContext = KeylessDecisionEngine.Context(
+            bleAuthenticated: hasCompletedBLEAuth,
+            freshnessMaxAge: 90
+        )
+
+        let unlockDecision = KeylessDecisionEngine.evaluateUnlockWithDelay(
+            state: currentState,
+            settings: settings,
+            phoneNearbySince: phoneNearbySince,
+            context: decisionContext
+        )
         if unlockDecision != lastUnlockDecision {
             let detail = KeylessDecisionEngine.logDetail(decision: unlockDecision, state: currentState, settings: settings)
             switch unlockDecision {
@@ -787,7 +810,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             executeKeylessCommandIfNeeded(action: .unlock, state: currentState, reason: unlockDecision.reason)
         }
 
-        let lockDecision = evaluateLockDecisionWithDelay(state: currentState, settings: settings)
+        let lockDecision = evaluateLockDecisionWithDelay(state: currentState, settings: settings, context: decisionContext)
         if lockDecision != lastLockDecision {
             let detail = KeylessDecisionEngine.logDetail(decision: lockDecision, state: currentState, settings: settings)
             switch lockDecision {
@@ -805,8 +828,12 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         }
     }
 
-    private func evaluateLockDecisionWithDelay(state: VehicleState, settings: KeylessSettings) -> KeylessDecision {
-        let decision = KeylessDecisionEngine.evaluateLock(state: state, settings: settings)
+    private func evaluateLockDecisionWithDelay(
+        state: VehicleState,
+        settings: KeylessSettings,
+        context: KeylessDecisionEngine.Context
+    ) -> KeylessDecision {
+        let decision = KeylessDecisionEngine.evaluateLock(state: state, settings: settings, context: context)
         guard case .allow = decision else { return decision }
         let delay = max(settings.lockDelay, 0)
         guard delay > 0 else { return decision }
@@ -831,9 +858,9 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         let command: VehicleCommand
         switch action {
         case .unlock:
-            command = VehicleCommand(kind: .unlock, title: "无感解锁", detail: reason, requestedTemperature: nil, source: .keyless, transportHint: .httpControl)
+            command = VehicleCommand(kind: .unlock, title: "无感解锁", detail: reason, requestedTemperature: nil, source: .keyless, transportHint: .bleControl)
         case .lock:
-            command = VehicleCommand(kind: .lock, title: "无感上锁", detail: reason, requestedTemperature: nil, source: .keyless, transportHint: .httpControl)
+            command = VehicleCommand(kind: .lock, title: "无感上锁", detail: reason, requestedTemperature: nil, source: .keyless, transportHint: .bleControl)
         }
 
         guard bleManager.canSendDoorLockControl else {

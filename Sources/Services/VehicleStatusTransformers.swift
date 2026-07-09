@@ -32,8 +32,7 @@ enum VehicleStatusMapper {
         if let speed = parseDouble(s["speed"] ?? s["vehSpd"] ?? s["vehSpdAvgDrvn"]) { next.speed = speed }
         let physicalKeyPosition = parsePhysicalKeyPosition(s["keyStatus"])
         next.physicalKeyPosition = physicalKeyPosition
-        next.phoneNearby = (physicalKeyPosition != .farAway && physicalKeyPosition != .unknown)
-        if let rssi = parseInt(s["bleRssi"]) { next.bleRssi = rssi }
+        // phoneNearby / bleRssi 只由手机侧 live BLE 决定，忽略 HTTP keyStatus / 云端 bleRssi
         if let power = parsePowerState(s) { next.power = power }
         return next
     }
@@ -178,7 +177,7 @@ enum VehicleStateMerger {
         merged.power = newState.power
         merged.speed = newState.speed
         merged.physicalKeyPosition = newState.physicalKeyPosition
-        merged.phoneNearby = newState.phoneNearby
+        // phoneNearby / bleRssi 只信 live BLE overlay，HTTP 合并不覆盖
         merged.fuelLevel = newState.fuelLevel
         merged.fuelRange = newState.fuelRange
         merged.oilRange = newState.oilRange
