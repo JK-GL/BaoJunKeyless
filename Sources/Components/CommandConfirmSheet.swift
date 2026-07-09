@@ -160,13 +160,11 @@ struct CommandConfirmPopup: View {
 
     let action: CommandAction
     let vehicleState: VehicleState
-    let tapStartedAt: Date?
     @Binding var isPresented: Bool
     let onConfirm: (CommandAction, Double?, Int?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
 
     @State private var temperature: Double
     @State private var durationMinutes: Double
-    @State private var didLogPopupAppear = false
     @State private var isExecuting = false
     @State private var commandResult: CommandResult? = nil
     @State private var resultMessage: String? = nil
@@ -175,13 +173,11 @@ struct CommandConfirmPopup: View {
     init(
         action: CommandAction,
         vehicleState: VehicleState,
-        tapStartedAt: Date? = nil,
         isPresented: Binding<Bool>,
         onConfirm: @escaping (CommandAction, Double?, Int?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
     ) {
         self.action = action
         self.vehicleState = vehicleState
-        self.tapStartedAt = tapStartedAt
         self._isPresented = isPresented
         self.onConfirm = onConfirm
         let initialTemperature: Int
@@ -311,15 +307,6 @@ struct CommandConfirmPopup: View {
         }
         .animation(PopupMotion.contentEase, value: isExecuting)
         .animation(PopupMotion.contentEase, value: commandResult != nil)
-        .onAppear(perform: logPopupAppearIfNeeded)
-    }
-
-    private func logPopupAppearIfNeeded() {
-        guard !didLogPopupAppear else { return }
-        didLogPopupAppear = true
-        guard let tapStartedAt else { return }
-        let elapsedMs = Int(Date().timeIntervalSince(tapStartedAt) * 1000)
-        vehicleLog.add(.action, "快捷弹窗已显示", detail: "\(action.label(state: vehicleState)) tap→popup=\(elapsedMs)ms")
     }
 
     private var statusItemsForCurrentAction: [PopupStatusItem] {

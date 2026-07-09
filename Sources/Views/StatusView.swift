@@ -16,7 +16,6 @@ struct StatusView: View {
     @State private var isMQTTFloatingPresented = false
     @State private var isVehicleInfoFloatingPresented = false
     @State private var activeCommand: CommandAction? = nil
-    @State private var quickActionTapStartedAt: Date? = nil
     @State private var pendingControlServiceCode: String? = nil
     @State private var pendingControlTitle: String? = nil
     @State private var pendingControlSentAt: Date? = nil
@@ -214,7 +213,6 @@ struct StatusView: View {
                     }
 
                     QuickActionsView(onCommand: { command in
-                        quickActionTapStartedAt = Date()
                         withAnimation(PopupMotion.presentSpring) {
                             activeCommand = command
                         }
@@ -303,13 +301,11 @@ struct StatusView: View {
                 CommandConfirmPopup(
                     action: command,
                     vehicleState: vehicleStore.state,
-                    tapStartedAt: quickActionTapStartedAt,
                     isPresented: Binding(
                         get: { activeCommand != nil },
                         set: {
                             if !$0 {
                                 activeCommand = nil
-                                quickActionTapStartedAt = nil
                             }
                         }
                     )

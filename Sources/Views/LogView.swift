@@ -53,6 +53,18 @@ struct LogView: View {
         todayLogs.filter { $0.category == .error || $0.category == .warning }.count
     }
 
+    private var expandableLogIDs: Set<UUID> {
+        Set(filteredLogs.filter { !$0.detail.isEmpty }.map(\.id))
+    }
+
+    private var hasExpandableLogs: Bool {
+        !expandableLogIDs.isEmpty
+    }
+
+    private var allDetailsExpanded: Bool {
+        hasExpandableLogs && expandableLogIDs.isSubset(of: expandedIDs)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             PageHeaderView(title: "日志")
@@ -80,9 +92,12 @@ struct LogView: View {
                 .padding(.horizontal, 16)
 
             // 底部动作条固定
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 86), spacing: 12)], alignment: .leading, spacing: 10) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], alignment: .leading, spacing: 8) {
                 LogActionButton(icon: "doc.on.doc", title: "复制", action: copyFilteredLogs)
                 LogActionButton(icon: "square.and.arrow.up", title: "导出", action: exportFilteredLogs)
+                LogActionButton(icon: "arrow.up.left.and.arrow.down.right", title: allDetailsExpanded ? "全部收起" : "展开全部") {
+                    toggleExpandAllDetails()
+                }
                 LogActionButton(icon: "arrow.down.to.line", title: autoFollow ? "跟随开" : "跟随关") {
                     autoFollow.toggle()
                 }
@@ -111,7 +126,6 @@ struct LogView: View {
                             vehicleLog.clearToday()
                             expandedIDs.removeAll()
                         }
-                        vehicleLog.add(.action, "清除今日日志", detail: "filter=\(selectedFilter.title)")
                     }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -208,6 +222,18 @@ struct LogView: View {
         }
     }
 
+    private func toggleExpandAllDetails() {
+        let ids = expandableLogIDs
+        guard !ids.isEmpty else { return }
+        withAnimation(.easeInOut(duration: 0.16)) {
+            if allDetailsExpanded {
+                expandedIDs.subtract(ids)
+            } else {
+                expandedIDs.formUnion(ids)
+            }
+        }
+    }
+
     private func consoleBadge(text: String, color: Color) -> some View {
         Text(text)
             .font(.system(size: 11, weight: .semibold, design: .monospaced))
@@ -224,7 +250,6 @@ struct LogView: View {
             withAnimation { toastText = "暂无可复制日志" }
             return
         }
-        vehicleLog.add(.action, "复制今日日志", detail: "filter=\(selectedFilter.title) count=\(filteredLogs.count)")
         let text = vehicleLog.exportText(entries: filteredLogs)
         UIPasteboard.general.string = text
         withAnimation { toastText = "已复制今日日志" }
@@ -235,7 +260,6 @@ struct LogView: View {
             withAnimation { toastText = "暂无日志可导出" }
             return
         }
-        vehicleLog.add(.action, "导出今日日志", detail: "filter=\(selectedFilter.title) count=\(filteredLogs.count)")
         guard let url = vehicleLog.exportFile(entries: filteredLogs, filterTitle: selectedFilter.fileTag) else {
             withAnimation { toastText = "暂无日志可导出" }
             return
@@ -277,18 +301,22 @@ private struct ConsoleLogRow: View {
 
                 if !log.detail.isEmpty {
                     Button(action: onToggle) {
-                        HStack(spacing: 4) {
-                            Text(expanded ? "收起" : "详情")
-                                .font(.system(size: 10.5, weight: .semibold))
-                            Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 10, weight: .semibold))
+                        HStack(spacing: 3) {
+                            Text(expanded ? "less" : "more")
+                                .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                            Image(systemName: expanded ? "chevron.up" : "chevron.right")
+                                .font(.system(size: 8.5, weight: .bold))
                         }
-                        .foregroundStyle(Color.white.opacity(0.62))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .foregroundStyle(Color.white.opacity(0.48))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
                         .background(
-                            Capsule()
-                                .fill(Color.white.opacity(0.08))
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color.white.opacity(0.04))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(Color.white.opacity(0.06), lineWidth: 1)
                         )
                     }
                     .buttonStyle(.plain)
@@ -366,15 +394,26 @@ private struct LogActionButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
                 Text(title)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(Color.white.opacity(0.82))
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.08), lineWidth: 1))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 9)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.white.opacity(0.03))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
     }
