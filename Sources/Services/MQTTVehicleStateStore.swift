@@ -201,6 +201,12 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 self.applyLiveBLERSSI(rssi)
             }
         }
+        bleManager.onControlCompletion = { [weak self] in
+            guard let self else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                self.refreshNow()
+            }
+        }
     }
 
     var canUseBLEForVehicleControl: Bool {

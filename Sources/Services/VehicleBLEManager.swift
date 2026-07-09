@@ -194,6 +194,7 @@ final class VehicleBLEManager: NSObject {
     var onLog: ((String, String?) -> Void)?
     var onControlReceipt: ((BLEControlReceipt) -> Void)?
     var onRSSIUpdate: ((Int) -> Void)?
+    var onControlCompletion: (() -> Void)?
 
     private lazy var central = CBCentralManager(delegate: self, queue: nil)
     private var config: SessionConfig?
@@ -218,6 +219,9 @@ final class VehicleBLEManager: NSObject {
     private var candidateScore: Int = Int.min
     private var candidateSelectionWorkItem: DispatchWorkItem?
     private var scanWatchdogWorkItem: DispatchWorkItem?
+    private var scanTotalTimeoutWorkItem: DispatchWorkItem?
+    private var connectionTimeoutWorkItem: DispatchWorkItem?
+    private var foregroundObserver: NSObjectProtocol?
     private var currentConnectionSource: ConnectionSource?
     private var hasTriedBoundPeripheral = false
     private let candidateMinimumScore = 8
@@ -271,6 +275,18 @@ final class VehicleBLEManager: NSObject {
         self.config = config
         lastControlError = nil
         clearSessionRuntime(cancelPendingControl: configChanged)
+
+        if foregroundObserver == nil {
+            foregroundObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.didBecomeActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                guard let self, self.config != nil else { return }
+                self.handleCentralState()
+            }
+        }
+
         if !hasStartedCentral {
             hasStartedCentral = true
             _ = central
@@ -286,6 +302,14 @@ final class VehicleBLEManager: NSObject {
         candidateSelectionWorkItem = nil
         scanWatchdogWorkItem?.cancel()
         scanWatchdogWorkItem = nil
+        scanTotalTimeoutWorkItem?.cancel()
+        scanTotalTimeoutWorkItem = nil
+        connectionTimeoutWorkItem?.cancel()
+        connectionTimeoutWorkItem = nil
+        if let foregroundObserver {
+            NotificationCenter.default.removeObserver(foregroundObserver)
+            self.foregroundObserver = nil
+        }
         currentConnectionSource = nil
         hasTriedBoundPeripheral = false
         if let discoveredPeripheral {
@@ -315,6 +339,10 @@ final class VehicleBLEManager: NSObject {
         candidateScore = Int.min
         scanWatchdogWorkItem?.cancel()
         scanWatchdogWorkItem = nil
+        scanTotalTimeoutWorkItem?.cancel()
+        scanTotalTimeoutWorkItem = nil
+        connectionTimeoutWorkItem?.cancel()
+        connectionTimeoutWorkItem = nil
         currentConnectionSource = nil
         if cancelPendingControl {
             pendingControlTimeoutWorkItem?.cancel()
@@ -386,12 +414,15 @@ final class VehicleBLEManager: NSObject {
         if peripheral.state == .connected {
             state = .connecting
             onLog?("BLE", "bound peripheral already connected, discover services: \(peripheral.name ?? binding.peripheralName)")
+            scanTotalTimeoutWorkItem?.cancel()
+            scanTotalTimeoutWorkItem = nil
             peripheral.discoverServices(nil)
             return true
         }
 
         state = .connecting
         onLog?("BLE", "connecting bound peripheral name=\(binding.peripheralName) id=\(binding.shortIdentifier) keyId=\(binding.keyId) macSuffix=\(binding.bleMacSuffix)")
+        scheduleConnectionTimeout(uuid: peripheral.identifier, source: "bound")
         central.connect(peripheral, options: nil)
         return true
     }
@@ -414,6 +445,7 @@ final class VehicleBLEManager: NSObject {
         onLog?("BLE", "official scan manufacturerLast6 target=\(targetMac) debugFallback=\(allowsDebugScoreFallback ? 1 : 0) minScore=\(candidateMinimumScore)")
         central.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
         scheduleScanWatchdog()
+        scheduleScanTotalTimeout()
     }
 
     private func scheduleScanWatchdog() {
@@ -427,6 +459,46 @@ final class VehicleBLEManager: NSObject {
         }
         scanWatchdogWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
+    }
+
+    private func scheduleScanTotalTimeout() {
+        scanTotalTimeoutWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            guard case .scanning = self.state else { return }
+            self.onLog?("BLE", "scan total timeout (20s), stopping scan")
+            self.central.stopScan()
+            self.scanWatchdogWorkItem?.cancel()
+            self.scanWatchdogWorkItem = nil
+            self.candidateSelectionWorkItem?.cancel()
+            self.candidateSelectionWorkItem = nil
+            if self.discoveredPeripheral == nil {
+                self.state = .idle
+            }
+        }
+        scanTotalTimeoutWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: work)
+    }
+
+    private func scheduleConnectionTimeout(uuid: UUID, source: String) {
+        connectionTimeoutWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let peripheral = self.discoveredPeripheral,
+                  peripheral.identifier == uuid else { return }
+            guard case .connecting = self.state else { return }
+            self.onLog?("BLE", "connection timeout (10s) source=\(source), disconnecting")
+            self.central.cancelPeripheralConnection(peripheral)
+            self.discoveredPeripheral = nil
+            self.currentConnectionSource = nil
+            if source == "bound" {
+                self.onLog?("BLE", "bound connect timeout, fallback wide scan")
+                self.fallbackToWideScanAfterBoundFailure()
+            } else {
+                self.state = .idle
+            }
+        }
+        connectionTimeoutWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: work)
     }
 
     private func finishIfReady() {
@@ -465,6 +537,11 @@ final class VehicleBLEManager: NSObject {
               let controlWriteCharacteristic else {
             lastControlError = .writeCharacteristicMissing
             completion(.failure(.writeCharacteristicMissing))
+            return
+        }
+        guard pendingControl == nil else {
+            onLog?("BLE", "E300 control blocked: pending command already in flight")
+            completion(.failure(BLEControlError.writeFailed("已有待处理 BLE 命令")))
             return
         }
         guard notify182AReady else {
@@ -906,7 +983,10 @@ final class VehicleBLEManager: NSObject {
 
     private func handleControlNotification(_ data: Data) {
         let rawHex = data.hexString
-        let plain = decryptControlNotificationData(data)
+        guard let plain = decryptControlNotificationData(data) else {
+            onLog?("BLE", "E300 control notify decrypt failed raw=\(rawHex.prefix(32))")
+            return
+        }
         let parsed = parseE300ControlResponse(plain)
         let pending = pendingControl
 
@@ -926,7 +1006,7 @@ final class VehicleBLEManager: NSObject {
             crcCheckPassed: parsed.crcCheckPassed,
             elapsedMillis: pending.map { Int(Date().timeIntervalSince($0.sentAt) * 1000) },
             rawHex: rawHex,
-            decryptedHex: plain?.hexString,
+            decryptedHex: plain.hexString,
             receivedAt: Date()
         )
 
@@ -957,6 +1037,9 @@ final class VehicleBLEManager: NSObject {
                 "E300 control success service=\(serviceText) random=\(parsed.randomDataHex ?? "--") errorCode=\(parsed.errorCodeHex ?? "--") crc=\(parsed.crcCheckPassed.map { $0 ? "1" : "0" } ?? "--")"
             )
             completePendingControl(.success(()))
+            DispatchQueue.main.async { [weak self] in
+                self?.onControlCompletion?()
+            }
         } else if responseMatchesRequest {
             onLog?(
                 "BLE",
@@ -1070,8 +1153,19 @@ final class VehicleBLEManager: NSObject {
         candidateSelectionWorkItem = nil
         scanWatchdogWorkItem?.cancel()
         scanWatchdogWorkItem = nil
+        scanTotalTimeoutWorkItem?.cancel()
+        scanTotalTimeoutWorkItem = nil
+
+        if peripheral.state == .connected {
+            state = .connecting
+            onLog?("BLE", "scanned peripheral already connected, discover services: \(peripheral.name ?? localName)")
+            peripheral.discoverServices(nil)
+            return
+        }
+
         state = .connecting
         onLog?("BLE", "connecting \(connectionSourceText) candidate name=\(localName) rssi=\(rssi) | \(detail)")
+        scheduleConnectionTimeout(uuid: peripheral.identifier, source: connectionSourceText)
         central.connect(peripheral, options: nil)
     }
 
@@ -1281,6 +1375,8 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        connectionTimeoutWorkItem?.cancel()
+        connectionTimeoutWorkItem = nil
         onLog?("BLE", "connected \(peripheral.name ?? "--") source=\(connectionSourceText), discover all services")
         peripheral.discoverServices(nil)
     }
