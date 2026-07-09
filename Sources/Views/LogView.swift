@@ -35,6 +35,8 @@ struct LogView: View {
     @State private var toastText: String?
     @State private var expandedIDs: Set<UUID> = []
     @State private var autoFollow = true
+    @AppStorage("LogView.ExpandedIDs") private var persistedExpandedIDs = ""
+    @AppStorage("LogView.AutoExpandAllDetails") private var autoExpandAllDetails = false
 
     private var todayLogs: [VehicleEventLogEntry] {
         vehicleLog.todayEntries
@@ -78,9 +80,6 @@ struct LogView: View {
                     consoleBadge(text: "告警 \(errorCount)", color: errorCount > 0 ? AppTheme.orange : theme.textSecondary)
                     consoleBadge(text: selectedFilter.title, color: theme.textSecondary)
                     Spacer(minLength: 0)
-                    Text(DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .none))
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(theme.textSecondary)
                 }
 
                 VehicleLogFilterBar(selectedFilter: $selectedFilter)
@@ -92,10 +91,10 @@ struct LogView: View {
                 .padding(.horizontal, 16)
 
             // 底部动作条固定
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], alignment: .leading, spacing: 8) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 62), spacing: 6)], alignment: .leading, spacing: 6) {
                 LogActionButton(icon: "doc.on.doc", title: "复制", action: copyFilteredLogs)
                 LogActionButton(icon: "square.and.arrow.up", title: "导出", action: exportFilteredLogs)
-                LogActionButton(icon: "arrow.up.left.and.arrow.down.right", title: allDetailsExpanded ? "全部收起" : "展开全部") {
+                LogActionButton(icon: "arrow.up.left.and.arrow.down.right", title: allDetailsExpanded ? "全收起" : "全展开") {
                     toggleExpandAllDetails()
                 }
                 LogActionButton(icon: "arrow.down.to.line", title: autoFollow ? "跟随开" : "跟随关") {
@@ -125,6 +124,8 @@ struct LogView: View {
                         withAnimation {
                             vehicleLog.clearToday()
                             expandedIDs.removeAll()
+                            autoExpandAllDetails = false
+                            persistExpandedIDs()
                         }
                     }
                 )
@@ -146,6 +147,8 @@ struct LogView: View {
         }
         .animation(PopupMotion.presentSpring, value: showingClearAlert)
         .onAppear {
+            restoreExpandedIDs()
+            applyExpansionMemoryForCurrentFilter()
             // 日志页本身不再整页滚动，避免外层 chrome 误判
             scrollState.reset()
         }
@@ -171,11 +174,13 @@ struct LogView: View {
                                         log: log,
                                         expanded: expandedIDs.contains(log.id),
                                         onToggle: {
+                                            autoExpandAllDetails = false
                                             if expandedIDs.contains(log.id) {
                                                 expandedIDs.remove(log.id)
                                             } else {
                                                 expandedIDs.insert(log.id)
                                             }
+                                            persistExpandedIDs()
                                         }
                                     )
                                     .id(log.id)
@@ -187,11 +192,12 @@ struct LogView: View {
                             scrollToLatest(proxy: proxy, animated: false)
                         }
                         .onChange(of: filteredLogs.first?.id) { _ in
+                            applyExpansionMemoryForCurrentFilter()
                             guard autoFollow else { return }
                             scrollToLatest(proxy: proxy, animated: true)
                         }
                         .onChange(of: selectedFilter) { _ in
-                            expandedIDs.removeAll()
+                            applyExpansionMemoryForCurrentFilter()
                             scrollToLatest(proxy: proxy, animated: false)
                         }
                     }
@@ -228,18 +234,47 @@ struct LogView: View {
         withAnimation(.easeInOut(duration: 0.16)) {
             if allDetailsExpanded {
                 expandedIDs.subtract(ids)
+                autoExpandAllDetails = false
             } else {
                 expandedIDs.formUnion(ids)
+                autoExpandAllDetails = true
             }
+            persistExpandedIDs()
         }
+    }
+
+    private func applyExpansionMemoryForCurrentFilter() {
+        if autoExpandAllDetails {
+            expandedIDs.formUnion(expandableLogIDs)
+        } else {
+            restoreExpandedIDs()
+        }
+        pruneExpandedIDsToVisibleLogs()
+    }
+
+    private func restoreExpandedIDs() {
+        let ids = persistedExpandedIDs
+            .split(separator: ",")
+            .compactMap { UUID(uuidString: String($0)) }
+        expandedIDs = Set(ids)
+    }
+
+    private func persistExpandedIDs() {
+        persistedExpandedIDs = expandedIDs.map { $0.uuidString }.sorted().joined(separator: ",")
+    }
+
+    private func pruneExpandedIDsToVisibleLogs() {
+        let validIDs = Set(todayLogs.map(\.id))
+        expandedIDs = expandedIDs.intersection(validIDs)
+        persistExpandedIDs()
     }
 
     private func consoleBadge(text: String, color: Color) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
             .foregroundStyle(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
             .background(
                 Capsule().fill(color.opacity(0.14))
             )
@@ -276,16 +311,16 @@ private struct ConsoleLogRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(log.timeText)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: 10.5, design: .monospaced))
                     .foregroundStyle(Color.white.opacity(0.42))
-                    .frame(width: 58, alignment: .leading)
+                    .frame(width: 48, alignment: .leading)
 
                 Text(log.category.title)
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .font(.system(size: 9.5, weight: .bold, design: .monospaced))
                     .foregroundStyle(log.category.color)
-                    .padding(.horizontal, 6)
+                    .padding(.horizontal, 5)
                     .padding(.vertical, 2)
                     .background(
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -293,7 +328,7 @@ private struct ConsoleLogRow: View {
                     )
 
                 Text(log.title)
-                    .font(.system(size: 12.5, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 12.2, weight: .semibold, design: .monospaced))
                     .foregroundStyle(rowTitleColor)
                     .lineLimit(expanded ? nil : 1)
 
@@ -328,13 +363,13 @@ private struct ConsoleLogRow: View {
                     .font(.system(size: 11.5, design: .monospaced))
                     .foregroundStyle(Color.white.opacity(0.62))
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 66)
+                    .padding(.leading, 56)
                     .padding(.bottom, 4)
                     .textSelection(.enabled)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(rowBackground)
         .contentShape(Rectangle())
@@ -362,7 +397,7 @@ private struct VehicleLogFilterBar: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: 7) {
                 ForEach(VehicleLogFilter.allCases, id: \.self) { filter in
                     Button {
                         withAnimation(.easeInOut(duration: 0.16)) {
@@ -370,10 +405,10 @@ private struct VehicleLogFilterBar: View {
                         }
                     } label: {
                         Text(filter.title)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 11.5, weight: .semibold))
                             .foregroundStyle(selectedFilter == filter ? .black : Color.white.opacity(0.68))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
                             .background(
                                 Capsule()
                                     .fill(selectedFilter == filter ? AppTheme.accent : Color.white.opacity(0.08))
