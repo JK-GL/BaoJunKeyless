@@ -197,7 +197,15 @@ final class VehicleBLEManager: NSObject {
     var onRSSIUpdate: ((Int) -> Void)?
     var onControlCompletion: (() -> Void)?
 
-    private lazy var central = CBCentralManager(delegate: self, queue: nil)
+    private static let centralRestoreIdentifier = "com.baojun.keyless.ble.central"
+    private lazy var central = CBCentralManager(
+        delegate: self,
+        queue: nil,
+        options: [
+            CBCentralManagerOptionRestoreIdentifierKey: Self.centralRestoreIdentifier,
+            CBCentralManagerOptionShowPowerAlertKey: true
+        ]
+    )
     private var config: SessionConfig?
     private var discoveredPeripheral: CBPeripheral?
     private var authWriteCharacteristic: CBCharacteristic?
@@ -414,14 +422,19 @@ final class VehicleBLEManager: NSObject {
 
     private func connectBoundPeripheralIfAvailable() -> Bool {
         hasTriedBoundPeripheral = true
-        guard let binding = VehicleBLEBindingStore.load(),
-              let uuid = UUID(uuidString: binding.peripheralIdentifier) else {
+        guard let config else {
             onLog?("BLE", "bound peripheral miss, fallback wide scan")
+            return false
+        }
+        guard let binding = VehicleBLEBindingStore.loadMatching(keyId: config.keyId, bleMac: config.bleMac),
+              let uuid = UUID(uuidString: binding.peripheralIdentifier) else {
+            onLog?("BLE", "bound peripheral miss/mismatch, fallback wide scan")
             return false
         }
         let peripherals = central.retrievePeripherals(withIdentifiers: [uuid])
         guard let peripheral = peripherals.first else {
-            onLog?("BLE", "bound peripheral not found id=\(binding.shortIdentifier), fallback wide scan")
+            VehicleBLEBindingStore.clear()
+            onLog?("BLE", "bound peripheral not found id=\(binding.shortIdentifier), cleared binding, fallback wide scan")
             return false
         }
         discoveredPeripheral = peripheral
@@ -851,7 +864,8 @@ final class VehicleBLEManager: NSObject {
             authStage = .idle
             onLog?("BLE", detail)
             if currentConnectionSource == .bound {
-                onLog?("BLE", "bound auth failed, fallback wide scan | \(reason)")
+                VehicleBLEBindingStore.clear()
+                onLog?("BLE", "bound auth failed, clear binding, fallback wide scan | \(reason)")
                 fallbackToWideScanAfterBoundFailure()
             }
         }
@@ -1377,6 +1391,31 @@ private extension Data {
 extension VehicleBLEManager: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         handleCentralState()
+    }
+
+    func centralManager(_ central: CBCentralManager, willRestoreState dict: [String : Any]) {
+        let peripherals = (dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral]) ?? []
+        onLog?("BLE", "central restore peripherals=\(peripherals.count) state=\(central.state.rawValue)")
+        guard config != nil else { return }
+        if let peripheral = peripherals.first {
+            discoveredPeripheral = peripheral
+            peripheral.delegate = self
+            currentConnectionSource = .bound
+            switch peripheral.state {
+            case .connected:
+                state = .connecting
+                onLog?("BLE", "restore connected peripheral, discover services: \(peripheral.name ?? "--")")
+                peripheral.discoverServices(nil)
+            case .connecting:
+                state = .connecting
+                onLog?("BLE", "restore connecting peripheral: \(peripheral.name ?? "--")")
+            default:
+                onLog?("BLE", "restore peripheral idle, resume scan")
+                startScanning()
+            }
+        } else if central.state == .poweredOn {
+            handleCentralState()
+        }
     }
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {

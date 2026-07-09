@@ -24,7 +24,7 @@ private enum VehicleLogFilter: Hashable, CaseIterable {
     }
 }
 
-// MARK: - Log View (Tab 3)
+// MARK: - Log View (控制台窗口，固定区域内滚动)
 struct LogView: View {
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var scrollState: AppScrollState
@@ -33,6 +33,8 @@ struct LogView: View {
     @State private var selectedFilter: VehicleLogFilter = .all
     @State private var sharePayload: SharePayload?
     @State private var toastText: String?
+    @State private var expandedIDs: Set<UUID> = []
+    @State private var autoFollow = true
 
     private var todayLogs: [VehicleEventLogEntry] {
         vehicleLog.todayEntries
@@ -47,52 +49,51 @@ struct LogView: View {
         }
     }
 
+    private var errorCount: Int {
+        todayLogs.filter { $0.category == .error || $0.category == .warning }.count
+    }
+
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 16) {
-                PageHeaderView(title: "日志")
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
+        VStack(alignment: .leading, spacing: 12) {
+            PageHeaderView(title: "日志")
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
 
-                CardView(title: "今日日志", icon: "list.bullet.rectangle", iconColor: theme.accent) {
-                    HStack {
-                        Text("真实事件记录")
-                            .font(.caption)
-                            .foregroundStyle(theme.textSecondary)
-                        Spacer()
-                        Text(DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .none))
-                            .font(.caption)
-                            .foregroundStyle(theme.textSecondary)
-                    }
-                    .padding(.bottom, 4)
-
-                    VehicleLogFilterBar(selectedFilter: $selectedFilter)
-                        .padding(.bottom, 8)
-
-                    if filteredLogs.isEmpty {
-                        EmptyLogStateView(filterTitle: selectedFilter.title)
-                    } else {
-                        VStack(spacing: 0) {
-                            ForEach(Array(filteredLogs.enumerated()), id: \.element.id) { index, log in
-                                VehicleLogRow(log: log, isLast: index == filteredLogs.count - 1)
-                            }
-                        }
-                    }
+            // 顶部摘要 + 筛选，固定不随日志无限拉长
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    consoleBadge(text: "今日 \(todayLogs.count)", color: theme.accent)
+                    consoleBadge(text: "告警 \(errorCount)", color: errorCount > 0 ? AppTheme.orange : theme.textSecondary)
+                    consoleBadge(text: selectedFilter.title, color: theme.textSecondary)
+                    Spacer(minLength: 0)
+                    Text(DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .none))
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(theme.textSecondary)
                 }
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 86), spacing: 12)], alignment: .leading, spacing: 10) {
-                    LogActionButton(icon: "doc.on.doc", title: "复制今日", action: copyFilteredLogs)
-                    LogActionButton(icon: "square.and.arrow.up", title: "导出今日", action: exportFilteredLogs)
-                    LogActionButton(icon: "trash", title: "清除今日") {
-                        showingClearAlert = true
-                    }
-                }
+                VehicleLogFilterBar(selectedFilter: $selectedFilter)
+            }
+            .padding(.horizontal, 20)
+
+            // 核心：固定高度控制台窗口，内部滚动
+            consoleWindow
                 .padding(.horizontal, 16)
 
-                Spacer(minLength: 100)
+            // 底部动作条固定
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 86), spacing: 12)], alignment: .leading, spacing: 10) {
+                LogActionButton(icon: "doc.on.doc", title: "复制", action: copyFilteredLogs)
+                LogActionButton(icon: "square.and.arrow.up", title: "导出", action: exportFilteredLogs)
+                LogActionButton(icon: "arrow.down.to.line", title: autoFollow ? "跟随开" : "跟随关") {
+                    autoFollow.toggle()
+                }
+                LogActionButton(icon: "trash", title: "清除") {
+                    showingClearAlert = true
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
         }
-        .modifier(ChromeScrollTrackingModifier(scrollState: scrollState))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .sheet(item: $sharePayload) { payload in
             ShareSheet(activityItems: payload.activityItems)
         }
@@ -100,13 +101,16 @@ struct LogView: View {
             if showingClearAlert {
                 CustomAlertView(
                     title: "清除日志",
-                    message: "确定要清除今日所有车辆事件日志吗？错误日志不会清空。",
+                    message: "确定要清除今日所有车辆事件日志吗？",
                     confirmTitle: "确认清除",
                     confirmColor: .red,
                     onCancel: { withAnimation(PopupMotion.dismissEase) { showingClearAlert = false } },
                     onConfirm: {
                         withAnimation(PopupMotion.dismissEase) { showingClearAlert = false }
-                        withAnimation { vehicleLog.clearToday() }
+                        withAnimation {
+                            vehicleLog.clearToday()
+                            expandedIDs.removeAll()
+                        }
                         vehicleLog.add(.action, "清除今日日志", detail: "filter=\(selectedFilter.title)")
                     }
                 )
@@ -117,7 +121,7 @@ struct LogView: View {
         .overlay(alignment: .bottom) {
             if let text = toastText {
                 ToastView(text: text)
-                    .padding(.bottom, 80)
+                    .padding(.bottom, 96)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .onAppear {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -127,9 +131,111 @@ struct LogView: View {
             }
         }
         .animation(PopupMotion.presentSpring, value: showingClearAlert)
+        .onAppear {
+            // 日志页本身不再整页滚动，避免外层 chrome 误判
+            scrollState.reset()
+        }
         .onDisappear {
             scrollState.reset()
         }
+    }
+
+    private var consoleWindow: some View {
+        GeometryReader { geo in
+            let windowHeight = max(geo.size.height, 280)
+            VStack(spacing: 0) {
+                // 标题栏
+                HStack(spacing: 8) {
+                    Circle().fill(Color.red.opacity(0.85)).frame(width: 8, height: 8)
+                    Circle().fill(Color.orange.opacity(0.85)).frame(width: 8, height: 8)
+                    Circle().fill(Color.green.opacity(0.85)).frame(width: 8, height: 8)
+                    Text("EVENT CONSOLE")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.55))
+                    Spacer()
+                    Text("\(filteredLogs.count) lines")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.45))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.black.opacity(0.35))
+
+                Divider().overlay(Color.white.opacity(0.08))
+
+                if filteredLogs.isEmpty {
+                    EmptyLogStateView(filterTitle: selectedFilter.title)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(16)
+                } else {
+                    ScrollViewReader { proxy in
+                        ScrollView(.vertical, showsIndicators: true) {
+                            LazyVStack(alignment: .leading, spacing: 0) {
+                                ForEach(filteredLogs) { log in
+                                    ConsoleLogRow(
+                                        log: log,
+                                        expanded: expandedIDs.contains(log.id),
+                                        onToggle: {
+                                            if expandedIDs.contains(log.id) {
+                                                expandedIDs.remove(log.id)
+                                            } else {
+                                                expandedIDs.insert(log.id)
+                                            }
+                                        }
+                                    )
+                                    .id(log.id)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .onAppear {
+                            scrollToLatest(proxy: proxy, animated: false)
+                        }
+                        .onChange(of: filteredLogs.first?.id) { _ in
+                            guard autoFollow else { return }
+                            scrollToLatest(proxy: proxy, animated: true)
+                        }
+                        .onChange(of: selectedFilter) { _ in
+                            expandedIDs.removeAll()
+                            scrollToLatest(proxy: proxy, animated: false)
+                        }
+                    }
+                }
+            }
+            .frame(width: geo.size.width, height: windowHeight, alignment: .top)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.black.opacity(0.42))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func scrollToLatest(proxy: ScrollViewProxy, animated: Bool) {
+        guard let firstID = filteredLogs.first?.id else { return }
+        if animated {
+            withAnimation(.easeOut(duration: 0.18)) {
+                proxy.scrollTo(firstID, anchor: .top)
+            }
+        } else {
+            proxy.scrollTo(firstID, anchor: .top)
+        }
+    }
+
+    private func consoleBadge(text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            .foregroundStyle(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule().fill(color.opacity(0.14))
+            )
     }
 
     private func copyFilteredLogs() {
@@ -154,6 +260,81 @@ struct LogView: View {
             return
         }
         sharePayload = SharePayload(activityItems: [url])
+    }
+}
+
+// MARK: - 控制台行（错误日志风格）
+private struct ConsoleLogRow: View {
+    let log: VehicleEventLogEntry
+    let expanded: Bool
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(log.timeText)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.42))
+                        .frame(width: 58, alignment: .leading)
+
+                    Text(log.category.title)
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(log.category.color)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(log.category.color.opacity(0.16))
+                        )
+
+                    Text(log.title)
+                        .font(.system(size: 12.5, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(rowTitleColor)
+                        .lineLimit(expanded ? nil : 1)
+
+                    Spacer(minLength: 0)
+
+                    if !log.detail.isEmpty {
+                        Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(0.35))
+                    }
+                }
+
+                if expanded && !log.detail.isEmpty {
+                    Text(log.detail)
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.62))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 66)
+                        .padding(.bottom, 4)
+                        .textSelection(.enabled)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(rowBackground)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var rowTitleColor: Color {
+        switch log.category {
+        case .error: return AppTheme.red
+        case .warning: return AppTheme.orange
+        default: return Color.white.opacity(0.92)
+        }
+    }
+
+    private var rowBackground: Color {
+        switch log.category {
+        case .error: return AppTheme.red.opacity(0.08)
+        case .warning: return AppTheme.orange.opacity(0.06)
+        default: return Color.clear
+        }
     }
 }
 
@@ -196,7 +377,6 @@ private struct LogActionButton: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 13))
                 Text(title)
                     .font(.system(size: 14, weight: .medium))
             }
@@ -217,59 +397,16 @@ private struct EmptyLogStateView: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 14))
-                .foregroundStyle(AppTheme.green)
+        VStack(spacing: 10) {
+            Image(systemName: "terminal")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.28))
             Text(message)
-                .font(.system(size: 13))
-                .foregroundStyle(Color.white.opacity(0.5))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 8)
-    }
-}
-
-// MARK: - Log Row
-struct VehicleLogRow: View {
-    let log: VehicleEventLogEntry
-    let isLast: Bool
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(spacing: 0) {
-                ZStack {
-                    Circle()
-                        .fill(log.category.color.opacity(0.15))
-                        .frame(width: 32, height: 32)
-                    Image(systemName: log.category.icon)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(log.category.color)
-                }
-                if !isLast {
-                    Rectangle()
-                        .fill(Color.white.opacity(0.10))
-                        .frame(width: 1.5, height: 30)
-                }
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                HStack {
-                    Text(log.title)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Spacer()
-                    Text(log.timeText)
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(.secondary)
-                }
-                if !log.detail.isEmpty {
-                    Text(log.detail)
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                        .lineLimit(3)
-                }
-            }
-            .padding(.bottom, isLast ? 0 : 14)
+                .font(.system(size: 13, design: .monospaced))
+                .foregroundStyle(Color.white.opacity(0.45))
+            Text("新事件会显示在此控制台窗口内")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Color.white.opacity(0.28))
         }
     }
 }
