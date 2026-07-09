@@ -36,6 +36,13 @@ struct KeylessMainSection: View {
                         vehicleLog.add(.keyless, "修改BLE扫描时长", detail: "\(Int(value))s")
                     }
 
+                    SliderRow(icon: "timer", label: "BLE 扫描间隔",
+                              value: $settingsStore.settings.bleScanInterval, range: 0...300, step: 5,
+                              format: settingsStore.settings.bleScanInterval <= 0 ? "无间隙" : "\(Int(settingsStore.settings.bleScanInterval))s", tint: AppTheme.accent) { value in
+                        let text = value <= 0 ? "无间隙" : "\(Int(value))s"
+                        vehicleLog.add(.keyless, "修改BLE扫描间隔", detail: text)
+                    }
+
                     SliderRow(icon: "gauge", label: "重复指令间隔",
                               value: $settingsStore.settings.cmdInterval, range: 1...15, step: 1,
                               format: "\(Int(settingsStore.settings.cmdInterval))s", tint: AppTheme.purple) { value in

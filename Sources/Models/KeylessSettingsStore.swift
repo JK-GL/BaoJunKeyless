@@ -32,6 +32,46 @@ struct KeylessSettings: Codable {
 
     // BLE 扫描
     var bleScanDuration: Double = 20
+    var bleScanInterval: Double = 0
+
+    init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case keylessEnabled, pluginTakeover, smartSwitch, appManual, cmdInterval
+        case unlockEnabled, unlockThreshold, unlockApproachDuration, unlockPopup, unlockVibrate, unlockVibPreset, unlockVibCustomID, unlockVibStrength
+        case lockEnabled, lockThreshold, lockDelay, lockPopup, lockVibrate, lockVibPreset, lockVibCustomID, lockVibStrength
+        case bleScanDuration, bleScanInterval
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        keylessEnabled = try c.decodeIfPresent(Bool.self, forKey: .keylessEnabled) ?? true
+        pluginTakeover = try c.decodeIfPresent(Bool.self, forKey: .pluginTakeover) ?? true
+        smartSwitch = try c.decodeIfPresent(Bool.self, forKey: .smartSwitch) ?? false
+        appManual = try c.decodeIfPresent(Bool.self, forKey: .appManual) ?? false
+        cmdInterval = try c.decodeIfPresent(Double.self, forKey: .cmdInterval) ?? 5
+
+        unlockEnabled = try c.decodeIfPresent(Bool.self, forKey: .unlockEnabled) ?? true
+        unlockThreshold = try c.decodeIfPresent(Double.self, forKey: .unlockThreshold) ?? -48
+        unlockApproachDuration = try c.decodeIfPresent(Double.self, forKey: .unlockApproachDuration) ?? 2
+        unlockPopup = try c.decodeIfPresent(Bool.self, forKey: .unlockPopup) ?? true
+        unlockVibrate = try c.decodeIfPresent(Bool.self, forKey: .unlockVibrate) ?? true
+        unlockVibPreset = try c.decodeIfPresent(String.self, forKey: .unlockVibPreset) ?? "shortSingle"
+        unlockVibCustomID = try c.decodeIfPresent(String.self, forKey: .unlockVibCustomID)
+        unlockVibStrength = try c.decodeIfPresent(Double.self, forKey: .unlockVibStrength) ?? 60
+
+        lockEnabled = try c.decodeIfPresent(Bool.self, forKey: .lockEnabled) ?? true
+        lockThreshold = try c.decodeIfPresent(Double.self, forKey: .lockThreshold) ?? -72
+        lockDelay = try c.decodeIfPresent(Double.self, forKey: .lockDelay) ?? 15
+        lockPopup = try c.decodeIfPresent(Bool.self, forKey: .lockPopup) ?? true
+        lockVibrate = try c.decodeIfPresent(Bool.self, forKey: .lockVibrate) ?? true
+        lockVibPreset = try c.decodeIfPresent(String.self, forKey: .lockVibPreset) ?? "shortSingle"
+        lockVibCustomID = try c.decodeIfPresent(String.self, forKey: .lockVibCustomID)
+        lockVibStrength = try c.decodeIfPresent(Double.self, forKey: .lockVibStrength) ?? 60
+
+        bleScanDuration = try c.decodeIfPresent(Double.self, forKey: .bleScanDuration) ?? 20
+        bleScanInterval = try c.decodeIfPresent(Double.self, forKey: .bleScanInterval) ?? 0
+    }
 }
 
 // MARK: - 设置存储管理器

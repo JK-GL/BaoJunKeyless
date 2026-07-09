@@ -195,8 +195,10 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 }
                 if self.bleStatus != .scanning {
                     let timeout = Int(self.keylessSettingsStore.settings.bleScanDuration)
+                    let interval = Int(self.keylessSettingsStore.settings.bleScanInterval)
+                    let intervalText = interval <= 0 ? "无间隙" : "间隔 \(interval)s"
                     let macSuffix = self.deviceDisplayName
-                    self.vehicleEventLogStore.add(.action, "BLE 扫描中", detail: "\(macSuffix) · 最长 \(timeout)s")
+                    self.vehicleEventLogStore.add(.action, "BLE 扫描中", detail: "\(macSuffix) · 最长 \(timeout)s · \(intervalText)")
                 }
                 self.bleStatus = .scanning
             case .connecting, .connected:
@@ -302,6 +304,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             return
         }
         bleManager.scanTimeoutDuration = max(20, min(300, settings.bleScanDuration))
+        bleManager.scanRetryInterval = max(0, min(300, settings.bleScanInterval))
         bleManager.start(config: .init(bleMac: bleMac, keyId: keyId, masterKey: masterKey, keyMasterRandom: keyMasterRandom, controlAes128Key: controlAes128Key, bleType: bleType, bleKey: bleKey))
     }
 

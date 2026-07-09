@@ -221,6 +221,7 @@ final class VehicleBLEManager: NSObject {
     private var candidateSelectionWorkItem: DispatchWorkItem?
     private var scanWatchdogWorkItem: DispatchWorkItem?
     private var scanTotalTimeoutWorkItem: DispatchWorkItem?
+    private var scanRetryWorkItem: DispatchWorkItem?
     private var connectionTimeoutWorkItem: DispatchWorkItem?
     private var foregroundObserver: NSObjectProtocol?
     private var currentConnectionSource: ConnectionSource?
@@ -245,6 +246,7 @@ final class VehicleBLEManager: NSObject {
     }
 
     var scanTimeoutDuration: TimeInterval = 20
+    var scanRetryInterval: TimeInterval = 0
 
     var canSendDoorLockControl: Bool {
         canSendVehicleControl
@@ -307,6 +309,8 @@ final class VehicleBLEManager: NSObject {
         scanWatchdogWorkItem = nil
         scanTotalTimeoutWorkItem?.cancel()
         scanTotalTimeoutWorkItem = nil
+        scanRetryWorkItem?.cancel()
+        scanRetryWorkItem = nil
         connectionTimeoutWorkItem?.cancel()
         connectionTimeoutWorkItem = nil
         if let foregroundObserver {
@@ -344,6 +348,8 @@ final class VehicleBLEManager: NSObject {
         scanWatchdogWorkItem = nil
         scanTotalTimeoutWorkItem?.cancel()
         scanTotalTimeoutWorkItem = nil
+        scanRetryWorkItem?.cancel()
+        scanRetryWorkItem = nil
         connectionTimeoutWorkItem?.cancel()
         connectionTimeoutWorkItem = nil
         currentConnectionSource = nil
@@ -435,9 +441,12 @@ final class VehicleBLEManager: NSObject {
             state = .idle
             return
         }
+        if case .scanning = state { return }
         guard discoveredPeripheral == nil else { return }
         candidateSelectionWorkItem?.cancel()
         candidateSelectionWorkItem = nil
+        scanRetryWorkItem?.cancel()
+        scanRetryWorkItem = nil
         candidatePeripheral = nil
         candidateName = "--"
         candidateRSSI = -127
@@ -478,10 +487,30 @@ final class VehicleBLEManager: NSObject {
             self.candidateSelectionWorkItem = nil
             if self.discoveredPeripheral == nil {
                 self.state = .idle
+                self.scheduleScanRetryIfNeeded()
             }
         }
         scanTotalTimeoutWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: work)
+    }
+
+    private func scheduleScanRetryIfNeeded() {
+        scanRetryWorkItem?.cancel()
+        scanRetryWorkItem = nil
+        guard config != nil else { return }
+        let interval = max(0, scanRetryInterval)
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            guard self.config != nil else { return }
+            guard case .idle = self.state else { return }
+            self.startScanning()
+        }
+        scanRetryWorkItem = work
+        if interval <= 0 {
+            DispatchQueue.main.async(execute: work)
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + interval, execute: work)
+        }
     }
 
     private func scheduleConnectionTimeout(uuid: UUID, source: String) {
