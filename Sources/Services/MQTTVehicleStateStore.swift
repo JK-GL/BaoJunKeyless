@@ -168,6 +168,9 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             guard let self else { return }
             switch state {
             case .idle:
+                if self.bleStatus != .disconnected {
+                    self.vehicleEventLogStore.add(.action, "BLE 已断开", detail: "连接结束或超时")
+                }
                 self.bleStatus = .disconnected
                 self.applyLiveBLERSSI(nil)
             case .unsupported, .bluetoothOff:
