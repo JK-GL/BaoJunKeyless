@@ -151,6 +151,12 @@ struct LockSettingsSection: View {
                     }
 
                     ToggleRow(icon: "bell.fill", label: "上锁弹窗", isOn: $settingsStore.settings.lockPopup)
+
+                    SliderRow(icon: "magnifyingglass", label: "扫描时长",
+                              value: $settingsStore.settings.bleScanDuration, range: 20...300, step: 5,
+                              format: "\(Int(settingsStore.settings.bleScanDuration))s", tint: Color.orange) { value in
+                        vehicleLog.add(.keyless, "修改BLE扫描时长", detail: "\(Int(value))s")
+                    }
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }

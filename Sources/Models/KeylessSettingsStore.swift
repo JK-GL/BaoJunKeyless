@@ -29,6 +29,9 @@ struct KeylessSettings: Codable {
     var lockVibPreset: String = "shortSingle"
     var lockVibCustomID: String? = nil
     var lockVibStrength: Double = 60
+
+    // BLE 扫描
+    var bleScanDuration: Double = 20
 }
 
 // MARK: - 设置存储管理器

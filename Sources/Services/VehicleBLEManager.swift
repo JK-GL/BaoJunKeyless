@@ -244,6 +244,8 @@ final class VehicleBLEManager: NSObject {
         return false
     }
 
+    var scanTimeoutDuration: TimeInterval = 20
+
     var canSendDoorLockControl: Bool {
         canSendVehicleControl
     }
@@ -464,10 +466,11 @@ final class VehicleBLEManager: NSObject {
 
     private func scheduleScanTotalTimeout() {
         scanTotalTimeoutWorkItem?.cancel()
+        let timeout = scanTimeoutDuration
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             guard case .scanning = self.state else { return }
-            self.onLog?("BLE", "scan total timeout (20s), stopping scan")
+            self.onLog?("BLE", "scan total timeout (\(Int(timeout))s), stopping scan")
             self.central.stopScan()
             self.scanWatchdogWorkItem?.cancel()
             self.scanWatchdogWorkItem = nil
@@ -478,7 +481,7 @@ final class VehicleBLEManager: NSObject {
             }
         }
         scanTotalTimeoutWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: work)
     }
 
     private func scheduleConnectionTimeout(uuid: UUID, source: String) {

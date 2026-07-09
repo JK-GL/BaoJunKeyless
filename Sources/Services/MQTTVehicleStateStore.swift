@@ -111,6 +111,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     private var lastEvalFarAway: Bool?
     private var phoneNearbySince: Date?
     private var phoneFarAwaySince: Date?
+    private var bleScanStartedAt: Date?
+    private var hasCompletedBLEAuth = false
     private var lastAutoCommandAt: Date?
     private var lastAutoCommandKind: VehicleCommandKind?
     private var lastBLEWaitCommandKind: VehicleCommandKind?
@@ -169,28 +171,35 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             switch state {
             case .idle:
                 if self.bleStatus != .disconnected {
-                    self.vehicleEventLogStore.add(.action, "BLE 已断开", detail: "连接结束或超时")
+                    let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
+                    self.vehicleEventLogStore.add(.action, "BLE 已断开", detail: "连接结束或超时 · 本次已扫描 \(duration)")
                 }
                 self.bleStatus = .disconnected
+                self.bleScanStartedAt = nil
+                self.hasCompletedBLEAuth = false
                 self.applyLiveBLERSSI(nil)
             case .unsupported, .bluetoothOff:
                 self.bleStatus = .error
+                self.bleScanStartedAt = nil
+                self.hasCompletedBLEAuth = false
                 self.applyLiveBLERSSI(nil)
                 self.vehicleEventLogStore.add(.action, "BLE 不可用", detail: "蓝牙关闭或未授权")
             case .scanning:
-                if self.bleStatus != .scanning {
-                    self.vehicleEventLogStore.add(.action, "BLE 扫描中", detail: "搜索车辆 BLE 设备")
+                if self.bleScanStartedAt == nil {
+                    self.bleScanStartedAt = Date()
                 }
+                let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
+                self.vehicleEventLogStore.add(.action, "BLE 扫描中", detail: "已扫描 \(duration)")
                 self.bleStatus = .scanning
             case .connecting, .connected:
-                if self.bleStatus != .connecting {
-                    self.vehicleEventLogStore.add(.action, "BLE 连接中", detail: state == .connected ? "已连接，正在发现服务" : "正在建立连接")
-                }
+                let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
+                self.vehicleEventLogStore.add(.action, "BLE 连接中", detail: state == .connected ? "已连接，正在发现服务 · 扫描耗时 \(duration)" : "正在建立连接 · 扫描耗时 \(duration)")
                 self.bleStatus = .connecting
             case .authenticating:
                 self.vehicleEventLogStore.add(.action, "BLE 鉴权中", detail: "38C7/A857 四步鉴权")
                 self.bleStatus = .authenticating
             case .authenticated:
+                self.hasCompletedBLEAuth = true
                 self.vehicleEventLogStore.add(.action, "BLE 鉴权成功", detail: "controlAes128Key 已就绪，可发送控制命令")
                 self.bleStatus = .authenticated
             case .authFailed(let reason):
@@ -281,6 +290,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             }
             return
         }
+        bleManager.scanTimeoutDuration = max(20, min(300, settings.bleScanDuration))
         bleManager.start(config: .init(bleMac: bleMac, keyId: keyId, masterKey: masterKey, keyMasterRandom: keyMasterRandom, controlAes128Key: controlAes128Key, bleType: bleType, bleKey: bleKey))
     }
 
@@ -337,6 +347,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         lastEvalFarAway = nil
         phoneNearbySince = nil
         phoneFarAwaySince = nil
+        bleScanStartedAt = nil
+        hasCompletedBLEAuth = false
         didLogManualForegroundSkip = false
         lastBLEWaitCommandKind = nil
         bleSignalLossWorkItem?.cancel()
@@ -643,6 +655,11 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
         // 状态过期 → 不评估，不记日志
         guard currentState.isFresh() else { return }
+
+        // 无感上锁安全门：必须本次 BLE 会话曾鉴权成功，否则不评估上锁
+        if currentState.phoneFarAway && !hasCompletedBLEAuth {
+            return
+        }
 
         if currentState.phoneNearby {
             if phoneNearbySince == nil {
@@ -1142,5 +1159,13 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     func handleMQTTDisconnect(error: Error?) {
         mqttStatus = .error
         CrashLogger.shared.mark("MQTT", "disconnected: \(error?.localizedDescription ?? "no error")")
+    }
+
+    private func formatElapsedSince(_ start: Date) -> String {
+        let elapsed = Int(Date().timeIntervalSince(start))
+        if elapsed < 60 { return "\(elapsed)s" }
+        let minutes = elapsed / 60
+        let seconds = elapsed % 60
+        return "\(minutes)m\(seconds)s"
     }
 }
