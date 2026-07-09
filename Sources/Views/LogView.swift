@@ -158,6 +158,12 @@ struct LogView: View {
         .onDisappear {
             scrollState.reset()
         }
+        .onChange(of: selectedFilter) { _ in
+            persistViewPreferences()
+        }
+        .onChange(of: autoFollow) { _ in
+            persistViewPreferences()
+        }
     }
 
     private var consoleWindow: some View {
@@ -200,12 +206,8 @@ struct LogView: View {
                             scrollToLatest(proxy: proxy, animated: true)
                         }
                         .onChange(of: selectedFilter) { _ in
-                            persistViewPreferences()
                             applyExpansionMemoryForCurrentFilter()
                             scrollToLatest(proxy: proxy, animated: false)
-                        }
-                        .onChange(of: autoFollow) { _ in
-                            persistViewPreferences()
                         }
                     }
                 }
@@ -380,13 +382,21 @@ private struct ConsoleLogRow: View {
             }
 
             if expanded && !log.detail.isEmpty {
-                Text(log.detail)
-                    .font(.system(size: 11.5, design: .monospaced))
-                    .foregroundStyle(Color.white.opacity(0.62))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 56)
-                    .padding(.bottom, 4)
-                    .textSelection(.enabled)
+                VStack(alignment: .leading, spacing: 4) {
+                    if let repeatSummary = log.repeatSummaryText {
+                        Text(repeatSummary)
+                            .font(.system(size: 10.5, design: .monospaced))
+                            .foregroundStyle(Color.white.opacity(0.42))
+                    }
+
+                    Text(log.detail)
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.62))
+                        .textSelection(.enabled)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 56)
+                .padding(.bottom, 4)
             }
         }
         .padding(.horizontal, 10)

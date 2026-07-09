@@ -61,14 +61,16 @@ enum VehicleEventLogCategory: String, Codable, CaseIterable, Hashable {
 struct VehicleEventLogEntry: Identifiable, Codable, Equatable {
     let id: UUID
     let date: Date
+    let firstDate: Date
     let category: VehicleEventLogCategory
     let title: String
     let detail: String
     let repeatCount: Int
 
-    init(id: UUID = UUID(), date: Date = Date(), category: VehicleEventLogCategory, title: String, detail: String = "", repeatCount: Int = 1) {
+    init(id: UUID = UUID(), date: Date = Date(), firstDate: Date? = nil, category: VehicleEventLogCategory, title: String, detail: String = "", repeatCount: Int = 1) {
         self.id = id
         self.date = date
+        self.firstDate = firstDate ?? date
         self.category = category
         self.title = title
         self.detail = detail
@@ -76,13 +78,14 @@ struct VehicleEventLogEntry: Identifiable, Codable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, date, category, title, detail, repeatCount
+        case id, date, firstDate, category, title, detail, repeatCount
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         date = try c.decode(Date.self, forKey: .date)
+        firstDate = try c.decodeIfPresent(Date.self, forKey: .firstDate) ?? date
         category = try c.decode(VehicleEventLogCategory.self, forKey: .category)
         title = try c.decode(String.self, forKey: .title)
         detail = try c.decodeIfPresent(String.self, forKey: .detail) ?? ""
@@ -93,6 +96,7 @@ struct VehicleEventLogEntry: Identifiable, Codable, Equatable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id)
         try c.encode(date, forKey: .date)
+        try c.encode(firstDate, forKey: .firstDate)
         try c.encode(category, forKey: .category)
         try c.encode(title, forKey: .title)
         try c.encode(detail, forKey: .detail)
@@ -106,6 +110,13 @@ struct VehicleEventLogEntry: Identifiable, Codable, Equatable {
     var displayTitle: String {
         repeatCount > 1 ? "\(title) ×\(repeatCount)" : title
     }
+
+    var repeatSummaryText: String? {
+        guard repeatCount > 1 else { return nil }
+        let firstText = AppDateFormatters.logTime.string(from: firstDate)
+        let lastText = AppDateFormatters.logTime.string(from: date)
+        return "首次 \(firstText) · 最近 \(lastText) · 共 \(repeatCount) 次"
+    }
 }
 
 final class VehicleEventLogStore: ObservableObject {
@@ -115,7 +126,6 @@ final class VehicleEventLogStore: ObservableObject {
 
     private let key = AppDefaultsKey.VehicleEventLog.entries
     private let maxEntries = 500
-    private let saveQueue = DispatchQueue(label: "BaoJunKeyless.VehicleEventLogStore.save", qos: .utility)
     private var recentEventTimestamps: [String: Date] = [:]
     private var entryTokens: [UUID: String] = [:]
 
@@ -165,6 +175,7 @@ final class VehicleEventLogStore: ObservableObject {
             let updated = VehicleEventLogEntry(
                 id: existing.id,
                 date: now,
+                firstDate: existing.firstDate,
                 category: existing.category,
                 title: existing.title,
                 detail: existing.detail,
@@ -189,10 +200,7 @@ final class VehicleEventLogStore: ObservableObject {
         entries.removeAll()
         recentEventTimestamps.removeAll()
         entryTokens.removeAll()
-        let key = self.key
-        saveQueue.async {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
+        UserDefaults.standard.removeObject(forKey: key)
     }
 
     var todayEntries: [VehicleEventLogEntry] {
@@ -224,12 +232,8 @@ final class VehicleEventLogStore: ObservableObject {
     }
 
     private func save() {
-        let snapshot = entries
-        let key = self.key
-        saveQueue.async {
-            if let data = try? JSONEncoder().encode(snapshot) {
-                UserDefaults.standard.set(data, forKey: key)
-            }
+        if let data = try? JSONEncoder().encode(entries) {
+            UserDefaults.standard.set(data, forKey: key)
         }
     }
 
