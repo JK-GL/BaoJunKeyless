@@ -37,6 +37,8 @@ struct LogView: View {
     @State private var autoFollow = true
     @AppStorage("LogView.ExpandedIDs") private var persistedExpandedIDs = ""
     @AppStorage("LogView.AutoExpandAllDetails") private var autoExpandAllDetails = false
+    @AppStorage("LogView.SelectedFilterTag") private var persistedSelectedFilterTag = "all"
+    @AppStorage("LogView.AutoFollow") private var persistedAutoFollow = true
 
     private var todayLogs: [VehicleEventLogEntry] {
         vehicleLog.todayEntries
@@ -147,6 +149,7 @@ struct LogView: View {
         }
         .animation(PopupMotion.presentSpring, value: showingClearAlert)
         .onAppear {
+            restoreViewPreferences()
             restoreExpandedIDs()
             applyExpansionMemoryForCurrentFilter()
             // 日志页本身不再整页滚动，避免外层 chrome 误判
@@ -197,8 +200,12 @@ struct LogView: View {
                             scrollToLatest(proxy: proxy, animated: true)
                         }
                         .onChange(of: selectedFilter) { _ in
+                            persistViewPreferences()
                             applyExpansionMemoryForCurrentFilter()
                             scrollToLatest(proxy: proxy, animated: false)
+                        }
+                        .onChange(of: autoFollow) { _ in
+                            persistViewPreferences()
                         }
                     }
                 }
@@ -267,6 +274,24 @@ struct LogView: View {
         let validIDs = Set(todayLogs.map(\.id))
         expandedIDs = expandedIDs.intersection(validIDs)
         persistExpandedIDs()
+    }
+
+    private func restoreViewPreferences() {
+        autoFollow = persistedAutoFollow
+        selectedFilter = filterFromPersistedTag(persistedSelectedFilterTag)
+    }
+
+    private func persistViewPreferences() {
+        persistedAutoFollow = autoFollow
+        persistedSelectedFilterTag = selectedFilter.fileTag
+    }
+
+    private func filterFromPersistedTag(_ tag: String) -> VehicleLogFilter {
+        if tag == VehicleLogFilter.all.fileTag { return .all }
+        if let category = VehicleEventLogCategory.allCases.first(where: { $0.fileTag == tag }) {
+            return .category(category)
+        }
+        return .all
     }
 
     private func consoleBadge(text: String, color: Color) -> some View {
