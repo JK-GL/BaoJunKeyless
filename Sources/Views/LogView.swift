@@ -29,6 +29,7 @@ struct LogView: View {
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var vehicleLog: VehicleEventLogStore
+    @EnvironmentObject var vehicleStore: VehicleStateStore
     @State private var showingClearAlert = false
     @State private var selectedFilter: VehicleLogFilter = .all
     @State private var sharePayload: SharePayload?
@@ -57,6 +58,10 @@ struct LogView: View {
         todayLogs.filter { $0.category == .error || $0.category == .warning }.count
     }
 
+    private var mqttStore: MQTTVehicleStateStore? {
+        vehicleStore as? MQTTVehicleStateStore
+    }
+
     private var expandableLogIDs: Set<UUID> {
         Set(filteredLogs.filter { !$0.detail.isEmpty }.map(\.id))
     }
@@ -82,6 +87,10 @@ struct LogView: View {
                     consoleBadge(text: "告警 \(errorCount)", color: errorCount > 0 ? AppTheme.orange : theme.textSecondary)
                     consoleBadge(text: selectedFilter.title, color: theme.textSecondary)
                     Spacer(minLength: 0)
+                }
+
+                if let mqttStore {
+                    bleDiagnosticStrip(store: mqttStore)
                 }
 
                 VehicleLogFilterBar(selectedFilter: $selectedFilter)
@@ -294,6 +303,44 @@ struct LogView: View {
             return .category(category)
         }
         return .all
+    }
+
+    @ViewBuilder
+    private func bleDiagnosticStrip(store: MQTTVehicleStateStore) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "wave.3.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(AppTheme.accent)
+                Text("BLE \(store.bleDiagnosticPhaseText)")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white)
+                Spacer(minLength: 0)
+                Text(store.bleDiagnosticLastConclusionText)
+                    .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.55))
+            }
+
+            Text(store.bleDiagnosticDetailText)
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundStyle(Color.white.opacity(0.72))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(store.bleDiagnosticCountsSummaryText)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(Color.white.opacity(0.48))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.035))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private func consoleBadge(text: String, color: Color) -> some View {

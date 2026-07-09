@@ -14,6 +14,7 @@ extension MQTTVehicleStateStore {
         userManuallyStoppedBLE = false
         didLogManualForegroundSkip = false
         lastBLEWaitCommandKind = nil
+        resetBLEDiagnosticCycle()
         bleSignalLossWorkItem?.cancel()
         bleSignalLossWorkItem = nil
         isExecutingKeylessCommand = false

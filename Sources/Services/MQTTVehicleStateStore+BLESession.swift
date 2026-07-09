@@ -18,14 +18,19 @@ extension MQTTVehicleStateStore {
                 if self.bleStatus == .scanning {
                     self.consecutiveScanTimeouts += 1
                     let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
-                    self.vehicleEventLogStore.addCoalesced(.action, "BLE 扫描超时", detail: "\(macSuffix) · 已扫描 \(duration)，未发现设备", identity: "scan-timeout|\(macSuffix)")
-                    let retryInterval = Int(self.effectiveScanRetryInterval(baseInterval: self.keylessSettingsStore.settings.bleScanInterval))
-                    if self.consecutiveScanTimeouts == 3 || self.consecutiveScanTimeouts == 5 || self.consecutiveScanTimeouts == 7 {
-                        self.logVehicleEvent(.warning, "BLE 扫描退避", detail: "连续超时 \(self.consecutiveScanTimeouts) 次，下轮间隔 \(retryInterval)s", identity: "scan-backoff-\(retryInterval)", minimumInterval: 20)
+                    if self.bleDidSeeDeviceThisCycle {
+                        self.vehicleEventLogStore.addCoalesced(.warning, "BLE 扫描结束", detail: "\(self.bleDiagnosticCurrentCandidateText) · 已扫描 \(duration)，发现设备但未连上", identity: "scan-end-seen|\(macSuffix)")
+                        self.noteBLEFoundButNotConnected("\(self.bleDiagnosticCurrentCandidateText) · 已扫描 \(duration)")
+                    } else {
+                        self.vehicleEventLogStore.addCoalesced(.action, "BLE 扫描超时", detail: "\(macSuffix) · 已扫描 \(duration)，未发现设备", identity: "scan-timeout|\(macSuffix)")
+                        self.noteBLENoDeviceFound(duration: duration)
                     }
+                    self.resetBLEDiagnosticCycle()
                 } else if self.bleStatus == .connecting || self.bleStatus == .authenticating || self.bleStatus == .authenticated {
                     let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
                     self.logVehicleEvent(.action, "BLE 已断开", detail: "\(macSuffix) · 扫描耗时 \(duration)", identity: "disconnect|\(macSuffix)", minimumInterval: 4)
+                    self.setBLEDiagnosticPhase("已断开", detail: "\(macSuffix) · 扫描耗时 \(duration)")
+                    self.resetBLEDiagnosticCycle()
                 }
                 self.bleStatus = .disconnected
                 self.bleScanStartedAt = nil
@@ -36,10 +41,13 @@ extension MQTTVehicleStateStore {
                 self.bleScanStartedAt = nil
                 self.hasCompletedBLEAuth = false
                 self.applyLiveBLERSSI(nil)
+                self.setBLEDiagnosticPhase("BLE不可用", detail: "蓝牙关闭或未授权")
+                self.setBLEDiagnosticConclusion("BLE 不可用")
                 self.logVehicleEvent(.action, "BLE 不可用", detail: "蓝牙关闭或未授权", identity: "ble-unavailable", minimumInterval: 8)
             case .scanning:
                 if self.bleScanStartedAt == nil {
                     self.bleScanStartedAt = Date()
+                    self.resetBLEDiagnosticCycle()
                 }
                 if self.bleStatus != .scanning {
                     let timeout = Int(self.keylessSettingsStore.settings.bleScanDuration)
@@ -47,6 +55,7 @@ extension MQTTVehicleStateStore {
                     let intervalText = interval <= 0 ? "无间隙" : "间隔 \(interval)s"
                     let macSuffix = self.deviceDisplayName
                     self.vehicleEventLogStore.addCoalesced(.action, "BLE 扫描中", detail: "\(macSuffix) · 最长 \(timeout)s · \(intervalText)", identity: "scan-start|\(macSuffix)")
+                    self.setBLEDiagnosticPhase("扫描中", detail: "\(macSuffix) · 最长 \(timeout)s · \(intervalText)")
                 }
                 self.bleStatus = .scanning
             case .connecting, .connected:
@@ -55,28 +64,40 @@ extension MQTTVehicleStateStore {
                     let macSuffix = self.deviceDisplayName
                     self.logVehicleEvent(.action, "BLE 已连接", detail: "\(macSuffix) · 发现服务与特征中", identity: "connecting|\(macSuffix)", minimumInterval: 3)
                 }
+                self.setBLEDiagnosticPhase("连接中", detail: self.bleDiagnosticCurrentCandidateText)
                 self.bleStatus = .connecting
             case .authenticating:
                 self.logVehicleEvent(.action, "BLE 鉴权中", detail: "38C7/A857 四步鉴权", identity: "authenticating", minimumInterval: 3)
+                self.setBLEDiagnosticPhase("鉴权中", detail: self.bleDiagnosticCurrentCandidateText)
                 self.bleStatus = .authenticating
             case .authenticated:
                 self.consecutiveScanTimeouts = 0
                 self.hasCompletedBLEAuth = true
+                self.setBLEDiagnosticPhase("已鉴权", detail: self.bleDiagnosticCurrentCandidateText)
+                self.setBLEDiagnosticConclusion("鉴权成功")
                 self.logVehicleEvent(.action, "BLE 鉴权成功", detail: "可发送控车命令", identity: "authenticated", minimumInterval: 3)
                 self.bleStatus = .authenticated
             case .authFailed(let reason):
+                self.noteBLEAuthFailed(reason)
+                self.bleScanStartedAt = nil
                 self.logVehicleEvent(.error, "BLE 鉴权失败", detail: reason, identity: "auth-failed|\(reason)", minimumInterval: 6)
                 self.bleStatus = .error
                 self.applyLiveBLERSSI(nil)
             case .error(let detail):
+                self.bleScanStartedAt = nil
                 self.logVehicleEvent(.error, "BLE 错误", detail: detail, identity: "ble-error|\(detail)", minimumInterval: 6)
+                self.setBLEDiagnosticPhase("BLE错误", detail: detail)
                 self.bleStatus = .error
                 self.applyLiveBLERSSI(nil)
             }
         }
-        bleManager.onLog = { component, message in
+        bleManager.onLog = { [weak self] component, message in
+            guard let self else { return }
             if let message {
                 CrashLogger.shared.mark(component, message)
+                DispatchQueue.main.async {
+                    self.handleBLEDiagnosticLog(message)
+                }
             }
         }
         bleManager.onControlReceipt = { [weak self] receipt in
@@ -221,6 +242,7 @@ extension MQTTVehicleStateStore {
                     self.userManuallyStoppedBLE = false
                     self.bleManager.stop()
                     self.bleStatus = .disconnected
+                    self.setBLEDiagnosticPhase("无感关闭", detail: "无感开关已关闭")
                     if wasEnabled != false {
                         self.resetKeylessRuntimeState()
                         self.vehicleEventLogStore.add(.action, "BLE 已停止", detail: "无感开关已关闭")
@@ -230,19 +252,53 @@ extension MQTTVehicleStateStore {
             .store(in: &cancellables)
     }
 
-    func effectiveScanRetryInterval(baseInterval: TimeInterval) -> TimeInterval {
-        let base = max(0, min(300, baseInterval))
-        let backoff: TimeInterval
-        switch consecutiveScanTimeouts {
-        case 0...1:
-            backoff = 0
-        case 2...3:
-            backoff = 10
-        case 4...5:
-            backoff = 30
-        default:
-            backoff = 60
+    func handleBLEDiagnosticLog(_ message: String) {
+        if message.contains("manufacturer candidate name=") || message.contains("debug score candidate name=") {
+            let name = nameValue(in: message) ?? "--"
+            let rssi = value(in: message, key: "rssi=").flatMap(Int.init)
+            noteBLEDeviceSeen(name: name, rssi: rssi)
+            return
         }
-        return min(300, max(base, backoff))
+
+        if message.contains("connecting bound peripheral") || message.contains("connecting manufacturer candidate") || message.contains("connecting debugScore candidate") {
+            let name = nameValue(in: message) ?? bleCurrentCandidateName
+            noteBLEDeviceSeen(name: name, rssi: bleCurrentCandidateRSSI)
+            setBLEDiagnosticPhase("连接中", detail: bleDiagnosticCurrentCandidateText)
+            return
+        }
+
+        if message.contains("connected ") && message.contains("discover all services") {
+            let name = message
+                .replacingOccurrences(of: "connected ", with: "")
+                .components(separatedBy: " source=")
+                .first?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? bleCurrentCandidateName
+            noteBLEConnectedCandidate(name: name)
+            return
+        }
+
+        if message.contains("connect failed source=") || message.contains("connection timeout (10s)") || message.contains("target services incomplete") {
+            noteBLEFoundButNotConnected(bleDiagnosticCurrentCandidateText)
+            return
+        }
+    }
+
+    private func nameValue(in text: String) -> String? {
+        guard let range = text.range(of: "name=") else { return nil }
+        let tail = text[range.upperBound...]
+        let delimiters = [" rssi=", " score=", " id=", " source=", " |"]
+        let end = delimiters.compactMap { token in tail.range(of: token).map(\.lowerBound) }.min() ?? tail.endIndex
+        return String(tail[..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func value(in text: String, key: String) -> String? {
+        guard let range = text.range(of: key) else { return nil }
+        let tail = text[range.upperBound...]
+        let raw = tail.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true).first.map(String.init) ?? String(tail)
+        return raw.trimmingCharacters(in: CharacterSet(charactersIn: "|,"))
+    }
+
+    func effectiveScanRetryInterval(baseInterval: TimeInterval) -> TimeInterval {
+        max(0, min(300, baseInterval))
     }
 }

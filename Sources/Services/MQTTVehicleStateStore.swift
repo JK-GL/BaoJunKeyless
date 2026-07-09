@@ -75,6 +75,13 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     @Published var debugBLESmoothedRSSI: Int?
     @Published var debugBLELastSeenText: String = "--"
     @Published var debugBLELastTransitionText: String = "--"
+    @Published var bleDiagnosticPhaseText: String = "待机"
+    @Published var bleDiagnosticDetailText: String = "等待开始"
+    @Published var bleDiagnosticLastConclusionText: String = "--"
+    @Published var bleDiagnosticLastConclusionAtText: String = "--"
+    @Published var bleDiagnosticNoDeviceCount: Int = 0
+    @Published var bleDiagnosticFoundButNotConnectedCount: Int = 0
+    @Published var bleDiagnosticAuthFailedCount: Int = 0
     @Published var tokenSourcePath: String = ""
     @Published var tokenSourceLabel: String = ""
 
@@ -130,6 +137,10 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var lastObservedKeylessEnabled: Bool?
     var hasReceivedKeylessSettings = false
     var consecutiveScanTimeouts = 0
+    var bleDidSeeDeviceThisCycle = false
+    var bleDidReachConnectedThisCycle = false
+    var bleCurrentCandidateName: String = "--"
+    var bleCurrentCandidateRSSI: Int?
     var cancellables = Set<AnyCancellable>()
 
     init(

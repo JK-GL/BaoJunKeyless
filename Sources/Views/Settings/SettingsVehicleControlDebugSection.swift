@@ -120,8 +120,12 @@ struct SettingsVehicleControlDebugSection: View {
     private func bleDiagnosticsCard(_ store: MQTTVehicleStateStore) -> some View {
         let rows: [(String, String)] = [
             ("BLE状态", bleStatusText(store.bleStatus)),
+            ("当前阶段", store.bleDiagnosticPhaseText),
+            ("阶段详情", store.bleDiagnosticDetailText),
+            ("最近结论", "\(store.bleDiagnosticLastConclusionText) · \(store.bleDiagnosticLastConclusionAtText)"),
+            ("分类统计", store.bleDiagnosticCountsSummaryText),
             ("连续超时", "\(store.consecutiveScanTimeouts)"),
-            ("有效间隔", "\(Int(store.effectiveScanRetryInterval(baseInterval: store.keylessSettingsStore.settings.bleScanInterval)))s"),
+            ("扫描间隙", "\(Int(store.effectiveScanRetryInterval(baseInterval: store.keylessSettingsStore.settings.bleScanInterval)))s"),
             ("当前作用域", cacheScopeText(store)),
             ("当前BLE", bleKeySummaryText(store))
         ]
