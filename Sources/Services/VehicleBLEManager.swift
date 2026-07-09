@@ -260,14 +260,17 @@ final class VehicleBLEManager: NSObject {
     private let controlNotify = CBUUID(string: "2A7F")
 
     func start(config: SessionConfig) {
+        // 同 config 且会话活跃：只更新超时/间隔参数，不打断
         if self.config == config {
             switch state {
             case .scanning, .connecting, .connected, .authenticating, .authenticated:
                 return
             case .idle, .unsupported, .bluetoothOff, .authFailed, .error:
+                // 允许从 idle/error 重启
                 break
             }
         }
+
         let configChanged = self.config != config
         if configChanged {
             central.stopScan()
@@ -277,9 +280,17 @@ final class VehicleBLEManager: NSObject {
             completePendingControl(.failure(.sessionStopped))
             hasTriedBoundPeripheral = false
         }
+
+        // 从 stop() 后重启：config 从 nil 变成非 nil，必须清运行时
+        let restartingFromStopped = self.config == nil
         self.config = config
         lastControlError = nil
-        clearSessionRuntime(cancelPendingControl: configChanged)
+        clearSessionRuntime(cancelPendingControl: configChanged || restartingFromStopped)
+
+        // 重启时允许重新尝试 bound peripheral
+        if restartingFromStopped {
+            hasTriedBoundPeripheral = false
+        }
 
         if foregroundObserver == nil {
             foregroundObserver = NotificationCenter.default.addObserver(

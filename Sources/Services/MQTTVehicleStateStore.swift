@@ -171,6 +171,13 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             guard let self else { return }
             switch state {
             case .idle:
+                // 丢弃过期 idle：stop() 的异步回调可能晚于新一轮 start()
+                switch self.bleManager.state {
+                case .scanning, .connecting, .connected, .authenticating, .authenticated:
+                    return
+                default:
+                    break
+                }
                 let macSuffix = self.deviceDisplayName
                 if self.bleStatus == .scanning {
                     let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
@@ -283,9 +290,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         let shouldKeepBLESession = settings.keylessEnabled || routeMode == .forceBLE
         guard shouldKeepBLESession else {
             bleManager.stop()
-            if bleStatus != .authenticated {
-                bleStatus = .disconnected
-            }
+            bleStatus = .disconnected
             return
         }
         guard !userManuallyStoppedBLE else { return }
@@ -298,14 +303,43 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         let bleKey = latestBleKeyInfo["bleKey"]
         guard !bleMac.isEmpty, !keyId.isEmpty, !masterKey.isEmpty, !keyMasterRandom.isEmpty else {
             bleManager.stop()
-            if bleStatus != .authenticated {
-                bleStatus = .disconnected
-            }
+            bleStatus = .disconnected
             return
         }
+        // 时长/间隔始终热更新，即使会话已在扫描中
         bleManager.scanTimeoutDuration = max(20, min(300, settings.bleScanDuration))
         bleManager.scanRetryInterval = max(0, min(300, settings.bleScanInterval))
         bleManager.start(config: .init(bleMac: bleMac, keyId: keyId, masterKey: masterKey, keyMasterRandom: keyMasterRandom, controlAes128Key: controlAes128Key, bleType: bleType, bleKey: bleKey))
+    }
+
+    /// 确保本地有 BLE key 并启动会话。forceRestart=true 时先 stop 再 start，用于无感开关重新打开。
+    private func ensureBLESession(forceRestart: Bool, optimisticScanning: Bool) {
+        if forceRestart {
+            userManuallyStoppedBLE = false
+            bleManager.stop()
+        }
+        if latestBleKeyInfo.isEmpty, let cached = VehicleBLEKeyCacheStore.load(), !cached.isEmpty {
+            latestBleKeyInfo = cached
+        }
+        if optimisticScanning,
+           keylessSettingsStore.settings.keylessEnabled || AppDiagnosticsSettings.vehicleControlRouteMode == .forceBLE,
+           !userManuallyStoppedBLE,
+           hasUsableBLEKeyInfo {
+            bleStatus = .scanning
+        }
+        refreshBLESessionIfNeeded()
+        // 有网时顺带刷新 key；无 key 时必须走 fetch
+        if !hasUsableBLEKeyInfo || forceRestart {
+            fetchBleKeyInfo()
+        }
+    }
+
+    private var hasUsableBLEKeyInfo: Bool {
+        let bleMac = latestBleKeyInfo["bleMac"] ?? latestBleKeyInfo["macAddress"] ?? ""
+        let keyId = latestBleKeyInfo["keyId"] ?? ""
+        let masterKey = latestBleKeyInfo["masterKey"] ?? ""
+        let keyMasterRandom = latestBleKeyInfo["keyMasterRandom"] ?? latestBleKeyInfo["random"] ?? ""
+        return !bleMac.isEmpty && !keyId.isEmpty && !masterKey.isEmpty && !keyMasterRandom.isEmpty
     }
 
     private func setupLifecycleObservers() {
@@ -317,8 +351,10 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             guard let self else { return }
             self.isAppInForeground = true
             self.didLogManualForegroundSkip = false
-            self.userManuallyStoppedBLE = false
-            self.refreshBLESessionIfNeeded()
+            // 前台恢复不覆盖手动停止；只有未手动停时才恢复扫描
+            if !self.userManuallyStoppedBLE {
+                self.ensureBLESession(forceRestart: false, optimisticScanning: true)
+            }
         }
         backgroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
@@ -339,18 +375,50 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         ) { [weak self] _ in
             guard let self else { return }
             self.bleManager.stop()
-            self.refreshBLESessionIfNeeded()
+            self.userManuallyStoppedBLE = false
+            self.ensureBLESession(forceRestart: false, optimisticScanning: true)
         }
     }
 
+    private var lastObservedKeylessEnabled: Bool?
+    private var hasReceivedKeylessSettings = false
+
     private func setupKeylessSettingsObserver() {
+        lastObservedKeylessEnabled = keylessSettingsStore.settings.keylessEnabled
         keylessSettingsStore.$settings
             .receive(on: DispatchQueue.main)
             .sink { [weak self] settings in
                 guard let self else { return }
-                self.refreshBLESessionIfNeeded()
-                guard !settings.keylessEnabled else { return }
-                self.resetKeylessRuntimeState()
+                let isFirst = !self.hasReceivedKeylessSettings
+                self.hasReceivedKeylessSettings = true
+                let wasEnabled = self.lastObservedKeylessEnabled
+                self.lastObservedKeylessEnabled = settings.keylessEnabled
+
+                if isFirst {
+                    // 初始化首次事件交给 autoConnect，这里只同步参数
+                    self.refreshBLESessionIfNeeded()
+                    return
+                }
+
+                if settings.keylessEnabled {
+                    let justEnabled = wasEnabled != true
+                    if justEnabled {
+                        // 关 → 开：清手动停止，强制重启，立刻扫
+                        self.ensureBLESession(forceRestart: true, optimisticScanning: true)
+                        self.vehicleEventLogStore.add(.action, "BLE 自动扫描", detail: "无感开关已开启")
+                    } else {
+                        // 其它设置变更：只同步时长/间隔，不强制打断当前会话
+                        self.refreshBLESessionIfNeeded()
+                    }
+                } else {
+                    self.userManuallyStoppedBLE = false
+                    self.bleManager.stop()
+                    self.bleStatus = .disconnected
+                    if wasEnabled != false {
+                        self.resetKeylessRuntimeState()
+                        self.vehicleEventLogStore.add(.action, "BLE 已停止", detail: "无感开关已关闭")
+                    }
+                }
             }
             .store(in: &cancellables)
     }
@@ -534,10 +602,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         userManuallyStoppedBLE = false
         // 离线 BLE：即使没有 token/网络，只要缓存了 BLE key 且无感开启，就走纯 BLE
         if keylessSettingsStore.settings.keylessEnabled || AppDiagnosticsSettings.vehicleControlRouteMode == .forceBLE {
-            if let cached = VehicleBLEKeyCacheStore.load(), !cached.isEmpty {
-                latestBleKeyInfo = cached
-                refreshBLESessionIfNeeded()
-            }
+            ensureBLESession(forceRestart: false, optimisticScanning: true)
         }
 
         let saved = credentialsStore
@@ -1227,8 +1292,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             vehicleEventLogStore.add(.action, "BLE 手动停止", detail: "用户取消扫描")
         } else {
             userManuallyStoppedBLE = false
-            bleStatus = .scanning
-            refreshBLESessionIfNeeded()
+            ensureBLESession(forceRestart: true, optimisticScanning: true)
             vehicleEventLogStore.add(.action, "BLE 手动扫描", detail: "用户触发扫描")
         }
     }
