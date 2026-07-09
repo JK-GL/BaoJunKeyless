@@ -195,7 +195,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 if self.bleStatus != .scanning {
                     let timeout = Int(self.keylessSettingsStore.settings.bleScanDuration)
                     let macSuffix = self.deviceDisplayName
-                    self.vehicleEventLogStore.add(.action, "BLE 扫描中", detail: "目标设备 \(macSuffix) · 最长扫描 \(timeout)s")
+                    self.vehicleEventLogStore.add(.action, "BLE 扫描中", detail: "\(macSuffix) · 最长 \(timeout)s")
                 }
                 self.bleStatus = .scanning
             case .connecting, .connected:
@@ -1212,10 +1212,17 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     private var deviceDisplayName: String {
         let mac = latestBleKeyInfo["bleMac"] ?? latestBleKeyInfo["macAddress"] ?? ""
-        let name = latestBleKeyInfo["bleName"] ?? "E260-BLE"
-        let suffix = mac.filter { $0.isLetter || $0.isNumber }.suffix(6)
-        if suffix.isEmpty { return name }
-        return "\(name) ···\(suffix)"
+        let cleaned = mac.uppercased().filter { $0.isLetter || $0.isNumber }
+        if cleaned.count >= 12 {
+            var parts: [String] = []
+            for i in stride(from: 0, to: 12, by: 2) {
+                let start = cleaned.index(cleaned.startIndex, offsetBy: i)
+                let end = cleaned.index(start, offsetBy: 2)
+                parts.append(String(cleaned[start..<end]))
+            }
+            return parts.joined(separator: ":")
+        }
+        return mac.isEmpty ? "--" : mac
     }
 
     func toggleBLEScanning() {
