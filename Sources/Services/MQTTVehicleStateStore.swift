@@ -68,7 +68,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     @Published var liveLatitudeGcj: Double = 0
     @Published var liveLongitudeGcj: Double = 0
     @Published var liveAddress: String = ""
-    @Published var latestBleKeyInfo: [String: String] = VehicleBLEKeyCacheStore.load() ?? [:]
+    @Published var latestBleKeyInfo: [String: String] = [:]
     @Published var latestBLEControlReceipt: VehicleBLEManager.BLEControlReceipt?
     @Published var latestControlResult: VehicleControlMQTTResult?
     @Published var debugBLERawRSSI: Int?
@@ -99,35 +99,37 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     let locationResolver = LocationResolver.shared
     let addressSettings: AddressServiceSettings
     private let displayCacheStore: VehicleDisplayCacheStore
-    private let keylessSettingsStore: KeylessSettingsStore
-    private let vehicleEventLogStore: VehicleEventLogStore
-    private let customVibrationStore: CustomVibrationStore
-    private let bleManager = VehicleBLEManager()
+    let keylessSettingsStore: KeylessSettingsStore
+    let vehicleEventLogStore: VehicleEventLogStore
+    let customVibrationStore: CustomVibrationStore
+    let bleManager = VehicleBLEManager()
 
-    private var lastUnlockDecision: KeylessDecision?
-    private var lastLockDecision: KeylessDecision?
-    private var lastEvalLocked: Bool?
-    private var lastEvalNearby: Bool?
-    private var lastEvalFarAway: Bool?
-    private var phoneNearbySince: Date?
-    private var phoneFarAwaySince: Date?
-    private var bleScanStartedAt: Date?
-    private var hasCompletedBLEAuth = false
-    private var userManuallyStoppedBLE = false
-    private var lastAutoCommandAt: Date?
-    private var lastAutoCommandKind: VehicleCommandKind?
-    private var lastBLEWaitCommandKind: VehicleCommandKind?
-    private var liveBLERawRSSI: Int?
-    private var liveBLERSSI: Int?
-    private var liveBLELastSeenAt: Date?
-    private var bleSignalLossWorkItem: DispatchWorkItem?
-    private var isExecutingKeylessCommand = false
-    private var isAppInForeground = true
-    private var didLogManualForegroundSkip = false
-    private var foregroundObserver: NSObjectProtocol?
-    private var backgroundObserver: NSObjectProtocol?
-    private var routeModeObserver: NSObjectProtocol?
-    private var cancellables = Set<AnyCancellable>()
+    var lastUnlockDecision: KeylessDecision?
+    var lastLockDecision: KeylessDecision?
+    var lastEvalLocked: Bool?
+    var lastEvalNearby: Bool?
+    var lastEvalFarAway: Bool?
+    var phoneNearbySince: Date?
+    var phoneFarAwaySince: Date?
+    var bleScanStartedAt: Date?
+    var hasCompletedBLEAuth = false
+    var userManuallyStoppedBLE = false
+    var lastAutoCommandAt: Date?
+    var lastAutoCommandKind: VehicleCommandKind?
+    var lastBLEWaitCommandKind: VehicleCommandKind?
+    var liveBLERawRSSI: Int?
+    var liveBLERSSI: Int?
+    var liveBLELastSeenAt: Date?
+    var bleSignalLossWorkItem: DispatchWorkItem?
+    var isExecutingKeylessCommand = false
+    var isAppInForeground = true
+    var didLogManualForegroundSkip = false
+    var foregroundObserver: NSObjectProtocol?
+    var backgroundObserver: NSObjectProtocol?
+    var routeModeObserver: NSObjectProtocol?
+    var lastObservedKeylessEnabled: Bool?
+    var hasReceivedKeylessSettings = false
+    var cancellables = Set<AnyCancellable>()
 
     init(
         addressSettings: AddressServiceSettings = .shared,
@@ -144,6 +146,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         self.vehicleEventLogStore = vehicleEventLogStore
         self.customVibrationStore = customVibrationStore
         super.init(state: .placeholder, dashboard: VehicleDashboardState())
+        reloadCachedBLEKeyInfo(preferScoped: true)
         loadPersistedDisplayCache()
         setupBLECallbacks()
         setupLifecycleObservers()
@@ -181,10 +184,10 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 let macSuffix = self.deviceDisplayName
                 if self.bleStatus == .scanning {
                     let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
-                    self.vehicleEventLogStore.add(.action, "BLE 扫描超时", detail: "\(macSuffix) · 已扫描 \(duration)，未发现设备")
+                    self.logVehicleEvent(.action, "BLE 扫描超时", detail: "\(macSuffix) · 已扫描 \(duration)，未发现设备", identity: "scan-timeout|\(macSuffix)", minimumInterval: 6)
                 } else if self.bleStatus == .connecting || self.bleStatus == .authenticating || self.bleStatus == .authenticated {
                     let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
-                    self.vehicleEventLogStore.add(.action, "BLE 已断开", detail: "\(macSuffix) · 扫描耗时 \(duration)")
+                    self.logVehicleEvent(.action, "BLE 已断开", detail: "\(macSuffix) · 扫描耗时 \(duration)", identity: "disconnect|\(macSuffix)", minimumInterval: 4)
                 }
                 self.bleStatus = .disconnected
                 self.bleScanStartedAt = nil
@@ -195,7 +198,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 self.bleScanStartedAt = nil
                 self.hasCompletedBLEAuth = false
                 self.applyLiveBLERSSI(nil)
-                self.vehicleEventLogStore.add(.action, "BLE 不可用", detail: "蓝牙关闭或未授权")
+                self.logVehicleEvent(.action, "BLE 不可用", detail: "蓝牙关闭或未授权", identity: "ble-unavailable", minimumInterval: 8)
             case .scanning:
                 if self.bleScanStartedAt == nil {
                     self.bleScanStartedAt = Date()
@@ -205,28 +208,28 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                     let interval = Int(self.keylessSettingsStore.settings.bleScanInterval)
                     let intervalText = interval <= 0 ? "无间隙" : "间隔 \(interval)s"
                     let macSuffix = self.deviceDisplayName
-                    self.vehicleEventLogStore.add(.action, "BLE 扫描中", detail: "\(macSuffix) · 最长 \(timeout)s · \(intervalText)")
+                    self.logVehicleEvent(.action, "BLE 扫描中", detail: "\(macSuffix) · 最长 \(timeout)s · \(intervalText)", identity: "scan-start|\(macSuffix)|\(timeout)|\(interval)", minimumInterval: 4)
                 }
                 self.bleStatus = .scanning
             case .connecting, .connected:
                 if self.bleStatus != .connecting {
                     let macSuffix = self.deviceDisplayName
-                    self.vehicleEventLogStore.add(.action, "BLE 已连接", detail: "\(macSuffix) · 发现服务与特征中")
+                    self.logVehicleEvent(.action, "BLE 已连接", detail: "\(macSuffix) · 发现服务与特征中", identity: "connecting|\(macSuffix)", minimumInterval: 3)
                 }
                 self.bleStatus = .connecting
             case .authenticating:
-                self.vehicleEventLogStore.add(.action, "BLE 鉴权中", detail: "38C7/A857 四步鉴权")
+                self.logVehicleEvent(.action, "BLE 鉴权中", detail: "38C7/A857 四步鉴权", identity: "authenticating", minimumInterval: 3)
                 self.bleStatus = .authenticating
             case .authenticated:
                 self.hasCompletedBLEAuth = true
-                self.vehicleEventLogStore.add(.action, "BLE 鉴权成功", detail: "可发送控车命令")
+                self.logVehicleEvent(.action, "BLE 鉴权成功", detail: "可发送控车命令", identity: "authenticated", minimumInterval: 3)
                 self.bleStatus = .authenticated
             case .authFailed(let reason):
-                self.vehicleEventLogStore.add(.error, "BLE 鉴权失败", detail: reason)
+                self.logVehicleEvent(.error, "BLE 鉴权失败", detail: reason, identity: "auth-failed|\(reason)", minimumInterval: 6)
                 self.bleStatus = .error
                 self.applyLiveBLERSSI(nil)
             case .error(let detail):
-                self.vehicleEventLogStore.add(.error, "BLE 错误", detail: detail)
+                self.logVehicleEvent(.error, "BLE 错误", detail: detail, identity: "ble-error|\(detail)", minimumInterval: 6)
                 self.bleStatus = .error
                 self.applyLiveBLERSSI(nil)
             }
@@ -318,8 +321,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             userManuallyStoppedBLE = false
             bleManager.stop()
         }
-        if latestBleKeyInfo.isEmpty, let cached = VehicleBLEKeyCacheStore.load(), !cached.isEmpty {
-            latestBleKeyInfo = cached
+        if latestBleKeyInfo.isEmpty {
+            reloadCachedBLEKeyInfo(preferScoped: true)
         }
         if optimisticScanning,
            keylessSettingsStore.settings.keylessEnabled || AppDiagnosticsSettings.vehicleControlRouteMode == .forceBLE,
@@ -328,7 +331,6 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             bleStatus = .scanning
         }
         refreshBLESessionIfNeeded()
-        // 有网时顺带刷新 key；无 key 时必须走 fetch
         if !hasUsableBLEKeyInfo || forceRestart {
             fetchBleKeyInfo()
         }
@@ -380,8 +382,6 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         }
     }
 
-    private var lastObservedKeylessEnabled: Bool?
-    private var hasReceivedKeylessSettings = false
 
     private func setupKeylessSettingsObserver() {
         lastObservedKeylessEnabled = keylessSettingsStore.settings.keylessEnabled
@@ -475,7 +475,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             self.debugBLESmoothedRSSI = nil
             self.debugBLELastSeenText = "--"
             self.debugBLELastTransitionText = "BLE信号丢失 · \(formatTime(Date()))"
-            self.vehicleEventLogStore.add(.warning, "BLE信号丢失", detail: "连续 3s 未收到 RSSI，按远离处理")
+            self.logVehicleEvent(.warning, "BLE信号丢失", detail: "连续 3s 未收到 RSSI，按远离处理", identity: "signal-loss", minimumInterval: 8)
             var next = self.state
             next.bleRssi = nil
             next.phoneNearby = false
@@ -657,6 +657,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     func start(with credentialsStore: VehicleCredentialsStore) {
         self.credentialsStore = credentialsStore
+        reloadCachedBLEKeyInfo(preferScoped: true)
         updateTokenSource(label: inferredTokenSourceLabel(from: credentialsStore), path: credentialsStore.tokenSourcePath)
         guard !isConnecting else { return }
         guard !credentialsStore.accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -989,44 +990,6 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         }
     }
 
-    // MARK: - BLE 钥匙查询
-
-    private func fetchBleKeyInfo() {
-        let store = credentialsStore
-        guard !store.accessToken.isEmpty, !store.vin.isEmpty, !store.phone.isEmpty else {
-            // 无 token 时仍可尝试用缓存的 BLE key（官方 App 离线模式的核心逻辑）
-            if let cached = VehicleBLEKeyCacheStore.load(), !cached.isEmpty {
-                self.latestBleKeyInfo = cached
-                self.refreshBLESessionIfNeeded()
-            }
-            return
-        }
-        SGMWApiClient.shared.queryBleKeyResult(accessToken: store.accessToken, vin: store.vin, phone: store.phone) { [weak self] result in
-            guard let self else { return }
-            DispatchQueue.main.async {
-                guard case .success(let info) = result else {
-                    // HTTP 失败 → 回退到本地缓存
-                    if let cached = VehicleBLEKeyCacheStore.load(), !cached.isEmpty {
-                        self.latestBleKeyInfo = cached
-                        self.refreshBLESessionIfNeeded()
-                    }
-                    return
-                }
-                VehicleBLEKeyCacheStore.save(info)  // 写盘，支持下次离线
-                self.latestBleKeyInfo = info
-                self.refreshBLESessionIfNeeded()
-                var dash = self.dashboard
-                dash.bleMacText = info["bleMac"] ?? info["macAddress"] ?? dash.bleMacText
-                dash.keyIdText = info["keyId"] ?? dash.keyIdText
-                dash.keyTypeText = info["keyType"] ?? dash.keyTypeText
-                dash.masterKeyMaskedText = maskHex(info["masterKey"], visiblePrefix: 4, visibleSuffix: 4)
-                dash.randomMaskedText = maskHex(info["keyMasterRandom"] ?? info["random"], visiblePrefix: 4, visibleSuffix: 4)
-                dash.keyExpiryText = info["expiredTime"] ?? info["expireTime"] ?? info["endTime"] ?? dash.keyExpiryText
-                dash.vehicleInfoUpdatedAtText = formatDateTime(Date())
-                self.applyDashboard(dash)
-            }
-        }
-    }
 
     // MARK: - MQTT
 
@@ -1287,40 +1250,4 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         CrashLogger.shared.mark("MQTT", "disconnected: \(error?.localizedDescription ?? "no error")")
     }
 
-    private func formatElapsedSince(_ start: Date) -> String {
-        let elapsed = Int(Date().timeIntervalSince(start))
-        if elapsed < 60 { return "\(elapsed)s" }
-        let minutes = elapsed / 60
-        let seconds = elapsed % 60
-        return "\(minutes)m\(seconds)s"
-    }
-
-    private var deviceDisplayName: String {
-        let mac = latestBleKeyInfo["bleMac"] ?? latestBleKeyInfo["macAddress"] ?? ""
-        let cleaned = mac.uppercased().filter { $0.isLetter || $0.isNumber }
-        if cleaned.count >= 12 {
-            var parts: [String] = []
-            for i in stride(from: 0, to: 12, by: 2) {
-                let start = cleaned.index(cleaned.startIndex, offsetBy: i)
-                let end = cleaned.index(start, offsetBy: 2)
-                parts.append(String(cleaned[start..<end]))
-            }
-            return parts.joined(separator: ":")
-        }
-        return mac.isEmpty ? "--" : mac
-    }
-
-    func toggleBLEScanning() {
-        let isActive = bleStatus == .scanning || bleStatus == .connecting || bleStatus == .authenticating || bleStatus == .authenticated
-        if isActive {
-            userManuallyStoppedBLE = true
-            bleStatus = .disconnected
-            bleManager.stop()
-            vehicleEventLogStore.add(.action, "BLE 手动停止", detail: "用户取消扫描")
-        } else {
-            userManuallyStoppedBLE = false
-            ensureBLESession(forceRestart: true, optimisticScanning: true)
-            vehicleEventLogStore.add(.action, "BLE 手动扫描", detail: "用户触发扫描")
-        }
-    }
 }

@@ -67,6 +67,13 @@ final class VehicleCredentialsStore: ObservableObject {
     }
 
     func reset() {
+        let currentVIN = vin
+        let currentPhone = phone
+        if currentVIN.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || currentPhone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            VehicleBLEKeyCacheStore.clearLastActive()
+        } else {
+            VehicleBLEKeyCacheStore.clear(vin: currentVIN, phone: currentPhone)
+        }
         accessToken = ""
         vin = ""
         phone = ""

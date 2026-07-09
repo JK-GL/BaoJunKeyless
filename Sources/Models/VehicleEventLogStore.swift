@@ -86,6 +86,7 @@ final class VehicleEventLogStore: ObservableObject {
     private let key = AppDefaultsKey.VehicleEventLog.entries
     private let maxEntries = 500
     private let saveQueue = DispatchQueue(label: "BaoJunKeyless.VehicleEventLogStore.save", qos: .utility)
+    private var recentEventTimestamps: [String: Date] = [:]
 
     init() {
         load()
@@ -102,14 +103,33 @@ final class VehicleEventLogStore: ObservableObject {
         save()
     }
 
+    func addThrottled(
+        _ category: VehicleEventLogCategory,
+        _ title: String,
+        detail: String = "",
+        identity: String? = nil,
+        minimumInterval: TimeInterval = 2
+    ) {
+        let now = Date()
+        let token = [category.rawValue, title, identity ?? detail].joined(separator: "|")
+        if let last = recentEventTimestamps[token], now.timeIntervalSince(last) < minimumInterval {
+            return
+        }
+        recentEventTimestamps[token] = now
+        pruneRecentEventIndex(now: now)
+        add(category, title, detail: detail)
+    }
+
     func clearToday() {
         let calendar = Calendar.current
         entries.removeAll { calendar.isDateInToday($0.date) }
+        recentEventTimestamps.removeAll()
         save()
     }
 
     func clearAll() {
         entries.removeAll()
+        recentEventTimestamps.removeAll()
         let key = self.key
         saveQueue.async {
             UserDefaults.standard.removeObject(forKey: key)
@@ -151,6 +171,13 @@ final class VehicleEventLogStore: ObservableObject {
             if let data = try? JSONEncoder().encode(snapshot) {
                 UserDefaults.standard.set(data, forKey: key)
             }
+        }
+    }
+
+    private func pruneRecentEventIndex(now: Date) {
+        if recentEventTimestamps.count <= 256 { return }
+        recentEventTimestamps = recentEventTimestamps.filter {
+            now.timeIntervalSince($0.value) < 600
         }
     }
 

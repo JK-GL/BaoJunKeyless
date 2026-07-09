@@ -1,62 +1,128 @@
 import Foundation
 
 /// 缓存最近一次 ble/key/query 返回的 BLE 钥匙材料，支持离线 BLE。
-/// 官方 App 可以离线用蓝牙的原因就是本地缓存了这份材料。
+/// 对齐官方：
+/// 1. 不做 7 天 TTL 自动过期；
+/// 2. 按 userId(phone) + vin 隔离；
+/// 3. 主体放 Keychain，避免凭证类材料明文落 UserDefaults；
+/// 4. 登出/清配置时清当前作用域缓存。
 enum VehicleBLEKeyCacheStore {
-    private static let cacheKey = "VehicleBLE.KeyCache"
-    private static let timestampKey = "VehicleBLE.KeyCache.Timestamp"
-    private static let macKey = "VehicleBLE.KeyCache.Mac"
+    private static let keychainService = "com.baojun.keyless.ble-key-cache"
+    private static let lastActiveAccountKey = "VehicleBLE.KeyCache.LastActiveAccount"
 
-    /// 默认最长保留 7 天；过期后 load 返回 nil，避免旧 key 长期误用。
-    static let defaultMaxAge: TimeInterval = 7 * 24 * 60 * 60
+    // 兼容 v598 之前的单槽 UserDefaults 缓存；迁移成功后即清理。
+    private static let legacyCacheKey = "VehicleBLE.KeyCache"
+    private static let legacyTimestampKey = "VehicleBLE.KeyCache.Timestamp"
+    private static let legacyMacKey = "VehicleBLE.KeyCache.Mac"
 
-    static func save(_ info: [String: String]) {
-        let filtered = info.filter { !$0.value.isEmpty }
-        guard let data = try? JSONSerialization.data(withJSONObject: filtered, options: []) else { return }
-        UserDefaults.standard.set(data, forKey: cacheKey)
-        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: timestampKey)
-        if let mac = filtered["bleMac"] ?? filtered["macAddress"], !mac.isEmpty {
-            UserDefaults.standard.set(mac, forKey: macKey)
+    static func save(_ info: [String: String], vin: String, phone: String) {
+        guard let account = account(vin: vin, phone: phone) else { return }
+        let filtered = sanitized(info)
+        guard !filtered.isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: filtered, options: []),
+              let payload = String(data: data, encoding: .utf8) else {
+            return
         }
+        guard KeychainStringStore.write(payload, service: keychainService, account: account) else { return }
+        activate(account: account)
+        clearLegacy()
     }
 
-    /// 读取缓存；超过 maxAge 则自动清理并返回 nil。
-    static func load(maxAge: TimeInterval = defaultMaxAge) -> [String: String]? {
-        if let age = ageSeconds, age > maxAge {
-            clear()
+    static func load(vin: String, phone: String) -> [String: String]? {
+        guard let account = account(vin: vin, phone: phone) else { return nil }
+        migrateLegacyIfNeeded(into: account)
+        activate(account: account)
+        return load(account: account)
+    }
+
+    static func loadLastActive() -> [String: String]? {
+        if let account = UserDefaults.standard.string(forKey: lastActiveAccountKey),
+           let cached = load(account: account) {
+            return cached
+        }
+        return loadLegacyPayload()
+    }
+
+    static func clear(vin: String, phone: String) {
+        guard let account = account(vin: vin, phone: phone) else { return }
+        KeychainStringStore.delete(service: keychainService, account: account)
+        if UserDefaults.standard.string(forKey: lastActiveAccountKey) == account {
+            UserDefaults.standard.removeObject(forKey: lastActiveAccountKey)
+        }
+        clearLegacy()
+    }
+
+    static func clearLastActive() {
+        if let account = UserDefaults.standard.string(forKey: lastActiveAccountKey) {
+            KeychainStringStore.delete(service: keychainService, account: account)
+        }
+        UserDefaults.standard.removeObject(forKey: lastActiveAccountKey)
+        clearLegacy()
+    }
+
+    private static func load(account: String) -> [String: String]? {
+        guard let payload = KeychainStringStore.read(service: keychainService, account: account),
+              let data = payload.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: String] else {
             return nil
         }
-        guard let data = UserDefaults.standard.data(forKey: cacheKey) else { return nil }
-        guard let dict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: String] else {
-            clear()
+        let filtered = sanitized(dict)
+        return filtered.isEmpty ? nil : filtered
+    }
+
+    private static func account(vin: String, phone: String) -> String? {
+        let normalizedPhone = normalizedToken(phone)
+        let normalizedVIN = normalizedToken(vin)
+        guard !normalizedPhone.isEmpty, !normalizedVIN.isEmpty else { return nil }
+        return "\(normalizedPhone)|\(normalizedVIN)"
+    }
+
+    private static func sanitized(_ info: [String: String]) -> [String: String] {
+        info.reduce(into: [String: String]()) { partial, item in
+            let key = item.key.trimmingCharacters(in: .whitespacesAndNewlines)
+            let value = item.value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty, !value.isEmpty else { return }
+            partial[key] = value
+        }
+    }
+
+    private static func normalizedToken(_ raw: String) -> String {
+        raw.uppercased().filter { $0.isLetter || $0.isNumber }
+    }
+
+    private static func migrateLegacyIfNeeded(into account: String) {
+        guard load(account: account) == nil,
+              let legacy = loadLegacyPayload() else { return }
+        let filtered = sanitized(legacy)
+        guard !filtered.isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: filtered, options: []),
+              let payload = String(data: data, encoding: .utf8),
+              KeychainStringStore.write(payload, service: keychainService, account: account) else {
+            return
+        }
+        activate(account: account)
+        clearLegacy()
+    }
+
+    private static func loadLegacyPayload() -> [String: String]? {
+        guard let data = UserDefaults.standard.data(forKey: legacyCacheKey),
+              let dict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: String] else {
             return nil
         }
-        let filtered = dict.filter { !$0.value.isEmpty }
-        if filtered.isEmpty {
-            clear()
-            return nil
+        let filtered = sanitized(dict)
+        return filtered.isEmpty ? nil : filtered
+    }
+
+    private static func activate(account: String) {
+        if let previous = UserDefaults.standard.string(forKey: lastActiveAccountKey), previous != account {
+            KeychainStringStore.delete(service: keychainService, account: previous)
         }
-        return filtered
+        UserDefaults.standard.set(account, forKey: lastActiveAccountKey)
     }
 
-    static var cachedMac: String? {
-        UserDefaults.standard.string(forKey: macKey)
-    }
-
-    static var ageSeconds: TimeInterval? {
-        let ts = UserDefaults.standard.double(forKey: timestampKey)
-        guard ts > 0 else { return nil }
-        return Date().timeIntervalSince1970 - ts
-    }
-
-    static var isExpired: Bool {
-        guard let age = ageSeconds else { return true }
-        return age > defaultMaxAge
-    }
-
-    static func clear() {
-        UserDefaults.standard.removeObject(forKey: cacheKey)
-        UserDefaults.standard.removeObject(forKey: timestampKey)
-        UserDefaults.standard.removeObject(forKey: macKey)
+    private static func clearLegacy() {
+        UserDefaults.standard.removeObject(forKey: legacyCacheKey)
+        UserDefaults.standard.removeObject(forKey: legacyTimestampKey)
+        UserDefaults.standard.removeObject(forKey: legacyMacKey)
     }
 }

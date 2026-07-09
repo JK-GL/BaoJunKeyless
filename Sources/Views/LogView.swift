@@ -144,25 +144,6 @@ struct LogView: View {
         GeometryReader { geo in
             let windowHeight = max(geo.size.height, 280)
             VStack(spacing: 0) {
-                // 标题栏
-                HStack(spacing: 8) {
-                    Circle().fill(Color.red.opacity(0.85)).frame(width: 8, height: 8)
-                    Circle().fill(Color.orange.opacity(0.85)).frame(width: 8, height: 8)
-                    Circle().fill(Color.green.opacity(0.85)).frame(width: 8, height: 8)
-                    Text("EVENT CONSOLE")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(Color.white.opacity(0.55))
-                    Spacer()
-                    Text("\(filteredLogs.count) lines")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(Color.white.opacity(0.45))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.black.opacity(0.35))
-
-                Divider().overlay(Color.white.opacity(0.08))
-
                 if filteredLogs.isEmpty {
                     EmptyLogStateView(filterTitle: selectedFilter.title)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -270,55 +251,65 @@ private struct ConsoleLogRow: View {
     let onToggle: () -> Void
 
     var body: some View {
-        Button(action: onToggle) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(log.timeText)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(Color.white.opacity(0.42))
-                        .frame(width: 58, alignment: .leading)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(log.timeText)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.42))
+                    .frame(width: 58, alignment: .leading)
 
-                    Text(log.category.title)
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundStyle(log.category.color)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(log.category.color.opacity(0.16))
-                        )
+                Text(log.category.title)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(log.category.color)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(log.category.color.opacity(0.16))
+                    )
 
-                    Text(log.title)
-                        .font(.system(size: 12.5, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(rowTitleColor)
-                        .lineLimit(expanded ? nil : 1)
+                Text(log.title)
+                    .font(.system(size: 12.5, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(rowTitleColor)
+                    .lineLimit(expanded ? nil : 1)
 
-                    Spacer(minLength: 0)
+                Spacer(minLength: 0)
 
-                    if !log.detail.isEmpty {
-                        Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(Color.white.opacity(0.35))
-                    }
-                }
-
-                if expanded && !log.detail.isEmpty {
-                    Text(log.detail)
-                        .font(.system(size: 11.5, design: .monospaced))
+                if !log.detail.isEmpty {
+                    Button(action: onToggle) {
+                        HStack(spacing: 4) {
+                            Text(expanded ? "收起" : "详情")
+                                .font(.system(size: 10.5, weight: .semibold))
+                            Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 10, weight: .semibold))
+                        }
                         .foregroundStyle(Color.white.opacity(0.62))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 66)
-                        .padding(.bottom, 4)
-                        .textSelection(.enabled)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(Color.white.opacity(0.08))
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(rowBackground)
-            .contentShape(Rectangle())
+
+            if expanded && !log.detail.isEmpty {
+                Text(log.detail)
+                    .font(.system(size: 11.5, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.62))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 66)
+                    .padding(.bottom, 4)
+                    .textSelection(.enabled)
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(rowBackground)
+        .contentShape(Rectangle())
     }
 
     private var rowTitleColor: Color {
