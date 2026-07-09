@@ -287,7 +287,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         sendCommandViaBLE(command: command, completion: completion)
     }
 
-    private func refreshBLESessionIfNeeded() {
+    func refreshBLESessionIfNeeded() {
         let settings = keylessSettingsStore.settings
         let routeMode = AppDiagnosticsSettings.vehicleControlRouteMode
         let shouldKeepBLESession = settings.keylessEnabled || routeMode == .forceBLE
@@ -316,7 +316,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     /// 确保本地有 BLE key 并启动会话。forceRestart=true 时先 stop 再 start，用于无感开关重新打开。
-    private func ensureBLESession(forceRestart: Bool, optimisticScanning: Bool) {
+    func ensureBLESession(forceRestart: Bool, optimisticScanning: Bool) {
         if forceRestart {
             userManuallyStoppedBLE = false
             bleManager.stop()
