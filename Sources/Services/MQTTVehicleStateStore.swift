@@ -170,7 +170,10 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             guard let self else { return }
             switch state {
             case .idle:
-                if self.bleStatus != .disconnected {
+                if self.bleStatus == .scanning {
+                    let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
+                    self.vehicleEventLogStore.add(.action, "BLE 扫描超时", detail: "已扫描 \(duration)，未发现设备")
+                } else if self.bleStatus == .connecting || self.bleStatus == .authenticating || self.bleStatus == .authenticated {
                     let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
                     self.vehicleEventLogStore.add(.action, "BLE 已断开", detail: "扫描耗时 \(duration)")
                 }
@@ -189,13 +192,13 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                     self.bleScanStartedAt = Date()
                 }
                 if self.bleStatus != .scanning {
-                    self.vehicleEventLogStore.add(.action, "BLE 扫描中", detail: "搜索车辆 BLE 设备")
+                    let timeout = Int(self.keylessSettingsStore.settings.bleScanDuration)
+                    self.vehicleEventLogStore.add(.action, "BLE 扫描中", detail: "最长扫描 \(timeout)s")
                 }
                 self.bleStatus = .scanning
             case .connecting, .connected:
                 if self.bleStatus != .connecting {
-                    let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
-                    self.vehicleEventLogStore.add(.action, "BLE 连接中", detail: "扫描耗时 \(duration)")
+                    self.vehicleEventLogStore.add(.action, "BLE 已连接", detail: "发现服务与特征中")
                 }
                 self.bleStatus = .connecting
             case .authenticating:
@@ -203,7 +206,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 self.bleStatus = .authenticating
             case .authenticated:
                 self.hasCompletedBLEAuth = true
-                self.vehicleEventLogStore.add(.action, "BLE 鉴权成功", detail: "controlAes128Key 已就绪，可发送控制命令")
+                self.vehicleEventLogStore.add(.action, "BLE 鉴权成功", detail: "可发送控车命令")
                 self.bleStatus = .authenticated
             case .authFailed(let reason):
                 self.vehicleEventLogStore.add(.error, "BLE 鉴权失败", detail: reason)
