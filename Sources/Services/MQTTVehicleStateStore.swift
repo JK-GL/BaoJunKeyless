@@ -173,15 +173,29 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             case .unsupported, .bluetoothOff:
                 self.bleStatus = .error
                 self.applyLiveBLERSSI(nil)
+                self.vehicleEventLogStore.add(.action, "BLE 不可用", detail: "蓝牙关闭或未授权")
             case .scanning:
+                if self.bleStatus != .scanning {
+                    self.vehicleEventLogStore.add(.action, "BLE 扫描中", detail: "搜索车辆 BLE 设备")
+                }
                 self.bleStatus = .scanning
             case .connecting, .connected:
+                if self.bleStatus != .connecting {
+                    self.vehicleEventLogStore.add(.action, "BLE 连接中", detail: state == .connected ? "已连接，正在发现服务" : "正在建立连接")
+                }
                 self.bleStatus = .connecting
             case .authenticating:
+                self.vehicleEventLogStore.add(.action, "BLE 鉴权中", detail: "38C7/A857 四步鉴权")
                 self.bleStatus = .authenticating
             case .authenticated:
+                self.vehicleEventLogStore.add(.action, "BLE 鉴权成功", detail: "controlAes128Key 已就绪，可发送控制命令")
                 self.bleStatus = .authenticated
-            case .authFailed, .error:
+            case .authFailed(let reason):
+                self.vehicleEventLogStore.add(.error, "BLE 鉴权失败", detail: reason)
+                self.bleStatus = .error
+                self.applyLiveBLERSSI(nil)
+            case .error(let detail):
+                self.vehicleEventLogStore.add(.error, "BLE 错误", detail: detail)
                 self.bleStatus = .error
                 self.applyLiveBLERSSI(nil)
             }
