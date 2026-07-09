@@ -68,7 +68,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     @Published var liveLatitudeGcj: Double = 0
     @Published var liveLongitudeGcj: Double = 0
     @Published var liveAddress: String = ""
-    @Published var latestBleKeyInfo: [String: String] = [:]
+    @Published var latestBleKeyInfo: [String: String] = VehicleBLEKeyCacheStore.load() ?? [:]
     @Published var latestBLEControlReceipt: VehicleBLEManager.BLEControlReceipt?
     @Published var latestControlResult: VehicleControlMQTTResult?
     @Published var debugBLERawRSSI: Int?
@@ -523,6 +523,17 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     private func autoConnect() {
+        // 离线 BLE：即使没有 token/网络，只要缓存了 BLE key 且无感开启，就走纯 BLE
+        if keylessSettingsStore.settings.keylessEnabled || AppDiagnosticsSettings.vehicleControlRouteMode == .forceBLE {
+            if let cached = VehicleBLEKeyCacheStore.load(), !cached.isEmpty {
+                latestBleKeyInfo = cached
+                refreshBLESessionIfNeeded()
+                if bleStatus != .authenticated {
+                    bleStatus = .disconnected
+                }
+            }
+        }
+
         let saved = credentialsStore
         if saved.isConfigured {
             start(with: saved)
@@ -885,11 +896,32 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     private func fetchBleKeyInfo() {
         let store = credentialsStore
-        guard !store.accessToken.isEmpty, !store.vin.isEmpty, !store.phone.isEmpty else { return }
+        guard !store.accessToken.isEmpty, !store.vin.isEmpty, !store.phone.isEmpty else {
+            // 无 token 时仍可尝试用缓存的 BLE key（官方 App 离线模式的核心逻辑）
+            if let cached = VehicleBLEKeyCacheStore.load(), !cached.isEmpty {
+                self.latestBleKeyInfo = cached
+                self.refreshBLESessionIfNeeded()
+                if self.bleStatus != .authenticated {
+                    self.bleStatus = .disconnected
+                }
+            }
+            return
+        }
         SGMWApiClient.shared.queryBleKeyResult(accessToken: store.accessToken, vin: store.vin, phone: store.phone) { [weak self] result in
             guard let self else { return }
             DispatchQueue.main.async {
-                guard case .success(let info) = result else { return }
+                guard case .success(let info) = result else {
+                    // HTTP 失败 → 回退到本地缓存
+                    if let cached = VehicleBLEKeyCacheStore.load(), !cached.isEmpty {
+                        self.latestBleKeyInfo = cached
+                        self.refreshBLESessionIfNeeded()
+                        if self.bleStatus != .authenticated {
+                            self.bleStatus = .disconnected
+                        }
+                    }
+                    return
+                }
+                VehicleBLEKeyCacheStore.save(info)  // 写盘，支持下次离线
                 self.latestBleKeyInfo = info
                 self.refreshBLESessionIfNeeded()
                 if self.bleStatus != .authenticated {
