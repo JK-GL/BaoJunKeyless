@@ -199,7 +199,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
 
-    private func updateTokenSource(label: String, path: String = "") {
+    func updateTokenSource(label: String, path: String = "") {
         let normalizedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
         tokenSourceLabel = normalizedLabel
