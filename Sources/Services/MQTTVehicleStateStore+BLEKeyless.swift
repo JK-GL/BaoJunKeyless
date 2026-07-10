@@ -185,8 +185,23 @@ extension MQTTVehicleStateStore {
             lastAuthAt: Date()
         )
         VehicleBLEBindingStore.save(binding)
-        ensureBLESession(forceRestart: true, optimisticScanning: true)
-        vehicleEventLogStore.add(.action, "手动绑定蓝牙设备", detail: binding.displaySummary)
+
+        // 绑定后立刻按该设备优先连接：重启会话 → bound 直连 → 鉴权
+        // 不清附近列表，方便弹窗内继续观察“已绑定/连接中”
+        userManuallyStoppedBLE = false
+        ignoreNextBLEIdleCallback = true
+        bleManager.stop()
+        setBLEDiagnosticPhase("连接中", detail: "绑定优先 · \(device.displayName)")
+        bleStatus = .connecting
+        vehicleEventLogStore.add(
+            .action,
+            "手动绑定蓝牙设备",
+            detail: "\(binding.displaySummary) · 正在优先连接"
+        )
+        refreshBLESessionIfNeeded()
+        if !hasUsableBLEKeyInfo {
+            fetchBleKeyInfo()
+        }
     }
 
     func clearBLEBindingAndRefresh() {

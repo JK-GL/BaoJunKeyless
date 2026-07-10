@@ -34,13 +34,14 @@ private struct NearbyBLEDevicesLaunchButtonContent: View, Equatable {
 
 struct NearbyBLEDevicesPopupView: View {
     let nearbyStore: NearbyBLEDevicesStore
-    let currentBinding: VehicleBLEBinding?
+    let initialBinding: VehicleBLEBinding?
     let onBind: (VehicleBLEManager.NearbyDevice) -> Void
     let onClearBinding: () -> Void
     let onClose: () -> Void
 
     /// 打开后用快照展示，不直接订阅 @Published devices，避免扫描广播牵动整窗重绘
     @State private var snapshotDevices: [VehicleBLEManager.NearbyDevice] = []
+    @State private var currentBinding: VehicleBLEBinding?
     @State private var autoRefreshTask: Task<Void, Never>?
 
     var body: some View {
@@ -70,7 +71,13 @@ struct NearbyBLEDevicesPopupView: View {
                                 mac: device.manufacturerMac ?? "--",
                                 exactMatched: device.exactMatched,
                                 isBound: currentBinding?.peripheralIdentifier == device.peripheralIdentifier,
-                                onBind: { onBind(device) }
+                                onBind: {
+                                    onBind(device)
+                                    // 绑定后不关窗：本地立刻刷新“已绑定”标记与置顶
+                                    currentBinding = VehicleBLEBindingStore.load()
+                                    nearbyStore.flush()
+                                    snapshotDevices = nearbyStore.devices
+                                }
                             )
                         }
                     }
@@ -83,10 +90,14 @@ struct NearbyBLEDevicesPopupView: View {
                 FloatingPopupPrimaryButton(title: "刷新列表", color: AppTheme.orange) {
                     nearbyStore.flush()
                     snapshotDevices = nearbyStore.devices
+                    currentBinding = VehicleBLEBindingStore.load()
                 }
                 if currentBinding != nil {
                     FloatingPopupPrimaryButton(title: "取消绑定", color: AppTheme.red) {
                         onClearBinding()
+                        currentBinding = nil
+                        nearbyStore.flush()
+                        snapshotDevices = nearbyStore.devices
                     }
                 }
                 FloatingPopupSecondaryButton(title: "关闭", textColor: .white) {
@@ -95,6 +106,7 @@ struct NearbyBLEDevicesPopupView: View {
             }
         }
         .onAppear {
+            currentBinding = initialBinding ?? VehicleBLEBindingStore.load()
             nearbyStore.flush()
             snapshotDevices = nearbyStore.devices
             startAutoRefresh()
@@ -114,8 +126,12 @@ struct NearbyBLEDevicesPopupView: View {
                 // 定时从 buffer 拉快照；不直接绑定 @Published devices，避免高频 invalidation
                 nearbyStore.flush()
                 let next = nearbyStore.devices
+                let nextBinding = VehicleBLEBindingStore.load()
                 if next != snapshotDevices {
                     snapshotDevices = next
+                }
+                if nextBinding != currentBinding {
+                    currentBinding = nextBinding
                 }
             }
         }

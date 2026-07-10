@@ -190,11 +190,13 @@ struct StatusView: View {
         if let mqttStore {
             NearbyBLEDevicesPopupView(
                 nearbyStore: mqttStore.nearbyBLEDevicesStore,
-                currentBinding: VehicleBLEBindingStore.load(),
+                initialBinding: VehicleBLEBindingStore.load(),
                 onBind: { device in
                     mqttStore.bindNearbyBLEDevice(device)
-                    withAnimation(PopupMotion.dismissEase) { isNearbyBLEDevicesFloatingPresented = false }
-                    withAnimation { statusToastText = "已绑定 \(device.displayName)，正在检查可用性" }
+                    // 绑定后保持附近设备弹窗打开，便于继续看连接/鉴权结果
+                    withAnimation {
+                        statusToastText = "已绑定 \(device.displayName)，正在优先连接"
+                    }
                 },
                 onClearBinding: {
                     mqttStore.clearBLEBindingAndRefresh()
