@@ -221,8 +221,9 @@ private struct KeylessBLEDiagnosticsSection: View {
         case .disconnected: return "未连接"
         case .scanning: return "扫描中"
         case .connecting: return "连接中"
+        case .connected: return "已连接"
         case .authenticating: return "鉴权中"
-        case .authenticated: return "已鉴权"
+        case .authenticated: return "已连接"
         case .error: return "异常"
         }
     }

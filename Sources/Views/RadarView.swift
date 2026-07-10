@@ -547,7 +547,7 @@ struct RadarCardView: View {
     }
 
     private var hasActiveBLESession: Bool {
-        bleStatus == .connecting || bleStatus == .authenticating || bleStatus == .authenticated
+        bleStatus == .connecting || bleStatus == .connected || bleStatus == .authenticating || bleStatus == .authenticated
     }
 
     private var thresholdSummaryText: String {

@@ -47,6 +47,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         case disconnected
         case scanning
         case connecting
+        case connected
         case authenticating
         case authenticated
         case error

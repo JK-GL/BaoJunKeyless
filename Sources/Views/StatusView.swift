@@ -39,6 +39,8 @@ struct StatusView: View {
             return .authenticated
         case .authenticating:
             return .authenticating
+        case .connected:
+            return .connected
         case .connecting:
             return .connecting
         case .scanning:
