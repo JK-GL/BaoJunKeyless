@@ -16,6 +16,7 @@ struct FloatingPopupCard<Content: View, Actions: View>: View {
     var subtitle: String = ""
     var maxWidth: CGFloat = 316
     var maxContentHeight: CGFloat = 320
+    var fixedContentHeight: CGFloat? = nil
     var contentScrollEnabled: Bool = true
     var onClose: (() -> Void)? = nil
     @State private var measuredContentHeight: CGFloat = 1
@@ -67,7 +68,19 @@ struct FloatingPopupCard<Content: View, Actions: View>: View {
             }
 
             Group {
-                if contentScrollEnabled {
+                if let fixedContentHeight {
+                    if contentScrollEnabled {
+                        ScrollView(.vertical, showsIndicators: true) {
+                            content()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(height: fixedContentHeight, alignment: .top)
+                    } else {
+                        content()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(height: fixedContentHeight, alignment: .top)
+                    }
+                } else if contentScrollEnabled {
                     ScrollView(.vertical, showsIndicators: measuredContentHeight > maxContentHeight) {
                         measuredContent
                     }

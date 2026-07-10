@@ -2,6 +2,8 @@ import Foundation
 import Combine
 
 final class BLEDiagnosticsStore: ObservableObject {
+    static let shared = BLEDiagnosticsStore()
+
     @Published var debugRawRSSI: Int?
     @Published var debugSmoothedRSSI: Int?
     @Published var debugLastSeenText: String = "--"

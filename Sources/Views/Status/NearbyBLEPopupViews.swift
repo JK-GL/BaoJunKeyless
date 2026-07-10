@@ -29,6 +29,7 @@ struct NearbyBLEDevicesPopupView: View {
             title: "附近设备",
             subtitle: currentBinding == nil ? "可手动绑定附近候选设备；绑定后会立即检查可用性。" : "当前已有绑定；也可以改绑附近候选设备。",
             maxWidth: 332,
+            fixedContentHeight: 320,
             contentScrollEnabled: false
         ) {
             ScrollView(.vertical, showsIndicators: nearbyStore.devices.count > 4) {

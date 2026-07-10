@@ -156,8 +156,6 @@ enum CommandAction: String, Identifiable {
 
 // MARK: - 车控指令确认弹窗（居中卡片）
 struct CommandConfirmPopup: View {
-    @EnvironmentObject var vehicleLog: VehicleEventLogStore
-
     let action: CommandAction
     let vehicleState: VehicleState
     @Binding var isPresented: Bool
@@ -391,7 +389,7 @@ struct CommandConfirmPopup: View {
         let label = commandTitle
         let temperatureDetail = action.needsTemperatureSlider ? " \(Int(temperatureToUse))°C" : ""
         let durationDetail = action.needsDurationSlider ? " \(durationToUse)分钟" : ""
-        vehicleLog.add(.action, "快捷操作执行", detail: "\(label)\(temperatureDetail)\(durationDetail)")
+        VehicleEventLogStore.shared.add(.action, "快捷操作执行", detail: "\(label)\(temperatureDetail)\(durationDetail)")
 
         let startTime = Date()
         let minimumLoadingDuration: TimeInterval = 0.35
@@ -408,7 +406,7 @@ struct CommandConfirmPopup: View {
                 commandResult = executionResult.popupResult
                 resultMessage = executionResult.popupMessage
                 resultButtonTitle = executionResult.popupButtonTitle
-                vehicleLog.add(executionResult.logCategory, executionResult.logTitle, detail: executionResult.logDetail)
+                VehicleEventLogStore.shared.add(executionResult.logCategory, executionResult.logTitle, detail: executionResult.logDetail)
                 let resultShownMs = Int(Date().timeIntervalSince(startTime) * 1000)
                 let timingDetail: String
                 if let timing = executionResult.timing {
@@ -416,7 +414,7 @@ struct CommandConfirmPopup: View {
                 } else {
                     timingDetail = "confirm→result=\(resultShownMs)ms"
                 }
-                vehicleLog.add(.action, "快捷操作耗时", detail: "\(executionResult.command.title)：\(timingDetail)")
+                VehicleEventLogStore.shared.add(.action, "快捷操作耗时", detail: "\(executionResult.command.title)：\(timingDetail)")
 
                 switch executionResult.state {
                 case .feedbackOnly, .planned, .sent, .completed:

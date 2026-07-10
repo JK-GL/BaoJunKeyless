@@ -1,5 +1,11 @@
 import SwiftUI
 
+private struct CarLocationDisplaySnapshot: Equatable {
+    let latitude: Double
+    let longitude: Double
+    let address: String
+}
+
 struct StatusView: View {
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var settingsStore: KeylessSettingsStore
@@ -23,6 +29,7 @@ struct StatusView: View {
     @State private var pendingControlWaitID: UUID? = nil
     @State private var isEditingAmapKey = false
     @State private var amapKeyDraft = ""
+    @State private var lastSyncedCarLocationSnapshot: CarLocationDisplaySnapshot?
 
 
     private var mqttStore: MQTTVehicleStateStore? {
@@ -112,6 +119,14 @@ struct StatusView: View {
 
     private var displayCarAddress: String {
         mqttStore?.displayAddress ?? ""
+    }
+
+    private var displayCarLocationSnapshot: CarLocationDisplaySnapshot {
+        CarLocationDisplaySnapshot(
+            latitude: displayCarLatitude,
+            longitude: displayCarLongitude,
+            address: displayCarAddress
+        )
     }
 
     private var modeText: String {
@@ -371,16 +386,12 @@ struct StatusView: View {
         .animation(PopupMotion.presentSpring, value: isNearbyBLEDevicesFloatingPresented)
         .animation(PopupMotion.presentSpring, value: activeCommand != nil)
         .onAppear {
-            syncCarLocationToManager(forceAddressRefresh: true)
+            syncCarLocationToManager(snapshot: displayCarLocationSnapshot, forceAddressRefresh: true)
         }
-        .onChange(of: displayCarLatitude) { _ in
-            syncCarLocationToManager(forceAddressRefresh: false)
-        }
-        .onChange(of: displayCarLongitude) { _ in
-            syncCarLocationToManager(forceAddressRefresh: false)
-        }
-        .onChange(of: displayCarAddress) { _ in
-            syncCarLocationToManager(forceAddressRefresh: true)
+        .onChange(of: displayCarLocationSnapshot) { snapshot in
+            let lastAddress = lastSyncedCarLocationSnapshot?.address ?? ""
+            let addressChanged = snapshot.address != lastAddress
+            syncCarLocationToManager(snapshot: snapshot, forceAddressRefresh: addressChanged)
         }
         .onChange(of: mqttStore?.latestControlResult) { result in
             handleMQTTControlResult(result)
@@ -394,7 +405,8 @@ struct StatusView: View {
             iconColor: liveMQTTStatus.color,
             title: "MQTT 信息",
             maxWidth: 332,
-            maxContentHeight: 400
+            maxContentHeight: 400,
+            fixedContentHeight: 360
         ) {
             MQTTInfoMergedCard(
                 status: liveMQTTStatus,
@@ -500,10 +512,11 @@ struct StatusView: View {
         }
     }
 
-    private func syncCarLocationToManager(forceAddressRefresh: Bool) {
-        guard displayCarLatitude != 0, displayCarLongitude != 0 else { return }
-        let address = forceAddressRefresh ? (displayCarAddress.isEmpty ? nil : displayCarAddress) : nil
-        locationManager.setCarLocation(lat: displayCarLatitude, lng: displayCarLongitude, address: address)
+    private func syncCarLocationToManager(snapshot: CarLocationDisplaySnapshot, forceAddressRefresh: Bool) {
+        guard snapshot.latitude != 0, snapshot.longitude != 0 else { return }
+        let address = forceAddressRefresh ? (snapshot.address.isEmpty ? nil : snapshot.address) : nil
+        locationManager.setCarLocation(lat: snapshot.latitude, lng: snapshot.longitude, address: address)
+        lastSyncedCarLocationSnapshot = snapshot
     }
 
     @ViewBuilder

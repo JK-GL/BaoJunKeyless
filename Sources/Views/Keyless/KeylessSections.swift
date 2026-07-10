@@ -2,7 +2,6 @@ import SwiftUI
 
 struct KeylessMainSection: View {
     @EnvironmentObject var settingsStore: KeylessSettingsStore
-    @EnvironmentObject var vehicleLog: VehicleEventLogStore
     let setMode: (KeylessControlMode) -> Void
 
     var body: some View {
@@ -11,7 +10,7 @@ struct KeylessMainSection: View {
                 get: { settingsStore.settings.keylessEnabled },
                 set: { enabled in
                     settingsStore.settings.keylessEnabled = enabled
-                    vehicleLog.add(.keyless, enabled ? "开启无感开关" : "关闭无感开关")
+                    VehicleEventLogStore.shared.add(.keyless, enabled ? "开启无感开关" : "关闭无感开关")
                 }
             ))
 
@@ -19,34 +18,34 @@ struct KeylessMainSection: View {
                 VStack(spacing: 12) {
                     ToggleRow(icon: "puzzlepiece", label: "插件托管", isOn: Binding(
                         get: { settingsStore.settings.pluginTakeover },
-                        set: { if $0 { setMode(.plugin) } else { settingsStore.settings.pluginTakeover = false; vehicleLog.add(.keyless, "关闭插件托管") } }
+                        set: { if $0 { setMode(.plugin) } else { settingsStore.settings.pluginTakeover = false; VehicleEventLogStore.shared.add(.keyless, "关闭插件托管") } }
                     ))
                     ToggleRow(icon: "arrow.triangle.2.circlepath", label: "智能切换", isOn: Binding(
                         get: { settingsStore.settings.smartSwitch },
-                        set: { if $0 { setMode(.smart) } else { settingsStore.settings.smartSwitch = false; vehicleLog.add(.keyless, "关闭智能切换") } }
+                        set: { if $0 { setMode(.smart) } else { settingsStore.settings.smartSwitch = false; VehicleEventLogStore.shared.add(.keyless, "关闭智能切换") } }
                     ))
                     ToggleRow(icon: "iphone", label: "前台手动", isOn: Binding(
                         get: { settingsStore.settings.appManual },
-                        set: { if $0 { setMode(.manual) } else { settingsStore.settings.appManual = false; vehicleLog.add(.keyless, "关闭前台手动") } }
+                        set: { if $0 { setMode(.manual) } else { settingsStore.settings.appManual = false; VehicleEventLogStore.shared.add(.keyless, "关闭前台手动") } }
                     ))
 
                     SliderRow(icon: "magnifyingglass", label: "BLE 扫描时长",
                               value: $settingsStore.settings.bleScanDuration, range: 20...300, step: 5,
                               format: "\(Int(settingsStore.settings.bleScanDuration))s", tint: AppTheme.orange) { value in
-                        vehicleLog.add(.keyless, "修改BLE扫描时长", detail: "\(Int(value))s")
+                        VehicleEventLogStore.shared.add(.keyless, "修改BLE扫描时长", detail: "\(Int(value))s")
                     }
 
                     SliderRow(icon: "timer", label: "BLE 扫描间隔",
                               value: $settingsStore.settings.bleScanInterval, range: 0...300, step: 5,
                               format: settingsStore.settings.bleScanInterval <= 0 ? "无间隙" : "\(Int(settingsStore.settings.bleScanInterval))s", tint: AppTheme.accent) { value in
                         let text = value <= 0 ? "无间隙" : "\(Int(value))s"
-                        vehicleLog.add(.keyless, "修改BLE扫描间隔", detail: text)
+                        VehicleEventLogStore.shared.add(.keyless, "修改BLE扫描间隔", detail: text)
                     }
 
                     SliderRow(icon: "gauge", label: "重复指令间隔",
                               value: $settingsStore.settings.cmdInterval, range: 1...15, step: 1,
                               format: "\(Int(settingsStore.settings.cmdInterval))s", tint: AppTheme.purple) { value in
-                        vehicleLog.add(.keyless, "修改重复指令间隔", detail: "\(Int(value))s")
+                        VehicleEventLogStore.shared.add(.keyless, "修改重复指令间隔", detail: "\(Int(value))s")
                     }
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -57,7 +56,6 @@ struct KeylessMainSection: View {
 
 struct UnlockSettingsSection: View {
     @EnvironmentObject var settingsStore: KeylessSettingsStore
-    @EnvironmentObject var vehicleLog: VehicleEventLogStore
     @Binding var showRecorder: Bool
     let choice: Binding<VibrationChoice>
     let customStore: CustomVibrationStore
@@ -68,7 +66,7 @@ struct UnlockSettingsSection: View {
                 get: { settingsStore.settings.unlockEnabled },
                 set: { enabled in
                     settingsStore.settings.unlockEnabled = enabled
-                    vehicleLog.add(.keyless, enabled ? "开启无感解锁" : "关闭无感解锁")
+                    VehicleEventLogStore.shared.add(.keyless, enabled ? "开启无感解锁" : "关闭无感解锁")
                 }
             ))
 
@@ -77,20 +75,20 @@ struct UnlockSettingsSection: View {
                     SliderRow(icon: "wifi", label: "dBm 阈值",
                               value: $settingsStore.settings.unlockThreshold, range: -110...(-30), step: 1,
                               format: "\(Int(settingsStore.settings.unlockThreshold)) dBm", tint: AppTheme.green) { value in
-                        vehicleLog.add(.keyless, "修改解锁阈值", detail: "\(Int(value)) dBm")
+                        VehicleEventLogStore.shared.add(.keyless, "修改解锁阈值", detail: "\(Int(value)) dBm")
                     }
 
                     SliderRow(icon: "timer", label: "靠近确认",
                               value: $settingsStore.settings.unlockApproachDuration, range: 0...5, step: 0.5,
                               format: String(format: "%.1fs", settingsStore.settings.unlockApproachDuration), tint: AppTheme.green) { value in
-                        vehicleLog.add(.keyless, "修改解锁确认时长", detail: String(format: "%.1fs", value))
+                        VehicleEventLogStore.shared.add(.keyless, "修改解锁确认时长", detail: String(format: "%.1fs", value))
                     }
 
                     ToggleRow(icon: "iphone.radiowaves.left.and.right", label: "震动反馈", isOn: Binding(
                         get: { settingsStore.settings.unlockVibrate },
                         set: { enabled in
                             settingsStore.settings.unlockVibrate = enabled
-                            vehicleLog.add(.keyless, enabled ? "开启解锁震动反馈" : "关闭解锁震动反馈")
+                            VehicleEventLogStore.shared.add(.keyless, enabled ? "开启解锁震动反馈" : "关闭解锁震动反馈")
                         }
                     ))
 
@@ -115,7 +113,6 @@ struct UnlockSettingsSection: View {
 
 struct LockSettingsSection: View {
     @EnvironmentObject var settingsStore: KeylessSettingsStore
-    @EnvironmentObject var vehicleLog: VehicleEventLogStore
     @Binding var showRecorder: Bool
     let choice: Binding<VibrationChoice>
     let customStore: CustomVibrationStore
@@ -126,7 +123,7 @@ struct LockSettingsSection: View {
                 get: { settingsStore.settings.lockEnabled },
                 set: { enabled in
                     settingsStore.settings.lockEnabled = enabled
-                    vehicleLog.add(.keyless, enabled ? "开启无感上锁" : "关闭无感上锁")
+                    VehicleEventLogStore.shared.add(.keyless, enabled ? "开启无感上锁" : "关闭无感上锁")
                 }
             ))
 
@@ -135,20 +132,20 @@ struct LockSettingsSection: View {
                     SliderRow(icon: "wifi", label: "dBm 阈值",
                               value: $settingsStore.settings.lockThreshold, range: -110...(-30), step: 1,
                               format: "\(Int(settingsStore.settings.lockThreshold)) dBm", tint: AppTheme.red) { value in
-                        vehicleLog.add(.keyless, "修改上锁阈值", detail: "\(Int(value)) dBm")
+                        VehicleEventLogStore.shared.add(.keyless, "修改上锁阈值", detail: "\(Int(value)) dBm")
                     }
 
                     SliderRow(icon: "gauge", label: "上锁延迟",
                               value: $settingsStore.settings.lockDelay, range: 0...60, step: 1,
                               format: "\(Int(settingsStore.settings.lockDelay))s", tint: AppTheme.red) { value in
-                        vehicleLog.add(.keyless, "修改上锁延迟", detail: "\(Int(value))s")
+                        VehicleEventLogStore.shared.add(.keyless, "修改上锁延迟", detail: "\(Int(value))s")
                     }
 
                     ToggleRow(icon: "iphone.radiowaves.left.and.right", label: "震动反馈", isOn: Binding(
                         get: { settingsStore.settings.lockVibrate },
                         set: { enabled in
                             settingsStore.settings.lockVibrate = enabled
-                            vehicleLog.add(.keyless, enabled ? "开启上锁震动反馈" : "关闭上锁震动反馈")
+                            VehicleEventLogStore.shared.add(.keyless, enabled ? "开启上锁震动反馈" : "关闭上锁震动反馈")
                         }
                     ))
 

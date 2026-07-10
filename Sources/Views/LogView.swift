@@ -29,7 +29,7 @@ struct LogView: View {
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var vehicleLog: VehicleEventLogStore
-    @EnvironmentObject var vehicleStore: VehicleStateStore
+    @ObservedObject private var diagnostics = BLEDiagnosticsStore.shared
     @State private var showingClearAlert = false
     @State private var selectedFilter: VehicleLogFilter = .all
     @State private var sharePayload: SharePayload?
@@ -58,9 +58,6 @@ struct LogView: View {
         vehicleLog.todayErrorCount
     }
 
-    private var mqttStore: MQTTVehicleStateStore? {
-        vehicleStore as? MQTTVehicleStateStore
-    }
 
     private var expandableLogIDs: Set<UUID> {
         Set(filteredLogs.filter { !$0.detail.isEmpty }.map(\.id))
@@ -89,9 +86,7 @@ struct LogView: View {
                     Spacer(minLength: 0)
                 }
 
-                if let mqttStore {
-                    bleDiagnosticStrip(diagnostics: mqttStore.bleDiagnosticsStore)
-                }
+                bleDiagnosticStrip(diagnostics: diagnostics)
 
                 VehicleLogFilterBar(selectedFilter: $selectedFilter)
             }

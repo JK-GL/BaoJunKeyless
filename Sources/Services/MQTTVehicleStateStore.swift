@@ -193,7 +193,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var hasReceivedKeylessSettings = false
     var consecutiveScanTimeouts = 0
     var ignoreNextBLEIdleCallback = false
-    let bleDiagnosticsStore = BLEDiagnosticsStore()
+    let bleDiagnosticsStore = BLEDiagnosticsStore.shared
     let nearbyBLEDevicesStore = NearbyBLEDevicesStore()
     var cancellables = Set<AnyCancellable>()
 
