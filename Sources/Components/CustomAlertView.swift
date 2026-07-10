@@ -33,7 +33,6 @@ struct DarkAlertModifier: ViewModifier {
                     .transition(PopupMotion.transition)
                 }
             }
-            .animation(PopupMotion.presentSpring, value: isPresented)
     }
 }
 

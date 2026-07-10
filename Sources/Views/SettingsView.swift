@@ -44,7 +44,7 @@ struct SettingsView: View {
                     toastText: $toastText,
                     onSave: connectMQTTIfNeeded,
                     onCredentialConfirm: { payload in
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        withAnimation(PopupMotion.presentSpring) {
                             credentialConfirmPayload = payload
                         }
                     }
@@ -136,8 +136,6 @@ struct SettingsView: View {
                     }
             }
         }
-        .animation(PopupMotion.presentSpring, value: showingResetAlert)
-        .animation(PopupMotion.presentSpring, value: credentialConfirmPayload != nil)
         .onChange(of: vehicleCredentials.accessToken) { _ in connectMQTTIfNeeded() }
         .onChange(of: vehicleCredentials.vin) { _ in connectMQTTIfNeeded() }
     }

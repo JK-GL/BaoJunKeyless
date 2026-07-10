@@ -12,7 +12,7 @@ struct SettingsCrashLogSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(.spring(response: 0.28)) { isCrashLogExpanded.toggle() }
+                withAnimation(PopupMotion.contentEase) { isCrashLogExpanded.toggle() }
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "ladybug.fill")

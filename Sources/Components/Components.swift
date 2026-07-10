@@ -85,7 +85,7 @@ struct CollapsibleCard<Header: View, Content: View>: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button(action: { withAnimation(.spring(response: 0.35)) { isExpanded.toggle() } }) {
+            Button(action: { withAnimation(PopupMotion.contentEase) { isExpanded.toggle() } }) {
                 HStack(spacing: 6) {
                     Image(systemName: icon).foregroundColor(iconColor).font(.system(size: 15, weight: .semibold))
                     Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.textPrimary)

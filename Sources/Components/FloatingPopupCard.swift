@@ -126,7 +126,7 @@ struct FloatingPopupCard<Content: View, Actions: View>: View {
                         )
                 }
             }
-            .shadow(color: Color.black.opacity(0.38), radius: usesBlurMaterial ? 34 : 18, x: 0, y: usesBlurMaterial ? 16 : 10)
+            .shadow(color: Color.black.opacity(0.30), radius: usesBlurMaterial ? 22 : 14, x: 0, y: usesBlurMaterial ? 12 : 8)
         )
         .frame(maxWidth: maxWidth)
         .padding(.horizontal, 24)

@@ -356,7 +356,7 @@ struct StatusAddressFloatingHost: View {
                             .fill(Color.white.opacity(0.06))
                     )
                     .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.15)) {
+                        withAnimation(PopupMotion.contentEase) {
                             isEditingAmapKey = true
                             amapKeyDraft = addressSettings.amapWebKey
                         }
@@ -365,7 +365,7 @@ struct StatusAddressFloatingHost: View {
                     HStack(spacing: 10) {
                         Spacer()
                         Button {
-                            withAnimation(.easeOut(duration: 0.15)) {
+                            withAnimation(PopupMotion.contentEase) {
                                 addressSettings.clearAmapWebKey()
                                 amapKeyDraft = ""
                                 isEditingAmapKey = false

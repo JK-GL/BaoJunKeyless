@@ -70,8 +70,8 @@ struct VibrationRecorderView: View {
                             .font(.system(size: 36, weight: .medium))
                             .foregroundStyle(hapticManager.isPressing ? .white : (hapticManager.isRecording ? AppTheme.accent : Color.white.opacity(0.62)))
                     }
-                    .animation(.spring(response: 0.2), value: hapticManager.isPressing)
-                    .animation(.spring(response: 0.2), value: hapticManager.isRecording)
+                    .animation(PopupMotion.contentEase, value: hapticManager.isPressing)
+                    .animation(PopupMotion.contentEase, value: hapticManager.isRecording)
                     .gesture(
                         DragGesture(minimumDistance: 0)
                             .onChanged { _ in
@@ -253,7 +253,6 @@ struct VibrationRecorderView: View {
                     }
                 }
                 .transition(PopupMotion.transition)
-                .animation(PopupMotion.presentSpring, value: showSaveDialog)
             }
         }
     }

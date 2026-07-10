@@ -151,7 +151,6 @@ struct LogView: View {
                     }
             }
         }
-        .animation(PopupMotion.presentSpring, value: showingClearAlert)
         .onAppear {
             restoreViewPreferences()
             restoreExpandedIDs()
