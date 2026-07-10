@@ -4,9 +4,45 @@ extension MQTTVehicleStateStore {
     func reloadCachedBLEKeyInfo(preferScoped: Bool) {
         if preferScoped, let scope = currentBLEKeyCacheScope() {
             latestBleKeyInfo = VehicleBLEKeyCacheStore.load(vin: scope.vin, phone: scope.phone) ?? [:]
-            return
+        } else {
+            latestBleKeyInfo = VehicleBLEKeyCacheStore.loadLastActive() ?? [:]
         }
-        latestBleKeyInfo = VehicleBLEKeyCacheStore.loadLastActive() ?? [:]
+        applyBLEKeyInfoToDashboard(markAsCached: true)
+    }
+
+    func applyBLEKeyInfoToDashboard(markAsCached: Bool) {
+        guard !latestBleKeyInfo.isEmpty else { return }
+        var dash = dashboard
+        let info = latestBleKeyInfo
+
+        dash.bleMacText = info["bleMac"] ?? info["macAddress"] ?? dash.bleMacText
+        dash.keyIdText = info["keyId"] ?? dash.keyIdText
+        dash.keyTypeText = info["keyType"] ?? dash.keyTypeText
+        dash.masterKeyMaskedText = maskHex(info["masterKey"], visiblePrefix: 4, visibleSuffix: 4)
+        dash.randomMaskedText = maskHex(info["keyMasterRandom"] ?? info["random"], visiblePrefix: 4, visibleSuffix: 4)
+        dash.keyExpiryText = info["expiredTime"] ?? info["expireTime"] ?? info["endTime"] ?? dash.keyExpiryText
+
+        let vin = credentialsStore.vin.trimmingCharacters(in: .whitespacesAndNewlines)
+        let phone = credentialsStore.phone.trimmingCharacters(in: .whitespacesAndNewlines)
+        if dash.vinText == "--", !vin.isEmpty {
+            dash.vinText = vin
+        }
+        if dash.userIdText == "--", !phone.isEmpty {
+            dash.userIdText = phone
+        }
+
+        if markAsCached {
+            let current = dash.vehicleInfoUpdatedAtText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if current.isEmpty || current == "--" {
+                dash.vehicleInfoUpdatedAtText = "本地缓存"
+            } else if !current.contains("缓存") {
+                dash.vehicleInfoUpdatedAtText = "\(current) · 缓存"
+            }
+        } else {
+            dash.vehicleInfoUpdatedAtText = formatDateTime(Date())
+        }
+
+        applyDashboard(dash)
     }
 
     func currentBLEKeyCacheScope() -> (vin: String, phone: String)? {
@@ -62,15 +98,7 @@ extension MQTTVehicleStateStore {
                 self.persistBLEKeyInfo(info)
                 self.latestBleKeyInfo = info
                 self.refreshBLESessionIfNeeded()
-                var dash = self.dashboard
-                dash.bleMacText = info["bleMac"] ?? info["macAddress"] ?? dash.bleMacText
-                dash.keyIdText = info["keyId"] ?? dash.keyIdText
-                dash.keyTypeText = info["keyType"] ?? dash.keyTypeText
-                dash.masterKeyMaskedText = maskHex(info["masterKey"], visiblePrefix: 4, visibleSuffix: 4)
-                dash.randomMaskedText = maskHex(info["keyMasterRandom"] ?? info["random"], visiblePrefix: 4, visibleSuffix: 4)
-                dash.keyExpiryText = info["expiredTime"] ?? info["expireTime"] ?? info["endTime"] ?? dash.keyExpiryText
-                dash.vehicleInfoUpdatedAtText = formatDateTime(Date())
-                self.applyDashboard(dash)
+                self.applyBLEKeyInfoToDashboard(markAsCached: false)
             }
         }
     }

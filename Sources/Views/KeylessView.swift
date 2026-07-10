@@ -31,6 +31,9 @@ struct KeylessView: View {
                     .padding(.top, 8)
 
                 KeylessMainSection(setMode: setMode)
+                if let mqttStore {
+                    KeylessBLEDiagnosticsSection(store: mqttStore)
+                }
                 KeylessRealtimeStatusSection(
                     modeText: currentModeText,
                     appExecEnabled: appExecutionEnabled,
@@ -218,6 +221,76 @@ struct KeylessView: View {
             get: { settingsStore.lockVibChoice() },
             set: { settingsStore.setLockVibChoice($0) }
         )
+    }
+}
+
+private struct KeylessBLEDiagnosticsSection: View {
+    @EnvironmentObject var vehicleLog: VehicleEventLogStore
+    let store: MQTTVehicleStateStore
+    @State private var binding = VehicleBLEBindingStore.load()
+
+    private var rows: [PopupInfoRowItem] {
+        [
+            PopupInfoRowItem("dot.radiowaves.left.and.right", "BLE状态", bleStatusText(store.bleStatus), color: AppTheme.accent),
+            PopupInfoRowItem("wave.3.right", "当前阶段", store.bleDiagnosticPhaseText, color: .white),
+            PopupInfoRowItem("text.alignleft", "阶段详情", store.bleDiagnosticDetailText, color: .white),
+            PopupInfoRowItem("checkmark.circle", "最近结论", "\(store.bleDiagnosticLastConclusionText) · \(store.bleDiagnosticLastConclusionAtText)", color: AppTheme.green),
+            PopupInfoRowItem("sum", "分类统计", store.bleDiagnosticCountsSummaryText, color: AppTheme.orange),
+            PopupInfoRowItem("timer", "扫描间隙", store.keylessSettingsStore.settings.bleScanInterval <= 0 ? "无间隙" : "\(Int(store.keylessSettingsStore.settings.bleScanInterval))s", color: AppTheme.accent),
+            PopupInfoRowItem("number", "连续超时", "\(store.consecutiveScanTimeouts)", color: AppTheme.orange),
+            PopupInfoRowItem("person.text.rectangle", "当前作用域", cacheScopeText(), mono: true, color: .white),
+            PopupInfoRowItem("antenna.radiowaves.left.and.right", "当前BLE", bleKeySummaryText(), mono: true, color: AppTheme.accent),
+            PopupInfoRowItem("link", "蓝牙绑定", binding?.displaySummary ?? "尚未绑定", mono: binding != nil, color: binding == nil ? .secondary : AppTheme.green)
+        ]
+    }
+
+    var body: some View {
+        CardView(title: "BLE 诊断", icon: "wave.3.right.circle", iconColor: AppTheme.accent) {
+            PopupInfoRowsView(
+                rows: rows,
+                labelWidth: 74,
+                valueLineLimit: nil,
+                valueMinimumScaleFactor: 0.78,
+                rowVerticalPadding: 8
+            )
+
+            if binding != nil {
+                HStack(spacing: 10) {
+                    SettingsActionButton(icon: "link.badge.minus", label: "清除绑定", color: AppTheme.red) {
+                        VehicleBLEBindingStore.clear()
+                        binding = nil
+                        store.ensureBLESession(forceRestart: true, optimisticScanning: true)
+                        vehicleLog.add(.action, "清除蓝牙绑定", detail: "用户在无感页手动清除")
+                    }
+                }
+            }
+        }
+        .onAppear { binding = VehicleBLEBindingStore.load() }
+    }
+
+    private func bleStatusText(_ status: MQTTVehicleStateStore.LiveBLEStatus) -> String {
+        switch status {
+        case .disconnected: return "disconnected"
+        case .scanning: return "scanning"
+        case .connecting: return "connecting"
+        case .authenticating: return "authenticating"
+        case .authenticated: return "authenticated"
+        case .error: return "error"
+        }
+    }
+
+    private func cacheScopeText() -> String {
+        let phone = store.credentialsStore.phone.trimmingCharacters(in: .whitespacesAndNewlines)
+        let vin = store.credentialsStore.vin.trimmingCharacters(in: .whitespacesAndNewlines)
+        let phoneText = phone.isEmpty ? "--" : String(phone.suffix(4))
+        let vinText = vin.isEmpty ? "--" : String(vin.suffix(6))
+        return "phone=\(phoneText) · vin=\(vinText)"
+    }
+
+    private func bleKeySummaryText() -> String {
+        let mac = store.latestBleKeyInfo["bleMac"] ?? store.latestBleKeyInfo["macAddress"] ?? "--"
+        let keyId = store.latestBleKeyInfo["keyId"] ?? "--"
+        return "keyId=\(keyId) · mac=\(mac)"
     }
 }
 
