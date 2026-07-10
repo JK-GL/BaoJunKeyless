@@ -1510,6 +1510,10 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         let sourceText = connectionSourceText
+        guard discoveredPeripheral?.identifier == peripheral.identifier else {
+            onLog?("BLE", "stale connect failed ignored id=\(peripheral.identifier.uuidString.prefix(8)) | \(error?.localizedDescription ?? "unknown")")
+            return
+        }
         clearSessionRuntime(cancelPendingControl: true)
         state = .error(error?.localizedDescription ?? "connect failed")
         onLog?("BLE", "connect failed source=\(sourceText) | \(error?.localizedDescription ?? "unknown")")
@@ -1520,6 +1524,10 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         let sourceText = connectionSourceText
+        guard discoveredPeripheral?.identifier == peripheral.identifier else {
+            onLog?("BLE", "stale disconnect ignored id=\(peripheral.identifier.uuidString.prefix(8)) | \(error?.localizedDescription ?? "no error")")
+            return
+        }
         completePendingControl(.failure(.sessionStopped))
         clearSessionRuntime(cancelPendingControl: true)
         onLog?("BLE", "disconnected source=\(sourceText) | \(error?.localizedDescription ?? "no error")")

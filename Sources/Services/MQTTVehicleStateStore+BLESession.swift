@@ -8,6 +8,10 @@ extension MQTTVehicleStateStore {
             guard let self else { return }
             switch state {
             case .idle:
+                if self.ignoreNextBLEIdleCallback {
+                    self.ignoreNextBLEIdleCallback = false
+                    return
+                }
                 switch self.bleManager.state {
                 case .scanning, .connecting, .connected, .authenticating, .authenticated:
                     return
@@ -37,6 +41,7 @@ extension MQTTVehicleStateStore {
                 self.hasCompletedBLEAuth = false
                 self.applyLiveBLERSSI(nil)
             case .unsupported, .bluetoothOff:
+                self.ignoreNextBLEIdleCallback = false
                 self.bleStatus = .error
                 self.bleScanStartedAt = nil
                 self.hasCompletedBLEAuth = false
@@ -45,6 +50,7 @@ extension MQTTVehicleStateStore {
                 self.setBLEDiagnosticConclusion("BLE 不可用", reason: "系统蓝牙关闭或权限不可用")
                 self.logVehicleEvent(.action, "BLE 不可用", detail: "蓝牙关闭或未授权", identity: "ble-unavailable", minimumInterval: 8)
             case .scanning:
+                self.ignoreNextBLEIdleCallback = false
                 if self.bleScanStartedAt == nil {
                     self.bleScanStartedAt = Date()
                     self.resetBLEDiagnosticCycle()
@@ -59,6 +65,7 @@ extension MQTTVehicleStateStore {
                 }
                 self.bleStatus = .scanning
             case .connecting, .connected:
+                self.ignoreNextBLEIdleCallback = false
                 self.consecutiveScanTimeouts = 0
                 if self.bleStatus != .connecting {
                     let macSuffix = self.deviceDisplayName
@@ -67,10 +74,12 @@ extension MQTTVehicleStateStore {
                 self.setBLEDiagnosticPhase("连接中", detail: self.bleDiagnosticCurrentCandidateText)
                 self.bleStatus = .connecting
             case .authenticating:
+                self.ignoreNextBLEIdleCallback = false
                 self.logVehicleEvent(.action, "BLE 鉴权中", detail: "38C7/A857 四步鉴权", identity: "authenticating", minimumInterval: 3)
                 self.setBLEDiagnosticPhase("鉴权中", detail: self.bleDiagnosticCurrentCandidateText)
                 self.bleStatus = .authenticating
             case .authenticated:
+                self.ignoreNextBLEIdleCallback = false
                 self.consecutiveScanTimeouts = 0
                 self.hasCompletedBLEAuth = true
                 self.setBLEDiagnosticPhase("已鉴权", detail: self.bleDiagnosticCurrentCandidateText)
@@ -78,12 +87,14 @@ extension MQTTVehicleStateStore {
                 self.logVehicleEvent(.action, "BLE 鉴权成功", detail: "可发送控车命令", identity: "authenticated", minimumInterval: 3)
                 self.bleStatus = .authenticated
             case .authFailed(let reason):
+                self.ignoreNextBLEIdleCallback = false
                 self.noteBLEAuthFailed(reason)
                 self.bleScanStartedAt = nil
                 self.logVehicleEvent(.error, "BLE 鉴权失败", detail: reason, identity: "auth-failed|\(reason)", minimumInterval: 6)
                 self.bleStatus = .error
                 self.applyLiveBLERSSI(nil)
             case .error(let detail):
+                self.ignoreNextBLEIdleCallback = false
                 self.bleScanStartedAt = nil
                 self.logVehicleEvent(.error, "BLE 错误", detail: detail, identity: "ble-error|\(detail)", minimumInterval: 6)
                 self.setBLEDiagnosticPhase("BLE错误", detail: detail)
@@ -161,6 +172,7 @@ extension MQTTVehicleStateStore {
     func ensureBLESession(forceRestart: Bool, optimisticScanning: Bool) {
         if forceRestart {
             userManuallyStoppedBLE = false
+            ignoreNextBLEIdleCallback = true
             bleManager.stop()
         }
         if latestBleKeyInfo.isEmpty {
