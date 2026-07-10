@@ -210,6 +210,8 @@ struct StatusView: View {
                         RadarCardView(
                             locationManager: locationManager,
                             bleStatus: liveBLEStatus,
+                            unlockThresholdText: String(Int(settingsStore.settings.unlockThreshold)),
+                            lockThresholdText: String(Int(settingsStore.settings.lockThreshold)),
                             carLat: displayCarLatitude,
                             carLng: displayCarLongitude,
                             carAddress: displayCarAddress,

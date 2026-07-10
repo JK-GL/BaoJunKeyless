@@ -535,6 +535,8 @@ struct RadarCardView: View {
     @ObservedObject var locationManager: LocationManager
     private let displayCacheStore = VehicleDisplayCacheStore()
     var bleStatus: StatusBLEState = .disconnected
+    var unlockThresholdText: String = "--"
+    var lockThresholdText: String = "--"
     var carLat: Double = 0
     var carLng: Double = 0
     var carAddress: String = ""
@@ -544,42 +546,35 @@ struct RadarCardView: View {
         displayCacheStore.loadSnapshot().distanceMeters
     }
 
+    private var hasActiveBLESession: Bool {
+        bleStatus == .connecting || bleStatus == .authenticating || bleStatus == .authenticated
+    }
+
+    private var thresholdSummaryText: String {
+        "U\(unlockThresholdText) / L\(lockThresholdText)"
+    }
+
     var body: some View {
         VStack(spacing: 12) {
             ZStack {
                 RadarRepresentable(locationManager: locationManager, carImageURL: carImageURL)
                     .frame(width: 280, height: 280)
 
-                if bleStatus == .authenticated {
-                    Text("BLE 已鉴权")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                if hasActiveBLESession {
+                    Text(thresholdSummaryText)
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
                         .foregroundStyle(
                             LinearGradient(colors: [Color(red: 0.2, green: 0.6, blue: 1),
                                                     Color(red: 0.3, green: 0.9, blue: 1)],
                                            startPoint: .leading,
                                            endPoint: .trailing)
                         )
-                } else if bleStatus == .authenticating {
-                    Text("BLE 鉴权中")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(AppTheme.orange)
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
+                        .padding(.vertical, 6)
                         .background(
                             Capsule()
-                                .fill(AppTheme.orange.opacity(0.12))
-                                .overlay(Capsule().stroke(AppTheme.orange.opacity(0.25), lineWidth: 0.5))
-                        )
-                } else if bleStatus == .connecting {
-                    Text("BLE 连接中")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(AppTheme.accent)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(
-                            Capsule()
-                                .fill(AppTheme.accent.opacity(0.12))
-                                .overlay(Capsule().stroke(AppTheme.accent.opacity(0.25), lineWidth: 0.5))
+                                .fill(Color.black.opacity(0.24))
+                                .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 0.5))
                         )
                 } else {
                     Text("GPS")
