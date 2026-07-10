@@ -79,6 +79,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     @Published var bleDiagnosticDetailText: String = "等待开始"
     @Published var bleDiagnosticLastConclusionText: String = "--"
     @Published var bleDiagnosticLastConclusionAtText: String = "--"
+    @Published var bleDiagnosticLastReasonText: String = "--"
     @Published var bleDiagnosticNoDeviceCount: Int = 0
     @Published var bleDiagnosticFoundButNotConnectedCount: Int = 0
     @Published var bleDiagnosticAuthFailedCount: Int = 0

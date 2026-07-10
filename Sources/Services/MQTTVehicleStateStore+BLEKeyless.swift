@@ -151,9 +151,10 @@ extension MQTTVehicleStateStore {
         bleDiagnosticDetailText = detail
     }
 
-    func setBLEDiagnosticConclusion(_ conclusion: String) {
+    func setBLEDiagnosticConclusion(_ conclusion: String, reason: String = "--") {
         bleDiagnosticLastConclusionText = conclusion
         bleDiagnosticLastConclusionAtText = formatTime(Date())
+        bleDiagnosticLastReasonText = reason
     }
 
     func noteBLEDeviceSeen(name: String, rssi: Int?) {
@@ -181,19 +182,19 @@ extension MQTTVehicleStateStore {
         bleDiagnosticNoDeviceCount += 1
         let detail = "\(deviceDisplayName) · 已扫描 \(duration)"
         setBLEDiagnosticPhase("未发现设备", detail: detail)
-        setBLEDiagnosticConclusion("完全没发现设备")
+        setBLEDiagnosticConclusion("完全没发现设备", reason: "扫描超时，未看到目标设备")
     }
 
-    func noteBLEFoundButNotConnected(_ detail: String) {
+    func noteBLEFoundButNotConnected(_ detail: String, reason: String = "已发现目标，但连接未完成") {
         bleDiagnosticFoundButNotConnectedCount += 1
         setBLEDiagnosticPhase("发现未连上", detail: detail)
-        setBLEDiagnosticConclusion("发现过设备但没连上")
+        setBLEDiagnosticConclusion("发现过设备但没连上", reason: reason)
     }
 
     func noteBLEAuthFailed(_ reason: String) {
         bleDiagnosticAuthFailedCount += 1
         setBLEDiagnosticPhase("鉴权失败", detail: reason)
-        setBLEDiagnosticConclusion("连上了但鉴权失败")
+        setBLEDiagnosticConclusion("连上了但鉴权失败", reason: reason)
     }
 
     func toggleBLEScanning() {

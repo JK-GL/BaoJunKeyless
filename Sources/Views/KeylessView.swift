@@ -235,6 +235,7 @@ private struct KeylessBLEDiagnosticsSection: View {
             PopupInfoRowItem("wave.3.right", "当前阶段", store.bleDiagnosticPhaseText, color: .white),
             PopupInfoRowItem("text.alignleft", "阶段详情", store.bleDiagnosticDetailText, color: .white),
             PopupInfoRowItem("checkmark.circle", "最近结论", "\(store.bleDiagnosticLastConclusionText) · \(store.bleDiagnosticLastConclusionAtText)", color: AppTheme.green),
+            PopupInfoRowItem("info.circle", "结论来源", store.bleDiagnosticLastReasonText, color: AppTheme.orange),
             PopupInfoRowItem("sum", "本次统计", store.bleDiagnosticCountsSummaryText, color: AppTheme.orange),
             PopupInfoRowItem("timer", "扫描间隙", store.keylessSettingsStore.settings.bleScanInterval <= 0 ? "无间隙" : "\(Int(store.keylessSettingsStore.settings.bleScanInterval))s", color: AppTheme.accent),
             PopupInfoRowItem("number", "连续超时", "\(store.consecutiveScanTimeouts)", color: AppTheme.orange),
@@ -253,6 +254,12 @@ private struct KeylessBLEDiagnosticsSection: View {
                 valueMinimumScaleFactor: 0.78,
                 rowVerticalPadding: 8
             )
+
+            Text("本次统计 = 本次运行累计结果；重开 App 后会重新开始累计。")
+                .font(.system(size: 11))
+                .foregroundStyle(Color.white.opacity(0.45))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
 
             if binding != nil {
                 HStack(spacing: 10) {

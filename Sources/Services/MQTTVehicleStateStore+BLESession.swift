@@ -20,7 +20,7 @@ extension MQTTVehicleStateStore {
                     let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
                     if self.bleDidSeeDeviceThisCycle {
                         self.vehicleEventLogStore.addCoalesced(.warning, "BLE 扫描结束", detail: "\(self.bleDiagnosticCurrentCandidateText) · 已扫描 \(duration)，发现设备但未连上", identity: "scan-end-seen|\(macSuffix)")
-                        self.noteBLEFoundButNotConnected("\(self.bleDiagnosticCurrentCandidateText) · 已扫描 \(duration)")
+                        self.noteBLEFoundButNotConnected("\(self.bleDiagnosticCurrentCandidateText) · 已扫描 \(duration)", reason: "看到目标设备，但本轮未建立连接")
                     } else {
                         self.vehicleEventLogStore.addCoalesced(.action, "BLE 扫描超时", detail: "\(macSuffix) · 已扫描 \(duration)，未发现设备", identity: "scan-timeout|\(macSuffix)")
                         self.noteBLENoDeviceFound(duration: duration)
@@ -42,7 +42,7 @@ extension MQTTVehicleStateStore {
                 self.hasCompletedBLEAuth = false
                 self.applyLiveBLERSSI(nil)
                 self.setBLEDiagnosticPhase("BLE不可用", detail: "蓝牙关闭或未授权")
-                self.setBLEDiagnosticConclusion("BLE 不可用")
+                self.setBLEDiagnosticConclusion("BLE 不可用", reason: "系统蓝牙关闭或权限不可用")
                 self.logVehicleEvent(.action, "BLE 不可用", detail: "蓝牙关闭或未授权", identity: "ble-unavailable", minimumInterval: 8)
             case .scanning:
                 if self.bleScanStartedAt == nil {
@@ -74,7 +74,7 @@ extension MQTTVehicleStateStore {
                 self.consecutiveScanTimeouts = 0
                 self.hasCompletedBLEAuth = true
                 self.setBLEDiagnosticPhase("已鉴权", detail: self.bleDiagnosticCurrentCandidateText)
-                self.setBLEDiagnosticConclusion("鉴权成功")
+                self.setBLEDiagnosticConclusion("鉴权成功", reason: "已完成 BLE 四步鉴权")
                 self.logVehicleEvent(.action, "BLE 鉴权成功", detail: "可发送控车命令", identity: "authenticated", minimumInterval: 3)
                 self.bleStatus = .authenticated
             case .authFailed(let reason):
@@ -278,8 +278,18 @@ extension MQTTVehicleStateStore {
             return
         }
 
-        if message.contains("connect failed source=") || message.contains("connection timeout (10s)") || message.contains("target services incomplete") {
-            noteBLEFoundButNotConnected(bleDiagnosticCurrentCandidateText)
+        if message.contains("connect failed source=") {
+            noteBLEFoundButNotConnected(bleDiagnosticCurrentCandidateText, reason: "连接失败")
+            return
+        }
+
+        if message.contains("connection timeout (10s)") {
+            noteBLEFoundButNotConnected(bleDiagnosticCurrentCandidateText, reason: "连接超时")
+            return
+        }
+
+        if message.contains("target services incomplete") {
+            noteBLEFoundButNotConnected(bleDiagnosticCurrentCandidateText, reason: "服务/特征不完整")
             return
         }
     }

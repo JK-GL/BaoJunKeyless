@@ -326,7 +326,12 @@ struct LogView: View {
                 .foregroundStyle(Color.white.opacity(0.72))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(store.bleDiagnosticCountsSummaryText)
+            Text("来源：\(store.bleDiagnosticLastReasonText)")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(Color.white.opacity(0.58))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("本次运行累计：\(store.bleDiagnosticCountsSummaryText)")
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(Color.white.opacity(0.48))
                 .frame(maxWidth: .infinity, alignment: .leading)
