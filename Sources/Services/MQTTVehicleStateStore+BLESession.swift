@@ -94,9 +94,13 @@ extension MQTTVehicleStateStore {
         bleManager.onLog = { [weak self] component, message in
             guard let self else { return }
             if let message {
-                CrashLogger.shared.mark(component, message)
-                DispatchQueue.main.async {
-                    self.handleBLEDiagnosticLog(message)
+                if self.shouldPersistBLECrashLog(message) {
+                    CrashLogger.shared.mark(component, message)
+                }
+                if self.shouldHandleBLEDiagnosticLog(message) {
+                    DispatchQueue.main.async {
+                        self.handleBLEDiagnosticLog(message)
+                    }
                 }
             }
         }
@@ -314,6 +318,26 @@ extension MQTTVehicleStateStore {
         let delimiters = [" rssi=", " score=", " id=", " source=", " |"]
         let end = delimiters.compactMap { token in tail.range(of: token).map(\.lowerBound) }.min() ?? tail.endIndex
         return String(tail[..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func shouldPersistBLECrashLog(_ message: String) -> Bool {
+        if message.contains("manufacturer candidate name=") { return false }
+        if message.contains("debug score candidate name=") { return false }
+        if message.hasPrefix("rssi=") { return false }
+        if message.contains("notify uuid=") { return false }
+        return true
+    }
+
+    private func shouldHandleBLEDiagnosticLog(_ message: String) -> Bool {
+        if message.contains("manufacturer candidate name=") { return true }
+        if message.contains("connecting bound peripheral") { return true }
+        if message.contains("connecting manufacturer candidate") { return true }
+        if message.contains("connecting debugScore candidate") { return true }
+        if message.contains("connected ") && message.contains("discover all services") { return true }
+        if message.contains("connect failed source=") { return true }
+        if message.contains("connection timeout (10s)") { return true }
+        if message.contains("target services incomplete") { return true }
+        return false
     }
 
     private func value(in text: String, key: String) -> String? {

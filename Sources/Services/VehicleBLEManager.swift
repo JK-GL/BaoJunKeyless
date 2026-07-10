@@ -244,6 +244,7 @@ final class VehicleBLEManager: NSObject {
     private var candidateName: String = "--"
     private var candidateRSSI: Int = -127
     private var candidateScore: Int = Int.min
+    private var nearbyDeviceLastReportAt: [String: Date] = [:]
     private var candidateSelectionWorkItem: DispatchWorkItem?
     private var scanWatchdogWorkItem: DispatchWorkItem?
     private var scanTotalTimeoutWorkItem: DispatchWorkItem?
@@ -381,6 +382,7 @@ final class VehicleBLEManager: NSObject {
         candidateName = "--"
         candidateRSSI = -127
         candidateScore = Int.min
+        nearbyDeviceLastReportAt.removeAll()
         scanWatchdogWorkItem?.cancel()
         scanWatchdogWorkItem = nil
         scanTotalTimeoutWorkItem?.cancel()
@@ -493,6 +495,7 @@ final class VehicleBLEManager: NSObject {
         candidateName = "--"
         candidateRSSI = -127
         candidateScore = Int.min
+        nearbyDeviceLastReportAt.removeAll()
         central.stopScan()
         state = .scanning
         let targetMac = normalizedBleMacHex(config?.bleMac ?? "") ?? "--"
@@ -1451,19 +1454,26 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
 
         let score = discoveryScore(localName: localName, advertisementData: advertisementData, rssi: rssi)
         if manufacturerMac != nil || score >= 4 {
-            onNearbyDeviceDiscovered?(
-                NearbyDevice(
-                    id: peripheral.identifier.uuidString,
-                    peripheralIdentifier: peripheral.identifier.uuidString,
-                    name: localName,
-                    rssi: rssi,
-                    manufacturerMac: manufacturerMac,
-                    serviceText: serviceText.isEmpty ? "--" : serviceText,
-                    score: score > (Int.min / 4) ? score : nil,
-                    exactMatched: manufacturerExactMatched,
-                    lastSeenAt: Date()
+            let key = peripheral.identifier.uuidString
+            let now = Date()
+            let minInterval: TimeInterval = manufacturerExactMatched ? 0.25 : 0.8
+            let shouldReport = nearbyDeviceLastReportAt[key].map { now.timeIntervalSince($0) >= minInterval } ?? true
+            if shouldReport {
+                nearbyDeviceLastReportAt[key] = now
+                onNearbyDeviceDiscovered?(
+                    NearbyDevice(
+                        id: key,
+                        peripheralIdentifier: key,
+                        name: localName,
+                        rssi: rssi,
+                        manufacturerMac: manufacturerMac,
+                        serviceText: serviceText.isEmpty ? "--" : serviceText,
+                        score: score > (Int.min / 4) ? score : nil,
+                        exactMatched: manufacturerExactMatched,
+                        lastSeenAt: now
+                    )
                 )
-            )
+            }
         }
 
         guard discoveredPeripheral == nil else { return }

@@ -143,6 +143,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var bleDidReachConnectedThisCycle = false
     var bleCurrentCandidateName: String = "--"
     var bleCurrentCandidateRSSI: Int?
+    var bleNearbyDevicesBuffer: [String: VehicleBLEManager.NearbyDevice] = [:]
+    var bleNearbyDevicesFlushWorkItem: DispatchWorkItem?
     var cancellables = Set<AnyCancellable>()
 
     init(

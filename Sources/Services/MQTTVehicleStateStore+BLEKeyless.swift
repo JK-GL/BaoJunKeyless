@@ -147,21 +147,34 @@ extension MQTTVehicleStateStore {
     }
 
     func resetNearbyBLEDevices() {
+        bleNearbyDevicesFlushWorkItem?.cancel()
+        bleNearbyDevicesFlushWorkItem = nil
+        bleNearbyDevicesBuffer = [:]
         bleNearbyDevices = []
     }
 
     func handleNearbyBLEDeviceDiscovered(_ device: VehicleBLEManager.NearbyDevice) {
-        var updated = bleNearbyDevices.filter { Date().timeIntervalSince($0.lastSeenAt) <= 30 }
-        if let index = updated.firstIndex(where: { $0.id == device.id }) {
-            updated[index] = device
-        } else {
-            updated.append(device)
+        bleNearbyDevicesBuffer[device.id] = device
+        guard bleNearbyDevicesFlushWorkItem == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.flushNearbyBLEDevices()
         }
-        updated.sort {
-            if $0.exactMatched != $1.exactMatched { return $0.exactMatched && !$1.exactMatched }
-            return $0.rssi > $1.rssi
-        }
-        bleNearbyDevices = updated
+        bleNearbyDevicesFlushWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+    }
+
+    func flushNearbyBLEDevices() {
+        bleNearbyDevicesFlushWorkItem?.cancel()
+        bleNearbyDevicesFlushWorkItem = nil
+        let now = Date()
+        let devices = bleNearbyDevicesBuffer.values
+            .filter { now.timeIntervalSince($0.lastSeenAt) <= 30 }
+            .sorted {
+                if $0.exactMatched != $1.exactMatched { return $0.exactMatched && !$1.exactMatched }
+                return $0.rssi > $1.rssi
+            }
+        bleNearbyDevices = Array(devices)
     }
 
     func bindNearbyBLEDevice(_ device: VehicleBLEManager.NearbyDevice) {
