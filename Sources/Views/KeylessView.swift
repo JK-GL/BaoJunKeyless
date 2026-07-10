@@ -145,12 +145,6 @@ private struct KeylessBLEDiagnosticsHost: View {
                 rowVerticalPadding: 8
             )
 
-            Text("本次统计 = 本次运行累计结果；重开 App 后会重新开始累计。")
-                .font(.system(size: 11))
-                .foregroundStyle(Color.white.opacity(0.45))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 4)
-
             if binding != nil {
                 HStack(spacing: 10) {
                     SettingsActionButton(icon: "link.badge.minus", label: "清除绑定", color: AppTheme.red) {

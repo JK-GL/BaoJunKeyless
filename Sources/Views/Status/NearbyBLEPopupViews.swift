@@ -48,9 +48,6 @@ struct NearbyBLEDevicesPopupView: View {
             icon: "dot.radiowaves.left.and.right",
             iconColor: AppTheme.orange,
             title: "附近设备",
-            subtitle: currentBinding == nil
-                ? "打开后按快照展示；列表约每秒刷新，避免扫描卡顿。"
-                : "当前已有绑定；也可改绑附近候选设备。",
             maxWidth: 332,
             fixedContentHeight: 320,
             contentScrollEnabled: false
@@ -58,7 +55,7 @@ struct NearbyBLEDevicesPopupView: View {
             ScrollView(.vertical, showsIndicators: snapshotDevices.count > 5) {
                 LazyVStack(alignment: .leading, spacing: 10) {
                     if snapshotDevices.isEmpty {
-                        Text("扫描中暂无可展示候选；保持扫描后点“刷新列表”。")
+                        Text("暂无设备")
                             .font(.system(size: 13))
                             .foregroundStyle(Color.white.opacity(0.6))
                             .frame(maxWidth: .infinity, alignment: .leading)
