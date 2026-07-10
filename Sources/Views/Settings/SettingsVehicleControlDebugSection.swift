@@ -11,7 +11,7 @@ struct SettingsVehicleControlDebugSection: View {
                 Image(systemName: "arrow.triangle.branch")
                     .foregroundStyle(Color.orange.opacity(0.9))
                     .font(.system(size: 15, weight: .semibold))
-                Text("车控调试")
+                Text("车控路由")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()

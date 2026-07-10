@@ -235,7 +235,7 @@ private struct KeylessBLEDiagnosticsSection: View {
             PopupInfoRowItem("wave.3.right", "当前阶段", store.bleDiagnosticPhaseText, color: .white),
             PopupInfoRowItem("text.alignleft", "阶段详情", store.bleDiagnosticDetailText, color: .white),
             PopupInfoRowItem("checkmark.circle", "最近结论", "\(store.bleDiagnosticLastConclusionText) · \(store.bleDiagnosticLastConclusionAtText)", color: AppTheme.green),
-            PopupInfoRowItem("sum", "分类统计", store.bleDiagnosticCountsSummaryText, color: AppTheme.orange),
+            PopupInfoRowItem("sum", "本次统计", store.bleDiagnosticCountsSummaryText, color: AppTheme.orange),
             PopupInfoRowItem("timer", "扫描间隙", store.keylessSettingsStore.settings.bleScanInterval <= 0 ? "无间隙" : "\(Int(store.keylessSettingsStore.settings.bleScanInterval))s", color: AppTheme.accent),
             PopupInfoRowItem("number", "连续超时", "\(store.consecutiveScanTimeouts)", color: AppTheme.orange),
             PopupInfoRowItem("person.text.rectangle", "当前作用域", cacheScopeText(), mono: true, color: .white),
@@ -270,12 +270,12 @@ private struct KeylessBLEDiagnosticsSection: View {
 
     private func bleStatusText(_ status: MQTTVehicleStateStore.LiveBLEStatus) -> String {
         switch status {
-        case .disconnected: return "disconnected"
-        case .scanning: return "scanning"
-        case .connecting: return "connecting"
-        case .authenticating: return "authenticating"
-        case .authenticated: return "authenticated"
-        case .error: return "error"
+        case .disconnected: return "未连接"
+        case .scanning: return "扫描中"
+        case .connecting: return "连接中"
+        case .authenticating: return "鉴权中"
+        case .authenticated: return "已鉴权"
+        case .error: return "异常"
         }
     }
 

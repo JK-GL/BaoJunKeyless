@@ -253,7 +253,8 @@ extension MQTTVehicleStateStore {
     }
 
     func handleBLEDiagnosticLog(_ message: String) {
-        if message.contains("manufacturer candidate name=") || message.contains("debug score candidate name=") {
+        if message.contains("manufacturer candidate name=") {
+            guard message.contains("match=1") else { return }
             let name = nameValue(in: message) ?? "--"
             let rssi = value(in: message, key: "rssi=").flatMap(Int.init)
             noteBLEDeviceSeen(name: name, rssi: rssi)
