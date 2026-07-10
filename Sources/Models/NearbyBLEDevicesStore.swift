@@ -45,10 +45,15 @@ final class NearbyBLEDevicesStore: ObservableObject {
         flushWorkItem = nil
 
         let now = Date()
+        let boundId = VehicleBLEBindingStore.load()?.peripheralIdentifier
         let next = Array(
             buffer.values
                 .filter { now.timeIntervalSince($0.lastSeenAt) <= 30 }
                 .sorted {
+                    // 已绑定设备始终置顶
+                    let leftBound = boundId != nil && $0.peripheralIdentifier == boundId
+                    let rightBound = boundId != nil && $1.peripheralIdentifier == boundId
+                    if leftBound != rightBound { return leftBound && !rightBound }
                     if $0.exactMatched != $1.exactMatched { return $0.exactMatched && !$1.exactMatched }
                     if $0.rssi != $1.rssi { return $0.rssi > $1.rssi }
                     return $0.displayName < $1.displayName
@@ -85,6 +90,8 @@ final class NearbyBLEDevicesStore: ObservableObject {
             let newScore = rhs.score ?? Int.min
             if abs(oldScore - newScore) >= 8 { return true }
         }
+        // 绑定设备是否仍在首位：结构变化也要刷
+        if old.first?.id != new.first?.id { return true }
         return false
     }
 }
