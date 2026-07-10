@@ -171,7 +171,8 @@ struct StatusView: View {
     @ViewBuilder
     private func mqttFloatingWindow() -> some View {
         StatusMQTTFloatingHost(
-            onClose: { withAnimation(PopupMotion.dismissEase) { isMQTTFloatingPresented = false } }
+            onClose: { withAnimation(PopupMotion.dismissEase) { isMQTTFloatingPresented = false } },
+            onToast: { text in withAnimation { statusToastText = text } }
         )
     }
 
@@ -231,10 +232,18 @@ struct StatusView: View {
         if lat != 0, lng != 0 {
             locationManager.setCarLocation(lat: lat, lng: lng, address: address.isEmpty ? nil : address)
         }
-        mqttStore?.refreshNow()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+        withAnimation { statusToastText = "正在刷新车况与钥匙…" }
+        mqttStore?.refreshNow(userInitiated: true) { _, message in
+            withAnimation { statusToastText = message }
             isRefreshing = false
+        }
+
+        // 兜底：网络卡住时也不让转圈无限挂起
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+            if isRefreshing {
+                isRefreshing = false
+            }
         }
     }
 

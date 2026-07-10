@@ -183,6 +183,7 @@ struct StatusMQTTFloatingHost: View {
     @ObservedObject private var tokenSourceStore = VehicleTokenSourceStore.shared
     @EnvironmentObject var vehicleStore: VehicleStateStore
     let onClose: () -> Void
+    var onToast: ((String) -> Void)? = nil
 
     private var mqttStore: MQTTVehicleStateStore? { vehicleStore as? MQTTVehicleStateStore }
 
@@ -207,7 +208,10 @@ struct StatusMQTTFloatingHost: View {
         } actions: {
             VStack(spacing: 8) {
                 FloatingPopupPrimaryButton(title: "重新连接", color: AppTheme.accent) {
-                    mqttStore?.reconnect()
+                    onToast?("MQTT 正在重连…")
+                    mqttStore?.reconnect(userInitiated: true) { _, message in
+                        onToast?(message)
+                    }
                 }
                 FloatingPopupSecondaryButton(title: "关闭", textColor: .white, action: onClose)
             }
@@ -266,15 +270,20 @@ struct StatusVehicleInfoFloatingHost: View {
                         icon: "key.fill",
                         tint: AppTheme.green
                     ) {
-                        mqttStore?.fetchBleKeyInfo()
-                        onToast?("正在重新拉取钥匙信息")
+                        onToast?("正在拉取钥匙…")
+                        mqttStore?.fetchBleKeyInfo { _, message in
+                            onToast?(message)
+                        }
                     }
                     PopupActionGridButton(
                         title: "刷新车况",
                         icon: "arrow.clockwise",
                         tint: AppTheme.accent
                     ) {
-                        mqttStore?.refreshNow()
+                        onToast?("正在刷新车况与钥匙…")
+                        mqttStore?.refreshNow(userInitiated: true) { _, message in
+                            onToast?(message)
+                        }
                     }
                 }
                 FloatingPopupSecondaryButton(title: "关闭", textColor: .white, action: onClose)

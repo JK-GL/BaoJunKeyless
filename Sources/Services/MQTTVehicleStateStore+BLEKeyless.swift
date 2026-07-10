@@ -76,29 +76,52 @@ extension MQTTVehicleStateStore {
         vehicleEventLogStore.addThrottled(category, title, detail: detail, identity: identity, minimumInterval: minimumInterval)
     }
 
-    func fetchBleKeyInfo() {
+    func fetchBleKeyInfo(completion: ((Bool, String) -> Void)? = nil) {
         let store = credentialsStore
         guard !store.accessToken.isEmpty, !store.vin.isEmpty, !store.phone.isEmpty else {
             reloadCachedBLEKeyInfo(preferScoped: true)
             if !latestBleKeyInfo.isEmpty {
                 refreshBLESessionIfNeeded()
+                let message = "凭证不完整，已使用本地钥匙缓存"
+                vehicleEventLogStore.add(.warning, "钥匙拉取跳过", detail: message)
+                completion?(false, message)
+            } else {
+                let message = "无法拉取钥匙：Token / VIN / 手机号不完整"
+                vehicleEventLogStore.add(.error, "钥匙拉取失败", detail: message)
+                completion?(false, message)
             }
             return
         }
+
+        vehicleEventLogStore.add(.action, "钥匙拉取开始", detail: "正在请求 ble/key/query")
         SGMWApiClient.shared.queryBleKeyResult(accessToken: store.accessToken, vin: store.vin, phone: store.phone) { [weak self] result in
             guard let self else { return }
             DispatchQueue.main.async {
-                guard case .success(let info) = result else {
+                switch result {
+                case .success(let info):
+                    self.persistBLEKeyInfo(info)
+                    self.latestBleKeyInfo = info
+                    self.refreshBLESessionIfNeeded()
+                    self.applyBLEKeyInfoToDashboard(markAsCached: false)
+                    let keyId = info["keyId"] ?? "--"
+                    let mac = info["bleMac"] ?? info["macAddress"] ?? "--"
+                    let message = "钥匙已更新 · keyId=\(keyId) · mac=\(mac)"
+                    self.vehicleEventLogStore.add(.action, "钥匙拉取成功", detail: message)
+                    completion?(true, message)
+
+                case .failure(let error):
                     self.reloadCachedBLEKeyInfo(preferScoped: true)
                     if !self.latestBleKeyInfo.isEmpty {
                         self.refreshBLESessionIfNeeded()
+                        let message = "钥匙拉取失败，已使用本地缓存：\(error.localizedDescription)"
+                        self.vehicleEventLogStore.add(.warning, "钥匙拉取失败", detail: message)
+                        completion?(false, message)
+                    } else {
+                        let message = "钥匙拉取失败：\(error.localizedDescription)"
+                        self.vehicleEventLogStore.add(.error, "钥匙拉取失败", detail: message)
+                        completion?(false, message)
                     }
-                    return
                 }
-                self.persistBLEKeyInfo(info)
-                self.latestBleKeyInfo = info
-                self.refreshBLESessionIfNeeded()
-                self.applyBLEKeyInfoToDashboard(markAsCached: false)
             }
         }
     }
