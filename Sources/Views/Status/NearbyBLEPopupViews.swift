@@ -53,8 +53,7 @@ struct NearbyBLEDevicesPopupView: View {
                 : "当前已有绑定；也可改绑附近候选设备。",
             maxWidth: 332,
             fixedContentHeight: 320,
-            contentScrollEnabled: false,
-            usesBlurMaterial: false
+            contentScrollEnabled: false
         ) {
             ScrollView(.vertical, showsIndicators: snapshotDevices.count > 5) {
                 LazyVStack(alignment: .leading, spacing: 10) {
