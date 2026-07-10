@@ -100,6 +100,23 @@ final class VehicleBLEManager: NSObject {
         }
     }
 
+    struct NearbyDevice: Equatable, Identifiable {
+        let id: String
+        let peripheralIdentifier: String
+        let name: String
+        let rssi: Int
+        let manufacturerMac: String?
+        let serviceText: String
+        let score: Int?
+        let exactMatched: Bool
+        let lastSeenAt: Date
+
+        var displayName: String {
+            let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return normalized.isEmpty ? "--" : normalized
+        }
+    }
+
     private enum E300ControlCommand: Equatable {
         case unlock
         case lock
@@ -193,6 +210,7 @@ final class VehicleBLEManager: NSObject {
 
     var onStateChange: ((State) -> Void)?
     var onLog: ((String, String?) -> Void)?
+    var onNearbyDeviceDiscovered: ((NearbyDevice) -> Void)?
     var onControlReceipt: ((BLEControlReceipt) -> Void)?
     var onRSSIUpdate: ((Int) -> Void)?
     var onControlCompletion: (() -> Void)?
@@ -1431,6 +1449,23 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
             onLog?("BLE", "manufacturer candidate name=\(localName) rssi=\(rssi) deviceMac=\(manufacturerMac) target=\(targetMac ?? "--") match=\(manufacturerExactMatched ? 1 : 0) mfg=\(manufacturerHex.prefix(24))")
         }
 
+        let score = discoveryScore(localName: localName, advertisementData: advertisementData, rssi: rssi)
+        if manufacturerMac != nil || score >= 4 {
+            onNearbyDeviceDiscovered?(
+                NearbyDevice(
+                    id: peripheral.identifier.uuidString,
+                    peripheralIdentifier: peripheral.identifier.uuidString,
+                    name: localName,
+                    rssi: rssi,
+                    manufacturerMac: manufacturerMac,
+                    serviceText: serviceText.isEmpty ? "--" : serviceText,
+                    score: score > (Int.min / 4) ? score : nil,
+                    exactMatched: manufacturerExactMatched,
+                    lastSeenAt: Date()
+                )
+            )
+        }
+
         guard discoveredPeripheral == nil else { return }
         if let manufacturerMac, let targetMac, manufacturerMac == targetMac {
             connectScannedPeripheral(
@@ -1443,7 +1478,6 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
             return
         }
 
-        let score = discoveryScore(localName: localName, advertisementData: advertisementData, rssi: rssi)
         if score >= 4 {
             onLog?("BLE", "debug score candidate name=\(localName) rssi=\(rssi) score=\(score) services=\(serviceText.isEmpty ? "--" : serviceText) mfg=\(manufacturerHex.prefix(20)) exact=0")
         }

@@ -146,6 +146,46 @@ extension MQTTVehicleStateStore {
         bleCurrentCandidateRSSI = nil
     }
 
+    func resetNearbyBLEDevices() {
+        bleNearbyDevices = []
+    }
+
+    func handleNearbyBLEDeviceDiscovered(_ device: VehicleBLEManager.NearbyDevice) {
+        var updated = bleNearbyDevices.filter { Date().timeIntervalSince($0.lastSeenAt) <= 30 }
+        if let index = updated.firstIndex(where: { $0.id == device.id }) {
+            updated[index] = device
+        } else {
+            updated.append(device)
+        }
+        updated.sort {
+            if $0.exactMatched != $1.exactMatched { return $0.exactMatched && !$1.exactMatched }
+            return $0.rssi > $1.rssi
+        }
+        bleNearbyDevices = updated
+    }
+
+    func bindNearbyBLEDevice(_ device: VehicleBLEManager.NearbyDevice) {
+        let keyId = latestBleKeyInfo["keyId"] ?? ""
+        let mac = latestBleKeyInfo["bleMac"] ?? latestBleKeyInfo["macAddress"] ?? device.manufacturerMac ?? ""
+        let binding = VehicleBLEBinding(
+            peripheralIdentifier: device.peripheralIdentifier,
+            peripheralName: device.displayName,
+            keyId: keyId,
+            bleMacSuffix: mac,
+            boundAt: Date(),
+            lastAuthAt: Date()
+        )
+        VehicleBLEBindingStore.save(binding)
+        ensureBLESession(forceRestart: true, optimisticScanning: true)
+        vehicleEventLogStore.add(.action, "手动绑定蓝牙设备", detail: binding.displaySummary)
+    }
+
+    func clearBLEBindingAndRefresh() {
+        VehicleBLEBindingStore.clear()
+        ensureBLESession(forceRestart: true, optimisticScanning: true)
+        vehicleEventLogStore.add(.action, "清除蓝牙绑定", detail: "用户手动取消绑定")
+    }
+
     func setBLEDiagnosticPhase(_ phase: String, detail: String) {
         bleDiagnosticPhaseText = phase
         bleDiagnosticDetailText = detail

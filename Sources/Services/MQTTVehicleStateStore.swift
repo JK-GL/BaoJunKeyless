@@ -71,6 +71,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     @Published var latestBleKeyInfo: [String: String] = [:]
     @Published var latestBLEControlReceipt: VehicleBLEManager.BLEControlReceipt?
     @Published var latestControlResult: VehicleControlMQTTResult?
+    @Published var bleNearbyDevices: [VehicleBLEManager.NearbyDevice] = []
     @Published var debugBLERawRSSI: Int?
     @Published var debugBLESmoothedRSSI: Int?
     @Published var debugBLELastSeenText: String = "--"

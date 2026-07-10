@@ -100,6 +100,12 @@ extension MQTTVehicleStateStore {
                 }
             }
         }
+        bleManager.onNearbyDeviceDiscovered = { [weak self] device in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                self.handleNearbyBLEDeviceDiscovered(device)
+            }
+        }
         bleManager.onControlReceipt = { [weak self] receipt in
             guard let self else { return }
             DispatchQueue.main.async {
@@ -160,6 +166,14 @@ extension MQTTVehicleStateStore {
            keylessSettingsStore.settings.keylessEnabled || AppDiagnosticsSettings.vehicleControlRouteMode == .forceBLE,
            !userManuallyStoppedBLE,
            hasUsableBLEKeyInfo {
+            let timeout = Int(keylessSettingsStore.settings.bleScanDuration)
+            let interval = Int(effectiveScanRetryInterval(baseInterval: keylessSettingsStore.settings.bleScanInterval))
+            let intervalText = interval <= 0 ? "无间隙" : "间隔 \(interval)s"
+            if bleStatus != .scanning {
+                vehicleEventLogStore.addCoalesced(.action, "BLE 扫描中", detail: "\(deviceDisplayName) · 最长 \(timeout)s · \(intervalText)", identity: "scan-start|\(deviceDisplayName)")
+            }
+            resetNearbyBLEDevices()
+            setBLEDiagnosticPhase("扫描中", detail: "\(deviceDisplayName) · 最长 \(timeout)s · \(intervalText)")
             bleStatus = .scanning
         }
         refreshBLESessionIfNeeded()

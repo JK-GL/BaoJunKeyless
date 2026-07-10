@@ -55,13 +55,7 @@ struct SettingsVehicleControlDebugSection: View {
                 }
             }
 
-            Text("BLE 诊断与蓝牙绑定已移动到“无感”页，并放在“无感实时状态”上方，排错时先看无感页，路由切换仍保留在设置里。")
-                .font(.system(size: 12))
-                .foregroundStyle(Color.white.opacity(0.5))
 
-            Text("建议排错顺序：先“强制BLE”复现连接/回包问题，再切“强制HTTP”对比云控链路，最后回到“自动”。")
-                .font(.system(size: 12))
-                .foregroundStyle(Color.white.opacity(0.5))
         }
         .padding(16)
         .background(
