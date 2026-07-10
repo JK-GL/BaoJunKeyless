@@ -102,6 +102,7 @@ extension MQTTVehicleStateStore {
         let smoothedRSSI = liveBLERSSI ?? rawRSSI
 
         // 诊断域每秒更新：雷达 / 无感实时状态直接观察这里
+        // 鉴权后的 readRSSI 会覆盖连接前用广播 RSSI 预填的 preview 值
         debugBLERawRSSI = rawRSSI
         debugBLESmoothedRSSI = smoothedRSSI
         debugBLELastSeenText = formatTime(Date())

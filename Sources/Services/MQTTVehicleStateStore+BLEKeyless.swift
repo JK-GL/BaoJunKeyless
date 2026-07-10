@@ -126,6 +126,37 @@ extension MQTTVehicleStateStore {
         }
     }
 
+    func seedPreviewBLERSSI(_ rssi: Int?, reason: String = "preview") {
+        guard let rssi else { return }
+        // 仅写诊断显示域，不走 apply(state) / 靠近语义，避免连接前误触发无感
+        debugBLERawRSSI = rssi
+        debugBLESmoothedRSSI = rssi
+        debugBLELastSeenText = formatTime(Date())
+        vehicleEventLogStore.addThrottled(
+            .ble,
+            "RSSI预填",
+            detail: "\(reason)=\(rssi) dBm（连接中广播值，鉴权后切 live）",
+            identity: "rssi-preview|\(reason)",
+            minimumInterval: 3
+        )
+    }
+
+    func seedPreviewBLERSSIFromNearbyIfPossible() {
+        // bound 直连时可能没有刚扫到的 candidate RSSI，回退附近列表同 UUID
+        if let boundId = VehicleBLEBindingStore.load()?.peripheralIdentifier,
+           let device = nearbyBLEDevicesStore.devices.first(where: { $0.peripheralIdentifier == boundId }) {
+            noteBLEDeviceSeen(name: device.displayName, rssi: device.rssi)
+            seedPreviewBLERSSI(device.rssi, reason: "nearby-bound")
+            return
+        }
+        if let best = nearbyBLEDevicesStore.devices.first(where: { $0.exactMatched })
+            ?? nearbyBLEDevicesStore.devices.max(by: { $0.rssi < $1.rssi }),
+           best.exactMatched {
+            noteBLEDeviceSeen(name: best.displayName, rssi: best.rssi)
+            seedPreviewBLERSSI(best.rssi, reason: "nearby-exact")
+        }
+    }
+
     func formatElapsedSince(_ start: Date) -> String {
         let elapsed = Int(Date().timeIntervalSince(start))
         if elapsed < 60 { return "\(elapsed)s" }
@@ -191,12 +222,15 @@ extension MQTTVehicleStateStore {
         userManuallyStoppedBLE = false
         ignoreNextBLEIdleCallback = true
         bleManager.stop()
-        setBLEDiagnosticPhase("连接中", detail: "绑定优先 · \(device.displayName)")
+        // 连接中先用附近广播 RSSI 顶上去，鉴权成功后再切 readRSSI live 值
+        noteBLEDeviceSeen(name: device.displayName, rssi: device.rssi)
+        seedPreviewBLERSSI(device.rssi, reason: "bind-ad")
+        setBLEDiagnosticPhase("连接中", detail: "绑定优先 · \(device.displayName) · \(device.rssi) dBm")
         bleStatus = .connecting
         vehicleEventLogStore.add(
             .action,
             "手动绑定蓝牙设备",
-            detail: "\(binding.displaySummary) · 正在优先连接"
+            detail: "\(binding.displaySummary) · 正在优先连接 · adRSSI=\(device.rssi)"
         )
         refreshBLESessionIfNeeded()
         if !hasUsableBLEKeyInfo {

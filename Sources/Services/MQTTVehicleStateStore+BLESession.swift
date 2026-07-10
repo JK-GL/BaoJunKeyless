@@ -68,6 +68,12 @@ extension MQTTVehicleStateStore {
                 self.ignoreNextBLEIdleCallback = false
                 self.consecutiveScanTimeouts = 0
                 self.setBLEDiagnosticPhase("连接中", detail: self.bleDiagnosticCurrentCandidateText)
+                // 连接中先用扫描阶段拿到的广播 RSSI 预填，避免雷达先显示 -- dBm
+                if let adRSSI = self.bleCurrentCandidateRSSI {
+                    self.seedPreviewBLERSSI(adRSSI, reason: "scan-ad")
+                } else {
+                    self.seedPreviewBLERSSIFromNearbyIfPossible()
+                }
                 self.bleStatus = .connecting
             case .connected:
                 self.ignoreNextBLEIdleCallback = false
@@ -75,11 +81,17 @@ extension MQTTVehicleStateStore {
                 let macSuffix = self.deviceDisplayName
                 self.logVehicleEvent(.action, "BLE 已连接", detail: "\(macSuffix) · 开始鉴权", identity: "connecting|\(macSuffix)", minimumInterval: 3)
                 self.setBLEDiagnosticPhase("鉴权中", detail: self.bleDiagnosticCurrentCandidateText)
+                if let adRSSI = self.bleCurrentCandidateRSSI {
+                    self.seedPreviewBLERSSI(adRSSI, reason: "connected-ad")
+                }
                 self.bleStatus = .authenticating
             case .authenticating:
                 self.ignoreNextBLEIdleCallback = false
                 self.logVehicleEvent(.action, "BLE 鉴权中", detail: "38C7/A857 四步鉴权", identity: "authenticating", minimumInterval: 3)
                 self.setBLEDiagnosticPhase("鉴权中", detail: self.bleDiagnosticCurrentCandidateText)
+                if let adRSSI = self.bleCurrentCandidateRSSI {
+                    self.seedPreviewBLERSSI(adRSSI, reason: "auth-ad")
+                }
                 self.bleStatus = .authenticating
             case .authenticated:
                 self.ignoreNextBLEIdleCallback = false
