@@ -90,7 +90,7 @@ struct LogView: View {
                 }
 
                 if let mqttStore {
-                    bleDiagnosticStrip(store: mqttStore)
+                    bleDiagnosticStrip(diagnostics: mqttStore.bleDiagnosticsStore)
                 }
 
                 VehicleLogFilterBar(selectedFilter: $selectedFilter)
@@ -303,46 +303,8 @@ struct LogView: View {
     }
 
     @ViewBuilder
-    private func bleDiagnosticStrip(store: MQTTVehicleStateStore) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: "wave.3.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(AppTheme.accent)
-                Text("BLE \(store.bleDiagnosticPhaseText)")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white)
-                Spacer(minLength: 0)
-                Text(store.bleDiagnosticLastConclusionText)
-                    .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Color.white.opacity(0.55))
-            }
-
-            Text(store.bleDiagnosticDetailText)
-                .font(.system(size: 10.5, design: .monospaced))
-                .foregroundStyle(Color.white.opacity(0.72))
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text("来源：\(store.bleDiagnosticLastReasonText)")
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(Color.white.opacity(0.58))
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text("本次运行累计：\(store.bleDiagnosticCountsSummaryText)")
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(Color.white.opacity(0.48))
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.035))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
+    private func bleDiagnosticStrip(diagnostics: BLEDiagnosticsStore) -> some View {
+        BLEDiagnosticStripView(diagnostics: diagnostics)
     }
 
     private func consoleBadge(text: String, color: Color) -> some View {
@@ -376,6 +338,52 @@ struct LogView: View {
             return
         }
         sharePayload = SharePayload(activityItems: [url])
+    }
+}
+
+private struct BLEDiagnosticStripView: View {
+    @ObservedObject var diagnostics: BLEDiagnosticsStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "wave.3.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(AppTheme.accent)
+                Text("BLE \(diagnostics.phaseText)")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white)
+                Spacer(minLength: 0)
+                Text(diagnostics.lastConclusionText)
+                    .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.55))
+            }
+
+            Text(diagnostics.detailText)
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundStyle(Color.white.opacity(0.72))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("来源：\(diagnostics.lastReasonText)")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(Color.white.opacity(0.58))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("本次运行累计：\(diagnostics.countsSummaryText)")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(Color.white.opacity(0.48))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.035))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
     }
 }
 

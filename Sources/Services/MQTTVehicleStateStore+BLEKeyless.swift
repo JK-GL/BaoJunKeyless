@@ -127,23 +127,15 @@ extension MQTTVehicleStateStore {
     }
 
     var bleDiagnosticCountsSummaryText: String {
-        "未发现 \(bleDiagnosticNoDeviceCount) · 未连上 \(bleDiagnosticFoundButNotConnectedCount) · 鉴权失败 \(bleDiagnosticAuthFailedCount)"
+        bleDiagnosticsStore.countsSummaryText
     }
 
     var bleDiagnosticCurrentCandidateText: String {
-        let name = bleCurrentCandidateName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let label = name.isEmpty || name == "--" ? deviceDisplayName : name
-        if let rssi = bleCurrentCandidateRSSI {
-            return "\(label) · RSSI \(rssi)"
-        }
-        return label
+        bleDiagnosticsStore.currentCandidateText(fallbackName: deviceDisplayName)
     }
 
     func resetBLEDiagnosticCycle() {
-        bleDidSeeDeviceThisCycle = false
-        bleDidReachConnectedThisCycle = false
-        bleCurrentCandidateName = "--"
-        bleCurrentCandidateRSSI = nil
+        bleDiagnosticsStore.resetCycle()
     }
 
     func resetNearbyBLEDevices() {
@@ -181,54 +173,31 @@ extension MQTTVehicleStateStore {
     }
 
     func setBLEDiagnosticPhase(_ phase: String, detail: String) {
-        bleDiagnosticPhaseText = phase
-        bleDiagnosticDetailText = detail
+        bleDiagnosticsStore.setPhase(phase, detail: detail)
     }
 
     func setBLEDiagnosticConclusion(_ conclusion: String, reason: String = "--") {
-        bleDiagnosticLastConclusionText = conclusion
-        bleDiagnosticLastConclusionAtText = formatTime(Date())
-        bleDiagnosticLastReasonText = reason
+        bleDiagnosticsStore.setConclusion(conclusion, reason: reason)
     }
 
     func noteBLEDeviceSeen(name: String, rssi: Int?) {
-        bleDidSeeDeviceThisCycle = true
-        let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !normalized.isEmpty, normalized != "--" {
-            bleCurrentCandidateName = normalized
-        }
-        if let rssi {
-            bleCurrentCandidateRSSI = rssi
-        }
-        setBLEDiagnosticPhase("发现设备", detail: bleDiagnosticCurrentCandidateText)
+        bleDiagnosticsStore.noteDeviceSeen(name: name, rssi: rssi, fallbackName: deviceDisplayName)
     }
 
     func noteBLEConnectedCandidate(name: String) {
-        bleDidReachConnectedThisCycle = true
-        let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !normalized.isEmpty, normalized != "--" {
-            bleCurrentCandidateName = normalized
-        }
-        setBLEDiagnosticPhase("已连上", detail: bleDiagnosticCurrentCandidateText)
+        bleDiagnosticsStore.noteConnectedCandidate(name: name, fallbackName: deviceDisplayName)
     }
 
     func noteBLENoDeviceFound(duration: String) {
-        bleDiagnosticNoDeviceCount += 1
-        let detail = "\(deviceDisplayName) · 已扫描 \(duration)"
-        setBLEDiagnosticPhase("未发现设备", detail: detail)
-        setBLEDiagnosticConclusion("完全没发现设备", reason: "扫描超时，未看到目标设备")
+        bleDiagnosticsStore.noteNoDeviceFound(displayName: deviceDisplayName, duration: duration)
     }
 
     func noteBLEFoundButNotConnected(_ detail: String, reason: String = "已发现目标，但连接未完成") {
-        bleDiagnosticFoundButNotConnectedCount += 1
-        setBLEDiagnosticPhase("发现未连上", detail: detail)
-        setBLEDiagnosticConclusion("发现过设备但没连上", reason: reason)
+        bleDiagnosticsStore.noteFoundButNotConnected(detail, reason: reason)
     }
 
     func noteBLEAuthFailed(_ reason: String) {
-        bleDiagnosticAuthFailedCount += 1
-        setBLEDiagnosticPhase("鉴权失败", detail: reason)
-        setBLEDiagnosticConclusion("连上了但鉴权失败", reason: reason)
+        bleDiagnosticsStore.noteAuthFailed(reason)
     }
 
     func toggleBLEScanning() {

@@ -71,18 +71,6 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     @Published var latestBleKeyInfo: [String: String] = [:]
     @Published var latestBLEControlReceipt: VehicleBLEManager.BLEControlReceipt?
     @Published var latestControlResult: VehicleControlMQTTResult?
-    @Published var debugBLERawRSSI: Int?
-    @Published var debugBLESmoothedRSSI: Int?
-    @Published var debugBLELastSeenText: String = "--"
-    @Published var debugBLELastTransitionText: String = "--"
-    @Published var bleDiagnosticPhaseText: String = "待机"
-    @Published var bleDiagnosticDetailText: String = "等待开始"
-    @Published var bleDiagnosticLastConclusionText: String = "--"
-    @Published var bleDiagnosticLastConclusionAtText: String = "--"
-    @Published var bleDiagnosticLastReasonText: String = "--"
-    @Published var bleDiagnosticNoDeviceCount: Int = 0
-    @Published var bleDiagnosticFoundButNotConnectedCount: Int = 0
-    @Published var bleDiagnosticAuthFailedCount: Int = 0
     @Published var tokenSourcePath: String = ""
     @Published var tokenSourceLabel: String = ""
 
@@ -92,6 +80,71 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         let live = liveAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         if !live.isEmpty { return live }
         return cachedAddress
+    }
+
+    var debugBLERawRSSI: Int? {
+        get { bleDiagnosticsStore.debugRawRSSI }
+        set { bleDiagnosticsStore.debugRawRSSI = newValue }
+    }
+    var debugBLESmoothedRSSI: Int? {
+        get { bleDiagnosticsStore.debugSmoothedRSSI }
+        set { bleDiagnosticsStore.debugSmoothedRSSI = newValue }
+    }
+    var debugBLELastSeenText: String {
+        get { bleDiagnosticsStore.debugLastSeenText }
+        set { bleDiagnosticsStore.debugLastSeenText = newValue }
+    }
+    var debugBLELastTransitionText: String {
+        get { bleDiagnosticsStore.debugLastTransitionText }
+        set { bleDiagnosticsStore.debugLastTransitionText = newValue }
+    }
+    var bleDiagnosticPhaseText: String {
+        get { bleDiagnosticsStore.phaseText }
+        set { bleDiagnosticsStore.phaseText = newValue }
+    }
+    var bleDiagnosticDetailText: String {
+        get { bleDiagnosticsStore.detailText }
+        set { bleDiagnosticsStore.detailText = newValue }
+    }
+    var bleDiagnosticLastConclusionText: String {
+        get { bleDiagnosticsStore.lastConclusionText }
+        set { bleDiagnosticsStore.lastConclusionText = newValue }
+    }
+    var bleDiagnosticLastConclusionAtText: String {
+        get { bleDiagnosticsStore.lastConclusionAtText }
+        set { bleDiagnosticsStore.lastConclusionAtText = newValue }
+    }
+    var bleDiagnosticLastReasonText: String {
+        get { bleDiagnosticsStore.lastReasonText }
+        set { bleDiagnosticsStore.lastReasonText = newValue }
+    }
+    var bleDiagnosticNoDeviceCount: Int {
+        get { bleDiagnosticsStore.noDeviceCount }
+        set { bleDiagnosticsStore.noDeviceCount = newValue }
+    }
+    var bleDiagnosticFoundButNotConnectedCount: Int {
+        get { bleDiagnosticsStore.foundButNotConnectedCount }
+        set { bleDiagnosticsStore.foundButNotConnectedCount = newValue }
+    }
+    var bleDiagnosticAuthFailedCount: Int {
+        get { bleDiagnosticsStore.authFailedCount }
+        set { bleDiagnosticsStore.authFailedCount = newValue }
+    }
+    var bleDidSeeDeviceThisCycle: Bool {
+        get { bleDiagnosticsStore.didSeeDeviceThisCycle }
+        set { bleDiagnosticsStore.didSeeDeviceThisCycle = newValue }
+    }
+    var bleDidReachConnectedThisCycle: Bool {
+        get { bleDiagnosticsStore.didReachConnectedThisCycle }
+        set { bleDiagnosticsStore.didReachConnectedThisCycle = newValue }
+    }
+    var bleCurrentCandidateName: String {
+        get { bleDiagnosticsStore.currentCandidateName }
+        set { bleDiagnosticsStore.currentCandidateName = newValue }
+    }
+    var bleCurrentCandidateRSSI: Int? {
+        get { bleDiagnosticsStore.currentCandidateRSSI }
+        set { bleDiagnosticsStore.currentCandidateRSSI = newValue }
     }
 
     var mqtt: CocoaMQTT?
@@ -138,10 +191,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var lastObservedKeylessEnabled: Bool?
     var hasReceivedKeylessSettings = false
     var consecutiveScanTimeouts = 0
-    var bleDidSeeDeviceThisCycle = false
-    var bleDidReachConnectedThisCycle = false
-    var bleCurrentCandidateName: String = "--"
-    var bleCurrentCandidateRSSI: Int?
+    let bleDiagnosticsStore = BLEDiagnosticsStore()
     let nearbyBLEDevicesStore = NearbyBLEDevicesStore()
     var cancellables = Set<AnyCancellable>()
 

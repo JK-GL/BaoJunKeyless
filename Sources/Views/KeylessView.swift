@@ -28,24 +28,23 @@ struct KeylessView: View {
 
                 KeylessMainSection(setMode: setMode)
                 if let mqttStore {
-                    KeylessBLEDiagnosticsSection(store: mqttStore)
+                    KeylessBLEDiagnosticsSection(store: mqttStore, diagnostics: mqttStore.bleDiagnosticsStore)
                 }
-                KeylessRealtimeStatusSection(
-                    modeText: currentModeText,
-                    appExecEnabled: appExecutionEnabled,
-                    state: vehicleStore.state,
-                    rawRSSI: mqttStore?.debugBLERawRSSI,
-                    smoothedRSSI: mqttStore?.debugBLESmoothedRSSI,
-                    lastSeenText: mqttStore?.debugBLELastSeenText ?? "--",
-                    lastTransitionText: mqttStore?.debugBLELastTransitionText ?? "--",
-                    unlockThreshold: Int(settingsStore.settings.unlockThreshold),
-                    lockThreshold: Int(settingsStore.settings.lockThreshold),
-                    unlockDecision: currentUnlockDecision,
-                    lockDecision: currentLockDecision,
-                    lockDelayRemainingText: lockDelayRemainingText,
-                    onSimulateUnlock: simulateUnlockDecision,
-                    onSimulateLock: simulateLockDecision
-                )
+                if let mqttStore {
+                    KeylessRealtimeStatusSection(
+                        diagnostics: mqttStore.bleDiagnosticsStore,
+                        modeText: currentModeText,
+                        appExecEnabled: appExecutionEnabled,
+                        state: vehicleStore.state,
+                        unlockThreshold: Int(settingsStore.settings.unlockThreshold),
+                        lockThreshold: Int(settingsStore.settings.lockThreshold),
+                        unlockDecision: currentUnlockDecision,
+                        lockDecision: currentLockDecision,
+                        lockDelayRemainingText: lockDelayRemainingText,
+                        onSimulateUnlock: simulateUnlockDecision,
+                        onSimulateLock: simulateLockDecision
+                    )
+                }
                 KeylessRecentActivitySection()
                 if settingsStore.settings.keylessEnabled {
                     UnlockSettingsSection(
@@ -168,16 +167,17 @@ struct KeylessView: View {
 private struct KeylessBLEDiagnosticsSection: View {
     @EnvironmentObject var vehicleLog: VehicleEventLogStore
     let store: MQTTVehicleStateStore
+    @ObservedObject var diagnostics: BLEDiagnosticsStore
     @State private var binding = VehicleBLEBindingStore.load()
 
     private var rows: [PopupInfoRowItem] {
         [
             PopupInfoRowItem("dot.radiowaves.left.and.right", "BLE状态", bleStatusText(store.bleStatus), color: AppTheme.accent),
-            PopupInfoRowItem("wave.3.right", "当前阶段", store.bleDiagnosticPhaseText, color: .white),
-            PopupInfoRowItem("text.alignleft", "阶段详情", store.bleDiagnosticDetailText, color: .white),
-            PopupInfoRowItem("checkmark.circle", "最近结论", "\(store.bleDiagnosticLastConclusionText) · \(store.bleDiagnosticLastConclusionAtText)", color: AppTheme.green),
-            PopupInfoRowItem("info.circle", "结论来源", store.bleDiagnosticLastReasonText, color: AppTheme.orange),
-            PopupInfoRowItem("sum", "本次统计", store.bleDiagnosticCountsSummaryText, color: AppTheme.orange),
+            PopupInfoRowItem("wave.3.right", "当前阶段", diagnostics.phaseText, color: .white),
+            PopupInfoRowItem("text.alignleft", "阶段详情", diagnostics.detailText, color: .white),
+            PopupInfoRowItem("checkmark.circle", "最近结论", "\(diagnostics.lastConclusionText) · \(diagnostics.lastConclusionAtText)", color: AppTheme.green),
+            PopupInfoRowItem("info.circle", "结论来源", diagnostics.lastReasonText, color: AppTheme.orange),
+            PopupInfoRowItem("sum", "本次统计", diagnostics.countsSummaryText, color: AppTheme.orange),
             PopupInfoRowItem("timer", "扫描间隙", store.keylessSettingsStore.settings.bleScanInterval <= 0 ? "无间隙" : "\(Int(store.keylessSettingsStore.settings.bleScanInterval))s", color: AppTheme.accent),
             PopupInfoRowItem("number", "连续超时", "\(store.consecutiveScanTimeouts)", color: AppTheme.orange),
             PopupInfoRowItem("person.text.rectangle", "当前作用域", cacheScopeText(), mono: true, color: .white),
@@ -243,13 +243,10 @@ private struct KeylessBLEDiagnosticsSection: View {
 }
 
 private struct KeylessRealtimeStatusSection: View {
+    @ObservedObject var diagnostics: BLEDiagnosticsStore
     let modeText: String
     let appExecEnabled: Bool
     let state: VehicleState
-    let rawRSSI: Int?
-    let smoothedRSSI: Int?
-    let lastSeenText: String
-    let lastTransitionText: String
     let unlockThreshold: Int
     let lockThreshold: Int
     let unlockDecision: KeylessDecision
@@ -265,11 +262,11 @@ private struct KeylessRealtimeStatusSection: View {
                     PopupInfoRowItem("slider.horizontal.3", "当前模式", modeText),
                     PopupInfoRowItem("checkmark.shield", "App执行", appExecEnabled ? "允许" : "关闭", color: appExecEnabled ? AppTheme.green : AppTheme.orange),
                     PopupInfoRowItem("iphone.radiowaves.left.and.right", "手机距离", state.phoneNearby ? "已靠近" : "已远离"),
-                    PopupInfoRowItem("dot.radiowaves.left.and.right", "平滑RSSI", (smoothedRSSI ?? state.bleRssi).map { "\($0) dBm" } ?? "--"),
-                    PopupInfoRowItem("waveform.path.ecg", "原始RSSI", rawRSSI.map { "\($0) dBm" } ?? "--"),
+                    PopupInfoRowItem("dot.radiowaves.left.and.right", "平滑RSSI", (diagnostics.debugSmoothedRSSI ?? state.bleRssi).map { "\($0) dBm" } ?? "--"),
+                    PopupInfoRowItem("waveform.path.ecg", "原始RSSI", diagnostics.debugRawRSSI.map { "\($0) dBm" } ?? "--"),
                     PopupInfoRowItem("slider.horizontal.below.rectangle", "判定阈值", "unlock \(unlockThreshold) / lock \(lockThreshold) dBm", color: AppTheme.accent),
-                    PopupInfoRowItem("clock.badge.checkmark", "最近RSSI", lastSeenText),
-                    PopupInfoRowItem("arrow.left.arrow.right", "最近翻转", lastTransitionText, color: AppTheme.orange),
+                    PopupInfoRowItem("clock.badge.checkmark", "最近RSSI", diagnostics.debugLastSeenText),
+                    PopupInfoRowItem("arrow.left.arrow.right", "最近翻转", diagnostics.debugLastTransitionText, color: AppTheme.orange),
                     PopupInfoRowItem("lock.fill", "车锁状态", state.locked == true ? "已锁" : (state.locked == false ? "未锁" : "--")),
                     PopupInfoRowItem("lock.open.fill", "解锁判定", "\(unlockDecision.logLevel) · \(unlockDecision.reason)", color: decisionColor(unlockDecision)),
                     PopupInfoRowItem("lock.fill", "上锁判定", "\(lockDecision.logLevel) · \(lockDecision.reason)", color: decisionColor(lockDecision)),
