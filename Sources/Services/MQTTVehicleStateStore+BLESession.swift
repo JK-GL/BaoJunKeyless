@@ -10,6 +10,17 @@ extension MQTTVehicleStateStore {
             case .idle:
                 if self.ignoreNextBLEIdleCallback {
                     self.ignoreNextBLEIdleCallback = false
+                    // 主动重启连接时：保留广播预填 RSSI，只清会话态
+                    switch self.bleManager.state {
+                    case .scanning, .connecting, .connected, .authenticating, .authenticated:
+                        return
+                    default:
+                        break
+                    }
+                    // 若 UI 已进入 connecting，不要把 preview 清掉
+                    if self.bleStatus == .connecting || self.bleStatus == .authenticating || self.bleStatus == .authenticated {
+                        return
+                    }
                     return
                 }
                 switch self.bleManager.state {
@@ -36,10 +47,16 @@ extension MQTTVehicleStateStore {
                     self.setBLEDiagnosticPhase("已断开", detail: "\(macSuffix) · 扫描耗时 \(duration)")
                     self.resetBLEDiagnosticCycle()
                 }
+                // 连接中预填阶段：若已有 preview RSSI，断链前不要无意义清成 -- dBm
+                // 真正断开后才清空
+                let keepPreview = self.bleDiagnosticsStore.isPreviewRSSI
+                    && (self.bleStatus == .connecting || self.bleStatus == .authenticating)
                 self.bleStatus = .disconnected
                 self.bleScanStartedAt = nil
                 self.hasCompletedBLEAuth = false
-                self.applyLiveBLERSSI(nil)
+                if !keepPreview {
+                    self.applyLiveBLERSSI(nil)
+                }
             case .unsupported, .bluetoothOff:
                 self.ignoreNextBLEIdleCallback = false
                 self.bleStatus = .error

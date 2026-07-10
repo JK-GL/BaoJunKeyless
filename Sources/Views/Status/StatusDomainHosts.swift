@@ -26,17 +26,28 @@ struct StatusRadarSection: View {
     }
 }
 
-/// 顶部栏：观察 auth + 车名（dashboard），不把依赖回传给 StatusView 根。
+/// 顶部栏：观察 auth + 车名 + BLE 可控状态，不把依赖回传给 StatusView 根。
 struct StatusTopBarHost: View {
     @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
     @EnvironmentObject var vehicleStore: VehicleStateStore
     let isRefreshing: Bool
     let refreshScale: CGFloat
     let onRefresh: () -> Void
+    var onToast: ((String) -> Void)? = nil
 
     private var vehicleName: String {
         let name = vehicleStore.dashboard.vehicleName.trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? "车辆状态" : name
+    }
+
+    private var mqttStore: MQTTVehicleStateStore? {
+        vehicleStore as? MQTTVehicleStateStore
+    }
+
+    /// 仅“可蓝牙控制”时显示右上角小图标
+    private var showBLEControlBadge: Bool {
+        connectionStatusStore.bleStatus == .authenticated
+            && (mqttStore?.canUseBLEForVehicleControl == true)
     }
 
     var body: some View {
@@ -45,6 +56,10 @@ struct StatusTopBarHost: View {
             isRefreshing: isRefreshing,
             refreshScale: refreshScale,
             authStatus: connectionStatusStore.authStatus,
+            showBLEControlBadge: showBLEControlBadge,
+            onBLEControlTap: {
+                onToast?("当前快捷操作可走 BLE 控制")
+            },
             onRefresh: onRefresh
         )
     }

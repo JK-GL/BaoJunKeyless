@@ -218,12 +218,8 @@ extension MQTTVehicleStateStore {
         )
         VehicleBLEBindingStore.save(binding)
 
-        // 绑定后立刻按该设备优先连接：重启会话 → bound 直连 → 鉴权
-        // 不清附近列表，方便弹窗内继续观察“已绑定/连接中”
+        // 先预填广播 RSSI，再重启会话，避免 stop/idle 把预填冲掉
         userManuallyStoppedBLE = false
-        ignoreNextBLEIdleCallback = true
-        bleManager.stop()
-        // 连接中先用附近广播 RSSI 顶上去，鉴权成功后再切 readRSSI live 值
         noteBLEDeviceSeen(name: device.displayName, rssi: device.rssi)
         seedPreviewBLERSSI(device.rssi, reason: "bind-ad")
         setBLEDiagnosticPhase("连接中", detail: "绑定优先 · \(device.displayName) · \(device.rssi) dBm")
@@ -233,6 +229,12 @@ extension MQTTVehicleStateStore {
             "手动绑定蓝牙设备",
             detail: "\(binding.displaySummary) · 正在优先连接 · adRSSI=\(device.rssi)"
         )
+
+        ignoreNextBLEIdleCallback = true
+        bleManager.stop()
+        // stop 后再次保住预填，防止 idle 清空
+        seedPreviewBLERSSI(device.rssi, reason: "bind-ad-keep")
+        bleStatus = .connecting
         refreshBLESessionIfNeeded()
         if !hasUsableBLEKeyInfo {
             fetchBleKeyInfo()
