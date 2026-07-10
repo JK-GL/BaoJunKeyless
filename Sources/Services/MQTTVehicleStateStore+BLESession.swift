@@ -73,9 +73,9 @@ extension MQTTVehicleStateStore {
                 self.ignoreNextBLEIdleCallback = false
                 self.consecutiveScanTimeouts = 0
                 let macSuffix = self.deviceDisplayName
-                self.logVehicleEvent(.action, "BLE 已连接", detail: "\(macSuffix) · 发现服务与特征中", identity: "connecting|\(macSuffix)", minimumInterval: 3)
-                self.setBLEDiagnosticPhase("已连接", detail: self.bleDiagnosticCurrentCandidateText)
-                self.bleStatus = .connected
+                self.logVehicleEvent(.action, "BLE 已连接", detail: "\(macSuffix) · 开始鉴权", identity: "connecting|\(macSuffix)", minimumInterval: 3)
+                self.setBLEDiagnosticPhase("鉴权中", detail: self.bleDiagnosticCurrentCandidateText)
+                self.bleStatus = .authenticating
             case .authenticating:
                 self.ignoreNextBLEIdleCallback = false
                 self.logVehicleEvent(.action, "BLE 鉴权中", detail: "38C7/A857 四步鉴权", identity: "authenticating", minimumInterval: 3)
