@@ -6,6 +6,8 @@ final class BLEDiagnosticsStore: ObservableObject {
 
     @Published var debugRawRSSI: Int?
     @Published var debugSmoothedRSSI: Int?
+    /// true = 广播/连接中预填；false = 鉴权后 live readRSSI
+    @Published var isPreviewRSSI: Bool = false
     @Published var debugLastSeenText: String = "--"
     @Published var debugLastTransitionText: String = "--"
     @Published var phaseText: String = "待机"

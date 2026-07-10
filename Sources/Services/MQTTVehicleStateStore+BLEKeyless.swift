@@ -131,6 +131,7 @@ extension MQTTVehicleStateStore {
         // 仅写诊断显示域，不走 apply(state) / 靠近语义，避免连接前误触发无感
         debugBLERawRSSI = rssi
         debugBLESmoothedRSSI = rssi
+        bleDiagnosticsStore.isPreviewRSSI = true
         debugBLELastSeenText = formatTime(Date())
         vehicleEventLogStore.addThrottled(
             .ble,

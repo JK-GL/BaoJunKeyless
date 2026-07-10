@@ -52,6 +52,7 @@ extension MQTTVehicleStateStore {
             self.liveBLELastSeenAt = nil
             self.debugBLERawRSSI = nil
             self.debugBLESmoothedRSSI = nil
+            self.bleDiagnosticsStore.isPreviewRSSI = false
             self.debugBLELastSeenText = "--"
             self.debugBLELastTransitionText = "BLE信号丢失 · \(formatTime(Date()))"
             self.logVehicleEvent(.warning, "BLE信号丢失", detail: "连续 3s 未收到 RSSI，按远离处理", identity: "signal-loss", minimumInterval: 8)
@@ -72,6 +73,7 @@ extension MQTTVehicleStateStore {
             liveBLELastSeenAt = nil
             debugBLERawRSSI = nil
             debugBLESmoothedRSSI = nil
+            bleDiagnosticsStore.isPreviewRSSI = false
             debugBLELastSeenText = "--"
             bleSignalLossWorkItem?.cancel()
             bleSignalLossWorkItem = nil
@@ -105,6 +107,7 @@ extension MQTTVehicleStateStore {
         // 鉴权后的 readRSSI 会覆盖连接前用广播 RSSI 预填的 preview 值
         debugBLERawRSSI = rawRSSI
         debugBLESmoothedRSSI = smoothedRSSI
+        bleDiagnosticsStore.isPreviewRSSI = false
         debugBLELastSeenText = formatTime(Date())
         scheduleBLESignalLossTimeout()
 

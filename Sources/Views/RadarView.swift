@@ -568,6 +568,10 @@ struct RadarCardView: View {
         bleStatus == .connecting || bleStatus == .connected || bleStatus == .authenticating || bleStatus == .authenticated
     }
 
+    private var isLiveAuthenticatedRSSI: Bool {
+        bleStatus == .authenticated && !diagnostics.isPreviewRSSI
+    }
+
     private var displayRSSI: Int? {
         diagnostics.debugSmoothedRSSI ?? diagnostics.debugRawRSSI
     }
@@ -579,8 +583,12 @@ struct RadarCardView: View {
         return "-- dBm"
     }
 
-    /// 信号强弱分色：强绿 / 中橙 / 弱红
+    /// 广播预填：灰色；鉴权后 live：按强弱分色
     private var rssiSignalColor: Color {
+        guard displayRSSI != nil else { return Color.white.opacity(0.55) }
+        if !isLiveAuthenticatedRSSI {
+            return Color.white.opacity(0.55)
+        }
         guard let displayRSSI else { return Color.white.opacity(0.55) }
         if displayRSSI >= -55 { return AppTheme.green }
         if displayRSSI >= -70 { return AppTheme.orange }
