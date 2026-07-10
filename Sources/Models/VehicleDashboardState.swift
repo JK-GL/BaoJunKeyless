@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-enum VehicleEnergyType {
+enum VehicleEnergyType: Equatable {
     case plugInHybrid
     case pureElectric
 }

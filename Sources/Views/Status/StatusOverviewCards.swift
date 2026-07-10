@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct QuickStatusTripletView: View {
+struct QuickStatusTripletView: View, Equatable {
     let totalMileageText: String
     let averageFuelConsumptionText: String
     let yesterdayMileageText: String
@@ -65,7 +65,7 @@ struct QuickStatusTripletView: View {
     }
 }
 
-struct VehicleHeaderSummaryView: View {
+struct VehicleHeaderSummaryView: View, Equatable {
     var energyType: VehicleEnergyType = .plugInHybrid
     var electricRangeKm: Int = 140
     var electricFullRangeKm: Int = 140
@@ -256,8 +256,18 @@ struct ChargingStatusView: View {
     }
 }
 
-struct BodyStatusView: View {
-    let dashboard: VehicleDashboardState
+struct BodyStatusView: View, Equatable {
+    let normalText: String
+    let warnings: [String]
+    let topMetrics: [PopupStatusItem]
+    let detailMetrics: [PopupStatusItem]
+
+    static func == (lhs: BodyStatusView, rhs: BodyStatusView) -> Bool {
+        lhs.normalText == rhs.normalText
+        && lhs.warnings == rhs.warnings
+        && lhs.topMetrics == rhs.topMetrics
+        && lhs.detailMetrics == rhs.detailMetrics
+    }
 
     var body: some View {
         CardView(
@@ -265,19 +275,18 @@ struct BodyStatusView: View {
             icon: "car.fill",
             iconColor: StatusTint.successGreen,
             headerAccessory: {
-                Text(dashboard.bodyStatusNormalText)
+                Text(normalText)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(dashboard.warningMessages.isEmpty ? StatusTint.successGreen : StatusTint.warningAmber)
+                    .foregroundColor(warnings.isEmpty ? StatusTint.successGreen : StatusTint.warningAmber)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(Capsule().fill((dashboard.warningMessages.isEmpty ? StatusTint.successGreen : StatusTint.warningAmber).opacity(0.12)))
+                    .background(Capsule().fill((warnings.isEmpty ? StatusTint.successGreen : StatusTint.warningAmber).opacity(0.12)))
             }
         ) {
             VStack(spacing: 10) {
-                VehicleStatusMetricGrid(items: Array(dashboard.metrics.bodyStatus.prefix(4)))
-                BodyStatusDetailGrid(items: Array(dashboard.metrics.bodyStatus.dropFirst(4)))
+                VehicleStatusMetricGrid(items: topMetrics)
+                BodyStatusDetailGrid(items: detailMetrics)
 
-                let warnings = dashboard.warningMessages
                 if !warnings.isEmpty {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -334,12 +343,16 @@ struct BodyStatusDetailGrid: View {
     }
 }
 
-struct TirePressureView: View {
-    let dashboard: VehicleDashboardState
+struct TirePressureView: View, Equatable {
+    let tireTemperatureText: String
     let metrics: [PopupStatusItem]
 
+    static func == (lhs: TirePressureView, rhs: TirePressureView) -> Bool {
+        lhs.tireTemperatureText == rhs.tireTemperatureText && lhs.metrics == rhs.metrics
+    }
+
     private var tireTemperatureColor: Color {
-        let digits = dashboard.tireTemperatureText.filter { $0.isNumber }
+        let digits = tireTemperatureText.filter { $0.isNumber }
         guard let value = Int(digits), !digits.isEmpty else { return StatusTint.muted }
         if value <= 40 { return StatusTint.successGreen }
         if value <= 55 { return StatusTint.warningAmber }
@@ -352,11 +365,11 @@ struct TirePressureView: View {
             icon: "sun.max.fill",
             iconColor: StatusTint.infoBlue,
             headerAccessory: {
-                if dashboard.tireTemperatureText != "--" {
+                if tireTemperatureText != "--" {
                     HStack(spacing: 4) {
                         Image(systemName: "thermometer.sun")
                             .font(.system(size: 10, weight: .semibold))
-                        Text(dashboard.tireTemperatureText)
+                        Text(tireTemperatureText)
                             .font(.system(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(tireTemperatureColor)

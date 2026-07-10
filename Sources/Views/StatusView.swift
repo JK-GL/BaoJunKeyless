@@ -158,6 +158,10 @@ struct StatusView: View {
     }
 
     var body: some View {
+        let dashboard = vehicleStore.dashboard
+        let metrics = vehicleStore.cachedDashboardMetrics
+        let state = vehicleStore.state
+
         ZStack {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: AppSpacing.section) {
@@ -171,16 +175,16 @@ struct StatusView: View {
                         )
 
                         VehicleHeaderSummaryView(
-                            energyType: vehicleStore.dashboard.energyType,
-                            electricRangeKm: vehicleStore.dashboard.electricRangeKm,
-                            electricFullRangeKm: vehicleStore.dashboard.electricFullRangeKm,
-                            fuelRangeKm: vehicleStore.dashboard.fuelRangeKm,
-                            fuelFullRangeKm: vehicleStore.dashboard.fuelFullRangeKm,
-                            batteryPercentValue: vehicleStore.dashboard.batteryPercentValue,
-                            fuelPercentValue: vehicleStore.dashboard.fuelPercentValue,
-                            isCharging: vehicleStore.dashboard.isCharging,
-                            chargingPowerText: vehicleStore.dashboard.chargingPowerText,
-                            updatedAt: vehicleStore.dashboard.updatedAtText
+                            energyType: dashboard.energyType,
+                            electricRangeKm: dashboard.electricRangeKm,
+                            electricFullRangeKm: dashboard.electricFullRangeKm,
+                            fuelRangeKm: dashboard.fuelRangeKm,
+                            fuelFullRangeKm: dashboard.fuelFullRangeKm,
+                            batteryPercentValue: dashboard.batteryPercentValue,
+                            fuelPercentValue: dashboard.fuelPercentValue,
+                            isCharging: dashboard.isCharging,
+                            chargingPowerText: dashboard.chargingPowerText,
+                            updatedAt: dashboard.updatedAtText
                         )
 
                         StatusPillsSection(
@@ -209,7 +213,7 @@ struct StatusView: View {
                             carLat: displayCarLatitude,
                             carLng: displayCarLongitude,
                             carAddress: displayCarAddress,
-                            carImageURL: vehicleStore.dashboard.vehicleImageURL
+                            carImageURL: dashboard.vehicleImageURL
                         )
                     }
 
@@ -217,28 +221,36 @@ struct StatusView: View {
                         withAnimation(PopupMotion.presentSpring) {
                             activeCommand = command
                         }
-                    }, vehicleState: vehicleStore.state)
+                    }, vehicleState: state)
 
                     QuickStatusTripletView(
-                        totalMileageText: vehicleStore.dashboard.totalMileageText,
-                        averageFuelConsumptionText: vehicleStore.dashboard.averageFuelConsumptionText,
-                        yesterdayMileageText: vehicleStore.dashboard.yesterdayMileageText
+                        totalMileageText: dashboard.totalMileageText,
+                        averageFuelConsumptionText: dashboard.averageFuelConsumptionText,
+                        yesterdayMileageText: dashboard.yesterdayMileageText
                     )
 
                     VStack(alignment: .leading, spacing: AppSpacing.section) {
-                        BodyStatusView(dashboard: vehicleStore.dashboard)
-                        TirePressureView(dashboard: vehicleStore.dashboard, metrics: vehicleStore.cachedDashboardMetrics.tirePressure)
+                        BodyStatusView(
+                            normalText: dashboard.bodyStatusNormalText,
+                            warnings: dashboard.warningMessages,
+                            topMetrics: Array(metrics.bodyStatus.prefix(4)),
+                            detailMetrics: Array(metrics.bodyStatus.dropFirst(4))
+                        )
+                        TirePressureView(
+                            tireTemperatureText: dashboard.tireTemperatureText,
+                            metrics: metrics.tirePressure
+                        )
                         StatusDashboardPair {
-                            DrivingStatusView(metrics: vehicleStore.cachedDashboardMetrics.driving)
+                            DrivingStatusView(metrics: metrics.driving)
                         } right: {
-                            BatteryGaugesView(metrics: vehicleStore.cachedDashboardMetrics.battery)
+                            BatteryGaugesView(metrics: metrics.battery)
                         }
                         StatusDashboardPair {
-                            TemperatureView(metrics: vehicleStore.cachedDashboardMetrics.temperature)
+                            TemperatureView(metrics: metrics.temperature)
                         } right: {
-                            ChargingStatusView(metrics: vehicleStore.cachedDashboardMetrics.charging)
+                            ChargingStatusView(metrics: metrics.charging)
                         }
-                        LightingStatusView(metrics: vehicleStore.cachedDashboardMetrics.lighting)
+                        LightingStatusView(metrics: metrics.lighting)
 
                         Spacer(minLength: 100)
                     }
