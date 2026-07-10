@@ -417,24 +417,40 @@ struct StatusView: View {
                 isEmbedded: false
             )
         } actions: {
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 let isScanning = liveBLEStatus == .scanning || liveBLEStatus == .connecting || liveBLEStatus == .authenticating || liveBLEStatus == .authenticated
                 let nearbyCount = mqttStore?.bleNearbyDevices.count ?? 0
-                FloatingPopupPrimaryButton(
-                    title: isScanning ? "停止扫描" : "开始扫描",
-                    color: isScanning ? AppTheme.red : AppTheme.accent
-                ) {
-                    mqttStore?.toggleBLEScanning()
-                }
-                FloatingPopupPrimaryButton(title: nearbyCount > 0 ? "附近设备 \(nearbyCount)" : "附近设备", color: AppTheme.orange) {
-                    withAnimation(PopupMotion.presentSpring) { isNearbyBLEDevicesFloatingPresented = true }
-                }
-                FloatingPopupPrimaryButton(title: "拉取钥匙", color: AppTheme.green) {
-                    mqttStore?.fetchBleKeyInfo()
-                    withAnimation { statusToastText = "正在重新拉取钥匙信息" }
-                }
-                FloatingPopupPrimaryButton(title: "刷新车况", color: AppTheme.accent) {
-                    mqttStore?.refreshNow()
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    PopupActionGridButton(
+                        title: isScanning ? "停止扫描" : "开始扫描",
+                        icon: isScanning ? "stop.circle" : "play.circle",
+                        tint: isScanning ? AppTheme.red : AppTheme.accent
+                    ) {
+                        mqttStore?.toggleBLEScanning()
+                    }
+                    PopupActionGridButton(
+                        title: "附近设备",
+                        icon: "dot.radiowaves.left.and.right",
+                        tint: AppTheme.orange,
+                        badgeText: nearbyCount > 0 ? "\(nearbyCount)" : nil
+                    ) {
+                        withAnimation(PopupMotion.presentSpring) { isNearbyBLEDevicesFloatingPresented = true }
+                    }
+                    PopupActionGridButton(
+                        title: "拉取钥匙",
+                        icon: "key.fill",
+                        tint: AppTheme.green
+                    ) {
+                        mqttStore?.fetchBleKeyInfo()
+                        withAnimation { statusToastText = "正在重新拉取钥匙信息" }
+                    }
+                    PopupActionGridButton(
+                        title: "刷新车况",
+                        icon: "arrow.clockwise",
+                        tint: AppTheme.accent
+                    ) {
+                        mqttStore?.refreshNow()
+                    }
                 }
                 FloatingPopupSecondaryButton(title: "关闭", textColor: .white) {
                     withAnimation(PopupMotion.dismissEase) { isVehicleInfoFloatingPresented = false }
@@ -838,5 +854,49 @@ struct StatusView: View {
                 completion(patchedResult)
             }
         }
+    }
+}
+
+private struct PopupActionGridButton: View {
+    let title: String
+    let icon: String
+    let tint: Color
+    var badgeText: String? = nil
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 7) {
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .font(.system(size: 14, weight: .semibold))
+                    Text(title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                    if let badgeText {
+                        Text(badgeText)
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(tint.opacity(0.9)))
+                    }
+                }
+                .foregroundStyle(tint)
+                .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.white.opacity(0.045))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(tint.opacity(0.28), lineWidth: 1)
+            )
+        }
+        .buttonStyle(ResponsiveButtonStyle())
     }
 }
