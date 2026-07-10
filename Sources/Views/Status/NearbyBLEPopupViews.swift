@@ -5,56 +5,88 @@ struct NearbyBLEDevicesLaunchButton: View {
     let action: () -> Void
 
     var body: some View {
+        // 只依赖 count，避免 devices 数组更新时重绘整颗按钮树的重布局成本
+        NearbyBLEDevicesLaunchButtonContent(
+            count: nearbyStore.count,
+            action: action
+        )
+    }
+}
+
+private struct NearbyBLEDevicesLaunchButtonContent: View, Equatable {
+    let count: Int
+    let action: () -> Void
+
+    static func == (lhs: NearbyBLEDevicesLaunchButtonContent, rhs: NearbyBLEDevicesLaunchButtonContent) -> Bool {
+        lhs.count == rhs.count
+    }
+
+    var body: some View {
         PopupActionGridButton(
             title: "附近设备",
             icon: "dot.radiowaves.left.and.right",
             tint: AppTheme.orange,
-            badgeText: nearbyStore.count > 0 ? "\(nearbyStore.count)" : nil,
+            badgeText: count > 0 ? "\(count)" : nil,
             action: action
         )
     }
 }
 
 struct NearbyBLEDevicesPopupView: View {
-    @ObservedObject var nearbyStore: NearbyBLEDevicesStore
+    let nearbyStore: NearbyBLEDevicesStore
     let currentBinding: VehicleBLEBinding?
     let onBind: (VehicleBLEManager.NearbyDevice) -> Void
     let onClearBinding: () -> Void
     let onClose: () -> Void
+
+    /// 打开后用快照展示，不直接订阅 @Published devices，避免扫描广播牵动整窗重绘
+    @State private var snapshotDevices: [VehicleBLEManager.NearbyDevice] = []
+    @State private var autoRefreshTask: Task<Void, Never>?
 
     var body: some View {
         FloatingPopupCard(
             icon: "dot.radiowaves.left.and.right",
             iconColor: AppTheme.orange,
             title: "附近设备",
-            subtitle: currentBinding == nil ? "可手动绑定附近候选设备；绑定后会立即检查可用性。" : "当前已有绑定；也可以改绑附近候选设备。",
+            subtitle: currentBinding == nil
+                ? "打开后按快照展示；列表约每秒刷新，避免扫描卡顿。"
+                : "当前已有绑定；也可改绑附近候选设备。",
             maxWidth: 332,
             fixedContentHeight: 320,
-            contentScrollEnabled: false
+            contentScrollEnabled: false,
+            usesBlurMaterial: false
         ) {
-            ScrollView(.vertical, showsIndicators: nearbyStore.devices.count > 4) {
-                VStack(alignment: .leading, spacing: 10) {
-                    if nearbyStore.devices.isEmpty {
-                        Text("扫描中暂无可展示候选；保持扫描后会逐步出现附近设备。")
+            ScrollView(.vertical, showsIndicators: snapshotDevices.count > 5) {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    if snapshotDevices.isEmpty {
+                        Text("扫描中暂无可展示候选；保持扫描后点“刷新列表”。")
                             .font(.system(size: 13))
                             .foregroundStyle(Color.white.opacity(0.6))
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 8)
                     } else {
-                        ForEach(nearbyStore.devices) { device in
+                        ForEach(snapshotDevices) { device in
                             NearbyBLEDeviceRowView(
-                                device: device,
+                                id: device.id,
+                                displayName: device.displayName,
+                                rssi: device.rssi,
+                                scoreText: device.score.map(String.init) ?? "--",
+                                mac: device.manufacturerMac ?? "--",
+                                exactMatched: device.exactMatched,
                                 isBound: currentBinding?.peripheralIdentifier == device.peripheralIdentifier,
                                 onBind: { onBind(device) }
                             )
                         }
                     }
                 }
+                .padding(.vertical, 2)
             }
             .frame(maxHeight: 320, alignment: .top)
         } actions: {
             VStack(spacing: 8) {
                 FloatingPopupPrimaryButton(title: "刷新列表", color: AppTheme.orange) {
                     nearbyStore.flush()
+                    snapshotDevices = nearbyStore.devices
                 }
                 if currentBinding != nil {
                     FloatingPopupPrimaryButton(title: "取消绑定", color: AppTheme.red) {
@@ -66,27 +98,64 @@ struct NearbyBLEDevicesPopupView: View {
                 }
             }
         }
+        .onAppear {
+            nearbyStore.flush()
+            snapshotDevices = nearbyStore.devices
+            startAutoRefresh()
+        }
+        .onDisappear {
+            autoRefreshTask?.cancel()
+            autoRefreshTask = nil
+        }
+    }
+
+    private func startAutoRefresh() {
+        autoRefreshTask?.cancel()
+        autoRefreshTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard !Task.isCancelled else { return }
+                // 定时从 buffer 拉快照；不直接绑定 @Published devices，避免高频 invalidation
+                nearbyStore.flush()
+                let next = nearbyStore.devices
+                if next != snapshotDevices {
+                    snapshotDevices = next
+                }
+            }
+        }
     }
 }
 
+/// 行视图只比较展示字段，避免闭包破坏 diff。
 private struct NearbyBLEDeviceRowView: View, Equatable {
-    let device: VehicleBLEManager.NearbyDevice
+    let id: String
+    let displayName: String
+    let rssi: Int
+    let scoreText: String
+    let mac: String
+    let exactMatched: Bool
     let isBound: Bool
     let onBind: () -> Void
 
     static func == (lhs: NearbyBLEDeviceRowView, rhs: NearbyBLEDeviceRowView) -> Bool {
-        lhs.device == rhs.device && lhs.isBound == rhs.isBound
+        lhs.id == rhs.id
+            && lhs.displayName == rhs.displayName
+            && lhs.rssi == rhs.rssi
+            && lhs.scoreText == rhs.scoreText
+            && lhs.mac == rhs.mac
+            && lhs.exactMatched == rhs.exactMatched
+            && lhs.isBound == rhs.isBound
     }
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(device.displayName)
+                    Text(displayName)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
-                    if device.exactMatched {
+                    if exactMatched {
                         Text("目标匹配")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(.black)
@@ -103,7 +172,7 @@ private struct NearbyBLEDeviceRowView: View, Equatable {
                             .background(Capsule().fill(AppTheme.accent))
                     }
                 }
-                Text(detailText)
+                Text("rssi=\(rssi) · score=\(scoreText) · mac=\(mac)")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Color.white.opacity(0.62))
                     .lineLimit(2)
@@ -117,6 +186,7 @@ private struct NearbyBLEDeviceRowView: View, Equatable {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Capsule().fill(AppTheme.accent))
+            .buttonStyle(.plain)
         }
         .padding(10)
         .background(
@@ -127,11 +197,5 @@ private struct NearbyBLEDeviceRowView: View, Equatable {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(isBound ? AppTheme.accent.opacity(0.45) : Color.white.opacity(0.06), lineWidth: 1)
         )
-    }
-
-    private var detailText: String {
-        let mac = device.manufacturerMac ?? "--"
-        let scoreText = device.score.map(String.init) ?? "--"
-        return "rssi=\(device.rssi) · score=\(scoreText) · mac=\(mac)"
     }
 }

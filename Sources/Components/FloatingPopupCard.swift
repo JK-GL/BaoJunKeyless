@@ -18,6 +18,8 @@ struct FloatingPopupCard<Content: View, Actions: View>: View {
     var maxContentHeight: CGFloat = 320
     var fixedContentHeight: CGFloat? = nil
     var contentScrollEnabled: Bool = true
+    /// false 时用纯色底板，避免 ultraThinMaterial 在频繁开关/扫描场景下的模糊合成卡顿
+    var usesBlurMaterial: Bool = true
     var onClose: (() -> Void)? = nil
     @State private var measuredContentHeight: CGFloat = 1
     @ViewBuilder let content: () -> Content
@@ -99,18 +101,33 @@ struct FloatingPopupCard<Content: View, Actions: View>: View {
         }
         .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
+            Group {
+                if usesBlurMaterial {
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(Color.white.opacity(0.035))
-                )
-                .overlay(
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .fill(Color.white.opacity(0.035))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                } else {
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
+                        .fill(Color.black.opacity(0.86))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .fill(Color.white.opacity(0.04))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                }
+            }
+            .shadow(color: Color.black.opacity(0.38), radius: usesBlurMaterial ? 34 : 18, x: 0, y: usesBlurMaterial ? 16 : 10)
         )
-        .shadow(color: Color.black.opacity(0.38), radius: 34, x: 0, y: 16)
         .frame(maxWidth: maxWidth)
         .padding(.horizontal, 24)
     }

@@ -113,12 +113,12 @@ struct StatusView: View {
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(PopupMotion.dismissEase) { isNearbyBLEDevicesFloatingPresented = false }
+                        withAnimation(.easeOut(duration: 0.16)) { isNearbyBLEDevicesFloatingPresented = false }
                     }
 
                 nearbyBLEDevicesFloatingWindow()
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    .transition(PopupMotion.transition)
+                    .transition(.opacity)
                     .zIndex(16)
             }
 
@@ -161,7 +161,7 @@ struct StatusView: View {
         .animation(PopupMotion.presentSpring, value: isAddressFloatingPresented)
         .animation(PopupMotion.presentSpring, value: isMQTTFloatingPresented)
         .animation(PopupMotion.presentSpring, value: isVehicleInfoFloatingPresented)
-        .animation(PopupMotion.presentSpring, value: isNearbyBLEDevicesFloatingPresented)
+        .animation(.easeOut(duration: 0.18), value: isNearbyBLEDevicesFloatingPresented)
         .animation(PopupMotion.presentSpring, value: activeCommand != nil)
         .background(
             Group {
@@ -183,7 +183,7 @@ struct StatusView: View {
     @ViewBuilder
     private func vehicleInfoFloatingWindow() -> some View {
         StatusVehicleInfoFloatingHost(
-            onOpenNearby: { withAnimation(PopupMotion.presentSpring) { isNearbyBLEDevicesFloatingPresented = true } },
+            onOpenNearby: { withAnimation(.easeOut(duration: 0.18)) { isNearbyBLEDevicesFloatingPresented = true } },
             onClose: { withAnimation(PopupMotion.dismissEase) { isVehicleInfoFloatingPresented = false } },
             onToast: { text in withAnimation { statusToastText = text } }
         )
@@ -197,7 +197,7 @@ struct StatusView: View {
                 currentBinding: VehicleBLEBindingStore.load(),
                 onBind: { device in
                     mqttStore.bindNearbyBLEDevice(device)
-                    withAnimation(PopupMotion.dismissEase) { isNearbyBLEDevicesFloatingPresented = false }
+                    withAnimation(.easeOut(duration: 0.16)) { isNearbyBLEDevicesFloatingPresented = false }
                     withAnimation { statusToastText = "已绑定 \(device.displayName)，正在检查可用性" }
                 },
                 onClearBinding: {
@@ -205,7 +205,7 @@ struct StatusView: View {
                     withAnimation { statusToastText = "已取消蓝牙绑定" }
                 },
                 onClose: {
-                    withAnimation(PopupMotion.dismissEase) { isNearbyBLEDevicesFloatingPresented = false }
+                    withAnimation(.easeOut(duration: 0.16)) { isNearbyBLEDevicesFloatingPresented = false }
                 }
             )
         }
