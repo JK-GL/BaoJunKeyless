@@ -94,7 +94,6 @@ struct KeylessView: View {
 private struct KeylessBLEDiagnosticsHost: View {
     @EnvironmentObject var settingsStore: KeylessSettingsStore
     @ObservedObject private var diagnostics = BLEDiagnosticsStore.shared
-    @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
     @ObservedObject private var bleKeyInfoStore = VehicleBLEKeyInfoStore.shared
     @ObservedObject private var credentialsStore = VehicleCredentialsStore.shared
     @State private var binding = VehicleBLEBindingStore.load()
@@ -123,7 +122,6 @@ private struct KeylessBLEDiagnosticsHost: View {
 
     private var rows: [PopupInfoRowItem] {
         [
-            PopupInfoRowItem("dot.radiowaves.left.and.right", "BLE状态", bleStatusText(connectionStatusStore.bleStatus), color: AppTheme.accent),
             PopupInfoRowItem("wave.3.right", "当前阶段", diagnostics.phaseText, color: .white),
             PopupInfoRowItem("text.alignleft", "阶段详情", diagnostics.detailText, color: .white),
             PopupInfoRowItem("checkmark.circle", "最近结论", "\(diagnostics.lastConclusionText) · \(diagnostics.lastConclusionAtText)", color: AppTheme.green),
@@ -167,18 +165,6 @@ private struct KeylessBLEDiagnosticsHost: View {
             }
         }
         .onAppear { binding = VehicleBLEBindingStore.load() }
-    }
-
-    private func bleStatusText(_ status: VehicleConnectionStatusStore.LiveBLEStatus) -> String {
-        switch status {
-        case .disconnected: return "未连接"
-        case .scanning: return "扫描中"
-        case .connecting: return "连接中"
-        case .connected: return "已连接"
-        case .authenticating: return "鉴权中"
-        case .authenticated: return "已连接"
-        case .error: return "异常"
-        }
     }
 }
 
