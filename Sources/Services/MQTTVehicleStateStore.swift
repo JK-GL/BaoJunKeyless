@@ -63,25 +63,49 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     @Published var bleStatus: LiveBLEStatus = .disconnected
     @Published var mqttStatus: LiveMQTTStatus = .disconnected
     @Published var authStatus: StatusAuthState = .expired("未登录")
-    @Published var cachedLatitudeGcj: Double = 0
-    @Published var cachedLongitudeGcj: Double = 0
-    @Published var cachedAddress: String = ""
-    @Published var liveLatitudeGcj: Double = 0
-    @Published var liveLongitudeGcj: Double = 0
-    @Published var liveAddress: String = ""
     @Published var latestBleKeyInfo: [String: String] = [:]
-    @Published var latestBLEControlReceipt: VehicleBLEManager.BLEControlReceipt?
-    @Published var latestControlResult: VehicleControlMQTTResult?
     @Published var tokenSourcePath: String = ""
     @Published var tokenSourceLabel: String = ""
 
-    var displayLatitudeGcj: Double { liveLatitudeGcj != 0 ? liveLatitudeGcj : cachedLatitudeGcj }
-    var displayLongitudeGcj: Double { liveLongitudeGcj != 0 ? liveLongitudeGcj : cachedLongitudeGcj }
-    var displayAddress: String {
-        let live = liveAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !live.isEmpty { return live }
-        return cachedAddress
+    let locationDisplayStore = VehicleLocationDisplayStore.shared
+    let controlFeedbackStore = VehicleControlFeedbackStore.shared
+
+    var cachedLatitudeGcj: Double {
+        get { locationDisplayStore.cachedLatitudeGcj }
+        set { locationDisplayStore.cachedLatitudeGcj = newValue }
     }
+    var cachedLongitudeGcj: Double {
+        get { locationDisplayStore.cachedLongitudeGcj }
+        set { locationDisplayStore.cachedLongitudeGcj = newValue }
+    }
+    var cachedAddress: String {
+        get { locationDisplayStore.cachedAddress }
+        set { locationDisplayStore.cachedAddress = newValue }
+    }
+    var liveLatitudeGcj: Double {
+        get { locationDisplayStore.liveLatitudeGcj }
+        set { locationDisplayStore.liveLatitudeGcj = newValue }
+    }
+    var liveLongitudeGcj: Double {
+        get { locationDisplayStore.liveLongitudeGcj }
+        set { locationDisplayStore.liveLongitudeGcj = newValue }
+    }
+    var liveAddress: String {
+        get { locationDisplayStore.liveAddress }
+        set { locationDisplayStore.liveAddress = newValue }
+    }
+    var latestBLEControlReceipt: VehicleBLEManager.BLEControlReceipt? {
+        get { controlFeedbackStore.latestBLEControlReceipt }
+        set { controlFeedbackStore.latestBLEControlReceipt = newValue }
+    }
+    var latestControlResult: VehicleControlMQTTResult? {
+        get { controlFeedbackStore.latestControlResult }
+        set { controlFeedbackStore.latestControlResult = newValue }
+    }
+
+    var displayLatitudeGcj: Double { locationDisplayStore.displayLatitudeGcj }
+    var displayLongitudeGcj: Double { locationDisplayStore.displayLongitudeGcj }
+    var displayAddress: String { locationDisplayStore.displayAddress }
 
     var debugBLERawRSSI: Int? {
         get { bleDiagnosticsStore.debugRawRSSI }

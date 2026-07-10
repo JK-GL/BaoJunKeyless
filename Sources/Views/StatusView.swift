@@ -1,11 +1,5 @@
 import SwiftUI
 
-private struct CarLocationDisplaySnapshot: Equatable {
-    let latitude: Double
-    let longitude: Double
-    let address: String
-}
-
 struct StatusView: View {
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var settingsStore: KeylessSettingsStore
@@ -29,7 +23,6 @@ struct StatusView: View {
     @State private var pendingControlWaitID: UUID? = nil
     @State private var isEditingAmapKey = false
     @State private var amapKeyDraft = ""
-    @State private var lastSyncedCarLocationSnapshot: CarLocationDisplaySnapshot?
 
 
     private var mqttStore: MQTTVehicleStateStore? {
@@ -109,25 +102,6 @@ struct StatusView: View {
         return "未配置 / 未读取"
     }
 
-    private var displayCarLatitude: Double {
-        mqttStore?.displayLatitudeGcj ?? 0
-    }
-
-    private var displayCarLongitude: Double {
-        mqttStore?.displayLongitudeGcj ?? 0
-    }
-
-    private var displayCarAddress: String {
-        mqttStore?.displayAddress ?? ""
-    }
-
-    private var displayCarLocationSnapshot: CarLocationDisplaySnapshot {
-        CarLocationDisplaySnapshot(
-            latitude: displayCarLatitude,
-            longitude: displayCarLongitude,
-            address: displayCarAddress
-        )
-    }
 
     private var modeText: String {
         guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
@@ -224,14 +198,11 @@ struct StatusView: View {
                                 .foregroundColor(.secondary)
                         }
                     } else {
-                        RadarCardView(
+                        StatusRadarSection(
                             locationManager: locationManager,
                             bleStatus: liveBLEStatus,
                             unlockThresholdText: String(Int(settingsStore.settings.unlockThreshold)),
                             lockThresholdText: String(Int(settingsStore.settings.lockThreshold)),
-                            carLat: displayCarLatitude,
-                            carLng: displayCarLongitude,
-                            carAddress: displayCarAddress,
                             carImageURL: dashboard.vehicleImageURL
                         )
                     }
@@ -385,17 +356,14 @@ struct StatusView: View {
         .animation(PopupMotion.presentSpring, value: isVehicleInfoFloatingPresented)
         .animation(PopupMotion.presentSpring, value: isNearbyBLEDevicesFloatingPresented)
         .animation(PopupMotion.presentSpring, value: activeCommand != nil)
-        .onAppear {
-            syncCarLocationToManager(snapshot: displayCarLocationSnapshot, forceAddressRefresh: true)
-        }
-        .onChange(of: displayCarLocationSnapshot) { snapshot in
-            let lastAddress = lastSyncedCarLocationSnapshot?.address ?? ""
-            let addressChanged = snapshot.address != lastAddress
-            syncCarLocationToManager(snapshot: snapshot, forceAddressRefresh: addressChanged)
-        }
-        .onChange(of: mqttStore?.latestControlResult) { result in
-            handleMQTTControlResult(result)
-        }
+        .background(
+            Group {
+                StatusLocationSyncBridge()
+                StatusControlFeedbackBridge { result in
+                    handleMQTTControlResult(result)
+                }
+            }
+        )
     }
 
     @ViewBuilder
@@ -437,10 +405,9 @@ struct StatusView: View {
             title: "钥匙信息",
             contentScrollEnabled: false
         ) {
-            VehicleInfoMergedCard(
+            StatusVehicleInfoCardHost(
                 dashboard: vehicleStore.dashboard,
                 bleStatusText: liveBLEStatus.text,
-                latestBLEControlText: mqttStore?.latestBLEControlReceipt?.displayDetail ?? "--",
                 isEmbedded: false
             )
         } actions: {
@@ -512,12 +479,6 @@ struct StatusView: View {
         }
     }
 
-    private func syncCarLocationToManager(snapshot: CarLocationDisplaySnapshot, forceAddressRefresh: Bool) {
-        guard snapshot.latitude != 0, snapshot.longitude != 0 else { return }
-        let address = forceAddressRefresh ? (snapshot.address.isEmpty ? nil : snapshot.address) : nil
-        locationManager.setCarLocation(lat: snapshot.latitude, lng: snapshot.longitude, address: address)
-        lastSyncedCarLocationSnapshot = snapshot
-    }
 
     @ViewBuilder
     private func addressFloatingWindow() -> some View {
@@ -607,10 +568,12 @@ struct StatusView: View {
                         addressSettings.setAmapWebKey(amapKeyDraft)
                     }
                     isEditingAmapKey = false
-                    let lat = mqttStore?.displayLatitudeGcj ?? 0
-                    let lng = mqttStore?.displayLongitudeGcj ?? 0
+                    let location = VehicleLocationDisplayStore.shared
+                    let lat = location.displayLatitudeGcj
+                    let lng = location.displayLongitudeGcj
+                    let address = location.displayAddress
                     if lat != 0, lng != 0 {
-                        locationManager.setCarLocation(lat: lat, lng: lng, address: displayCarAddress.isEmpty ? nil : displayCarAddress)
+                        locationManager.setCarLocation(lat: lat, lng: lng, address: address.isEmpty ? nil : address)
                     }
                 }
 
@@ -624,8 +587,9 @@ struct StatusView: View {
                     }
                     isEditingAmapKey = false
                     let keyword = locationManager.vehicleAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let fallbackLat = mqttStore?.displayLatitudeGcj ?? 0
-                    let fallbackLng = mqttStore?.displayLongitudeGcj ?? 0
+                    let location = VehicleLocationDisplayStore.shared
+                    let fallbackLat = location.displayLatitudeGcj
+                    let fallbackLng = location.displayLongitudeGcj
                     let address = keyword.isEmpty ? (fallbackLat != 0 && fallbackLng != 0 ? "\(fallbackLat),\(fallbackLng)" : "") : keyword
                     guard !address.isEmpty else { return }
                     let encoded = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? address
@@ -668,7 +632,13 @@ struct StatusView: View {
 
         locationManager.forceRequestCurrentLocation()
         locationManager.resume()
-        syncCarLocationToManager(snapshot: displayCarLocationSnapshot, forceAddressRefresh: true)
+        let location = VehicleLocationDisplayStore.shared
+        let lat = location.displayLatitudeGcj
+        let lng = location.displayLongitudeGcj
+        let address = location.displayAddress
+        if lat != 0, lng != 0 {
+            locationManager.setCarLocation(lat: lat, lng: lng, address: address.isEmpty ? nil : address)
+        }
         mqttStore?.refreshNow()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
