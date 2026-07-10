@@ -295,18 +295,24 @@ struct StatusPillsSection: View, Equatable {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 if let onBLETap {
-                    Button(action: onBLETap) {
+                    Button {
+                        AppHaptics.light()
+                        onBLETap()
+                    } label: {
                         StatusPill(icon: bleStatus.icon, text: bleStatus.text, color: bleStatus.color)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ResponsiveButtonStyle(playsHaptic: false))
                 } else {
                     StatusPill(icon: bleStatus.icon, text: bleStatus.text, color: bleStatus.color)
                 }
                 if let onMQTTTap {
-                    Button(action: onMQTTTap) {
+                    Button {
+                        AppHaptics.light()
+                        onMQTTTap()
+                    } label: {
                         StatusPill(icon: mqttStatus.icon, text: mqttStatus.text, color: mqttStatus.color)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ResponsiveButtonStyle(playsHaptic: false))
                 } else {
                     StatusPill(icon: mqttStatus.icon, text: mqttStatus.text, color: mqttStatus.color)
                 }

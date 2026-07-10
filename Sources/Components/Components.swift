@@ -1,14 +1,35 @@
 import SwiftUI
+import UIKit
+
+enum AppHaptics {
+    static func light() {
+        let impact = UIImpactFeedbackGenerator(style: .light)
+        impact.prepare()
+        impact.impactOccurred()
+    }
+
+    static func medium() {
+        let impact = UIImpactFeedbackGenerator(style: .medium)
+        impact.prepare()
+        impact.impactOccurred()
+    }
+}
 
 struct ResponsiveButtonStyle: ButtonStyle {
-    var pressedScale: CGFloat = 0.985
-    var pressedOpacity: Double = 0.86
+    var pressedScale: CGFloat = 0.97
+    var pressedOpacity: Double = 0.8
+    var playsHaptic: Bool = true
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? pressedScale : 1)
             .opacity(configuration.isPressed ? pressedOpacity : 1)
             .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { isPressed in
+                if isPressed, playsHaptic {
+                    AppHaptics.light()
+                }
+            }
     }
 }
 
@@ -197,6 +218,7 @@ struct ChipButton: View {
                 .padding(.horizontal, 14).padding(.vertical, 7)
                 .background(Capsule().fill(isSelected ? theme.accent : Color.white.opacity(0.10)))
         }
+        .buttonStyle(ResponsiveButtonStyle())
     }
 }
 
@@ -273,7 +295,9 @@ struct SettingsActionButton: View {
             .foregroundStyle(color)
             .frame(maxWidth: .infinity).padding(.vertical, 12)
             .background(RoundedRectangle(cornerRadius: AppRadius.control).stroke(color.opacity(0.3), lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: AppRadius.control))
         }
+        .buttonStyle(ResponsiveButtonStyle())
     }
 }
 

@@ -182,7 +182,7 @@ private struct NearbyBLEDeviceRowView: View, Equatable {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Capsule().fill(AppTheme.accent))
-            .buttonStyle(.plain)
+            .buttonStyle(ResponsiveButtonStyle())
         }
         .padding(10)
         .background(

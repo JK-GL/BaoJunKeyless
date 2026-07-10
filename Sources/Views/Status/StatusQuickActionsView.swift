@@ -31,10 +31,6 @@ struct QuickActionsView: View, Equatable {
                         state: vehicleState
                     ) {
                         onCommand(action)
-                        DispatchQueue.main.async {
-                            let impact = UIImpactFeedbackGenerator(style: .light)
-                            impact.impactOccurred()
-                        }
                     }
                 }
             }
