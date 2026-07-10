@@ -147,49 +147,15 @@ extension MQTTVehicleStateStore {
     }
 
     func resetNearbyBLEDevices() {
-        bleNearbyDevicesFlushWorkItem?.cancel()
-        bleNearbyDevicesFlushWorkItem = nil
-        bleNearbyDevicesBuffer = [:]
-        bleNearbyDevices = []
+        nearbyBLEDevicesStore.reset()
     }
 
     func handleNearbyBLEDeviceDiscovered(_ device: VehicleBLEManager.NearbyDevice) {
-        bleNearbyDevicesBuffer[device.id] = device
-        guard bleNearbyDevicesFlushWorkItem == nil else { return }
-        let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.flushNearbyBLEDevices()
-        }
-        bleNearbyDevicesFlushWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+        nearbyBLEDevicesStore.ingest(device)
     }
 
     func flushNearbyBLEDevices() {
-        bleNearbyDevicesFlushWorkItem?.cancel()
-        bleNearbyDevicesFlushWorkItem = nil
-        let now = Date()
-        let devices = Array(
-            bleNearbyDevicesBuffer.values
-                .filter { now.timeIntervalSince($0.lastSeenAt) <= 30 }
-                .sorted {
-                    if $0.exactMatched != $1.exactMatched { return $0.exactMatched && !$1.exactMatched }
-                    return $0.rssi > $1.rssi
-                }
-        )
-        guard nearbyDevicesMeaningfullyChanged(from: bleNearbyDevices, to: devices) else { return }
-        bleNearbyDevices = devices
-    }
-
-    private func nearbyDevicesMeaningfullyChanged(from old: [VehicleBLEManager.NearbyDevice], to new: [VehicleBLEManager.NearbyDevice]) -> Bool {
-        guard old.count == new.count else { return true }
-        for (lhs, rhs) in zip(old, new) {
-            if lhs.id != rhs.id { return true }
-            if lhs.exactMatched != rhs.exactMatched { return true }
-            if lhs.manufacturerMac != rhs.manufacturerMac { return true }
-            if lhs.score != rhs.score { return true }
-            if abs(lhs.rssi - rhs.rssi) >= 4 { return true }
-        }
-        return false
+        nearbyBLEDevicesStore.flush()
     }
 
     func bindNearbyBLEDevice(_ device: VehicleBLEManager.NearbyDevice) {

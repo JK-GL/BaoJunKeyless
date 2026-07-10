@@ -71,7 +71,6 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     @Published var latestBleKeyInfo: [String: String] = [:]
     @Published var latestBLEControlReceipt: VehicleBLEManager.BLEControlReceipt?
     @Published var latestControlResult: VehicleControlMQTTResult?
-    @Published var bleNearbyDevices: [VehicleBLEManager.NearbyDevice] = []
     @Published var debugBLERawRSSI: Int?
     @Published var debugBLESmoothedRSSI: Int?
     @Published var debugBLELastSeenText: String = "--"
@@ -143,8 +142,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var bleDidReachConnectedThisCycle = false
     var bleCurrentCandidateName: String = "--"
     var bleCurrentCandidateRSSI: Int?
-    var bleNearbyDevicesBuffer: [String: VehicleBLEManager.NearbyDevice] = [:]
-    var bleNearbyDevicesFlushWorkItem: DispatchWorkItem?
+    let nearbyBLEDevicesStore = NearbyBLEDevicesStore()
     var cancellables = Set<AnyCancellable>()
 
     init(

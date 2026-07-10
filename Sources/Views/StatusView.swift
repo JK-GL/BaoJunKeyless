@@ -16,7 +16,6 @@ struct StatusView: View {
     @State private var isMQTTFloatingPresented = false
     @State private var isVehicleInfoFloatingPresented = false
     @State private var isNearbyBLEDevicesFloatingPresented = false
-    @State private var nearbyPopupDevices: [VehicleBLEManager.NearbyDevice] = []
     @State private var statusToastText: String?
     @State private var activeCommand: CommandAction? = nil
     @State private var pendingControlServiceCode: String? = nil
@@ -29,10 +28,6 @@ struct StatusView: View {
 
     private var mqttStore: MQTTVehicleStateStore? {
         vehicleStore as? MQTTVehicleStateStore
-    }
-
-    private var liveNearbyBLEDevices: [VehicleBLEManager.NearbyDevice] {
-        mqttStore?.bleNearbyDevices ?? []
     }
 
     private var mqttAuthStatus: StatusAuthState {
@@ -260,11 +255,6 @@ struct StatusView: View {
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                 locationManager.resume()
             }
-            .onChange(of: liveNearbyBLEDevices) { devices in
-                guard isNearbyBLEDevicesFloatingPresented else { return }
-                guard nearbyPopupDevices != devices else { return }
-                nearbyPopupDevices = devices
-            }
 
             if isAddressFloatingPresented {
                 Color.clear
@@ -429,7 +419,6 @@ struct StatusView: View {
         } actions: {
             VStack(spacing: 10) {
                 let isScanning = liveBLEStatus == .scanning || liveBLEStatus == .connecting || liveBLEStatus == .authenticating || liveBLEStatus == .authenticated
-                let nearbyCount = mqttStore?.bleNearbyDevices.count ?? 0
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                     PopupActionGridButton(
                         title: isScanning ? "停止扫描" : "开始扫描",
@@ -438,14 +427,18 @@ struct StatusView: View {
                     ) {
                         mqttStore?.toggleBLEScanning()
                     }
-                    PopupActionGridButton(
-                        title: "附近设备",
-                        icon: "dot.radiowaves.left.and.right",
-                        tint: AppTheme.orange,
-                        badgeText: nearbyCount > 0 ? "\(nearbyCount)" : nil
-                    ) {
-                        captureNearbyDevicesSnapshot()
-                        withAnimation(PopupMotion.presentSpring) { isNearbyBLEDevicesFloatingPresented = true }
+                    if let mqttStore {
+                        NearbyBLEDevicesLaunchButton(nearbyStore: mqttStore.nearbyBLEDevicesStore) {
+                            withAnimation(PopupMotion.presentSpring) { isNearbyBLEDevicesFloatingPresented = true }
+                        }
+                    } else {
+                        PopupActionGridButton(
+                            title: "附近设备",
+                            icon: "dot.radiowaves.left.and.right",
+                            tint: AppTheme.orange
+                        ) {
+                            withAnimation(PopupMotion.presentSpring) { isNearbyBLEDevicesFloatingPresented = true }
+                        }
                     }
                     PopupActionGridButton(
                         title: "拉取钥匙",
@@ -472,96 +465,24 @@ struct StatusView: View {
 
     @ViewBuilder
     private func nearbyBLEDevicesFloatingWindow() -> some View {
-        let devices = nearbyPopupDevices
-        let currentBinding = VehicleBLEBindingStore.load()
-
-        FloatingPopupCard(
-            icon: "dot.radiowaves.left.and.right",
-            iconColor: AppTheme.orange,
-            title: "附近设备",
-            subtitle: currentBinding == nil ? "可手动绑定附近候选设备；绑定后会立即检查可用性。" : "当前已有绑定；也可以改绑附近候选设备。",
-            maxWidth: 332,
-            maxContentHeight: 360
-        ) {
-            VStack(alignment: .leading, spacing: 10) {
-                if devices.isEmpty {
-                    Text("扫描中暂无可展示候选；保持扫描后会逐步出现附近设备。")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color.white.opacity(0.6))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    ForEach(devices) { device in
-                        HStack(alignment: .center, spacing: 10) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack(spacing: 6) {
-                                    Text(device.displayName)
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(.white)
-                                        .lineLimit(1)
-                                    if device.exactMatched {
-                                        Text("目标匹配")
-                                            .font(.system(size: 10, weight: .semibold))
-                                            .foregroundStyle(.black)
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 2)
-                                            .background(Capsule().fill(AppTheme.green))
-                                    }
-                                }
-                                Text(deviceDetailText(device))
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundStyle(Color.white.opacity(0.62))
-                                    .lineLimit(3)
-                            }
-                            Spacer(minLength: 8)
-                            Button("绑定") {
-                                mqttStore?.bindNearbyBLEDevice(device)
-                                withAnimation(PopupMotion.dismissEase) { isNearbyBLEDevicesFloatingPresented = false }
-                                withAnimation { statusToastText = "已绑定 \(device.displayName)，正在检查可用性" }
-                            }
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.black)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(Capsule().fill(AppTheme.accent))
-                        }
-                        .padding(10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(Color.white.opacity(0.035))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                        )
-                    }
-                }
-            }
-        } actions: {
-            VStack(spacing: 8) {
-                FloatingPopupPrimaryButton(title: "刷新列表", color: AppTheme.orange) {
-                    captureNearbyDevicesSnapshot()
-                }
-                if currentBinding != nil {
-                    FloatingPopupPrimaryButton(title: "取消绑定", color: AppTheme.red) {
-                        mqttStore?.clearBLEBindingAndRefresh()
-                        withAnimation { statusToastText = "已取消蓝牙绑定" }
-                    }
-                }
-                FloatingPopupSecondaryButton(title: "关闭", textColor: .white) {
+        if let mqttStore {
+            NearbyBLEDevicesPopupView(
+                nearbyStore: mqttStore.nearbyBLEDevicesStore,
+                currentBinding: VehicleBLEBindingStore.load(),
+                onBind: { device in
+                    mqttStore.bindNearbyBLEDevice(device)
+                    withAnimation(PopupMotion.dismissEase) { isNearbyBLEDevicesFloatingPresented = false }
+                    withAnimation { statusToastText = "已绑定 \(device.displayName)，正在检查可用性" }
+                },
+                onClearBinding: {
+                    mqttStore.clearBLEBindingAndRefresh()
+                    withAnimation { statusToastText = "已取消蓝牙绑定" }
+                },
+                onClose: {
                     withAnimation(PopupMotion.dismissEase) { isNearbyBLEDevicesFloatingPresented = false }
                 }
-            }
+            )
         }
-    }
-
-    private func captureNearbyDevicesSnapshot() {
-        nearbyPopupDevices = mqttStore?.bleNearbyDevices ?? []
-    }
-
-    private func deviceDetailText(_ device: VehicleBLEManager.NearbyDevice) -> String {
-        let mac = device.manufacturerMac ?? "--"
-        let scoreText = device.score.map(String.init) ?? "--"
-        return "rssi=\(device.rssi) · score=\(scoreText) · mac=\(mac)"
     }
 
     private func syncCarLocationToManager(forceAddressRefresh: Bool) {
@@ -875,7 +796,7 @@ struct StatusView: View {
     }
 }
 
-private struct PopupActionGridButton: View {
+struct PopupActionGridButton: View {
     let title: String
     let icon: String
     let tint: Color
