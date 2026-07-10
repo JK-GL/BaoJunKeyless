@@ -55,7 +55,7 @@ struct LogView: View {
     }
 
     private var errorCount: Int {
-        todayLogs.filter { $0.category == .error || $0.category == .warning }.count
+        vehicleLog.todayErrorCount
     }
 
     private var mqttStore: MQTTVehicleStateStore? {
@@ -176,63 +176,60 @@ struct LogView: View {
     }
 
     private var consoleWindow: some View {
-        GeometryReader { geo in
-            let windowHeight = max(geo.size.height, 280)
-            VStack(spacing: 0) {
-                if filteredLogs.isEmpty {
-                    EmptyLogStateView(filterTitle: selectedFilter.title)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .padding(16)
-                } else {
-                    ScrollViewReader { proxy in
-                        ScrollView(.vertical, showsIndicators: true) {
-                            LazyVStack(alignment: .leading, spacing: 0) {
-                                ForEach(filteredLogs) { log in
-                                    ConsoleLogRow(
-                                        log: log,
-                                        expanded: expandedIDs.contains(log.id),
-                                        onToggle: {
-                                            autoExpandAllDetails = false
-                                            if expandedIDs.contains(log.id) {
-                                                expandedIDs.remove(log.id)
-                                            } else {
-                                                expandedIDs.insert(log.id)
-                                            }
-                                            persistExpandedIDs()
+        VStack(spacing: 0) {
+            if filteredLogs.isEmpty {
+                EmptyLogStateView(filterTitle: selectedFilter.title)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(16)
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical, showsIndicators: true) {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(filteredLogs) { log in
+                                ConsoleLogRow(
+                                    log: log,
+                                    expanded: expandedIDs.contains(log.id),
+                                    onToggle: {
+                                        autoExpandAllDetails = false
+                                        if expandedIDs.contains(log.id) {
+                                            expandedIDs.remove(log.id)
+                                        } else {
+                                            expandedIDs.insert(log.id)
                                         }
-                                    )
-                                    .id(log.id)
-                                }
+                                        persistExpandedIDs()
+                                    }
+                                )
+                                .id(log.id)
                             }
-                            .padding(.vertical, 4)
                         }
-                        .onAppear {
-                            scrollToLatest(proxy: proxy, animated: false)
-                        }
-                        .onChange(of: filteredLogs.first?.id) { _ in
-                            applyExpansionMemoryForCurrentFilter()
-                            guard autoFollow else { return }
-                            scrollToLatest(proxy: proxy, animated: true)
-                        }
-                        .onChange(of: selectedFilter) { _ in
-                            applyExpansionMemoryForCurrentFilter()
-                            scrollToLatest(proxy: proxy, animated: false)
-                        }
+                        .padding(.vertical, 4)
+                    }
+                    .onAppear {
+                        scrollToLatest(proxy: proxy, animated: false)
+                    }
+                    .onChange(of: filteredLogs.first?.id) { _ in
+                        applyExpansionMemoryForCurrentFilter()
+                        guard autoFollow else { return }
+                        scrollToLatest(proxy: proxy, animated: true)
+                    }
+                    .onChange(of: selectedFilter) { _ in
+                        applyExpansionMemoryForCurrentFilter()
+                        scrollToLatest(proxy: proxy, animated: false)
                     }
                 }
             }
-            .frame(width: geo.size.width, height: windowHeight, alignment: .top)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.black.opacity(0.42))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(minHeight: 280)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.black.opacity(0.42))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private func scrollToLatest(proxy: ScrollViewProxy, animated: Bool) {

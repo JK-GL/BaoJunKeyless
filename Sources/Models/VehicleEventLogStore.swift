@@ -123,6 +123,8 @@ final class VehicleEventLogStore: ObservableObject {
     static let shared = VehicleEventLogStore()
 
     @Published private(set) var entries: [VehicleEventLogEntry] = []
+    private(set) var todayEntries: [VehicleEventLogEntry] = []
+    private(set) var todayErrorCount: Int = 0
 
     private let key = AppDefaultsKey.VehicleEventLog.entries
     private let maxEntries = 500
@@ -193,19 +195,17 @@ final class VehicleEventLogStore: ObservableObject {
         entries.removeAll { calendar.isDateInToday($0.date) }
         removedIDs.forEach { entryTokens.removeValue(forKey: $0) }
         recentEventTimestamps.removeAll()
+        rebuildTodayCaches()
         save()
     }
 
     func clearAll() {
         entries.removeAll()
+        todayEntries = []
+        todayErrorCount = 0
         recentEventTimestamps.removeAll()
         entryTokens.removeAll()
         UserDefaults.standard.removeObject(forKey: key)
-    }
-
-    var todayEntries: [VehicleEventLogEntry] {
-        let calendar = Calendar.current
-        return entries.filter { calendar.isDateInToday($0.date) }
     }
 
     func exportText(entries: [VehicleEventLogEntry]) -> String {
@@ -245,6 +245,7 @@ final class VehicleEventLogStore: ObservableObject {
             removed.forEach { entryTokens.removeValue(forKey: $0.id) }
             entries = Array(entries.prefix(maxEntries))
         }
+        rebuildTodayCaches()
         save()
     }
 
@@ -261,10 +262,25 @@ final class VehicleEventLogStore: ObservableObject {
 
     private func load() {
         guard let data = UserDefaults.standard.data(forKey: key),
-              let decoded = try? JSONDecoder().decode([VehicleEventLogEntry].self, from: data) else { return }
+              let decoded = try? JSONDecoder().decode([VehicleEventLogEntry].self, from: data) else {
+            rebuildTodayCaches()
+            return
+        }
         entries = decoded.sorted { $0.date > $1.date }
         entryTokens = Dictionary(uniqueKeysWithValues: entries.map {
             ($0.id, eventToken(category: $0.category, title: $0.title, detail: $0.detail, identity: nil))
         })
+        rebuildTodayCaches()
+    }
+
+    private func rebuildTodayCaches() {
+        let calendar = Calendar.current
+        let today = entries.filter { calendar.isDateInToday($0.date) }
+        todayEntries = today
+        todayErrorCount = today.reduce(into: 0) { count, entry in
+            if entry.category == .error || entry.category == .warning {
+                count += 1
+            }
+        }
     }
 }

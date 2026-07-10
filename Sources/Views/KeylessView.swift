@@ -7,16 +7,12 @@ enum VibrationChoice: Hashable {
 }
 
 struct KeylessView: View {
-    @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var settingsStore: KeylessSettingsStore
     @EnvironmentObject var customStore: CustomVibrationStore
-    @EnvironmentObject var vehicleLog: VehicleEventLogStore
     @EnvironmentObject var vehicleStore: VehicleStateStore
 
     @State private var showUnlockRecorder = false
-    @State private var keylessPhoneNearbySince: Date? = nil
-    @State private var keylessPhoneFarAwaySince: Date? = nil
     @State private var showLockRecorder = false
 
     private var mqttStore: MQTTVehicleStateStore? {
@@ -50,12 +46,7 @@ struct KeylessView: View {
                     onSimulateUnlock: simulateUnlockDecision,
                     onSimulateLock: simulateLockDecision
                 )
-                KeylessRecentActivitySection(
-                    latestUnlockText: latestKeylessUnlockText,
-                    latestLockText: latestKeylessLockText,
-                    latestFailureText: latestKeylessFailureText,
-                    latestRejectText: latestKeylessRejectText
-                )
+                KeylessRecentActivitySection()
                 if settingsStore.settings.keylessEnabled {
                     UnlockSettingsSection(
                         showRecorder: $showUnlockRecorder,
@@ -80,40 +71,15 @@ struct KeylessView: View {
             VibrationRecorderView { pattern in
                 customStore.add(pattern)
                 settingsStore.setUnlockVibChoice(.custom(pattern.id))
-                vehicleLog.add(.keyless, "录制解锁震动", detail: pattern.name)
+                VehicleEventLogStore.shared.add(.keyless, "录制解锁震动", detail: pattern.name)
             }
         }
         .sheet(isPresented: $showLockRecorder) {
             VibrationRecorderView { pattern in
                 customStore.add(pattern)
                 settingsStore.setLockVibChoice(.custom(pattern.id))
-                vehicleLog.add(.keyless, "录制上锁震动", detail: pattern.name)
+                VehicleEventLogStore.shared.add(.keyless, "录制上锁震动", detail: pattern.name)
             }
-        }
-        .onAppear(perform: syncKeylessPhoneDistanceState)
-        .onChange(of: vehicleStore.state.phoneNearby) { _ in
-            syncKeylessPhoneDistanceState()
-        }
-        .onChange(of: vehicleStore.state.phoneFarAway) { _ in
-            syncKeylessPhoneDistanceState()
-        }
-    }
-
-    private func syncKeylessPhoneDistanceState() {
-        if vehicleStore.state.phoneNearby {
-            if keylessPhoneNearbySince == nil {
-                keylessPhoneNearbySince = Date()
-            }
-        } else {
-            keylessPhoneNearbySince = nil
-        }
-
-        if vehicleStore.state.phoneFarAway {
-            if keylessPhoneFarAwaySince == nil {
-                keylessPhoneFarAwaySince = Date()
-            }
-        } else {
-            keylessPhoneFarAwaySince = nil
         }
     }
 
@@ -134,15 +100,23 @@ struct KeylessView: View {
     }
 
     private var currentUnlockDecision: KeylessDecision {
-        KeylessDecisionEngine.evaluateUnlockWithDelay(state: vehicleStore.state, settings: settingsStore.settings, phoneNearbySince: keylessPhoneNearbySince)
+        KeylessDecisionEngine.evaluateUnlockWithDelay(
+            state: vehicleStore.state,
+            settings: settingsStore.settings,
+            phoneNearbySince: mqttStore?.phoneNearbySince
+        )
     }
 
     private var currentLockDecision: KeylessDecision {
-        KeylessDecisionEngine.evaluateLockWithDelay(state: vehicleStore.state, settings: settingsStore.settings, phoneFarAwaySince: keylessPhoneFarAwaySince)
+        KeylessDecisionEngine.evaluateLockWithDelay(
+            state: vehicleStore.state,
+            settings: settingsStore.settings,
+            phoneFarAwaySince: mqttStore?.phoneFarAwaySince
+        )
     }
 
     private var lockDelayRemainingText: String {
-        guard let farSince = keylessPhoneFarAwaySince else { return "--" }
+        guard let farSince = mqttStore?.phoneFarAwaySince else { return "--" }
         let delay = max(settingsStore.settings.lockDelay, 0)
         guard delay > 0 else { return "0s" }
         let elapsed = Date().timeIntervalSince(farSince)
@@ -153,46 +127,13 @@ struct KeylessView: View {
     private func simulateUnlockDecision() {
         let decision = currentUnlockDecision
         let detail = KeylessDecisionEngine.logDetail(decision: decision, state: vehicleStore.state, settings: settingsStore.settings)
-        vehicleLog.add(.keyless, "解锁试算", detail: detail)
+        VehicleEventLogStore.shared.add(.keyless, "解锁试算", detail: detail)
     }
 
     private func simulateLockDecision() {
         let decision = currentLockDecision
         let detail = KeylessDecisionEngine.logDetail(decision: decision, state: vehicleStore.state, settings: settingsStore.settings)
-        vehicleLog.add(.keyless, "上锁试算", detail: detail)
-    }
-
-    private var latestKeylessUnlockText: String {
-        latestDetail(titles: ["无感命令结果", "无感命令发送"], keyword: "解锁")
-    }
-
-    private var latestKeylessLockText: String {
-        latestDetail(titles: ["无感命令结果", "无感命令发送"], keyword: "上锁")
-    }
-
-    private var latestKeylessFailureText: String {
-        latestDetail(categories: [.error], titles: ["无感命令结果"], keyword: "无感")
-    }
-
-    private var latestKeylessRejectText: String {
-        latestDetail(titles: ["解锁拒绝", "上锁拒绝"])
-    }
-
-    private func latestDetail(
-        categories: Set<VehicleEventLogCategory>? = nil,
-        titles: [String],
-        keyword: String? = nil
-    ) -> String {
-        for entry in vehicleLog.entries {
-            if let categories, !categories.contains(entry.category) { continue }
-            if !titles.contains(entry.title) { continue }
-            if let keyword {
-                let haystack = entry.detail + " " + entry.title
-                if !haystack.localizedCaseInsensitiveContains(keyword) { continue }
-            }
-            return entry.detail.isEmpty ? entry.timeText : "\(entry.timeText) · \(entry.detail)"
-        }
-        return "--"
+        VehicleEventLogStore.shared.add(.keyless, "上锁试算", detail: detail)
     }
 
     private func setMode(_ mode: KeylessControlMode) {
@@ -206,7 +147,7 @@ struct KeylessView: View {
         case .smart: text = "智能切换"
         case .manual: text = "前台手动"
         }
-        vehicleLog.add(.keyless, "切换无感模式", detail: text)
+        VehicleEventLogStore.shared.add(.keyless, "切换无感模式", detail: text)
     }
 
     private var unlockVibChoiceBinding: Binding<VibrationChoice> {
@@ -360,10 +301,7 @@ private struct KeylessRealtimeStatusSection: View {
 }
 
 private struct KeylessRecentActivitySection: View {
-    let latestUnlockText: String
-    let latestLockText: String
-    let latestFailureText: String
-    let latestRejectText: String
+    @ObservedObject private var vehicleLog = VehicleEventLogStore.shared
 
     var body: some View {
         CardView(title: "无感历史状态", icon: "clock.arrow.circlepath", iconColor: AppTheme.purple) {
@@ -380,5 +318,38 @@ private struct KeylessRecentActivitySection: View {
                 rowVerticalPadding: 8
             )
         }
+    }
+
+    private var latestUnlockText: String {
+        latestDetail(titles: ["无感命令结果", "无感命令发送"], keyword: "解锁")
+    }
+
+    private var latestLockText: String {
+        latestDetail(titles: ["无感命令结果", "无感命令发送"], keyword: "上锁")
+    }
+
+    private var latestFailureText: String {
+        latestDetail(categories: [.error], titles: ["无感命令结果"], keyword: "无感")
+    }
+
+    private var latestRejectText: String {
+        latestDetail(titles: ["解锁拒绝", "上锁拒绝"])
+    }
+
+    private func latestDetail(
+        categories: Set<VehicleEventLogCategory>? = nil,
+        titles: [String],
+        keyword: String? = nil
+    ) -> String {
+        for entry in vehicleLog.todayEntries {
+            if let categories, !categories.contains(entry.category) { continue }
+            if !titles.contains(entry.title) { continue }
+            if let keyword {
+                let haystack = entry.detail + " " + entry.title
+                if !haystack.localizedCaseInsensitiveContains(keyword) { continue }
+            }
+            return entry.detail.isEmpty ? entry.timeText : "\(entry.timeText) · \(entry.detail)"
+        }
+        return "--"
     }
 }
