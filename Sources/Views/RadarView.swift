@@ -11,7 +11,6 @@ final class RadarUIView: UIView {
 
     var relativeAngle: Double = 0
     var distance: Double = 0
-    var bleConnected: Bool = false
 
     private let backgroundImageView = UIImageView()
     private let carImageView = UIImageView()
@@ -416,7 +415,9 @@ final class RadarUIView: UIView {
     private func loadCarImage() {
         guard !AppDiagnosticsSettings.shouldUseSFRadarCarIcon else { return }
         let key = normalizedCarImageCacheKey
-        CrashLogger.shared.mark("Radar", "loadCarImage:start", details: key)
+        if AppDiagnosticsSettings.isDiagnosticsEnabled {
+            CrashLogger.shared.mark("Radar", "loadCarImage:start", details: key)
+        }
         if Self.sharedCarImageLoadInFlight.contains(key) { return }
         Self.sharedCarImageLoadInFlight.insert(key)
 
@@ -466,7 +467,6 @@ final class RadarUIView: UIView {
 // MARK: - SwiftUI 封装
 struct RadarRepresentable: UIViewRepresentable {
     let locationManager: LocationManager
-    var bleConnected: Bool = false
     var carImageURL: String = ""
 
     func makeCoordinator() -> Coordinator {
@@ -475,21 +475,28 @@ struct RadarRepresentable: UIViewRepresentable {
 
     final class Coordinator {
         weak var locationManager: LocationManager?
+        weak var boundView: RadarUIView?
 
         init(locationManager: LocationManager) {
             self.locationManager = locationManager
+        }
+
+        func bindIfNeeded(to view: RadarUIView) {
+            guard boundView !== view else { return }
+            boundView = view
+            locationManager?.radarPositionHandler = { [weak view] distance, relativeAngle in
+                guard let view else { return }
+                view.distance = distance
+                view.relativeAngle = relativeAngle
+                view.updatePosition()
+            }
         }
     }
 
     func makeUIView(context: Context) -> RadarUIView {
         let view = RadarUIView(frame: .zero)
         view.carImageURLString = carImageURL
-        locationManager.radarPositionHandler = { [weak view] distance, relativeAngle in
-            guard let view else { return }
-            view.distance = distance
-            view.relativeAngle = relativeAngle
-            view.updatePosition()
-        }
+        context.coordinator.bindIfNeeded(to: view)
         view.distance = locationManager.radarDistance
         view.relativeAngle = locationManager.radarRelativeAngle
         view.updatePosition(force: true)
@@ -497,37 +504,50 @@ struct RadarRepresentable: UIViewRepresentable {
     }
 
     func updateUIView(_ view: RadarUIView, context: Context) {
-        view.bleConnected = bleConnected
+        context.coordinator.bindIfNeeded(to: view)
+        let previousImageURL = view.carImageURLString
+        let previousDistance = view.distance
+        let previousAngle = view.relativeAngle
+
         view.carImageURLString = carImageURL
-        locationManager.radarPositionHandler = { [weak view] distance, relativeAngle in
-            guard let view else { return }
-            view.distance = distance
-            view.relativeAngle = relativeAngle
-            view.updatePosition()
+        view.distance = locationManager.radarDistance
+        view.relativeAngle = locationManager.radarRelativeAngle
+
+        let shouldForce = previousImageURL != carImageURL
+        let shouldUpdatePosition = shouldForce
+            || abs(previousDistance - view.distance) >= 0.1
+            || abs(previousAngle - view.relativeAngle) >= 0.1
+
+        if shouldUpdatePosition {
+            view.updatePosition(force: shouldForce)
         }
-        view.updatePosition()
     }
 
     static func dismantleUIView(_ uiView: RadarUIView, coordinator: Coordinator) {
         coordinator.locationManager?.radarPositionHandler = nil
+        coordinator.boundView = nil
         uiView.releaseHeavyResources()
     }
 }
 
 // MARK: - Radar Card（文字全部用 SwiftUI Text）
 struct RadarCardView: View {
-    @EnvironmentObject var theme: ThemeManager
     @ObservedObject var locationManager: LocationManager
+    private let displayCacheStore = VehicleDisplayCacheStore()
     var bleConnected: Bool = false
     var carLat: Double = 0
     var carLng: Double = 0
     var carAddress: String = ""
     var carImageURL: String = ""
 
+    private var cachedDistanceMeters: Double {
+        displayCacheStore.loadSnapshot().distanceMeters
+    }
+
     var body: some View {
         VStack(spacing: 12) {
             ZStack {
-                RadarRepresentable(locationManager: locationManager, bleConnected: bleConnected, carImageURL: carImageURL)
+                RadarRepresentable(locationManager: locationManager, carImageURL: carImageURL)
                     .frame(width: 280, height: 280)
 
                 if bleConnected {
@@ -558,8 +578,8 @@ struct RadarCardView: View {
                     Text(String(format: "距车辆 %.0f 米", locationManager.distance))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.5))
-                } else if VehicleDisplayCacheStore().loadSnapshot().distanceMeters > 0 {
-                    Text(String(format: "距车辆 %.0f 米", VehicleDisplayCacheStore().loadSnapshot().distanceMeters))
+                } else if cachedDistanceMeters > 0 {
+                    Text(String(format: "距车辆 %.0f 米", cachedDistanceMeters))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.42))
                 } else if carLat != 0 && carLng != 0 {
