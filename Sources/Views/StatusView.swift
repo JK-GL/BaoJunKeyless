@@ -149,7 +149,7 @@ struct StatusView: View {
                     .padding(.bottom, 88)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
                             withAnimation { statusToastText = nil }
                         }
                     }
@@ -213,6 +213,7 @@ struct StatusView: View {
     }
 
     private func handleRefresh() {
+        AppHaptics.light()
         withAnimation(PopupMotion.presentSpring) {
             refreshScale = 1.3
         }
@@ -260,6 +261,11 @@ struct StatusView: View {
         let commandText = matched ? "command=\(pendingControlTitle ?? "--"), " : ""
         VehicleEventLogStore.shared.add(result.isSuccess ? .action : .error, title, detail: "\(commandText)\(result.displayDetail)\(elapsedText)")
         if matched {
+            withAnimation {
+                statusToastText = result.isSuccess
+                    ? "\(pendingControlTitle ?? "命令") 回执成功"
+                    : "\(pendingControlTitle ?? "命令") 回执失败"
+            }
             pendingControlServiceCode = nil
             pendingControlTitle = nil
             pendingControlSentAt = nil
@@ -381,13 +387,31 @@ struct StatusView: View {
                         pendingControlSentAt = Date()
                         beginControlReceiptWaitIfNeeded()
                     }
-                case .failed(_), .timedOut(_):
+                    withAnimation {
+                        statusToastText = willUseBLE
+                            ? "\(command.title) 已通过 BLE 发送"
+                            : "\(command.title) 已发送，等待回执"
+                    }
+                case .failed(let reason):
                     pendingControlServiceCode = nil
                     pendingControlTitle = nil
                     pendingControlSentAt = nil
                     pendingControlWaitID = nil
+                    withAnimation {
+                        statusToastText = "\(command.title) 失败：\(reason)"
+                    }
+                case .timedOut(let reason):
+                    pendingControlServiceCode = nil
+                    pendingControlTitle = nil
+                    pendingControlSentAt = nil
+                    pendingControlWaitID = nil
+                    withAnimation {
+                        statusToastText = "\(command.title) 超时：\(reason)"
+                    }
                 case .feedbackOnly, .planned:
-                    break
+                    withAnimation {
+                        statusToastText = patchedResult.userMessage
+                    }
                 }
                 completion(patchedResult)
             }

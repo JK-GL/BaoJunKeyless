@@ -253,7 +253,9 @@ struct StatusVehicleInfoFloatingHost: View {
                         icon: isScanning ? "stop.circle" : "play.circle",
                         tint: isScanning ? AppTheme.red : AppTheme.accent
                     ) {
+                        let wasActive = isScanning
                         mqttStore?.toggleBLEScanning()
+                        onToast?(wasActive ? "已停止 BLE 扫描" : "已开始 BLE 扫描")
                     }
                     if let nearbyStore = mqttStore?.nearbyBLEDevicesStore {
                         NearbyBLEDevicesLaunchButton(nearbyStore: nearbyStore, action: onOpenNearby)

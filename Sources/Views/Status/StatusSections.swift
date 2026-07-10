@@ -233,14 +233,18 @@ struct StatusTopBarSection: View, Equatable {
 
             Spacer()
 
-            Button(action: onRefresh) {
+            Button {
+                AppHaptics.light()
+                onRefresh()
+            } label: {
                 Image(systemName: isRefreshing ? "hourglass" : "arrow.triangle.2.circlepath")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.52))
                     .frame(width: 20, height: 20)
                     .scaleEffect(refreshScale)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(ResponsiveButtonStyle(playsHaptic: false))
         }
         .padding(.horizontal, 20)
     }
