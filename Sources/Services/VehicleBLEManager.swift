@@ -454,9 +454,9 @@ final class VehicleBLEManager: NSObject {
         }
         let peripherals = central.retrievePeripherals(withIdentifiers: [uuid])
         guard let peripheral = peripherals.first else {
-            // 系统已找不到该 UUID：清脏缓存后宽扫，避免每轮空等
-            VehicleBLEBindingStore.clear()
-            onLog?("BLE", "bound peripheral not found id=\(binding.shortIdentifier), cleared binding, fallback wide scan")
+            // 系统暂时找不到旧 UUID：保留绑定，回退宽扫；
+            // 若扫到目标 mac 并鉴权成功，会自动刷新为新 UUID。
+            onLog?("BLE", "bound peripheral not found id=\(binding.shortIdentifier), keep binding, fallback wide scan")
             return false
         }
         discoveredPeripheral = peripheral
@@ -944,9 +944,8 @@ final class VehicleBLEManager: NSObject {
             state = .authenticated
             onLog?("BLE", "E300 auth success random1=\(remoteRandom1Hex) random2=\(localRandom2Hex) source=\(connectionSourceText)")
             onLog?("BLE", "runtimeControlAes128Key ready len=\(runtimeControlAes128KeyHex?.count ?? 0)")
-            if let keyId = parseUInt32(config.keyId) {
-                persistBindingAfterAuthSuccess(config: config, keyId: keyId)
-            }
+            // 任意路径鉴权成功都刷新绑定：识别到目标车后自动自愈 UUID
+            persistBindingAfterAuthSuccess(config: config)
             startRSSILoop()
             return
         }
@@ -978,18 +977,26 @@ final class VehicleBLEManager: NSObject {
         }
     }
 
-    private func persistBindingAfterAuthSuccess(config: SessionConfig, keyId: UInt32) {
+    private func persistBindingAfterAuthSuccess(config: SessionConfig) {
         guard let peripheral = discoveredPeripheral else { return }
+        let old = VehicleBLEBindingStore.load()
+        // keyId 保持与会话配置同一原始格式，避免保存成 %08X 后 loadMatching 对不上
         let binding = VehicleBLEBinding(
             peripheralIdentifier: peripheral.identifier.uuidString,
-            peripheralName: peripheral.name ?? "--",
-            keyId: String(format: "%08X", keyId),
+            peripheralName: peripheral.name ?? old?.peripheralName ?? "--",
+            keyId: config.keyId,
             bleMacSuffix: normalizedMacSuffixText(config.bleMac),
-            boundAt: VehicleBLEBindingStore.load()?.boundAt ?? Date(),
+            boundAt: old?.boundAt ?? Date(),
             lastAuthAt: Date()
         )
         VehicleBLEBindingStore.save(binding)
-        onLog?("BLE", "bound peripheral saved \(binding.displaySummary)")
+        if let old, old.peripheralIdentifier != binding.peripheralIdentifier {
+            onLog?("BLE", "bound peripheral refreshed old=\(old.shortIdentifier) new=\(binding.shortIdentifier) source=\(connectionSourceText) \(binding.displaySummary)")
+        } else if old == nil {
+            onLog?("BLE", "bound peripheral saved \(binding.displaySummary) source=\(connectionSourceText)")
+        } else {
+            onLog?("BLE", "bound peripheral updated \(binding.displaySummary) source=\(connectionSourceText)")
+        }
     }
 
     private func normalizedMacSuffixText(_ mac: String) -> String {
