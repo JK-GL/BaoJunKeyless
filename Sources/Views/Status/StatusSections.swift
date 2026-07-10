@@ -180,12 +180,28 @@ enum StatusGearState {
     }
 }
 
-struct StatusTopBarSection: View {
+struct StatusTopBarSection: View, Equatable {
     let vehicleName: String
     let isRefreshing: Bool
     let refreshScale: CGFloat
     let authStatus: StatusAuthState
     let onRefresh: () -> Void
+
+    static func == (lhs: StatusTopBarSection, rhs: StatusTopBarSection) -> Bool {
+        lhs.vehicleName == rhs.vehicleName
+            && lhs.isRefreshing == rhs.isRefreshing
+            && lhs.refreshScale == rhs.refreshScale
+            && lhs.authStatusText == rhs.authStatusText
+    }
+
+    private var authStatusText: String {
+        switch authStatus {
+        case .valid:
+            return "valid"
+        case .expired(let message):
+            return "expired|\(message)"
+        }
+    }
 
     init(
         vehicleName: String = "车辆状态",
@@ -242,7 +258,7 @@ private struct AuthStatusBadge: View {
     }
 }
 
-struct StatusPillsSection: View {
+struct StatusPillsSection: View, Equatable {
     let modeIcon: String
     let modeText: String
     let modeColor: Color
@@ -252,6 +268,15 @@ struct StatusPillsSection: View {
     var gearState: StatusGearState = .park
     var onBLETap: (() -> Void)? = nil
     var onMQTTTap: (() -> Void)? = nil
+
+    static func == (lhs: StatusPillsSection, rhs: StatusPillsSection) -> Bool {
+        lhs.modeIcon == rhs.modeIcon
+            && lhs.modeText == rhs.modeText
+            && lhs.bleStatus == rhs.bleStatus
+            && lhs.mqttStatus == rhs.mqttStatus
+            && lhs.physicalKeyState.text == rhs.physicalKeyState.text
+            && lhs.gearState.text == rhs.gearState.text
+    }
 
     private var compactPhysicalKeyText: String {
         switch physicalKeyState {

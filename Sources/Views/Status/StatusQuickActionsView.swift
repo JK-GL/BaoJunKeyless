@@ -1,8 +1,15 @@
 import SwiftUI
 
-struct QuickActionsView: View {
+struct QuickActionsView: View, Equatable {
     let onCommand: (CommandAction) -> Void
     let vehicleState: VehicleState
+
+    static func == (lhs: QuickActionsView, rhs: QuickActionsView) -> Bool {
+        lhs.vehicleState.locked == rhs.vehicleState.locked
+            && lhs.vehicleState.power == rhs.vehicleState.power
+            && lhs.vehicleState.acOn == rhs.vehicleState.acOn
+            && lhs.vehicleState.windowsClosed == rhs.vehicleState.windowsClosed
+    }
 
     private let gridColumns = [
         GridItem(.flexible(), spacing: AppSpacing.compact),
