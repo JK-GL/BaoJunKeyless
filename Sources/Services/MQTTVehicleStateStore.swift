@@ -67,8 +67,15 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         get { bleKeyInfoStore.latestBleKeyInfo }
         set { bleKeyInfoStore.latestBleKeyInfo = newValue }
     }
-    @Published var tokenSourcePath: String = ""
-    @Published var tokenSourceLabel: String = ""
+    let tokenSourceStore = VehicleTokenSourceStore.shared
+    var tokenSourcePath: String {
+        get { tokenSourceStore.path }
+        set { tokenSourceStore.path = newValue }
+    }
+    var tokenSourceLabel: String {
+        get { tokenSourceStore.label }
+        set { tokenSourceStore.label = newValue }
+    }
 
     var cachedLatitudeGcj: Double {
         get { locationDisplayStore.cachedLatitudeGcj }
@@ -291,8 +298,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     func updateTokenSource(label: String, path: String = "") {
         let normalizedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        tokenSourceLabel = normalizedLabel
-        tokenSourcePath = normalizedPath
+        tokenSourceStore.update(label: normalizedLabel, path: normalizedPath)
         credentialsStore.tokenSourceLabel = normalizedLabel
         credentialsStore.tokenSourcePath = normalizedPath
     }
@@ -374,8 +380,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var mqttPasswordMasked: String { maskHex(credentials?.password, visiblePrefix: 4, visibleSuffix: 4) }
     var mqttTopics: [String] { credentials?.topics ?? [] }
     var tokenSource: VehicleTokenSource? {
-        let label = tokenSourceLabel.trimmingCharacters(in: .whitespacesAndNewlines)
-        let path = tokenSourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let label = tokenSourceStore.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let path = tokenSourceStore.path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !label.isEmpty || !path.isEmpty else { return nil }
         return VehicleTokenSource(label: label.isEmpty ? "已配置凭据" : label, path: path)
     }

@@ -165,7 +165,6 @@ struct KeylessView: View {
 }
 
 private struct KeylessBLEDiagnosticsSection: View {
-    @EnvironmentObject var vehicleLog: VehicleEventLogStore
     let store: MQTTVehicleStateStore
     @ObservedObject var diagnostics: BLEDiagnosticsStore
     @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
@@ -210,7 +209,7 @@ private struct KeylessBLEDiagnosticsSection: View {
                         VehicleBLEBindingStore.clear()
                         binding = nil
                         store.ensureBLESession(forceRestart: true, optimisticScanning: true)
-                        vehicleLog.add(.action, "清除蓝牙绑定", detail: "用户在无感页手动清除")
+                        VehicleEventLogStore.shared.add(.action, "清除蓝牙绑定", detail: "用户在无感页手动清除")
                     }
                 }
             }

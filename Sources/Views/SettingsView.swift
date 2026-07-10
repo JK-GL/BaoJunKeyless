@@ -9,7 +9,6 @@ struct SettingsView: View {
     @EnvironmentObject var customVibrationStore: CustomVibrationStore
     @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
     @EnvironmentObject var vehicleStore: VehicleStateStore
-    @EnvironmentObject var vehicleLog: VehicleEventLogStore
     @EnvironmentObject var addressSettings: AddressServiceSettings
     @AppStorage(AppDiagnosticsSettings.vehicleControlRouteModeKey) private var vehicleControlRouteModeRaw = VehicleControlRouteMode.auto.rawValue
 
@@ -200,7 +199,7 @@ struct SettingsView: View {
         AppDiagnosticsSettings.resetHiddenDiagnosticsToggles()
         VehicleBLEBindingStore.clear()
         addressSettings.reset()
-        vehicleLog.add(.system, "重置全部设置", detail: "错误日志保留")
+        VehicleEventLogStore.shared.add(.system, "重置全部设置", detail: "错误日志保留")
         CrashLogger.shared.logCurrentStatus(tag: "reset")
         withAnimation { toastText = "设置已重置" }
     }

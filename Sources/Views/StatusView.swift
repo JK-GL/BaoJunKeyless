@@ -3,7 +3,6 @@ import SwiftUI
 struct StatusView: View {
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var settingsStore: KeylessSettingsStore
-    @EnvironmentObject var addressSettings: AddressServiceSettings
     @EnvironmentObject var locationManager: LocationManager
     @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
@@ -21,8 +20,6 @@ struct StatusView: View {
     @State private var pendingControlTitle: String? = nil
     @State private var pendingControlSentAt: Date? = nil
     @State private var pendingControlWaitID: UUID? = nil
-    @State private var isEditingAmapKey = false
-    @State private var amapKeyDraft = ""
 
 
     private var mqttStore: MQTTVehicleStateStore? {
@@ -55,17 +52,6 @@ struct StatusView: View {
         mqttStore?.mqttTopics ?? []
     }
 
-    private var mqttTokenSourceText: String {
-        if let source = mqttStore?.tokenSource {
-            let label = source.label.trimmingCharacters(in: .whitespacesAndNewlines)
-            let path = source.path.trimmingCharacters(in: .whitespacesAndNewlines)
-            if label.isEmpty && path.isEmpty { return "未配置 / 未读取" }
-            if path.isEmpty { return label }
-            if label.isEmpty { return path }
-            return "\(label)\n\(path)"
-        }
-        return "未配置 / 未读取"
-    }
 
 
     private var modeText: String {
@@ -276,7 +262,7 @@ struct StatusView: View {
 
             // 快捷操作居中弹窗
             if let command = activeCommand {
-                CommandConfirmPopup(
+                StatusCommandConfirmHost(
                     action: command,
                     vehicleState: vehicleStore.state,
                     isPresented: Binding(
@@ -286,10 +272,11 @@ struct StatusView: View {
                                 activeCommand = nil
                             }
                         }
-                    )
-                ) { cmd, temp, duration, completion in
-                    handleQuickActionConfirm(action: cmd, temperature: temp, durationMinutes: duration, completion: completion)
-                }
+                    ),
+                    onConfirm: { cmd, temp, duration, completion in
+                        handleQuickActionConfirm(action: cmd, temperature: temp, durationMinutes: duration, completion: completion)
+                    }
+                )
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .transition(PopupMotion.transition)
                 .zIndex(20)
@@ -308,8 +295,6 @@ struct StatusView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .openAddressFloatingWindow)) { _ in
-            isEditingAmapKey = false
-            amapKeyDraft = addressSettings.amapWebKey
             withAnimation(PopupMotion.presentSpring) { isAddressFloatingPresented = true }
         }
         .animation(PopupMotion.presentSpring, value: isAddressFloatingPresented)
@@ -334,7 +319,6 @@ struct StatusView: View {
             clientId: mqttDisplayClientId,
             username: mqttDisplayUsername,
             password: mqttDisplayPassword,
-            tokenSource: mqttTokenSourceText,
             topics: mqttTopicRows,
             onReconnect: { mqttStore?.reconnect() },
             onClose: { withAnimation(PopupMotion.dismissEase) { isMQTTFloatingPresented = false } }
@@ -382,142 +366,9 @@ struct StatusView: View {
 
     @ViewBuilder
     private func addressFloatingWindow() -> some View {
-        FloatingPopupCard(
-            icon: "mappin.and.ellipse",
-            iconColor: AppTheme.accent,
-            title: "车辆地址"
-        ) {
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "mappin.and.ellipse")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(AppTheme.accent)
-                        Text("当前定位")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color.white.opacity(0.45))
-                        Spacer()
-                    }
-
-                    Text(locationManager.vehicleAddress)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .lineLimit(5)
-                        .minimumScaleFactor(0.85)
-                }
-                .padding(12)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color.white.opacity(0.04))
-                )
-
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "key.fill")
-                            .foregroundStyle(AppTheme.orange)
-                            .frame(width: 20)
-                        Text(addressSettings.hasAmapWebKey ? "高德 Key 已填写" : "填写后自动使用高德 API")
-                            .font(.subheadline)
-                            .foregroundStyle(.white)
-                        Spacer()
-                    }
-
-                    TextField("填写高德 Web 服务 Key", text: Binding(
-                        get: { isEditingAmapKey ? amapKeyDraft : maskedAmapKey },
-                        set: { amapKeyDraft = $0 }
-                    ))
-                    .textInputAutocapitalization(.never)
-                    .disableAutocorrection(true)
-                    .padding(10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.white.opacity(0.06))
-                    )
-                    .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.15)) {
-                            isEditingAmapKey = true
-                            amapKeyDraft = addressSettings.amapWebKey
-                        }
-                    }
-
-                    HStack(spacing: 10) {
-                        Spacer()
-                        Button {
-                            withAnimation(.easeOut(duration: 0.15)) {
-                                addressSettings.clearAmapWebKey()
-                                amapKeyDraft = ""
-                                isEditingAmapKey = false
-                            }
-                        } label: {
-                            Text("清除高德 Key")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.red.opacity(0.9))
-                        }
-                    }
-                }
-            }
-        } actions: {
-            VStack(spacing: 8) {
-                FloatingPopupPrimaryButton(
-                    title: "确定",
-                    color: AppTheme.accent
-                ) {
-                    withAnimation(PopupMotion.dismissEase) { isAddressFloatingPresented = false }
-                    if isEditingAmapKey {
-                        addressSettings.setAmapWebKey(amapKeyDraft)
-                    }
-                    isEditingAmapKey = false
-                    let location = VehicleLocationDisplayStore.shared
-                    let lat = location.displayLatitudeGcj
-                    let lng = location.displayLongitudeGcj
-                    let address = location.displayAddress
-                    if lat != 0, lng != 0 {
-                        locationManager.setCarLocation(lat: lat, lng: lng, address: address.isEmpty ? nil : address)
-                    }
-                }
-
-                FloatingPopupSecondaryButton(
-                    title: "高德",
-                    textColor: .white
-                ) {
-                    withAnimation(PopupMotion.dismissEase) { isAddressFloatingPresented = false }
-                    if isEditingAmapKey {
-                        addressSettings.setAmapWebKey(amapKeyDraft)
-                    }
-                    isEditingAmapKey = false
-                    let keyword = locationManager.vehicleAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let location = VehicleLocationDisplayStore.shared
-                    let fallbackLat = location.displayLatitudeGcj
-                    let fallbackLng = location.displayLongitudeGcj
-                    let address = keyword.isEmpty ? (fallbackLat != 0 && fallbackLng != 0 ? "\(fallbackLat),\(fallbackLng)" : "") : keyword
-                    guard !address.isEmpty else { return }
-                    let encoded = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? address
-                    if let url = URL(string: "amap://search?keyword=\(encoded)"), UIApplication.shared.canOpenURL(url) {
-                        UIApplication.shared.open(url)
-                    }
-                }
-
-                FloatingPopupSecondaryButton(
-                    title: "关闭",
-                    textColor: .white
-                ) {
-                    withAnimation(PopupMotion.dismissEase) { isAddressFloatingPresented = false }
-                }
-            }
-        }
+        StatusAddressFloatingHost(isPresented: $isAddressFloatingPresented)
     }
 
-    private var maskedAmapKey: String {
-        let key = addressSettings.amapWebKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { return "" }
-        if key.count <= 8 {
-            return String(repeating: "•", count: 6)
-        }
-        let prefix = key.prefix(4)
-        let suffix = key.suffix(4)
-        return "\(prefix)******\(suffix)"
-    }
 
     private func handleRefresh() {
         withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {

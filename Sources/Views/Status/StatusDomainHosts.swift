@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct CarLocationDisplaySnapshot: Equatable {
     let latitude: Double
@@ -141,14 +142,14 @@ struct StatusVehicleInfoCardHost: View {
     }
 }
 
-/// MQTT 信息浮窗：只观察连接状态 MQTT 文案，其他显示值由父层传入快照。
+/// MQTT 信息浮窗：只观察连接状态 MQTT 文案 + token 来源。
 struct StatusMQTTFloatingHost: View {
     @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
+    @ObservedObject private var tokenSourceStore = VehicleTokenSourceStore.shared
     let broker: String
     let clientId: String
     let username: String
     let password: String
-    let tokenSource: String
     let topics: [String]
     let onReconnect: () -> Void
     let onClose: () -> Void
@@ -168,7 +169,7 @@ struct StatusMQTTFloatingHost: View {
                 clientId: clientId,
                 username: username,
                 password: password,
-                tokenSource: tokenSource,
+                tokenSource: tokenSourceStore.displayText,
                 topics: topics
             )
         } actions: {
@@ -244,3 +245,172 @@ struct StatusVehicleInfoFloatingHost: View {
         }
     }
 }
+
+/// 地址弹窗：独立宿主，避免地址编辑状态和地址设置牵连 StatusView 根树。
+struct StatusAddressFloatingHost: View {
+    @EnvironmentObject var addressSettings: AddressServiceSettings
+    @EnvironmentObject var locationManager: LocationManager
+    @Binding var isPresented: Bool
+    @State private var isEditingAmapKey = false
+    @State private var amapKeyDraft = ""
+
+    private var maskedAmapKey: String {
+        let key = addressSettings.amapWebKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return "" }
+        if key.count <= 8 {
+            return String(repeating: "•", count: 6)
+        }
+        let prefix = key.prefix(4)
+        let suffix = key.suffix(4)
+        return "\(prefix)******\(suffix)"
+    }
+
+    var body: some View {
+        FloatingPopupCard(
+            icon: "mappin.and.ellipse",
+            iconColor: AppTheme.accent,
+            title: "车辆地址"
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "mappin.and.ellipse")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(AppTheme.accent)
+                        Text("当前定位")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.45))
+                        Spacer()
+                    }
+
+                    Text(locationManager.vehicleAddress)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(5)
+                        .minimumScaleFactor(0.85)
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color.white.opacity(0.04))
+                )
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "key.fill")
+                            .foregroundStyle(AppTheme.orange)
+                            .frame(width: 20)
+                        Text(addressSettings.hasAmapWebKey ? "高德 Key 已填写" : "填写后自动使用高德 API")
+                            .font(.subheadline)
+                            .foregroundStyle(.white)
+                        Spacer()
+                    }
+
+                    TextField("填写高德 Web 服务 Key", text: Binding(
+                        get: { isEditingAmapKey ? amapKeyDraft : maskedAmapKey },
+                        set: { amapKeyDraft = $0 }
+                    ))
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.white.opacity(0.06))
+                    )
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            isEditingAmapKey = true
+                            amapKeyDraft = addressSettings.amapWebKey
+                        }
+                    }
+
+                    HStack(spacing: 10) {
+                        Spacer()
+                        Button {
+                            withAnimation(.easeOut(duration: 0.15)) {
+                                addressSettings.clearAmapWebKey()
+                                amapKeyDraft = ""
+                                isEditingAmapKey = false
+                            }
+                        } label: {
+                            Text("清除高德 Key")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.red.opacity(0.9))
+                        }
+                    }
+                }
+            }
+        } actions: {
+            VStack(spacing: 8) {
+                FloatingPopupPrimaryButton(
+                    title: "确定",
+                    color: AppTheme.accent
+                ) {
+                    withAnimation(PopupMotion.dismissEase) { isPresented = false }
+                    if isEditingAmapKey {
+                        addressSettings.setAmapWebKey(amapKeyDraft)
+                    }
+                    isEditingAmapKey = false
+                    let location = VehicleLocationDisplayStore.shared
+                    let lat = location.displayLatitudeGcj
+                    let lng = location.displayLongitudeGcj
+                    let address = location.displayAddress
+                    if lat != 0, lng != 0 {
+                        locationManager.setCarLocation(lat: lat, lng: lng, address: address.isEmpty ? nil : address)
+                    }
+                }
+
+                FloatingPopupSecondaryButton(
+                    title: "高德",
+                    textColor: .white
+                ) {
+                    withAnimation(PopupMotion.dismissEase) { isPresented = false }
+                    if isEditingAmapKey {
+                        addressSettings.setAmapWebKey(amapKeyDraft)
+                    }
+                    isEditingAmapKey = false
+                    let keyword = locationManager.vehicleAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let location = VehicleLocationDisplayStore.shared
+                    let fallbackLat = location.displayLatitudeGcj
+                    let fallbackLng = location.displayLongitudeGcj
+                    let address = keyword.isEmpty ? (fallbackLat != 0 && fallbackLng != 0 ? "\(fallbackLat),\(fallbackLng)" : "") : keyword
+                    guard !address.isEmpty else { return }
+                    let encoded = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? address
+                    if let url = URL(string: "amap://search?keyword=\(encoded)"), UIApplication.shared.canOpenURL(url) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+
+                FloatingPopupSecondaryButton(
+                    title: "关闭",
+                    textColor: .white
+                ) {
+                    withAnimation(PopupMotion.dismissEase) { isPresented = false }
+                }
+            }
+        }
+        .onAppear {
+            isEditingAmapKey = false
+            amapKeyDraft = addressSettings.amapWebKey
+        }
+    }
+}
+
+/// 快捷命令弹窗宿主：只在需要时挂命令状态，不让根视图长期持有命令编辑态之外的多余依赖。
+struct StatusCommandConfirmHost: View {
+    let action: CommandAction
+    let vehicleState: VehicleState
+    @Binding var isPresented: Bool
+    let onConfirm: (CommandAction, Double?, Int?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
+
+    var body: some View {
+        CommandConfirmPopup(
+            action: action,
+            vehicleState: vehicleState,
+            isPresented: $isPresented,
+            onConfirm: onConfirm
+        )
+    }
+}
+
