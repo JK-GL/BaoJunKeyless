@@ -6,7 +6,6 @@ struct StatusView: View {
     @EnvironmentObject var addressSettings: AddressServiceSettings
     @EnvironmentObject var locationManager: LocationManager
     @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
-    @EnvironmentObject var vehicleLog: VehicleEventLogStore
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
     @AppStorage(AppDiagnosticsSettings.vehicleControlRouteModeKey) private var vehicleControlRouteModeRaw = VehicleControlRouteMode.auto.rawValue
     @EnvironmentObject var vehicleStore: VehicleStateStore
@@ -659,7 +658,7 @@ struct StatusView: View {
         }
         let title = matched ? "MQTT 控制回执（匹配当前命令）" : "MQTT 控制回执"
         let commandText = matched ? "command=\(pendingControlTitle ?? "--"), " : ""
-        vehicleLog.add(result.isSuccess ? .action : .error, title, detail: "\(commandText)\(result.displayDetail)\(elapsedText)")
+        VehicleEventLogStore.shared.add(result.isSuccess ? .action : .error, title, detail: "\(commandText)\(result.displayDetail)\(elapsedText)")
         if matched {
             pendingControlServiceCode = nil
             pendingControlTitle = nil
@@ -673,11 +672,11 @@ struct StatusView: View {
               let commandTitle = pendingControlTitle else { return }
         let waitID = UUID()
         pendingControlWaitID = waitID
-        vehicleLog.add(.action, "等待 MQTT 控制回执", detail: "command=\(commandTitle), serviceCode=\(serviceCode), timeout=8s")
+        VehicleEventLogStore.shared.add(.action, "等待 MQTT 控制回执", detail: "command=\(commandTitle), serviceCode=\(serviceCode), timeout=8s")
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
             guard pendingControlWaitID == waitID,
                   pendingControlServiceCode == serviceCode else { return }
-            vehicleLog.add(.warning, "MQTT 控制回执缺失", detail: "command=\(commandTitle), serviceCode=\(serviceCode), waited=8000ms")
+            VehicleEventLogStore.shared.add(.warning, "MQTT 控制回执缺失", detail: "command=\(commandTitle), serviceCode=\(serviceCode), waited=8000ms")
             pendingControlServiceCode = nil
             pendingControlTitle = nil
             pendingControlSentAt = nil
@@ -731,7 +730,7 @@ struct StatusView: View {
                 return
             }
             guard bleReady else {
-                vehicleLog.add(.warning, "快捷路由阻止", detail: "\(command.title) | mode=强制BLE | BLE 未鉴权成功")
+                VehicleEventLogStore.shared.add(.warning, "快捷路由阻止", detail: "\(command.title) | mode=强制BLE | BLE 未鉴权成功")
                 completion(VehicleCommandExecutionResult(
                     command: command,
                     state: .failed("强制BLE，但当前 BLE 未鉴权成功"),
@@ -750,7 +749,7 @@ struct StatusView: View {
 
         let routeModeText = vehicleControlRouteMode.title
         let actualRouteText = selectedRoute == .ble ? "BLE" : "HTTP"
-        vehicleLog.add(.action, "快捷路由选择", detail: "\(command.title) | mode=\(routeModeText) | route=\(actualRouteText)")
+        VehicleEventLogStore.shared.add(.action, "快捷路由选择", detail: "\(command.title) | mode=\(routeModeText) | route=\(actualRouteText)")
 
         let willUseBLE = selectedRoute == .ble
         pendingControlServiceCode = willUseBLE ? nil : controlServiceCode(for: command.kind)

@@ -1,12 +1,24 @@
 import SwiftUI
 
 // MARK: - 弹窗内统一状态项
-struct PopupStatusItem: Identifiable {
-    let id = UUID()
+struct PopupStatusItem: Identifiable, Equatable {
+    let id: String
     let icon: String
     let label: String
     let value: String
     let color: Color
+
+    init(icon: String, label: String, value: String, color: Color) {
+        self.id = "\(icon)|\(label)"
+        self.icon = icon
+        self.label = label
+        self.value = value
+        self.color = color
+    }
+
+    static func == (lhs: PopupStatusItem, rhs: PopupStatusItem) -> Bool {
+        lhs.id == rhs.id && lhs.value == rhs.value
+    }
 }
 
 // MARK: - 弹窗内状态摘要组件
@@ -51,8 +63,8 @@ struct PopupStatusSummaryView: View {
 }
 
 // MARK: - 弹窗内统一信息行数据
-struct PopupInfoRowItem: Identifiable {
-    let id = UUID()
+struct PopupInfoRowItem: Identifiable, Equatable {
+    let id: String
     let icon: String
     let label: String
     let value: String
@@ -60,11 +72,16 @@ struct PopupInfoRowItem: Identifiable {
     let color: Color
 
     init(_ icon: String, _ label: String, _ value: String, mono: Bool = false, color: Color = .primary) {
+        self.id = "\(icon)|\(label)"
         self.icon = icon
         self.label = label
         self.value = value
         self.mono = mono
         self.color = color
+    }
+
+    static func == (lhs: PopupInfoRowItem, rhs: PopupInfoRowItem) -> Bool {
+        lhs.id == rhs.id && lhs.value == rhs.value && lhs.mono == rhs.mono
     }
 }
 

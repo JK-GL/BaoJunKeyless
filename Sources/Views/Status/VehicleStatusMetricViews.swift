@@ -1,7 +1,7 @@
 import SwiftUI
 
-struct VehicleStatusMetric: Identifiable {
-    let id = UUID()
+struct VehicleStatusMetric: Identifiable, Equatable {
+    let id: String
     let icon: String
     let label: String
     let value: String
@@ -9,6 +9,7 @@ struct VehicleStatusMetric: Identifiable {
     let color: Color
 
     init(icon: String, label: String, value: String, status: String? = nil, color: Color) {
+        self.id = "\(icon)|\(label)"
         self.icon = icon
         self.label = label
         self.value = value
@@ -17,11 +18,16 @@ struct VehicleStatusMetric: Identifiable {
     }
 
     init(item: PopupStatusItem) {
+        self.id = item.id
         self.icon = item.icon
         self.label = item.label
         self.value = item.value
         self.status = nil
         self.color = item.color
+    }
+
+    static func == (lhs: VehicleStatusMetric, rhs: VehicleStatusMetric) -> Bool {
+        lhs.id == rhs.id && lhs.value == rhs.value && lhs.status == rhs.status
     }
 }
 
@@ -55,8 +61,12 @@ struct VehicleStatusMetricList: View {
     }
 }
 
-struct VehicleStatusMetricCard: View {
+struct VehicleStatusMetricCard: View, Equatable {
     let metric: VehicleStatusMetric
+
+    static func == (lhs: VehicleStatusMetricCard, rhs: VehicleStatusMetricCard) -> Bool {
+        lhs.metric == rhs.metric
+    }
 
     var body: some View {
         HStack(spacing: 10) {
