@@ -668,7 +668,7 @@ struct StatusView: View {
 
         locationManager.forceRequestCurrentLocation()
         locationManager.resume()
-        syncCarLocationToManager(forceAddressRefresh: true)
+        syncCarLocationToManager(snapshot: displayCarLocationSnapshot, forceAddressRefresh: true)
         mqttStore?.refreshNow()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
