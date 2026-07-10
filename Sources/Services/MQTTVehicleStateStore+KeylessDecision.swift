@@ -75,15 +75,21 @@ extension MQTTVehicleStateStore {
             debugBLELastSeenText = "--"
             bleSignalLossWorkItem?.cancel()
             bleSignalLossWorkItem = nil
-            var next = state
-            next.bleRssi = nil
-            next.phoneNearby = false
-            apply(next)
-            evaluateKeylessAutomation(for: next)
+
+            // 只有靠近语义或 live 可用性变化时才推整车 state
+            if state.phoneNearby || state.bleRssi != nil {
+                var next = state
+                next.bleRssi = nil
+                next.phoneNearby = false
+                apply(next)
+                evaluateKeylessAutomation(for: next)
+            }
             return
         }
 
         let previousNearby = state.phoneNearby
+        let previousHadLive = state.bleRssi != nil
+
         liveBLERawRSSI = rawRSSI
         liveBLELastSeenAt = Date()
         if let current = liveBLERSSI {
@@ -94,21 +100,46 @@ extension MQTTVehicleStateStore {
             liveBLERSSI = rawRSSI
         }
         let smoothedRSSI = liveBLERSSI ?? rawRSSI
+
+        // 诊断域每秒更新：雷达 / 无感实时状态直接观察这里
         debugBLERawRSSI = rawRSSI
         debugBLESmoothedRSSI = smoothedRSSI
         debugBLELastSeenText = formatTime(Date())
         scheduleBLESignalLossTimeout()
 
-        var next = state
-        next.bleRssi = smoothedRSSI
-        next.phoneNearby = resolvedPhoneNearby(for: smoothedRSSI, previous: previousNearby)
-        apply(next)
-        evaluateKeylessAutomation(for: next)
+        let nextNearby = resolvedPhoneNearby(for: smoothedRSSI, previous: previousNearby)
+        let proximityChanged = previousNearby != nextNearby
+        let liveAvailabilityChanged = previousHadLive != true
 
-        if previousNearby != next.phoneNearby {
+        if proximityChanged {
             let detail = "raw=\(rawRSSI), smoothed=\(smoothedRSSI), unlock=\(Int(keylessSettingsStore.settings.unlockThreshold)), lock=\(Int(keylessSettingsStore.settings.lockThreshold))"
-            debugBLELastTransitionText = "\(next.phoneNearby ? "靠近" : "远离") · \(formatTime(Date()))"
-            vehicleEventLogStore.add(.keyless, next.phoneNearby ? "BLE判定靠近" : "BLE判定远离", detail: detail)
+            debugBLELastTransitionText = "\(nextNearby ? "靠近" : "远离") · \(formatTime(Date()))"
+            vehicleEventLogStore.add(.keyless, nextNearby ? "BLE判定靠近" : "BLE判定远离", detail: detail)
+        }
+
+        // Apple 风格：纯 RSSI 数字抖动不推整车 state
+        // 仅在靠近语义变化 / 首次获得 live RSSI 时 apply
+        if proximityChanged || liveAvailabilityChanged {
+            var next = state
+            next.bleRssi = smoothedRSSI
+            next.phoneNearby = nextNearby
+            apply(next)
+            evaluateKeylessAutomation(for: next)
+            return
+        }
+
+        // 延迟计时中需要持续评估（wait → allow），但不因数字变化重绘整页
+        let settings = keylessSettingsStore.settings
+        let hasActiveUnlockDelay = nextNearby
+            && phoneNearbySince != nil
+            && settings.unlockEnabled
+            && settings.unlockApproachDuration > 0
+        let hasActiveLockDelay = !nextNearby
+            && phoneFarAwaySince != nil
+            && settings.lockEnabled
+            && settings.lockDelay > 0
+        if hasActiveUnlockDelay || hasActiveLockDelay {
+            evaluateKeylessAutomation(for: state)
         }
     }
 

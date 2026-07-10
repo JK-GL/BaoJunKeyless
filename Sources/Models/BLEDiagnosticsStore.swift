@@ -16,6 +16,7 @@ final class BLEDiagnosticsStore: ObservableObject {
     @Published var noDeviceCount: Int = 0
     @Published var foundButNotConnectedCount: Int = 0
     @Published var authFailedCount: Int = 0
+    @Published var consecutiveScanTimeouts: Int = 0
 
     var didSeeDeviceThisCycle = false
     var didReachConnectedThisCycle = false

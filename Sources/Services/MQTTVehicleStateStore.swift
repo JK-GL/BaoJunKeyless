@@ -222,7 +222,13 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var routeModeObserver: NSObjectProtocol?
     var lastObservedKeylessEnabled: Bool?
     var hasReceivedKeylessSettings = false
-    var consecutiveScanTimeouts = 0
+    var consecutiveScanTimeouts = 0 {
+        didSet {
+            if bleDiagnosticsStore.consecutiveScanTimeouts != consecutiveScanTimeouts {
+                bleDiagnosticsStore.consecutiveScanTimeouts = consecutiveScanTimeouts
+            }
+        }
+    }
     var ignoreNextBLEIdleCallback = false
     let bleDiagnosticsStore = BLEDiagnosticsStore.shared
     let nearbyBLEDevicesStore = NearbyBLEDevicesStore()

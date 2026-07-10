@@ -123,6 +123,7 @@ final class VehicleEventLogStore: ObservableObject {
     static let shared = VehicleEventLogStore()
 
     @Published private(set) var entries: [VehicleEventLogEntry] = []
+    @Published private(set) var keylessActivitySummary: KeylessActivitySummary = .empty
     private(set) var todayEntries: [VehicleEventLogEntry] = []
     private(set) var todayErrorCount: Int = 0
 
@@ -203,6 +204,7 @@ final class VehicleEventLogStore: ObservableObject {
         entries.removeAll()
         todayEntries = []
         todayErrorCount = 0
+        keylessActivitySummary = .empty
         recentEventTimestamps.removeAll()
         entryTokens.removeAll()
         UserDefaults.standard.removeObject(forKey: key)
@@ -282,5 +284,63 @@ final class VehicleEventLogStore: ObservableObject {
                 count += 1
             }
         }
+        rebuildKeylessActivitySummary(from: today)
     }
+
+    private func rebuildKeylessActivitySummary(from today: [VehicleEventLogEntry]) {
+        keylessActivitySummary = KeylessActivitySummary(
+            latestUnlock: latestKeylessDetail(
+                in: today,
+                titles: ["无感命令结果", "无感命令发送"],
+                keyword: "解锁"
+            ),
+            latestLock: latestKeylessDetail(
+                in: today,
+                titles: ["无感命令结果", "无感命令发送"],
+                keyword: "上锁"
+            ),
+            latestFailure: latestKeylessDetail(
+                in: today,
+                categories: [.error],
+                titles: ["无感命令结果"],
+                keyword: "无感"
+            ),
+            latestReject: latestKeylessDetail(
+                in: today,
+                titles: ["解锁拒绝", "上锁拒绝"]
+            )
+        )
+    }
+
+    private func latestKeylessDetail(
+        in entries: [VehicleEventLogEntry],
+        categories: Set<VehicleEventLogCategory>? = nil,
+        titles: [String],
+        keyword: String? = nil
+    ) -> String {
+        for entry in entries {
+            if let categories, !categories.contains(entry.category) { continue }
+            if !titles.contains(entry.title) { continue }
+            if let keyword {
+                let haystack = entry.detail + " " + entry.title
+                if !haystack.localizedCaseInsensitiveContains(keyword) { continue }
+            }
+            return entry.detail.isEmpty ? entry.timeText : "\(entry.timeText) · \(entry.detail)"
+        }
+        return "--"
+    }
+}
+
+struct KeylessActivitySummary: Equatable {
+    var latestUnlock: String
+    var latestLock: String
+    var latestFailure: String
+    var latestReject: String
+
+    static let empty = KeylessActivitySummary(
+        latestUnlock: "--",
+        latestLock: "--",
+        latestFailure: "--",
+        latestReject: "--"
+    )
 }

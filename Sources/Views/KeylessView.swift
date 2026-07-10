@@ -10,14 +10,9 @@ struct KeylessView: View {
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var settingsStore: KeylessSettingsStore
     @EnvironmentObject var customStore: CustomVibrationStore
-    @EnvironmentObject var vehicleStore: VehicleStateStore
 
     @State private var showUnlockRecorder = false
     @State private var showLockRecorder = false
-
-    private var mqttStore: MQTTVehicleStateStore? {
-        vehicleStore as? MQTTVehicleStateStore
-    }
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -27,9 +22,7 @@ struct KeylessView: View {
                     .padding(.top, 8)
 
                 KeylessMainSection(setMode: setMode)
-                if let mqttStore {
-                    KeylessBLEDiagnosticsSection(store: mqttStore, diagnostics: mqttStore.bleDiagnosticsStore)
-                }
+                KeylessBLEDiagnosticsHost()
                 KeylessRealtimeStatusHost()
                 KeylessRecentActivitySection()
                 if settingsStore.settings.keylessEnabled {
@@ -68,13 +61,6 @@ struct KeylessView: View {
         }
     }
 
-
-
-
-
-
-
-
     private func setMode(_ mode: KeylessControlMode) {
         settingsStore.settings.pluginTakeover = (mode == .plugin)
         settingsStore.settings.smartSwitch = (mode == .smart)
@@ -104,12 +90,36 @@ struct KeylessView: View {
     }
 }
 
-private struct KeylessBLEDiagnosticsSection: View {
-    let store: MQTTVehicleStateStore
-    @ObservedObject var diagnostics: BLEDiagnosticsStore
+// MARK: - BLE 诊断宿主（最小依赖）
+private struct KeylessBLEDiagnosticsHost: View {
+    @EnvironmentObject var settingsStore: KeylessSettingsStore
+    @ObservedObject private var diagnostics = BLEDiagnosticsStore.shared
     @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
     @ObservedObject private var bleKeyInfoStore = VehicleBLEKeyInfoStore.shared
+    @ObservedObject private var credentialsStore = VehicleCredentialsStore.shared
     @State private var binding = VehicleBLEBindingStore.load()
+
+    private var scanIntervalText: String {
+        settingsStore.settings.bleScanInterval <= 0
+            ? "无间隙"
+            : "\(Int(settingsStore.settings.bleScanInterval))s"
+    }
+
+    private var cacheScopeText: String {
+        let phone = credentialsStore.phone.trimmingCharacters(in: .whitespacesAndNewlines)
+        let vin = credentialsStore.vin.trimmingCharacters(in: .whitespacesAndNewlines)
+        let phoneText = phone.isEmpty ? "--" : String(phone.suffix(4))
+        let vinText = vin.isEmpty ? "--" : String(vin.suffix(6))
+        return "phone=\(phoneText) · vin=\(vinText)"
+    }
+
+    private var bleKeySummaryText: String {
+        let mac = bleKeyInfoStore.latestBleKeyInfo["bleMac"]
+            ?? bleKeyInfoStore.latestBleKeyInfo["macAddress"]
+            ?? "--"
+        let keyId = bleKeyInfoStore.latestBleKeyInfo["keyId"] ?? "--"
+        return "keyId=\(keyId) · mac=\(mac)"
+    }
 
     private var rows: [PopupInfoRowItem] {
         [
@@ -119,10 +129,10 @@ private struct KeylessBLEDiagnosticsSection: View {
             PopupInfoRowItem("checkmark.circle", "最近结论", "\(diagnostics.lastConclusionText) · \(diagnostics.lastConclusionAtText)", color: AppTheme.green),
             PopupInfoRowItem("info.circle", "结论来源", diagnostics.lastReasonText, color: AppTheme.orange),
             PopupInfoRowItem("sum", "本次统计", diagnostics.countsSummaryText, color: AppTheme.orange),
-            PopupInfoRowItem("timer", "扫描间隙", store.keylessSettingsStore.settings.bleScanInterval <= 0 ? "无间隙" : "\(Int(store.keylessSettingsStore.settings.bleScanInterval))s", color: AppTheme.accent),
-            PopupInfoRowItem("number", "连续超时", "\(store.consecutiveScanTimeouts)", color: AppTheme.orange),
-            PopupInfoRowItem("person.text.rectangle", "当前作用域", cacheScopeText(), mono: true, color: .white),
-            PopupInfoRowItem("antenna.radiowaves.left.and.right", "当前BLE", bleKeySummaryText(), mono: true, color: AppTheme.accent),
+            PopupInfoRowItem("timer", "扫描间隙", scanIntervalText, color: AppTheme.accent),
+            PopupInfoRowItem("number", "连续超时", "\(diagnostics.consecutiveScanTimeouts)", color: AppTheme.orange),
+            PopupInfoRowItem("person.text.rectangle", "当前作用域", cacheScopeText, mono: true, color: .white),
+            PopupInfoRowItem("antenna.radiowaves.left.and.right", "当前BLE", bleKeySummaryText, mono: true, color: AppTheme.accent),
             PopupInfoRowItem("link", "蓝牙绑定", binding?.displaySummary ?? "尚未绑定", mono: binding != nil, color: binding == nil ? .secondary : AppTheme.green)
         ]
     }
@@ -148,7 +158,9 @@ private struct KeylessBLEDiagnosticsSection: View {
                     SettingsActionButton(icon: "link.badge.minus", label: "清除绑定", color: AppTheme.red) {
                         VehicleBLEBindingStore.clear()
                         binding = nil
-                        store.ensureBLESession(forceRestart: true, optimisticScanning: true)
+                        if let mqtt = VehicleStateStoreBridge.current as? MQTTVehicleStateStore {
+                            mqtt.ensureBLESession(forceRestart: true, optimisticScanning: true)
+                        }
                         VehicleEventLogStore.shared.add(.action, "清除蓝牙绑定", detail: "用户在无感页手动清除")
                     }
                 }
@@ -168,30 +180,18 @@ private struct KeylessBLEDiagnosticsSection: View {
         case .error: return "异常"
         }
     }
-
-    private func cacheScopeText() -> String {
-        let phone = store.credentialsStore.phone.trimmingCharacters(in: .whitespacesAndNewlines)
-        let vin = store.credentialsStore.vin.trimmingCharacters(in: .whitespacesAndNewlines)
-        let phoneText = phone.isEmpty ? "--" : String(phone.suffix(4))
-        let vinText = vin.isEmpty ? "--" : String(vin.suffix(6))
-        return "phone=\(phoneText) · vin=\(vinText)"
-    }
-
-    private func bleKeySummaryText() -> String {
-        let mac = bleKeyInfoStore.latestBleKeyInfo["bleMac"] ?? bleKeyInfoStore.latestBleKeyInfo["macAddress"] ?? "--"
-        let keyId = bleKeyInfoStore.latestBleKeyInfo["keyId"] ?? "--"
-        return "keyId=\(keyId) · mac=\(mac)"
-    }
 }
 
+// MARK: - 无感实时状态宿主（最小依赖）
 private struct KeylessRealtimeStatusHost: View {
     @EnvironmentObject var settingsStore: KeylessSettingsStore
-    @EnvironmentObject var vehicleStore: VehicleStateStore
     @ObservedObject private var diagnostics = BLEDiagnosticsStore.shared
+    @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
 
-    private var mqttStore: MQTTVehicleStateStore? {
-        vehicleStore as? MQTTVehicleStateStore
-    }
+    /// 只取判定需要的车况字段快照，不观察整块 vehicleStore 的 body 依赖链
+    @State private var decisionSnapshot = KeylessDecisionSnapshot.placeholder
+    @State private var phoneNearbySince: Date?
+    @State private var phoneFarAwaySince: Date?
 
     private var modeText: String {
         guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
@@ -209,24 +209,50 @@ private struct KeylessRealtimeStatusHost: View {
         return false
     }
 
+    private var decisionContext: KeylessDecisionEngine.Context {
+        KeylessDecisionEngine.Context(
+            bleAuthenticated: connectionStatusStore.bleStatus == .authenticated || decisionSnapshot.hasCompletedBLEAuth,
+            freshnessMaxAge: 90
+        )
+    }
+
+    private var evaluationState: VehicleState {
+        var state = decisionSnapshot.asVehicleState
+        // 实时状态卡优先用 diagnostics 的 live RSSI，避免因 RSSI 数字变化去订阅整车 state
+        if let smoothed = diagnostics.debugSmoothedRSSI {
+            state.bleRssi = smoothed
+            state.phoneNearby = resolvedPhoneNearby(
+                smoothed: smoothed,
+                previous: state.phoneNearby,
+                unlock: settingsStore.settings.unlockThreshold,
+                lock: settingsStore.settings.lockThreshold
+            )
+        } else if diagnostics.debugRawRSSI == nil {
+            // 无 live 诊断时保留 snapshot 原值
+        }
+        return state
+    }
+
     private var unlockDecision: KeylessDecision {
         KeylessDecisionEngine.evaluateUnlockWithDelay(
-            state: vehicleStore.state,
+            state: evaluationState,
             settings: settingsStore.settings,
-            phoneNearbySince: mqttStore?.phoneNearbySince
+            phoneNearbySince: phoneNearbySince,
+            context: decisionContext
         )
     }
 
     private var lockDecision: KeylessDecision {
         KeylessDecisionEngine.evaluateLockWithDelay(
-            state: vehicleStore.state,
+            state: evaluationState,
             settings: settingsStore.settings,
-            phoneFarAwaySince: mqttStore?.phoneFarAwaySince
+            phoneFarAwaySince: phoneFarAwaySince,
+            context: decisionContext
         )
     }
 
     private var lockDelayRemainingText: String {
-        guard let farSince = mqttStore?.phoneFarAwaySince else { return "--" }
+        guard let farSince = phoneFarAwaySince else { return "--" }
         let delay = max(settingsStore.settings.lockDelay, 0)
         guard delay > 0 else { return "0s" }
         let elapsed = Date().timeIntervalSince(farSince)
@@ -235,19 +261,20 @@ private struct KeylessRealtimeStatusHost: View {
     }
 
     var body: some View {
-        let state = vehicleStore.state
+        let state = evaluationState
         let unlockThreshold = Int(settingsStore.settings.unlockThreshold)
         let lockThreshold = Int(settingsStore.settings.lockThreshold)
         let unlockDecision = self.unlockDecision
         let lockDecision = self.lockDecision
+        let phoneNearbyText = state.phoneNearby ? "已靠近" : "已远离"
 
         CardView(title: "无感实时状态", icon: "wave.3.right", iconColor: AppTheme.accent) {
             PopupInfoRowsView(
                 rows: [
                     PopupInfoRowItem("slider.horizontal.3", "当前模式", modeText),
                     PopupInfoRowItem("checkmark.shield", "App执行", appExecEnabled ? "允许" : "关闭", color: appExecEnabled ? AppTheme.green : AppTheme.orange),
-                    PopupInfoRowItem("iphone.radiowaves.left.and.right", "手机距离", state.phoneNearby ? "已靠近" : "已远离"),
-                    PopupInfoRowItem("dot.radiowaves.left.and.right", "平滑RSSI", (diagnostics.debugSmoothedRSSI ?? state.bleRssi).map { "\($0) dBm" } ?? "--"),
+                    PopupInfoRowItem("iphone.radiowaves.left.and.right", "手机距离", phoneNearbyText),
+                    PopupInfoRowItem("dot.radiowaves.left.and.right", "平滑RSSI", diagnostics.debugSmoothedRSSI.map { "\($0) dBm" } ?? "--"),
                     PopupInfoRowItem("waveform.path.ecg", "原始RSSI", diagnostics.debugRawRSSI.map { "\($0) dBm" } ?? "--"),
                     PopupInfoRowItem("slider.horizontal.below.rectangle", "判定阈值", "unlock \(unlockThreshold) / lock \(lockThreshold) dBm", color: AppTheme.accent),
                     PopupInfoRowItem("clock.badge.checkmark", "最近RSSI", diagnostics.debugLastSeenText),
@@ -274,6 +301,39 @@ private struct KeylessRealtimeStatusHost: View {
                 }
             }
         }
+        .onAppear {
+            refreshDecisionInputs()
+        }
+        // diagnostics 更新时同步判定输入；不订阅整块 vehicleStore
+        .onChange(of: diagnostics.debugLastSeenText) { _ in
+            refreshDecisionInputs()
+        }
+        .onChange(of: diagnostics.debugLastTransitionText) { _ in
+            refreshDecisionInputs()
+        }
+        .onChange(of: connectionStatusStore.bleStatus) { _ in
+            refreshDecisionInputs()
+        }
+        .onReceive(Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()) { _ in
+            // 仅在延迟等待中才刷新倒计时数字
+            if phoneNearbySince != nil || phoneFarAwaySince != nil {
+                refreshDecisionInputs()
+            }
+        }
+    }
+
+    private func refreshDecisionInputs() {
+        guard let mqtt = VehicleStateStoreBridge.current as? MQTTVehicleStateStore else { return }
+        decisionSnapshot = KeylessDecisionSnapshot(from: mqtt)
+        phoneNearbySince = mqtt.phoneNearbySince
+        phoneFarAwaySince = mqtt.phoneFarAwaySince
+    }
+
+    private func resolvedPhoneNearby(smoothed: Int, previous: Bool, unlock: Double, lock: Double) -> Bool {
+        if previous {
+            return Double(smoothed) > lock
+        }
+        return Double(smoothed) >= unlock
     }
 
     private func decisionColor(_ decision: KeylessDecision) -> Color {
@@ -288,17 +348,134 @@ private struct KeylessRealtimeStatusHost: View {
     }
 }
 
+/// 无感判定所需的最小车况快照，避免实时状态卡绑定整块 VehicleStateStore
+private struct KeylessDecisionSnapshot: Equatable {
+    var timestamp: Date
+    var online: Bool
+    var locked: Bool?
+    var doorsClosed: Bool?
+    var driverDoorOpen: Bool?
+    var trunkOpen: Bool?
+    var windowsClosed: Bool?
+    var acOn: Bool?
+    var acTemperature: Double?
+    var gear: VehicleGear
+    var power: VehiclePowerState
+    var speed: Double?
+    var physicalKeyPosition: PhysicalKeyPosition
+    var bleRssi: Int?
+    var phoneNearby: Bool
+    var hasCompletedBLEAuth: Bool
+
+    static let placeholder = KeylessDecisionSnapshot(
+        timestamp: .distantPast,
+        online: false,
+        locked: nil,
+        doorsClosed: nil,
+        driverDoorOpen: nil,
+        trunkOpen: nil,
+        windowsClosed: nil,
+        acOn: nil,
+        acTemperature: nil,
+        gear: .unknown,
+        power: .unknown,
+        speed: nil,
+        physicalKeyPosition: .unknown,
+        bleRssi: nil,
+        phoneNearby: false,
+        hasCompletedBLEAuth: false
+    )
+
+    init(
+        timestamp: Date,
+        online: Bool,
+        locked: Bool?,
+        doorsClosed: Bool?,
+        driverDoorOpen: Bool?,
+        trunkOpen: Bool?,
+        windowsClosed: Bool?,
+        acOn: Bool?,
+        acTemperature: Double?,
+        gear: VehicleGear,
+        power: VehiclePowerState,
+        speed: Double?,
+        physicalKeyPosition: PhysicalKeyPosition,
+        bleRssi: Int?,
+        phoneNearby: Bool,
+        hasCompletedBLEAuth: Bool
+    ) {
+        self.timestamp = timestamp
+        self.online = online
+        self.locked = locked
+        self.doorsClosed = doorsClosed
+        self.driverDoorOpen = driverDoorOpen
+        self.trunkOpen = trunkOpen
+        self.windowsClosed = windowsClosed
+        self.acOn = acOn
+        self.acTemperature = acTemperature
+        self.gear = gear
+        self.power = power
+        self.speed = speed
+        self.physicalKeyPosition = physicalKeyPosition
+        self.bleRssi = bleRssi
+        self.phoneNearby = phoneNearby
+        self.hasCompletedBLEAuth = hasCompletedBLEAuth
+    }
+
+    init(from store: MQTTVehicleStateStore) {
+        let state = store.state
+        self.timestamp = state.timestamp
+        self.online = state.online
+        self.locked = state.locked
+        self.doorsClosed = state.doorsClosed
+        self.driverDoorOpen = state.driverDoorOpen
+        self.trunkOpen = state.trunkOpen
+        self.windowsClosed = state.windowsClosed
+        self.acOn = state.acOn
+        self.acTemperature = state.acTemperature
+        self.gear = state.gear
+        self.power = state.power
+        self.speed = state.speed
+        self.physicalKeyPosition = state.physicalKeyPosition
+        self.bleRssi = state.bleRssi
+        self.phoneNearby = state.phoneNearby
+        self.hasCompletedBLEAuth = store.hasCompletedBLEAuth
+    }
+
+    var asVehicleState: VehicleState {
+        VehicleState(
+            timestamp: timestamp,
+            online: online,
+            locked: locked,
+            doorsClosed: doorsClosed,
+            driverDoorOpen: driverDoorOpen,
+            trunkOpen: trunkOpen,
+            windowsClosed: windowsClosed,
+            acOn: acOn,
+            acTemperature: acTemperature,
+            gear: gear,
+            power: power,
+            speed: speed,
+            physicalKeyPosition: physicalKeyPosition,
+            bleRssi: bleRssi,
+            phoneNearby: phoneNearby
+        )
+    }
+}
+
+// MARK: - 无感历史状态（摘要缓存）
 private struct KeylessRecentActivitySection: View {
     @ObservedObject private var vehicleLog = VehicleEventLogStore.shared
 
     var body: some View {
+        let summary = vehicleLog.keylessActivitySummary
         CardView(title: "无感历史状态", icon: "clock.arrow.circlepath", iconColor: AppTheme.purple) {
             PopupInfoRowsView(
                 rows: [
-                    PopupInfoRowItem("lock.open.fill", "最近解锁", latestUnlockText, color: AppTheme.green),
-                    PopupInfoRowItem("lock.fill", "最近上锁", latestLockText, color: AppTheme.red),
-                    PopupInfoRowItem("xmark.octagon.fill", "最近失败", latestFailureText, color: AppTheme.red),
-                    PopupInfoRowItem("exclamationmark.triangle.fill", "最近拒绝", latestRejectText, color: AppTheme.orange)
+                    PopupInfoRowItem("lock.open.fill", "最近解锁", summary.latestUnlock, color: AppTheme.green),
+                    PopupInfoRowItem("lock.fill", "最近上锁", summary.latestLock, color: AppTheme.red),
+                    PopupInfoRowItem("xmark.octagon.fill", "最近失败", summary.latestFailure, color: AppTheme.red),
+                    PopupInfoRowItem("exclamationmark.triangle.fill", "最近拒绝", summary.latestReject, color: AppTheme.orange)
                 ],
                 labelWidth: 74,
                 valueLineLimit: nil,
@@ -306,38 +483,5 @@ private struct KeylessRecentActivitySection: View {
                 rowVerticalPadding: 8
             )
         }
-    }
-
-    private var latestUnlockText: String {
-        latestDetail(titles: ["无感命令结果", "无感命令发送"], keyword: "解锁")
-    }
-
-    private var latestLockText: String {
-        latestDetail(titles: ["无感命令结果", "无感命令发送"], keyword: "上锁")
-    }
-
-    private var latestFailureText: String {
-        latestDetail(categories: [.error], titles: ["无感命令结果"], keyword: "无感")
-    }
-
-    private var latestRejectText: String {
-        latestDetail(titles: ["解锁拒绝", "上锁拒绝"])
-    }
-
-    private func latestDetail(
-        categories: Set<VehicleEventLogCategory>? = nil,
-        titles: [String],
-        keyword: String? = nil
-    ) -> String {
-        for entry in vehicleLog.todayEntries {
-            if let categories, !categories.contains(entry.category) { continue }
-            if !titles.contains(entry.title) { continue }
-            if let keyword {
-                let haystack = entry.detail + " " + entry.title
-                if !haystack.localizedCaseInsensitiveContains(keyword) { continue }
-            }
-            return entry.detail.isEmpty ? entry.timeText : "\(entry.timeText) · \(entry.detail)"
-        }
-        return "--"
     }
 }
