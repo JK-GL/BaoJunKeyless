@@ -16,6 +16,7 @@ struct StatusView: View {
     @State private var isMQTTFloatingPresented = false
     @State private var isVehicleInfoFloatingPresented = false
     @State private var isNearbyBLEDevicesFloatingPresented = false
+    @State private var nearbyPopupDevices: [VehicleBLEManager.NearbyDevice] = []
     @State private var statusToastText: String?
     @State private var activeCommand: CommandAction? = nil
     @State private var pendingControlServiceCode: String? = nil
@@ -434,6 +435,7 @@ struct StatusView: View {
                         tint: AppTheme.orange,
                         badgeText: nearbyCount > 0 ? "\(nearbyCount)" : nil
                     ) {
+                        captureNearbyDevicesSnapshot()
                         withAnimation(PopupMotion.presentSpring) { isNearbyBLEDevicesFloatingPresented = true }
                     }
                     PopupActionGridButton(
@@ -461,7 +463,7 @@ struct StatusView: View {
 
     @ViewBuilder
     private func nearbyBLEDevicesFloatingWindow() -> some View {
-        let devices = mqttStore?.bleNearbyDevices ?? []
+        let devices = nearbyPopupDevices
         let currentBinding = VehicleBLEBindingStore.load()
 
         FloatingPopupCard(
@@ -527,6 +529,9 @@ struct StatusView: View {
             }
         } actions: {
             VStack(spacing: 8) {
+                FloatingPopupPrimaryButton(title: "刷新列表", color: AppTheme.orange) {
+                    captureNearbyDevicesSnapshot()
+                }
                 if currentBinding != nil {
                     FloatingPopupPrimaryButton(title: "取消绑定", color: AppTheme.red) {
                         mqttStore?.clearBLEBindingAndRefresh()
@@ -538,6 +543,10 @@ struct StatusView: View {
                 }
             }
         }
+    }
+
+    private func captureNearbyDevicesSnapshot() {
+        nearbyPopupDevices = mqttStore?.bleNearbyDevices ?? []
     }
 
     private func deviceDetailText(_ device: VehicleBLEManager.NearbyDevice) -> String {
