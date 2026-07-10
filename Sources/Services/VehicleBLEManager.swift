@@ -421,6 +421,7 @@ final class VehicleBLEManager: NSObject {
             return
         }
         guard discoveredPeripheral == nil else { return }
+        // 一账号一车：始终优先尝试绑定外设，失败后再宽扫认车
         if !hasTriedBoundPeripheral, connectBoundPeripheralIfAvailable() {
             return
         }
@@ -453,6 +454,7 @@ final class VehicleBLEManager: NSObject {
         }
         let peripherals = central.retrievePeripherals(withIdentifiers: [uuid])
         guard let peripheral = peripherals.first else {
+            // 系统已找不到该 UUID：清脏缓存后宽扫，避免每轮空等
             VehicleBLEBindingStore.clear()
             onLog?("BLE", "bound peripheral not found id=\(binding.shortIdentifier), cleared binding, fallback wide scan")
             return false
@@ -463,12 +465,12 @@ final class VehicleBLEManager: NSObject {
         central.stopScan()
         scanWatchdogWorkItem?.cancel()
         scanWatchdogWorkItem = nil
+        scanTotalTimeoutWorkItem?.cancel()
+        scanTotalTimeoutWorkItem = nil
 
         if peripheral.state == .connected {
             state = .connecting
-            onLog?("BLE", "bound peripheral already connected, discover services: \(peripheral.name ?? binding.peripheralName)")
-            scanTotalTimeoutWorkItem?.cancel()
-            scanTotalTimeoutWorkItem = nil
+            onLog?("BLE", "connecting bound peripheral name=\(binding.peripheralName) id=\(binding.shortIdentifier) keyId=\(binding.keyId) macSuffix=\(binding.bleMacSuffix) alreadyConnected=1")
             peripheral.discoverServices(nil)
             return true
         }
@@ -548,7 +550,9 @@ final class VehicleBLEManager: NSObject {
             guard let self else { return }
             guard self.config != nil else { return }
             guard case .idle = self.state else { return }
-            self.startScanning()
+            // 每一轮重试都重新优先绑定车，失败后再宽扫
+            self.hasTriedBoundPeripheral = false
+            self.startConnectionFlow()
         }
         scanRetryWorkItem = work
         if interval <= 0 {
@@ -1510,14 +1514,23 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         let sourceText = connectionSourceText
+        let wasBound = currentConnectionSource == .bound
         guard discoveredPeripheral?.identifier == peripheral.identifier else {
             onLog?("BLE", "stale connect failed ignored id=\(peripheral.identifier.uuidString.prefix(8)) | \(error?.localizedDescription ?? "unknown")")
             return
         }
         clearSessionRuntime(cancelPendingControl: true)
-        state = .error(error?.localizedDescription ?? "connect failed")
         onLog?("BLE", "connect failed source=\(sourceText) | \(error?.localizedDescription ?? "unknown")")
-        if config != nil, central.state == .poweredOn {
+        guard config != nil, central.state == .poweredOn else {
+            state = .error(error?.localizedDescription ?? "connect failed")
+            return
+        }
+        if wasBound {
+            // 绑定直连失败：保留绑定记录，本轮回退宽扫；下一轮重试仍会优先绑定
+            onLog?("BLE", "bound connect failed, fallback wide scan")
+            fallbackToWideScanAfterBoundFailure()
+        } else {
+            state = .error(error?.localizedDescription ?? "connect failed")
             startScanning()
         }
     }
@@ -1532,7 +1545,9 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
         clearSessionRuntime(cancelPendingControl: true)
         onLog?("BLE", "disconnected source=\(sourceText) | \(error?.localizedDescription ?? "no error")")
         if config != nil, central.state == .poweredOn {
-            startScanning()
+            // 断开后重新走：有绑定先连绑定设备，再鉴权；失败再宽扫
+            hasTriedBoundPeripheral = false
+            startConnectionFlow()
         } else {
             state = .idle
         }
