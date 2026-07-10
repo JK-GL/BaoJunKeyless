@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SettingsFuelDisplaySection: View {
-    @EnvironmentObject var vehicleStore: VehicleStateStore
+    @ObservedObject private var fuelBarModeStore = FuelBarModeStore.shared
 
     var body: some View {
         SettingsPanelView(title: "油量显示") {
@@ -26,9 +26,13 @@ struct SettingsFuelDisplaySection: View {
 
     @ViewBuilder
     private func fuelModeButton(_ mode: FuelBarMode, title: String) -> some View {
-        let selected = vehicleStore.fuelBarMode == mode
+        let selected = fuelBarModeStore.mode == mode
         Button {
-            vehicleStore.setFuelBarMode(mode)
+            if let store = VehicleStateStoreBridge.current {
+                store.setFuelBarMode(mode)
+            } else {
+                fuelBarModeStore.setMode(mode)
+            }
         } label: {
             Text(title)
                 .font(.system(size: 13, weight: .semibold))
@@ -42,4 +46,9 @@ struct SettingsFuelDisplaySection: View {
         }
         .buttonStyle(.plain)
     }
+}
+
+/// Lightweight bridge so settings can trigger energy-type recompute without observing the whole vehicle store.
+enum VehicleStateStoreBridge {
+    static weak var current: VehicleStateStore?
 }

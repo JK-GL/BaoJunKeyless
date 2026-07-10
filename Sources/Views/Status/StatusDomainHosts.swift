@@ -26,13 +26,18 @@ struct StatusRadarSection: View {
     }
 }
 
-/// 顶部认证角标：只观察连接状态中的 auth。
+/// 顶部栏：观察 auth + 车名（dashboard），不把依赖回传给 StatusView 根。
 struct StatusTopBarHost: View {
     @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
-    let vehicleName: String
+    @EnvironmentObject var vehicleStore: VehicleStateStore
     let isRefreshing: Bool
     let refreshScale: CGFloat
     let onRefresh: () -> Void
+
+    private var vehicleName: String {
+        let name = vehicleStore.dashboard.vehicleName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "车辆状态" : name
+    }
 
     var body: some View {
         StatusTopBarSection(
@@ -45,12 +50,11 @@ struct StatusTopBarHost: View {
     }
 }
 
-/// 顶部胶囊：观察连接状态 BLE/MQTT + 无感模式设置，避免根视图计算模式文案。
+/// 顶部胶囊：观察连接状态 BLE/MQTT + 无感模式 + 钥匙/档位最小字段。
 struct StatusPillsHost: View {
     @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
     @EnvironmentObject var settingsStore: KeylessSettingsStore
-    let physicalKeyState: StatusPhysicalKeyState
-    let gearState: StatusGearState
+    @EnvironmentObject var vehicleStore: VehicleStateStore
     let onBLETap: () -> Void
     let onMQTTTap: () -> Void
 
@@ -76,6 +80,19 @@ struct StatusPillsHost: View {
         if settingsStore.settings.smartSwitch { return "arrow.triangle.2.circlepath" }
         if settingsStore.settings.appManual { return "iphone" }
         return "pause.circle.fill"
+    }
+
+    private var physicalKeyState: StatusPhysicalKeyState {
+        switch vehicleStore.state.physicalKeyPosition {
+        case .inside: return .inCar
+        case .outside: return .outside
+        case .farAway: return .farAway
+        case .unknown: return .unknown
+        }
+    }
+
+    private var gearState: StatusGearState {
+        StatusGearState(gear: vehicleStore.state.gear)
     }
 
     var body: some View {
@@ -160,17 +177,14 @@ struct StatusVehicleInfoCardHost: View {
     }
 }
 
-/// MQTT 信息浮窗：只观察连接状态 MQTT 文案 + token 来源。
+/// MQTT 信息浮窗：观察连接状态 + token 来源；凭证字段从 mqtt store 读取快照。
 struct StatusMQTTFloatingHost: View {
     @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
     @ObservedObject private var tokenSourceStore = VehicleTokenSourceStore.shared
-    let broker: String
-    let clientId: String
-    let username: String
-    let password: String
-    let topics: [String]
-    let onReconnect: () -> Void
+    @EnvironmentObject var vehicleStore: VehicleStateStore
     let onClose: () -> Void
+
+    private var mqttStore: MQTTVehicleStateStore? { vehicleStore as? MQTTVehicleStateStore }
 
     var body: some View {
         FloatingPopupCard(
@@ -183,32 +197,33 @@ struct StatusMQTTFloatingHost: View {
         ) {
             MQTTInfoMergedCard(
                 status: connectionStatusStore.uiMQTTStatus,
-                broker: broker,
-                clientId: clientId,
-                username: username,
-                password: password,
+                broker: mqttStore?.mqttBrokerDisplayText ?? "parkingdata.sgmwcloud.com.cn:1883",
+                clientId: mqttStore?.mqttClientId ?? "--",
+                username: mqttStore?.mqttUsernameMasked ?? "--",
+                password: mqttStore?.mqttPasswordMasked ?? "--",
                 tokenSource: tokenSourceStore.displayText,
-                topics: topics
+                topics: mqttStore?.mqttTopics ?? []
             )
         } actions: {
             VStack(spacing: 8) {
-                FloatingPopupPrimaryButton(title: "重新连接", color: AppTheme.accent, action: onReconnect)
+                FloatingPopupPrimaryButton(title: "重新连接", color: AppTheme.accent) {
+                    mqttStore?.reconnect()
+                }
                 FloatingPopupSecondaryButton(title: "关闭", textColor: .white, action: onClose)
             }
         }
     }
 }
 
-/// 钥匙信息浮窗：只观察连接状态 BLE 文案 + 控制回执。
+/// 钥匙信息浮窗：观察连接状态 BLE + 控制回执 + dashboard；动作直接打到 mqtt store。
 struct StatusVehicleInfoFloatingHost: View {
     @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
-    let dashboard: VehicleDashboardState
-    let nearbyStore: NearbyBLEDevicesStore?
-    let onToggleScanning: () -> Void
+    @EnvironmentObject var vehicleStore: VehicleStateStore
     let onOpenNearby: () -> Void
-    let onFetchKey: () -> Void
-    let onRefreshVehicle: () -> Void
     let onClose: () -> Void
+    var onToast: ((String) -> Void)? = nil
+
+    private var mqttStore: MQTTVehicleStateStore? { vehicleStore as? MQTTVehicleStateStore }
 
     private var isScanning: Bool {
         let status = connectionStatusStore.uiBLEStatus
@@ -223,7 +238,7 @@ struct StatusVehicleInfoFloatingHost: View {
             contentScrollEnabled: false
         ) {
             StatusVehicleInfoCardHost(
-                dashboard: dashboard,
+                dashboard: vehicleStore.dashboard,
                 isEmbedded: false
             )
         } actions: {
@@ -232,10 +247,11 @@ struct StatusVehicleInfoFloatingHost: View {
                     PopupActionGridButton(
                         title: isScanning ? "停止扫描" : "开始扫描",
                         icon: isScanning ? "stop.circle" : "play.circle",
-                        tint: isScanning ? AppTheme.red : AppTheme.accent,
-                        action: onToggleScanning
-                    )
-                    if let nearbyStore {
+                        tint: isScanning ? AppTheme.red : AppTheme.accent
+                    ) {
+                        mqttStore?.toggleBLEScanning()
+                    }
+                    if let nearbyStore = mqttStore?.nearbyBLEDevicesStore {
                         NearbyBLEDevicesLaunchButton(nearbyStore: nearbyStore, action: onOpenNearby)
                     } else {
                         PopupActionGridButton(
@@ -248,15 +264,18 @@ struct StatusVehicleInfoFloatingHost: View {
                     PopupActionGridButton(
                         title: "拉取钥匙",
                         icon: "key.fill",
-                        tint: AppTheme.green,
-                        action: onFetchKey
-                    )
+                        tint: AppTheme.green
+                    ) {
+                        mqttStore?.fetchBleKeyInfo()
+                        onToast?("正在重新拉取钥匙信息")
+                    }
                     PopupActionGridButton(
                         title: "刷新车况",
                         icon: "arrow.clockwise",
-                        tint: AppTheme.accent,
-                        action: onRefreshVehicle
-                    )
+                        tint: AppTheme.accent
+                    ) {
+                        mqttStore?.refreshNow()
+                    }
                 }
                 FloatingPopupSecondaryButton(title: "关闭", textColor: .white, action: onClose)
             }
@@ -415,20 +434,101 @@ struct StatusAddressFloatingHost: View {
     }
 }
 
-/// 快捷命令弹窗宿主：只在需要时挂命令状态，不让根视图长期持有命令编辑态之外的多余依赖。
+/// 快捷命令弹窗宿主：自己观察 vehicle state，根视图只保留 presented 绑定。
 struct StatusCommandConfirmHost: View {
+    @EnvironmentObject var vehicleStore: VehicleStateStore
     let action: CommandAction
-    let vehicleState: VehicleState
     @Binding var isPresented: Bool
     let onConfirm: (CommandAction, Double?, Int?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
 
     var body: some View {
         CommandConfirmPopup(
             action: action,
-            vehicleState: vehicleState,
+            vehicleState: vehicleStore.state,
             isPresented: $isPresented,
             onConfirm: onConfirm
         )
     }
 }
 
+/// 首页主内容：只让这块观察 vehicleStore 的 dashboard/state/metrics，StatusView 根不再直接吃整仓。
+struct StatusMainDashboardHost: View {
+    @EnvironmentObject var vehicleStore: VehicleStateStore
+    @EnvironmentObject var locationManager: LocationManager
+    @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
+    let onCommand: (CommandAction) -> Void
+    let onOpenVehicleInfo: () -> Void
+    let onOpenMQTT: () -> Void
+
+    var body: some View {
+        let dashboard = vehicleStore.dashboard
+        let metrics = vehicleStore.cachedDashboardMetrics
+        let state = vehicleStore.state
+
+        VStack(alignment: .leading, spacing: AppSpacing.section) {
+            VehicleHeaderSummaryView(
+                energyType: dashboard.energyType,
+                electricRangeKm: dashboard.electricRangeKm,
+                electricFullRangeKm: dashboard.electricFullRangeKm,
+                fuelRangeKm: dashboard.fuelRangeKm,
+                fuelFullRangeKm: dashboard.fuelFullRangeKm,
+                batteryPercentValue: dashboard.batteryPercentValue,
+                fuelPercentValue: dashboard.fuelPercentValue,
+                isCharging: dashboard.isCharging,
+                chargingPowerText: dashboard.chargingPowerText,
+                updatedAt: dashboard.updatedAtText
+            )
+
+            StatusPillsHost(
+                onBLETap: onOpenVehicleInfo,
+                onMQTTTap: onOpenMQTT
+            )
+
+            if disableRadar {
+                CardView(title: "雷达已禁用（诊断模式）", icon: "antenna.radiowaves.left.and.right.slash", iconColor: AppTheme.orange) {
+                    Text("已通过诊断开关关闭雷达，以便隔离内存问题。")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
+            } else {
+                StatusRadarSection(
+                    locationManager: locationManager,
+                    carImageURL: dashboard.vehicleImageURL
+                )
+            }
+
+            QuickActionsView(onCommand: onCommand, vehicleState: state)
+
+            QuickStatusTripletView(
+                totalMileageText: dashboard.totalMileageText,
+                averageFuelConsumptionText: dashboard.averageFuelConsumptionText,
+                yesterdayMileageText: dashboard.yesterdayMileageText
+            )
+
+            VStack(alignment: .leading, spacing: AppSpacing.section) {
+                BodyStatusView(
+                    normalText: dashboard.bodyStatusNormalText,
+                    warnings: dashboard.warningMessages,
+                    topMetrics: Array(metrics.bodyStatus.prefix(4)),
+                    detailMetrics: Array(metrics.bodyStatus.dropFirst(4))
+                )
+                TirePressureView(
+                    tireTemperatureText: dashboard.tireTemperatureText,
+                    metrics: metrics.tirePressure
+                )
+                StatusDashboardPair {
+                    DrivingStatusView(metrics: metrics.driving)
+                } right: {
+                    BatteryGaugesView(metrics: metrics.battery)
+                }
+                StatusDashboardPair {
+                    TemperatureView(metrics: metrics.temperature)
+                } right: {
+                    ChargingStatusView(metrics: metrics.charging)
+                }
+                LightingStatusView(metrics: metrics.lighting)
+                Spacer(minLength: 100)
+            }
+        }
+    }
+}

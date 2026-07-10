@@ -4,9 +4,7 @@ struct StatusView: View {
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var locationManager: LocationManager
     @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
-    @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
     @AppStorage(AppDiagnosticsSettings.vehicleControlRouteModeKey) private var vehicleControlRouteModeRaw = VehicleControlRouteMode.auto.rawValue
-    @EnvironmentObject var vehicleStore: VehicleStateStore
     @State private var isRefreshing = false
     @State private var refreshScale: CGFloat = 1.0
     @State private var isAddressFloatingPresented = false
@@ -20,147 +18,41 @@ struct StatusView: View {
     @State private var pendingControlSentAt: Date? = nil
     @State private var pendingControlWaitID: UUID? = nil
 
+    private var vehicleStore: VehicleStateStore? {
+        VehicleStateStoreBridge.current
+    }
 
     private var mqttStore: MQTTVehicleStateStore? {
         vehicleStore as? MQTTVehicleStateStore
     }
 
-
-    private var topBarTitle: String {
-        let name = vehicleStore.dashboard.vehicleName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? "车辆状态" : name
-    }
-
-    private var mqttDisplayClientId: String {
-        mqttStore?.mqttClientId ?? "--"
-    }
-
-    private var mqttDisplayBroker: String {
-        mqttStore?.mqttBrokerDisplayText ?? "parkingdata.sgmwcloud.com.cn:1883"
-    }
-
-    private var mqttDisplayUsername: String {
-        mqttStore?.mqttUsernameMasked ?? "--"
-    }
-
-    private var mqttDisplayPassword: String {
-        mqttStore?.mqttPasswordMasked ?? "--"
-    }
-
-    private var mqttTopicRows: [String] {
-        mqttStore?.mqttTopics ?? []
-    }
-
-
-
     private var vehicleControlRouteMode: VehicleControlRouteMode {
         VehicleControlRouteMode(rawValue: vehicleControlRouteModeRaw) ?? .auto
     }
 
-    private var livePhysicalKeyState: StatusPhysicalKeyState {
-        switch vehicleStore.state.physicalKeyPosition {
-        case .inside:
-            return .inCar
-        case .outside:
-            return .outside
-        case .farAway:
-            return .farAway
-        case .unknown:
-            return .unknown
-        }
-    }
-
-    private var liveGearState: StatusGearState {
-        StatusGearState(gear: vehicleStore.state.gear)
-    }
-
     var body: some View {
-        let dashboard = vehicleStore.dashboard
-        let metrics = vehicleStore.cachedDashboardMetrics
-        let state = vehicleStore.state
-
         ZStack {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: AppSpacing.section) {
-                    VStack(alignment: .leading, spacing: AppSpacing.compact) {
-                        StatusTopBarHost(
-                            vehicleName: topBarTitle,
-                            isRefreshing: isRefreshing,
-                            refreshScale: refreshScale,
-                            onRefresh: handleRefresh
-                        )
-
-                        VehicleHeaderSummaryView(
-                            energyType: dashboard.energyType,
-                            electricRangeKm: dashboard.electricRangeKm,
-                            electricFullRangeKm: dashboard.electricFullRangeKm,
-                            fuelRangeKm: dashboard.fuelRangeKm,
-                            fuelFullRangeKm: dashboard.fuelFullRangeKm,
-                            batteryPercentValue: dashboard.batteryPercentValue,
-                            fuelPercentValue: dashboard.fuelPercentValue,
-                            isCharging: dashboard.isCharging,
-                            chargingPowerText: dashboard.chargingPowerText,
-                            updatedAt: dashboard.updatedAtText
-                        )
-
-                        StatusPillsHost(
-                            physicalKeyState: livePhysicalKeyState,
-                            gearState: liveGearState,
-                            onBLETap: { withAnimation(PopupMotion.presentSpring) { isVehicleInfoFloatingPresented = true } },
-                            onMQTTTap: { withAnimation(PopupMotion.presentSpring) { isMQTTFloatingPresented = true } }
-                        )
-                    }
-
-                    if disableRadar {
-                        CardView(title: "雷达已禁用（诊断模式）", icon: "antenna.radiowaves.left.and.right.slash", iconColor: AppTheme.orange) {
-                            Text("已通过诊断开关关闭雷达，以便隔离内存问题。")
-                                .font(.system(size: 13))
-                                .foregroundColor(.secondary)
-                        }
-                    } else {
-                        StatusRadarSection(
-                            locationManager: locationManager,
-                            carImageURL: dashboard.vehicleImageURL
-                        )
-                    }
-
-                    QuickActionsView(onCommand: { command in
-                        withAnimation(PopupMotion.presentSpring) {
-                            activeCommand = command
-                        }
-                    }, vehicleState: state)
-
-                    QuickStatusTripletView(
-                        totalMileageText: dashboard.totalMileageText,
-                        averageFuelConsumptionText: dashboard.averageFuelConsumptionText,
-                        yesterdayMileageText: dashboard.yesterdayMileageText
+                    StatusTopBarHost(
+                        isRefreshing: isRefreshing,
+                        refreshScale: refreshScale,
+                        onRefresh: handleRefresh
                     )
 
-                    VStack(alignment: .leading, spacing: AppSpacing.section) {
-                        BodyStatusView(
-                            normalText: dashboard.bodyStatusNormalText,
-                            warnings: dashboard.warningMessages,
-                            topMetrics: Array(metrics.bodyStatus.prefix(4)),
-                            detailMetrics: Array(metrics.bodyStatus.dropFirst(4))
-                        )
-                        TirePressureView(
-                            tireTemperatureText: dashboard.tireTemperatureText,
-                            metrics: metrics.tirePressure
-                        )
-                        StatusDashboardPair {
-                            DrivingStatusView(metrics: metrics.driving)
-                        } right: {
-                            BatteryGaugesView(metrics: metrics.battery)
+                    StatusMainDashboardHost(
+                        onCommand: { command in
+                            withAnimation(PopupMotion.presentSpring) {
+                                activeCommand = command
+                            }
+                        },
+                        onOpenVehicleInfo: {
+                            withAnimation(PopupMotion.presentSpring) { isVehicleInfoFloatingPresented = true }
+                        },
+                        onOpenMQTT: {
+                            withAnimation(PopupMotion.presentSpring) { isMQTTFloatingPresented = true }
                         }
-                        StatusDashboardPair {
-                            TemperatureView(metrics: metrics.temperature)
-                        } right: {
-                            ChargingStatusView(metrics: metrics.charging)
-                        }
-                        LightingStatusView(metrics: metrics.lighting)
-
-                        Spacer(minLength: 100)
-                    }
+                    )
                 }
             }
             .modifier(ChromeScrollTrackingModifier(scrollState: scrollState))
@@ -234,7 +126,6 @@ struct StatusView: View {
             if let command = activeCommand {
                 StatusCommandConfirmHost(
                     action: command,
-                    vehicleState: vehicleStore.state,
                     isPresented: Binding(
                         get: { activeCommand != nil },
                         set: {
@@ -285,12 +176,6 @@ struct StatusView: View {
     @ViewBuilder
     private func mqttFloatingWindow() -> some View {
         StatusMQTTFloatingHost(
-            broker: mqttDisplayBroker,
-            clientId: mqttDisplayClientId,
-            username: mqttDisplayUsername,
-            password: mqttDisplayPassword,
-            topics: mqttTopicRows,
-            onReconnect: { mqttStore?.reconnect() },
             onClose: { withAnimation(PopupMotion.dismissEase) { isMQTTFloatingPresented = false } }
         )
     }
@@ -298,16 +183,9 @@ struct StatusView: View {
     @ViewBuilder
     private func vehicleInfoFloatingWindow() -> some View {
         StatusVehicleInfoFloatingHost(
-            dashboard: vehicleStore.dashboard,
-            nearbyStore: mqttStore?.nearbyBLEDevicesStore,
-            onToggleScanning: { mqttStore?.toggleBLEScanning() },
             onOpenNearby: { withAnimation(PopupMotion.presentSpring) { isNearbyBLEDevicesFloatingPresented = true } },
-            onFetchKey: {
-                mqttStore?.fetchBleKeyInfo()
-                withAnimation { statusToastText = "正在重新拉取钥匙信息" }
-            },
-            onRefreshVehicle: { mqttStore?.refreshNow() },
-            onClose: { withAnimation(PopupMotion.dismissEase) { isVehicleInfoFloatingPresented = false } }
+            onClose: { withAnimation(PopupMotion.dismissEase) { isVehicleInfoFloatingPresented = false } },
+            onToast: { text in withAnimation { statusToastText = text } }
         )
     }
 
@@ -333,12 +211,10 @@ struct StatusView: View {
         }
     }
 
-
     @ViewBuilder
     private func addressFloatingWindow() -> some View {
         StatusAddressFloatingHost(isPresented: $isAddressFloatingPresented)
     }
-
 
     private func handleRefresh() {
         withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
@@ -427,7 +303,7 @@ struct StatusView: View {
         durationMinutes: Int?,
         completion: @escaping (VehicleCommandExecutionResult) -> Void
     ) {
-        let command = action.asVehicleCommand(state: vehicleStore.state, temperature: temperature, durationMinutes: durationMinutes, source: .quickAction)
+        let command = action.asVehicleCommand(state: vehicleStore?.state ?? .placeholder, temperature: temperature, durationMinutes: durationMinutes, source: .quickAction)
         let supportsBLE = command.kind.supportsBLEControl
         let bleReady = mqttStore?.canUseBLEForVehicleControl == true
 

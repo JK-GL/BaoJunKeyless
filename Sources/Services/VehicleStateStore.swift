@@ -21,7 +21,11 @@ class VehicleStateStore: ObservableObject, VehicleStateReader {
     @Published internal(set) var profile: VehicleProfile = VehicleProfile()
 
     /// 油量栏显示模式
-    @Published var fuelBarMode: FuelBarMode = .auto
+    let fuelBarModeStore = FuelBarModeStore.shared
+    var fuelBarMode: FuelBarMode {
+        get { fuelBarModeStore.mode }
+        set { fuelBarModeStore.mode = newValue }
+    }
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -38,7 +42,7 @@ class VehicleStateStore: ObservableObject, VehicleStateReader {
     private func setupEnergyTypeObservers() {
         // 当 profile 或 fuelBarMode 变化时，重算能源类型
         $profile
-            .combineLatest($fuelBarMode)
+            .combineLatest(fuelBarModeStore.$mode)
             .dropFirst() // 跳过 init 的初始值
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _, _ in
@@ -63,7 +67,7 @@ class VehicleStateStore: ObservableObject, VehicleStateReader {
     }
 
     func setFuelBarMode(_ mode: FuelBarMode) {
-        fuelBarMode = mode
+        fuelBarModeStore.setMode(mode)
         recomputeEnergyType()
     }
 

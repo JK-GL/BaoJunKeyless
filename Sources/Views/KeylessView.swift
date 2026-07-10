@@ -30,21 +30,7 @@ struct KeylessView: View {
                 if let mqttStore {
                     KeylessBLEDiagnosticsSection(store: mqttStore, diagnostics: mqttStore.bleDiagnosticsStore)
                 }
-                if let mqttStore {
-                    KeylessRealtimeStatusSection(
-                        diagnostics: mqttStore.bleDiagnosticsStore,
-                        modeText: currentModeText,
-                        appExecEnabled: appExecutionEnabled,
-                        state: vehicleStore.state,
-                        unlockThreshold: Int(settingsStore.settings.unlockThreshold),
-                        lockThreshold: Int(settingsStore.settings.lockThreshold),
-                        unlockDecision: currentUnlockDecision,
-                        lockDecision: currentLockDecision,
-                        lockDelayRemainingText: lockDelayRemainingText,
-                        onSimulateUnlock: simulateUnlockDecision,
-                        onSimulateLock: simulateLockDecision
-                    )
-                }
+                KeylessRealtimeStatusHost()
                 KeylessRecentActivitySection()
                 if settingsStore.settings.keylessEnabled {
                     UnlockSettingsSection(
@@ -82,58 +68,12 @@ struct KeylessView: View {
         }
     }
 
-    private var currentModeText: String {
-        guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
-        if settingsStore.settings.pluginTakeover { return "插件托管" }
-        if settingsStore.settings.smartSwitch { return "智能切换" }
-        if settingsStore.settings.appManual { return "前台手动" }
-        return "未选择"
-    }
 
-    private var appExecutionEnabled: Bool {
-        guard settingsStore.settings.keylessEnabled else { return false }
-        if settingsStore.settings.pluginTakeover { return true }
-        if settingsStore.settings.smartSwitch { return true }
-        if settingsStore.settings.appManual { return false }
-        return false
-    }
 
-    private var currentUnlockDecision: KeylessDecision {
-        KeylessDecisionEngine.evaluateUnlockWithDelay(
-            state: vehicleStore.state,
-            settings: settingsStore.settings,
-            phoneNearbySince: mqttStore?.phoneNearbySince
-        )
-    }
 
-    private var currentLockDecision: KeylessDecision {
-        KeylessDecisionEngine.evaluateLockWithDelay(
-            state: vehicleStore.state,
-            settings: settingsStore.settings,
-            phoneFarAwaySince: mqttStore?.phoneFarAwaySince
-        )
-    }
 
-    private var lockDelayRemainingText: String {
-        guard let farSince = mqttStore?.phoneFarAwaySince else { return "--" }
-        let delay = max(settingsStore.settings.lockDelay, 0)
-        guard delay > 0 else { return "0s" }
-        let elapsed = Date().timeIntervalSince(farSince)
-        let remaining = max(0, Int(ceil(delay - elapsed)))
-        return "\(remaining)s"
-    }
 
-    private func simulateUnlockDecision() {
-        let decision = currentUnlockDecision
-        let detail = KeylessDecisionEngine.logDetail(decision: decision, state: vehicleStore.state, settings: settingsStore.settings)
-        VehicleEventLogStore.shared.add(.keyless, "解锁试算", detail: detail)
-    }
 
-    private func simulateLockDecision() {
-        let decision = currentLockDecision
-        let detail = KeylessDecisionEngine.logDetail(decision: decision, state: vehicleStore.state, settings: settingsStore.settings)
-        VehicleEventLogStore.shared.add(.keyless, "上锁试算", detail: detail)
-    }
 
     private func setMode(_ mode: KeylessControlMode) {
         settingsStore.settings.pluginTakeover = (mode == .plugin)
@@ -244,20 +184,63 @@ private struct KeylessBLEDiagnosticsSection: View {
     }
 }
 
-private struct KeylessRealtimeStatusSection: View {
-    @ObservedObject var diagnostics: BLEDiagnosticsStore
-    let modeText: String
-    let appExecEnabled: Bool
-    let state: VehicleState
-    let unlockThreshold: Int
-    let lockThreshold: Int
-    let unlockDecision: KeylessDecision
-    let lockDecision: KeylessDecision
-    let lockDelayRemainingText: String
-    let onSimulateUnlock: () -> Void
-    let onSimulateLock: () -> Void
+private struct KeylessRealtimeStatusHost: View {
+    @EnvironmentObject var settingsStore: KeylessSettingsStore
+    @EnvironmentObject var vehicleStore: VehicleStateStore
+    @ObservedObject private var diagnostics = BLEDiagnosticsStore.shared
+
+    private var mqttStore: MQTTVehicleStateStore? {
+        vehicleStore as? MQTTVehicleStateStore
+    }
+
+    private var modeText: String {
+        guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
+        if settingsStore.settings.pluginTakeover { return "插件托管" }
+        if settingsStore.settings.smartSwitch { return "智能切换" }
+        if settingsStore.settings.appManual { return "前台手动" }
+        return "未选择"
+    }
+
+    private var appExecEnabled: Bool {
+        guard settingsStore.settings.keylessEnabled else { return false }
+        if settingsStore.settings.pluginTakeover { return true }
+        if settingsStore.settings.smartSwitch { return true }
+        if settingsStore.settings.appManual { return false }
+        return false
+    }
+
+    private var unlockDecision: KeylessDecision {
+        KeylessDecisionEngine.evaluateUnlockWithDelay(
+            state: vehicleStore.state,
+            settings: settingsStore.settings,
+            phoneNearbySince: mqttStore?.phoneNearbySince
+        )
+    }
+
+    private var lockDecision: KeylessDecision {
+        KeylessDecisionEngine.evaluateLockWithDelay(
+            state: vehicleStore.state,
+            settings: settingsStore.settings,
+            phoneFarAwaySince: mqttStore?.phoneFarAwaySince
+        )
+    }
+
+    private var lockDelayRemainingText: String {
+        guard let farSince = mqttStore?.phoneFarAwaySince else { return "--" }
+        let delay = max(settingsStore.settings.lockDelay, 0)
+        guard delay > 0 else { return "0s" }
+        let elapsed = Date().timeIntervalSince(farSince)
+        let remaining = max(0, Int(ceil(delay - elapsed)))
+        return "\(remaining)s"
+    }
 
     var body: some View {
+        let state = vehicleStore.state
+        let unlockThreshold = Int(settingsStore.settings.unlockThreshold)
+        let lockThreshold = Int(settingsStore.settings.lockThreshold)
+        let unlockDecision = self.unlockDecision
+        let lockDecision = self.lockDecision
+
         CardView(title: "无感实时状态", icon: "wave.3.right", iconColor: AppTheme.accent) {
             PopupInfoRowsView(
                 rows: [
@@ -281,8 +264,14 @@ private struct KeylessRealtimeStatusSection: View {
             )
 
             HStack(spacing: 10) {
-                SettingsActionButton(icon: "play.circle", label: "试算解锁", color: AppTheme.green, action: onSimulateUnlock)
-                SettingsActionButton(icon: "play.circle", label: "试算上锁", color: AppTheme.red, action: onSimulateLock)
+                SettingsActionButton(icon: "play.circle", label: "试算解锁", color: AppTheme.green) {
+                    let detail = KeylessDecisionEngine.logDetail(decision: unlockDecision, state: state, settings: settingsStore.settings)
+                    VehicleEventLogStore.shared.add(.keyless, "解锁试算", detail: detail)
+                }
+                SettingsActionButton(icon: "play.circle", label: "试算上锁", color: AppTheme.red) {
+                    let detail = KeylessDecisionEngine.logDetail(decision: lockDecision, state: state, settings: settingsStore.settings)
+                    VehicleEventLogStore.shared.add(.keyless, "上锁试算", detail: detail)
+                }
             }
         }
     }

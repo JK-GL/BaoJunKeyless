@@ -243,6 +243,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         self.vehicleEventLogStore = vehicleEventLogStore
         self.customVibrationStore = customVibrationStore
         super.init(state: .placeholder, dashboard: VehicleDashboardState())
+        VehicleStateStoreBridge.current = self
         reloadCachedBLEKeyInfo(preferScoped: true)
         loadPersistedDisplayCache()
         setupBLECallbacks()
