@@ -89,9 +89,14 @@ extension MQTTVehicleStateStore {
         }
     }
 
+    /// 协议兼容入口：命令执行后静默刷新，不弹手动结果 Toast。
+    func refreshNow() {
+        refreshNow(userInitiated: false, completion: nil)
+    }
+
     /// 手动刷新：车况 + 钥匙 + 必要时 MQTT 重连。
     /// completion 汇总给 UI Toast 用。
-    func refreshNow(userInitiated: Bool = false, completion: ((Bool, String) -> Void)? = nil) {
+    func refreshNow(userInitiated: Bool, completion: ((Bool, String) -> Void)? = nil) {
         lastMQTTUpdate = nil
 
         if userInitiated {
