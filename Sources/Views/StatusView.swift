@@ -209,7 +209,7 @@ struct StatusView: View {
                     } else {
                         RadarCardView(
                             locationManager: locationManager,
-                            bleConnected: liveBLEStatus == .authenticated,
+                            bleStatus: liveBLEStatus,
                             carLat: displayCarLatitude,
                             carLng: displayCarLongitude,
                             carAddress: displayCarAddress,
