@@ -31,6 +31,10 @@ struct StatusView: View {
         vehicleStore as? MQTTVehicleStateStore
     }
 
+    private var liveNearbyBLEDevices: [VehicleBLEManager.NearbyDevice] {
+        mqttStore?.bleNearbyDevices ?? []
+    }
+
     private var mqttAuthStatus: StatusAuthState {
         mqttStore?.authStatus ?? .expired("未配置")
     }
@@ -255,6 +259,11 @@ struct StatusView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                 locationManager.resume()
+            }
+            .onChange(of: liveNearbyBLEDevices) { devices in
+                guard isNearbyBLEDevicesFloatingPresented else { return }
+                guard nearbyPopupDevices != devices else { return }
+                nearbyPopupDevices = devices
             }
 
             if isAddressFloatingPresented {
