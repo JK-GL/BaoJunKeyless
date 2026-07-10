@@ -79,7 +79,9 @@ final class RadarUIView: UIView {
             stopMarkerDisplayLink()
             releaseHeavyResources()
         } else {
+            // 重新入屏时强制恢复圆圈背景 + 扫描环 + 车图
             restoreDynamicResourcesIfNeeded()
+            resumeScanRingAnimationsIfNeeded()
             setNeedsLayout()
         }
     }
@@ -136,7 +138,14 @@ final class RadarUIView: UIView {
         ) { [weak self] _ in
             CrashLogger.shared.mark("Radar", "memoryWarning")
             Self.staticBackgroundCache.removeAll()
-            self?.releaseHeavyResources()
+            guard let self else { return }
+            // 仍在屏幕上时不要只清不建，否则会出现“只有车图没有圆圈”
+            if self.window != nil {
+                self.rebuildStaticBackground(self.bounds.size)
+                self.resumeScanRingAnimationsIfNeeded()
+            } else {
+                self.releaseHeavyResources()
+            }
         }
     }
 
@@ -215,6 +224,15 @@ final class RadarUIView: UIView {
     }
 
     private func restoreDynamicResourcesIfNeeded() {
+        // 圆圈/刻度背景与车图要一起恢复；之前只恢复了车图，会出现“只有车、没有圈线”
+        if bounds.width > 1, bounds.height > 1 {
+            if backgroundImageView.image == nil || lastBackgroundSize != bounds.size {
+                rebuildStaticBackground(bounds.size)
+            }
+        } else {
+            setNeedsLayout()
+        }
+
         resumeScanRingAnimationsIfNeeded()
         let key = normalizedCarImageCacheKey
         if let shared = Self.sharedCarImages[key] {
@@ -346,6 +364,7 @@ final class RadarUIView: UIView {
     }
 
     private func rebuildStaticBackground(_ size: CGSize) {
+        guard size.width > 1, size.height > 1 else { return }
         let key = "\(Int(size.width))x\(Int(size.height))"
         if let cached = Self.staticBackgroundCache[key] {
             backgroundImageView.image = cached
@@ -363,7 +382,7 @@ final class RadarUIView: UIView {
             let cx = size.width / 2
             let cy = size.height / 2
             let r = min(size.width, size.height) / 2
-            let tc = UIColor.label
+            let tc = UIColor.white
 
             for deg in 0..<360 {
                 let a = CGFloat(deg) * .pi / 180
