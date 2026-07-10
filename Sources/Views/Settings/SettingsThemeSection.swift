@@ -2,11 +2,25 @@ import SwiftUI
 
 struct SettingsThemeSection: View {
     @EnvironmentObject var theme: ThemeManager
-    let currentTheme: AppThemeConfiguration
     @Binding var isPhotoPickerPresented: Bool
-    let accentBinding: Binding<Color>
-    let backgroundBlurBinding: Binding<Double>
-    let themeConfig: (AppThemePreset) -> AppThemeConfiguration
+
+    private var currentTheme: AppThemeConfiguration {
+        theme.current
+    }
+
+    private var accentBinding: Binding<Color> {
+        Binding(
+            get: { currentTheme.customAccent },
+            set: { theme.setCustomAccent($0) }
+        )
+    }
+
+    private var backgroundBlurBinding: Binding<Double> {
+        Binding(
+            get: { Double(currentTheme.customBackgroundBlur) },
+            set: { theme.setBackgroundBlur($0) }
+        )
+    }
 
     var body: some View {
         SettingsPanelView(title: "外观与皮肤", subtitle: "切换主题或设置自定义背景。") {
@@ -18,7 +32,7 @@ struct SettingsThemeSection: View {
                                 theme.setThemePreset(preset)
                             } label: {
                                 ThemeOptionCardView(
-                                    theme: themeConfig(preset),
+                                    theme: theme.configuration(for: preset),
                                     isSelected: currentTheme.preset == preset,
                                     previewUIImage: preset == .custom ? theme.customThemePreviewImage : nil
                                 )

@@ -20,9 +20,6 @@ struct SettingsView: View {
     @State private var sharePayload: SharePayload?
     @State private var credentialConfirmPayload: CredentialConfirmPayload?
 
-    private var currentTheme: AppThemeConfiguration {
-        theme.current
-    }
 
     private var vehicleControlRouteModeBinding: Binding<VehicleControlRouteMode> {
         Binding(
@@ -39,11 +36,7 @@ struct SettingsView: View {
                     .padding(.top, 8)
 
                 SettingsThemeSection(
-                    currentTheme: currentTheme,
-                    isPhotoPickerPresented: $isPhotoPickerPresented,
-                    accentBinding: accentBinding,
-                    backgroundBlurBinding: backgroundBlurBinding,
-                    themeConfig: themeConfig
+                    isPhotoPickerPresented: $isPhotoPickerPresented
                 )
 
                 SettingsVehicleConfigSection(
@@ -156,19 +149,8 @@ struct SettingsView: View {
         }
     }
 
-    private var accentBinding: Binding<Color> {
-        Binding(get: { currentTheme.customAccent },
-                set: { theme.setCustomAccent($0) })
-    }
 
-    private var backgroundBlurBinding: Binding<Double> {
-        Binding(get: { Double(currentTheme.customBackgroundBlur) },
-                set: { theme.setBackgroundBlur($0) })
-    }
 
-    private func themeConfig(for preset: AppThemePreset) -> AppThemeConfiguration {
-        theme.configuration(for: preset)
-    }
 
     private func refreshCrashLog() {
         let newText = CrashLogger.shared.readReversedRecentLog(limit: 300)

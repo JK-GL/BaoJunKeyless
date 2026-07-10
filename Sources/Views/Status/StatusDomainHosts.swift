@@ -7,21 +7,17 @@ struct CarLocationDisplaySnapshot: Equatable {
     let address: String
 }
 
-/// 只观察位置显示域 + 连接状态中的 BLE 态，避免整页 StatusView 因 lat/lng/address 变化重算。
+/// 只观察位置显示域 + 连接状态 BLE 态 + RSSI 诊断域，避免整页 StatusView 重算。
 struct StatusRadarSection: View {
     @ObservedObject private var locationDisplayStore = VehicleLocationDisplayStore.shared
     @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
     @ObservedObject var locationManager: LocationManager
-    let unlockThresholdText: String
-    let lockThresholdText: String
     let carImageURL: String
 
     var body: some View {
         RadarCardView(
             locationManager: locationManager,
             bleStatus: connectionStatusStore.uiBLEStatus,
-            unlockThresholdText: unlockThresholdText,
-            lockThresholdText: lockThresholdText,
             carLat: locationDisplayStore.displayLatitudeGcj,
             carLng: locationDisplayStore.displayLongitudeGcj,
             carAddress: locationDisplayStore.displayAddress,
@@ -49,16 +45,38 @@ struct StatusTopBarHost: View {
     }
 }
 
-/// 顶部胶囊：只观察连接状态中的 BLE/MQTT。
+/// 顶部胶囊：观察连接状态 BLE/MQTT + 无感模式设置，避免根视图计算模式文案。
 struct StatusPillsHost: View {
     @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
-    let modeIcon: String
-    let modeText: String
-    let modeColor: Color
+    @EnvironmentObject var settingsStore: KeylessSettingsStore
     let physicalKeyState: StatusPhysicalKeyState
     let gearState: StatusGearState
     let onBLETap: () -> Void
     let onMQTTTap: () -> Void
+
+    private var modeText: String {
+        guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
+        if settingsStore.settings.pluginTakeover { return "插件托管" }
+        if settingsStore.settings.smartSwitch { return "智能切换" }
+        if settingsStore.settings.appManual { return "前台手动" }
+        return "无感待命"
+    }
+
+    private var modeColor: Color {
+        guard settingsStore.settings.keylessEnabled else { return Color.white.opacity(0.45) }
+        if settingsStore.settings.pluginTakeover { return AppTheme.green }
+        if settingsStore.settings.smartSwitch { return AppTheme.accent }
+        if settingsStore.settings.appManual { return AppTheme.purple }
+        return AppTheme.orange
+    }
+
+    private var modeIcon: String {
+        guard settingsStore.settings.keylessEnabled else { return "bolt.slash.fill" }
+        if settingsStore.settings.pluginTakeover { return "puzzlepiece" }
+        if settingsStore.settings.smartSwitch { return "arrow.triangle.2.circlepath" }
+        if settingsStore.settings.appManual { return "iphone" }
+        return "pause.circle.fill"
+    }
 
     var body: some View {
         StatusPillsSection(

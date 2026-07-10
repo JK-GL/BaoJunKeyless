@@ -2,7 +2,6 @@ import SwiftUI
 
 struct StatusView: View {
     @EnvironmentObject var scrollState: AppScrollState
-    @EnvironmentObject var settingsStore: KeylessSettingsStore
     @EnvironmentObject var locationManager: LocationManager
     @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
@@ -54,32 +53,8 @@ struct StatusView: View {
 
 
 
-    private var modeText: String {
-        guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
-        if settingsStore.settings.pluginTakeover { return "插件托管" }
-        if settingsStore.settings.smartSwitch { return "智能切换" }
-        if settingsStore.settings.appManual { return "前台手动" }
-        return "无感待命"
-    }
-
     private var vehicleControlRouteMode: VehicleControlRouteMode {
         VehicleControlRouteMode(rawValue: vehicleControlRouteModeRaw) ?? .auto
-    }
-
-    private var modeColor: Color {
-        guard settingsStore.settings.keylessEnabled else { return Color.white.opacity(0.45) }
-        if settingsStore.settings.pluginTakeover { return AppTheme.green }
-        if settingsStore.settings.smartSwitch { return AppTheme.accent }
-        if settingsStore.settings.appManual { return AppTheme.purple }
-        return AppTheme.orange
-    }
-
-    private var modeIcon: String {
-        guard settingsStore.settings.keylessEnabled else { return "bolt.slash.fill" }
-        if settingsStore.settings.pluginTakeover { return "puzzlepiece" }
-        if settingsStore.settings.smartSwitch { return "arrow.triangle.2.circlepath" }
-        if settingsStore.settings.appManual { return "iphone" }
-        return "pause.circle.fill"
     }
 
     private var livePhysicalKeyState: StatusPhysicalKeyState {
@@ -129,9 +104,6 @@ struct StatusView: View {
                         )
 
                         StatusPillsHost(
-                            modeIcon: modeIcon,
-                            modeText: modeText,
-                            modeColor: modeColor,
                             physicalKeyState: livePhysicalKeyState,
                             gearState: liveGearState,
                             onBLETap: { withAnimation(PopupMotion.presentSpring) { isVehicleInfoFloatingPresented = true } },
@@ -148,8 +120,6 @@ struct StatusView: View {
                     } else {
                         StatusRadarSection(
                             locationManager: locationManager,
-                            unlockThresholdText: String(Int(settingsStore.settings.unlockThreshold)),
-                            lockThresholdText: String(Int(settingsStore.settings.lockThreshold)),
                             carImageURL: dashboard.vehicleImageURL
                         )
                     }

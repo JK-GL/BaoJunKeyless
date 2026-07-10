@@ -533,10 +533,9 @@ struct RadarRepresentable: UIViewRepresentable {
 // MARK: - Radar Card（文字全部用 SwiftUI Text）
 struct RadarCardView: View {
     @ObservedObject var locationManager: LocationManager
+    @ObservedObject private var diagnostics = BLEDiagnosticsStore.shared
     private let displayCacheStore = VehicleDisplayCacheStore()
     var bleStatus: StatusBLEState = .disconnected
-    var unlockThresholdText: String = "--"
-    var lockThresholdText: String = "--"
     var carLat: Double = 0
     var carLng: Double = 0
     var carAddress: String = ""
@@ -550,8 +549,23 @@ struct RadarCardView: View {
         bleStatus == .connecting || bleStatus == .connected || bleStatus == .authenticating || bleStatus == .authenticated
     }
 
-    private var thresholdSummaryText: String {
-        "U\(unlockThresholdText) / L\(lockThresholdText)"
+    private var displayRSSI: Int? {
+        diagnostics.debugSmoothedRSSI ?? diagnostics.debugRawRSSI
+    }
+
+    private var rssiCenterText: String {
+        if let displayRSSI {
+            return "\(displayRSSI) dBm"
+        }
+        return "-- dBm"
+    }
+
+    /// 信号强弱分色：强绿 / 中橙 / 弱红
+    private var rssiSignalColor: Color {
+        guard let displayRSSI else { return Color.white.opacity(0.55) }
+        if displayRSSI >= -55 { return AppTheme.green }
+        if displayRSSI >= -70 { return AppTheme.orange }
+        return AppTheme.red
     }
 
     var body: some View {
@@ -561,20 +575,15 @@ struct RadarCardView: View {
                     .frame(width: 280, height: 280)
 
                 if hasActiveBLESession {
-                    Text(thresholdSummaryText)
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundStyle(
-                            LinearGradient(colors: [Color(red: 0.2, green: 0.6, blue: 1),
-                                                    Color(red: 0.3, green: 0.9, blue: 1)],
-                                           startPoint: .leading,
-                                           endPoint: .trailing)
-                        )
+                    Text(rssiCenterText)
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(rssiSignalColor)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(
                             Capsule()
-                                .fill(Color.black.opacity(0.24))
-                                .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 0.5))
+                                .fill(rssiSignalColor.opacity(0.12))
+                                .overlay(Capsule().stroke(rssiSignalColor.opacity(0.28), lineWidth: 0.5))
                         )
                 } else {
                     Text("GPS")
