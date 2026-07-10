@@ -43,32 +43,32 @@ final class MQTTVehicleStateStore: VehicleStateStore {
 
     // MARK: - 连接状态
 
-    enum LiveBLEStatus: Equatable {
-        case disconnected
-        case scanning
-        case connecting
-        case connected
-        case authenticating
-        case authenticated
-        case error
-    }
+    typealias LiveBLEStatus = VehicleConnectionStatusStore.LiveBLEStatus
+    typealias LiveMQTTStatus = VehicleConnectionStatusStore.LiveMQTTStatus
 
-    enum LiveMQTTStatus: Equatable {
-        case disconnected
-        case connecting
-        case connected
-        case error
-    }
-
-    @Published var bleStatus: LiveBLEStatus = .disconnected
-    @Published var mqttStatus: LiveMQTTStatus = .disconnected
-    @Published var authStatus: StatusAuthState = .expired("未登录")
-    @Published var latestBleKeyInfo: [String: String] = [:]
-    @Published var tokenSourcePath: String = ""
-    @Published var tokenSourceLabel: String = ""
-
+    let connectionStatusStore = VehicleConnectionStatusStore.shared
+    let bleKeyInfoStore = VehicleBLEKeyInfoStore.shared
     let locationDisplayStore = VehicleLocationDisplayStore.shared
     let controlFeedbackStore = VehicleControlFeedbackStore.shared
+
+    var bleStatus: LiveBLEStatus {
+        get { connectionStatusStore.bleStatus }
+        set { connectionStatusStore.bleStatus = newValue }
+    }
+    var mqttStatus: LiveMQTTStatus {
+        get { connectionStatusStore.mqttStatus }
+        set { connectionStatusStore.mqttStatus = newValue }
+    }
+    var authStatus: StatusAuthState {
+        get { connectionStatusStore.authStatus }
+        set { connectionStatusStore.authStatus = newValue }
+    }
+    var latestBleKeyInfo: [String: String] {
+        get { bleKeyInfoStore.latestBleKeyInfo }
+        set { bleKeyInfoStore.latestBleKeyInfo = newValue }
+    }
+    @Published var tokenSourcePath: String = ""
+    @Published var tokenSourceLabel: String = ""
 
     var cachedLatitudeGcj: Double {
         get { locationDisplayStore.cachedLatitudeGcj }

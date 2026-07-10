@@ -168,11 +168,13 @@ private struct KeylessBLEDiagnosticsSection: View {
     @EnvironmentObject var vehicleLog: VehicleEventLogStore
     let store: MQTTVehicleStateStore
     @ObservedObject var diagnostics: BLEDiagnosticsStore
+    @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
+    @ObservedObject private var bleKeyInfoStore = VehicleBLEKeyInfoStore.shared
     @State private var binding = VehicleBLEBindingStore.load()
 
     private var rows: [PopupInfoRowItem] {
         [
-            PopupInfoRowItem("dot.radiowaves.left.and.right", "BLE状态", bleStatusText(store.bleStatus), color: AppTheme.accent),
+            PopupInfoRowItem("dot.radiowaves.left.and.right", "BLE状态", bleStatusText(connectionStatusStore.bleStatus), color: AppTheme.accent),
             PopupInfoRowItem("wave.3.right", "当前阶段", diagnostics.phaseText, color: .white),
             PopupInfoRowItem("text.alignleft", "阶段详情", diagnostics.detailText, color: .white),
             PopupInfoRowItem("checkmark.circle", "最近结论", "\(diagnostics.lastConclusionText) · \(diagnostics.lastConclusionAtText)", color: AppTheme.green),
@@ -216,7 +218,7 @@ private struct KeylessBLEDiagnosticsSection: View {
         .onAppear { binding = VehicleBLEBindingStore.load() }
     }
 
-    private func bleStatusText(_ status: MQTTVehicleStateStore.LiveBLEStatus) -> String {
+    private func bleStatusText(_ status: VehicleConnectionStatusStore.LiveBLEStatus) -> String {
         switch status {
         case .disconnected: return "未连接"
         case .scanning: return "扫描中"
@@ -237,8 +239,8 @@ private struct KeylessBLEDiagnosticsSection: View {
     }
 
     private func bleKeySummaryText() -> String {
-        let mac = store.latestBleKeyInfo["bleMac"] ?? store.latestBleKeyInfo["macAddress"] ?? "--"
-        let keyId = store.latestBleKeyInfo["keyId"] ?? "--"
+        let mac = bleKeyInfoStore.latestBleKeyInfo["bleMac"] ?? bleKeyInfoStore.latestBleKeyInfo["macAddress"] ?? "--"
+        let keyId = bleKeyInfoStore.latestBleKeyInfo["keyId"] ?? "--"
         return "keyId=\(keyId) · mac=\(mac)"
     }
 }

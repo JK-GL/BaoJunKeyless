@@ -29,41 +29,6 @@ struct StatusView: View {
         vehicleStore as? MQTTVehicleStateStore
     }
 
-    private var mqttAuthStatus: StatusAuthState {
-        mqttStore?.authStatus ?? .expired("未配置")
-    }
-
-    private var liveBLEStatus: StatusBLEState {
-        switch mqttStore?.bleStatus {
-        case .authenticated:
-            return .authenticated
-        case .authenticating:
-            return .authenticating
-        case .connected:
-            return .connected
-        case .connecting:
-            return .connecting
-        case .scanning:
-            return .scanning
-        case .error:
-            return .error
-        case .disconnected, .none:
-            return .disconnected
-        }
-    }
-
-    private var liveMQTTStatus: StatusMQTTState {
-        switch mqttStore?.mqttStatus {
-        case .connected:
-            return .connected
-        case .connecting:
-            return .connecting
-        case .error:
-            return .error
-        case .disconnected, .none:
-            return .disconnected
-        }
-    }
 
     private var topBarTitle: String {
         let name = vehicleStore.dashboard.vehicleName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -157,11 +122,10 @@ struct StatusView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: AppSpacing.section) {
                     VStack(alignment: .leading, spacing: AppSpacing.compact) {
-                        StatusTopBarSection(
+                        StatusTopBarHost(
                             vehicleName: topBarTitle,
                             isRefreshing: isRefreshing,
                             refreshScale: refreshScale,
-                            authStatus: mqttAuthStatus,
                             onRefresh: handleRefresh
                         )
 
@@ -178,12 +142,10 @@ struct StatusView: View {
                             updatedAt: dashboard.updatedAtText
                         )
 
-                        StatusPillsSection(
+                        StatusPillsHost(
                             modeIcon: modeIcon,
                             modeText: modeText,
                             modeColor: modeColor,
-                            bleStatus: liveBLEStatus,
-                            mqttStatus: liveMQTTStatus,
                             physicalKeyState: livePhysicalKeyState,
                             gearState: liveGearState,
                             onBLETap: { withAnimation(PopupMotion.presentSpring) { isVehicleInfoFloatingPresented = true } },
@@ -200,7 +162,6 @@ struct StatusView: View {
                     } else {
                         StatusRadarSection(
                             locationManager: locationManager,
-                            bleStatus: liveBLEStatus,
                             unlockThresholdText: String(Int(settingsStore.settings.unlockThreshold)),
                             lockThresholdText: String(Int(settingsStore.settings.lockThreshold)),
                             carImageURL: dashboard.vehicleImageURL
@@ -368,93 +329,32 @@ struct StatusView: View {
 
     @ViewBuilder
     private func mqttFloatingWindow() -> some View {
-        FloatingPopupCard(
-            icon: liveMQTTStatus.icon,
-            iconColor: liveMQTTStatus.color,
-            title: "MQTT 信息",
-            maxWidth: 332,
-            maxContentHeight: 400,
-            fixedContentHeight: 360
-        ) {
-            MQTTInfoMergedCard(
-                status: liveMQTTStatus,
-                broker: mqttDisplayBroker,
-                clientId: mqttDisplayClientId,
-                username: mqttDisplayUsername,
-                password: mqttDisplayPassword,
-                tokenSource: mqttTokenSourceText,
-                topics: mqttTopicRows
-            )
-        } actions: {
-            VStack(spacing: 8) {
-                FloatingPopupPrimaryButton(title: "重新连接", color: AppTheme.accent) {
-                    mqttStore?.reconnect()
-                }
-                FloatingPopupSecondaryButton(title: "关闭", textColor: .white) {
-                    withAnimation(PopupMotion.dismissEase) { isMQTTFloatingPresented = false }
-                }
-            }
-        }
+        StatusMQTTFloatingHost(
+            broker: mqttDisplayBroker,
+            clientId: mqttDisplayClientId,
+            username: mqttDisplayUsername,
+            password: mqttDisplayPassword,
+            tokenSource: mqttTokenSourceText,
+            topics: mqttTopicRows,
+            onReconnect: { mqttStore?.reconnect() },
+            onClose: { withAnimation(PopupMotion.dismissEase) { isMQTTFloatingPresented = false } }
+        )
     }
 
     @ViewBuilder
     private func vehicleInfoFloatingWindow() -> some View {
-        FloatingPopupCard(
-            icon: liveBLEStatus.icon,
-            iconColor: liveBLEStatus.color,
-            title: "钥匙信息",
-            contentScrollEnabled: false
-        ) {
-            StatusVehicleInfoCardHost(
-                dashboard: vehicleStore.dashboard,
-                bleStatusText: liveBLEStatus.text,
-                isEmbedded: false
-            )
-        } actions: {
-            VStack(spacing: 10) {
-                let isScanning = liveBLEStatus == .scanning || liveBLEStatus == .connecting || liveBLEStatus == .authenticating || liveBLEStatus == .authenticated
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    PopupActionGridButton(
-                        title: isScanning ? "停止扫描" : "开始扫描",
-                        icon: isScanning ? "stop.circle" : "play.circle",
-                        tint: isScanning ? AppTheme.red : AppTheme.accent
-                    ) {
-                        mqttStore?.toggleBLEScanning()
-                    }
-                    if let mqttStore {
-                        NearbyBLEDevicesLaunchButton(nearbyStore: mqttStore.nearbyBLEDevicesStore) {
-                            withAnimation(PopupMotion.presentSpring) { isNearbyBLEDevicesFloatingPresented = true }
-                        }
-                    } else {
-                        PopupActionGridButton(
-                            title: "附近设备",
-                            icon: "dot.radiowaves.left.and.right",
-                            tint: AppTheme.orange
-                        ) {
-                            withAnimation(PopupMotion.presentSpring) { isNearbyBLEDevicesFloatingPresented = true }
-                        }
-                    }
-                    PopupActionGridButton(
-                        title: "拉取钥匙",
-                        icon: "key.fill",
-                        tint: AppTheme.green
-                    ) {
-                        mqttStore?.fetchBleKeyInfo()
-                        withAnimation { statusToastText = "正在重新拉取钥匙信息" }
-                    }
-                    PopupActionGridButton(
-                        title: "刷新车况",
-                        icon: "arrow.clockwise",
-                        tint: AppTheme.accent
-                    ) {
-                        mqttStore?.refreshNow()
-                    }
-                }
-                FloatingPopupSecondaryButton(title: "关闭", textColor: .white) {
-                    withAnimation(PopupMotion.dismissEase) { isVehicleInfoFloatingPresented = false }
-                }
-            }
-        }
+        StatusVehicleInfoFloatingHost(
+            dashboard: vehicleStore.dashboard,
+            nearbyStore: mqttStore?.nearbyBLEDevicesStore,
+            onToggleScanning: { mqttStore?.toggleBLEScanning() },
+            onOpenNearby: { withAnimation(PopupMotion.presentSpring) { isNearbyBLEDevicesFloatingPresented = true } },
+            onFetchKey: {
+                mqttStore?.fetchBleKeyInfo()
+                withAnimation { statusToastText = "正在重新拉取钥匙信息" }
+            },
+            onRefreshVehicle: { mqttStore?.refreshNow() },
+            onClose: { withAnimation(PopupMotion.dismissEase) { isVehicleInfoFloatingPresented = false } }
+        )
     }
 
     @ViewBuilder
