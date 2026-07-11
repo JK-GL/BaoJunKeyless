@@ -3,12 +3,15 @@ import SwiftUI
 struct QuickActionsView: View, Equatable {
     let onCommand: (CommandAction) -> Void
     let vehicleState: VehicleState
+    /// 当前是否可走 BLE 控制（鉴权成功且可发 BLE 命令）
+    var bleControlAvailable: Bool = false
 
     static func == (lhs: QuickActionsView, rhs: QuickActionsView) -> Bool {
         lhs.vehicleState.locked == rhs.vehicleState.locked
             && lhs.vehicleState.power == rhs.vehicleState.power
             && lhs.vehicleState.acOn == rhs.vehicleState.acOn
             && lhs.vehicleState.windowsClosed == rhs.vehicleState.windowsClosed
+            && lhs.bleControlAvailable == rhs.bleControlAvailable
     }
 
     private let gridColumns = [
@@ -28,7 +31,8 @@ struct QuickActionsView: View, Equatable {
                 ForEach(orderedActions) { action in
                     CommandGridButton(
                         action: action,
-                        state: vehicleState
+                        state: vehicleState,
+                        showBLEBadge: bleControlAvailable && action.asVehicleCommand(state: vehicleState, temperature: nil).kind.supportsBLEControl
                     ) {
                         onCommand(action)
                     }
@@ -42,6 +46,7 @@ struct QuickActionsView: View, Equatable {
 private struct CommandGridButton: View {
     let action: CommandAction
     let state: VehicleState
+    let showBLEBadge: Bool
     let onTap: () -> Void
 
     private var color: Color { action.resolvedColor(state: state) }
@@ -51,13 +56,29 @@ private struct CommandGridButton: View {
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 6) {
-                ZStack {
-                    Circle()
-                        .fill(color.opacity(0.10))
-                        .frame(width: 30, height: 30)
-                    Image(systemName: icon)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(color)
+                ZStack(alignment: .topTrailing) {
+                    ZStack {
+                        Circle()
+                            .fill(color.opacity(0.10))
+                            .frame(width: 30, height: 30)
+                        Image(systemName: icon)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(color)
+                    }
+
+                    if showBLEBadge {
+                        Image(systemName: "wave.3.right.circle.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(AppTheme.green)
+                            .frame(width: 15, height: 15)
+                            .background(
+                                Circle()
+                                    .fill(Color.black.opacity(0.55))
+                                    .frame(width: 15, height: 15)
+                            )
+                            .offset(x: 6, y: -5)
+                            .accessibilityLabel("支持蓝牙控制")
+                    }
                 }
 
                 Text(label)

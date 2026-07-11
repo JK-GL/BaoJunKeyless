@@ -37,8 +37,7 @@ struct StatusView: View {
                     StatusTopBarHost(
                         isRefreshing: isRefreshing,
                         refreshScale: refreshScale,
-                        onRefresh: handleRefresh,
-                        onToast: { text in withAnimation { statusToastText = text } }
+                        onRefresh: handleRefresh
                     )
 
                     StatusMainDashboardHost(

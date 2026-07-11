@@ -189,9 +189,6 @@ struct StatusTopBarSection: View, Equatable {
     let isRefreshing: Bool
     let refreshScale: CGFloat
     let authStatus: StatusAuthState
-    /// 仅 BLE 已鉴权且可蓝牙控车时显示
-    var showBLEControlBadge: Bool = false
-    var onBLEControlTap: (() -> Void)? = nil
     let onRefresh: () -> Void
 
     static func == (lhs: StatusTopBarSection, rhs: StatusTopBarSection) -> Bool {
@@ -199,7 +196,6 @@ struct StatusTopBarSection: View, Equatable {
             && lhs.isRefreshing == rhs.isRefreshing
             && lhs.refreshScale == rhs.refreshScale
             && lhs.authStatusText == rhs.authStatusText
-            && lhs.showBLEControlBadge == rhs.showBLEControlBadge
     }
 
     private var authStatusText: String {
@@ -216,16 +212,12 @@ struct StatusTopBarSection: View, Equatable {
         isRefreshing: Bool,
         refreshScale: CGFloat,
         authStatus: StatusAuthState = .valid,
-        showBLEControlBadge: Bool = false,
-        onBLEControlTap: (() -> Void)? = nil,
         onRefresh: @escaping () -> Void
     ) {
         self.vehicleName = vehicleName
         self.isRefreshing = isRefreshing
         self.refreshScale = refreshScale
         self.authStatus = authStatus
-        self.showBLEControlBadge = showBLEControlBadge
-        self.onBLEControlTap = onBLEControlTap
         self.onRefresh = onRefresh
     }
 
@@ -240,21 +232,6 @@ struct StatusTopBarSection: View, Equatable {
             AuthStatusBadge(authStatus: authStatus)
 
             Spacer()
-
-            if showBLEControlBadge {
-                Button {
-                    AppHaptics.light()
-                    onBLEControlTap?()
-                } label: {
-                    Image(systemName: "wave.3.right.circle.fill")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(AppTheme.green)
-                        .frame(width: 15, height: 15)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(ResponsiveButtonStyle(playsHaptic: false))
-                .accessibilityLabel("蓝牙控制可用")
-            }
 
             Button {
                 AppHaptics.light()
