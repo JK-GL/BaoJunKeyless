@@ -101,20 +101,22 @@ struct KeylessDecisionEngine {
         guard state.gear == .p else {
             return .deny(action: .unlock, reason: "档位 \(state.gear.title)，不允许无感解锁")
         }
-        // 8. 电源必须熄火，unknown 不允许
-        guard state.power == .off else {
-            return .deny(action: .unlock, reason: "车辆未熄火或电源状态未知 (\(state.power.title))")
+        // 8. 电源：仅明确通电/就绪时拒绝。
+        //    现场车况常缺 engineStatus → power=unknown(--)，不能因此卡死无感。
+        if isPowerClearlyOn(state.power) {
+            return .deny(action: .unlock, reason: "车辆未熄火 (\(state.power.title))")
         }
-        // 9. 物理钥匙：仅 inside 禁止；unknown 降级放行（依赖 BLE 靠近 + 门/档/电源）
-        if state.physicalKeyPosition == .inside {
-            return .deny(action: .unlock, reason: "物理钥匙在车内")
-        }
+        // 9. 物理钥匙：解锁不再因 inside 拒绝。
+        //    手机数字钥匙靠近时云端 keyStatus 常误报 inside，会把无感解锁彻底卡死。
 
-        let reason: String
+        var reason: String
         if !state.online && context.bleAuthenticated {
             reason = "满足无感解锁条件（BLE 离线会话）"
         } else {
             reason = "满足无感解锁条件"
+        }
+        if state.power == .unknown {
+            reason += " · 电源未知按熄火评估"
         }
         return .allow(action: .unlock, reason: reason)
     }
@@ -164,22 +166,40 @@ struct KeylessDecisionEngine {
         guard state.gear == .p else {
             return .deny(action: .lock, reason: "档位 \(state.gear.title)，不允许无感上锁")
         }
-        // 10. 电源必须熄火，unknown 不允许
-        guard state.power == .off else {
-            return .deny(action: .lock, reason: "车辆未熄火或电源状态未知 (\(state.power.title))")
+        // 10. 电源：仅明确通电/就绪时拒绝；unknown 不拦
+        if isPowerClearlyOn(state.power) {
+            return .deny(action: .lock, reason: "车辆未熄火 (\(state.power.title))")
         }
-        // 11. 物理钥匙：仅 inside 禁止；unknown 降级放行
-        if state.physicalKeyPosition == .inside {
+        // 11. 物理钥匙在车内：
+        //    - 无手机 BLE 鉴权：按实体钥匙风险拒绝
+        //    - 已 BLE 鉴权：云端 inside 常为数字钥匙误报，不拦截远离上锁
+        if state.physicalKeyPosition == .inside && !context.bleAuthenticated {
             return .deny(action: .lock, reason: "物理钥匙在车内")
         }
 
-        let reason: String
+        var reason: String
         if !state.online && context.bleAuthenticated {
             reason = "满足无感上锁条件（BLE 离线会话）"
         } else {
             reason = "满足无感上锁条件"
         }
+        if state.power == .unknown {
+            reason += " · 电源未知按熄火评估"
+        }
+        if state.physicalKeyPosition == .inside && context.bleAuthenticated {
+            reason += " · 云端钥匙车内按数字钥匙忽略"
+        }
         return .allow(action: .lock, reason: reason)
+    }
+
+    /// 仅当电源明确处于通电链路时才视为“未熄火”
+    private static func isPowerClearlyOn(_ power: VehiclePowerState) -> Bool {
+        switch power {
+        case .on, .ready, .acc:
+            return true
+        case .off, .unknown:
+            return false
+        }
     }
 
     /// 在线要求新鲜车况；过期时若 BLE 已鉴权可用最后车况。
@@ -279,7 +299,8 @@ struct KeylessDecisionEngine {
         }
         switch state.physicalKeyPosition {
         case .inside:
-            parts.append("key=inside")
+            // 云端 keyStatus=2；手机 BLE 靠近时常见数字钥匙误报，不等于确认实体钥匙在车内
+            parts.append("key=inside(cloud)")
         case .outside:
             parts.append("key=outside")
         case .farAway:

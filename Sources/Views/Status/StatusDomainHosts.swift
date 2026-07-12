@@ -83,12 +83,10 @@ struct StatusPillsHost: View {
     }
 
     private var physicalKeyState: StatusPhysicalKeyState {
-        switch vehicleStore.state.physicalKeyPosition {
-        case .inside: return .inCar
-        case .outside: return .outside
-        case .farAway: return .farAway
-        case .unknown: return .unknown
-        }
+        StatusPhysicalKeyState.from(
+            position: vehicleStore.state.physicalKeyPosition,
+            bleAuthenticated: connectionStatusStore.bleStatus == .authenticated
+        )
     }
 
     private var gearState: StatusGearState {

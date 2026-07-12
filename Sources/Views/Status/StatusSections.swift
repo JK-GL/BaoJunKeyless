@@ -130,17 +130,26 @@ enum StatusDoorLockState {
 enum StatusPhysicalKeyState {
     case farAway
     case outside
+    /// 云端 keyStatus=2，且当前无手机 BLE 鉴权：更像实体钥匙在车内
     case inCar
+    /// 云端 keyStatus=2，但手机 BLE 已鉴权：常见数字钥匙误报，不当成实体钥匙车内
+    case digitalNearby
     case unknown
 
-    var icon: String { "key.fill" }
+    var icon: String {
+        switch self {
+        case .digitalNearby: return "wave.3.right"
+        default: return "key.fill"
+        }
+    }
 
     var text: String {
         switch self {
-        case .farAway: return "物理钥匙远离"
-        case .outside: return "物理钥匙车外"
-        case .inCar: return "物理钥匙车内"
-        case .unknown: return "物理钥匙未知"
+        case .farAway: return "钥匙远离"
+        case .outside: return "钥匙车外"
+        case .inCar: return "钥匙车内"
+        case .digitalNearby: return "数字钥匙附近"
+        case .unknown: return "钥匙未知"
         }
     }
 
@@ -149,7 +158,18 @@ enum StatusPhysicalKeyState {
         case .farAway: return Color.white.opacity(0.45)
         case .outside: return AppTheme.green
         case .inCar: return AppTheme.orange
+        case .digitalNearby: return AppTheme.accent
         case .unknown: return Color.white.opacity(0.45)
+        }
+    }
+
+    /// keyStatus 是车端钥匙感知，手机 BLE 鉴权时 inside 常为数字钥匙误报
+    static func from(position: PhysicalKeyPosition, bleAuthenticated: Bool) -> StatusPhysicalKeyState {
+        switch position {
+        case .farAway: return .farAway
+        case .outside: return .outside
+        case .inside: return bleAuthenticated ? .digitalNearby : .inCar
+        case .unknown: return .unknown
         }
     }
 }
@@ -291,6 +311,7 @@ struct StatusPillsSection: View, Equatable {
         case .farAway: return "钥匙远离"
         case .outside: return "钥匙车外"
         case .inCar: return "钥匙车内"
+        case .digitalNearby: return "数字钥匙"
         case .unknown: return "钥匙未知"
         }
     }

@@ -170,9 +170,33 @@ func parseGear(_ raw: String?) -> VehicleGear? {
 }
 
 func parsePowerState(_ s: [String: String]) -> VehiclePowerState? {
-    if let engine = s["engineStatus"] {
-        if engine == "1" { return .ready }
-        if engine == "0" { return .off }
+    // 主字段：engineStatus 0=关 1=开（MQTT_FIELDS / status_source_map）
+    let candidates = [
+        s["engineStatus"],
+        s["powerStatus"],
+        s["vehPowerMode"],
+        s["vehiclePowerStatus"],
+        s["sysPowerMode"],
+        s["ignitionStatus"],
+        s["accStatus"]
+    ].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+
+    for raw in candidates {
+        switch raw {
+        case "0", "off", "OFF", "false", "FALSE":
+            return .off
+        case "1", "2", "on", "ON", "ready", "READY", "true", "TRUE":
+            // 1 常表示运行/就绪；细分不足时按 ready，避免误当 unknown 卡无感
+            return .ready
+        case "3", "acc", "ACC":
+            return .acc
+        default:
+            if let value = Int(raw) {
+                if value == 0 { return .off }
+                if value > 0 { return .ready }
+            }
+            continue
+        }
     }
     return nil
 }
