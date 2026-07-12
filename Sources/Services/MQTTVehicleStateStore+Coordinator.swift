@@ -162,6 +162,7 @@ extension MQTTVehicleStateStore {
         lastMQTTUpdate = nil
         lastMQTTBodyCollectAt = nil
         lastHTTPBodyCollectAt = nil
+        bodyCollectTime = nil
         fieldCollectAt.removeAll()
         fieldSource.removeAll()
         localDoorLockHoldUntil = nil

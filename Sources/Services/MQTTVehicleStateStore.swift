@@ -184,7 +184,9 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var credentialsStore: VehicleCredentialsStore
 
     var lastMqttFields: [String: String] = [:]
-    /// 每个车身字段最近“值变化”时间（字段级合并用）
+    /// 当前车身模型权威 collectTime（官方 setCarStatusModel 同款）
+    var bodyCollectTime: Date?
+    /// 字段最近变化时间（仅日志/诊断，不再卡 HTTP）
     var fieldCollectAt: [String: Date] = [:]
     /// 字段来源标记，便于日志排查
     var fieldSource: [String: String] = [:]

@@ -4,7 +4,7 @@ extension MQTTVehicleStateStore {
     func startHTTPPolling(immediate: Bool) {
         httpTimer?.invalidate()
         // 门窗/车锁不能只靠 60s 一轮；有网时提高频率，MQTT 增量到不了也能及时收敛
-        let timer = Timer.scheduledTimer(withTimeInterval: 8, repeats: true) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             self?.pollHTTPOnce(userInitiated: false, completion: nil)
         }
         // 后台/滑动时也尽量触发
@@ -58,7 +58,7 @@ extension MQTTVehicleStateStore {
                     newState.online = true
                     newDashboard = Self.stripDashboardBodyCacheSuffix(newDashboard)
 
-                    let mergeMode: VehicleHTTPMergeMode = userInitiated ? .full : .fillMissingPreferNewer
+                    let mergeMode: VehicleHTTPMergeMode = userInitiated ? .full : .poll
                     let mergeNote = self.mergeHTTPBaseState(
                         newState: newState,
                         dashboard: newDashboard,
@@ -78,7 +78,7 @@ extension MQTTVehicleStateStore {
                             "车况轮询更新",
                             detail: message,
                             identity: "http-poll-body",
-                            minimumInterval: 8
+                            minimumInterval: 3
                         )
                     }
                     completion?(true, message)

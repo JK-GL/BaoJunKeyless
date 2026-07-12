@@ -161,18 +161,15 @@ enum VehicleStatusMapper {
         // 单门增量：只更新对应字段，再基于合并后状态重算 doorsClosed/windowsClosed
         if let driverOpen = parseOpen(s["door1OpenStatus"]) { next.driverDoorOpen = driverOpen }
         if let trunkOpen = parseOpen(s["tailDoorOpenStatus"]) { next.trunkOpen = trunkOpen }
-        if let doorsClosed = parseDoorClosed(s) {
-            // 仅当包内自带总字段/足够门字段时才直接写；否则后面用明细重算
-            if s["doorOpenStatus"] != nil ||
-                [s["door1OpenStatus"], s["door2OpenStatus"], s["door3OpenStatus"], s["door4OpenStatus"]].compactMap({ $0 }).count >= 2 {
-                next.doorsClosed = doorsClosed
-            }
+        // 半包禁止用总字段推断整车开闭；总览一律由明细在 merge 后重算
+        // 这里只在“四门字段齐”时才写 doorsClosed，避免只来 door1 却判整车
+        let doorDetails = [s["door1OpenStatus"], s["door2OpenStatus"], s["door3OpenStatus"], s["door4OpenStatus"]].compactMap { $0 }
+        if doorDetails.count == 4, let doorsClosed = parseDoorClosed(s) {
+            next.doorsClosed = doorsClosed
         }
-        if let windowsClosed = parseWindowsClosed(s) {
-            if s["windowStatus"] != nil ||
-                [s["window1Status"], s["window2Status"], s["window3Status"], s["window4Status"]].compactMap({ $0 }).count >= 2 {
-                next.windowsClosed = windowsClosed
-            }
+        let windowDetails = [s["window1Status"], s["window2Status"], s["window3Status"], s["window4Status"]].compactMap { $0 }
+        if windowDetails.count == 4, let windowsClosed = parseWindowsClosed(s) {
+            next.windowsClosed = windowsClosed
         }
         if let ac = parseACStatus(s["acStatus"]) { next.acOn = ac }
         if let temp = parseDouble(s["accCntTemp"] ?? s["interiorTemperature"]) { next.acTemperature = temp }
@@ -211,15 +208,9 @@ enum VehicleStatusMapper {
             d.rightRearWindowStatusText = displayWindowStatus(s["window4Status"], degree: s["window4OpenDegree"], half: s["window4HalfOpenStatus"])
         }
 
-        // 总览始终按“合并后明细”重算，避免半包总字段把单门状态冲掉
+        // 总览始终按“合并后明细”重算；半包总字段绝不再改写总览
         d.doorStatusText = recomputeDoorStatusText(from: d)
         d.windowStatusText = recomputeWindowStatusText(from: d)
-        if d.doorStatusText != "未关" && d.doorStatusText != "全关", let doorsClosed = parseDoorClosed(s), s["doorOpenStatus"] != nil {
-            d.doorStatusText = doorsClosed ? "全关" : "未关"
-        }
-        if d.windowStatusText != "未关" && d.windowStatusText != "全关", let windowsClosed = parseWindowsClosed(s), s["windowStatus"] != nil {
-            d.windowStatusText = windowsClosed ? "全关" : "未关"
-        }
         let leftFrontTirePressure = firstDisplayTirePressure(s, corner: .leftFront)
         if leftFrontTirePressure != "--" { d.leftFrontTirePressureText = leftFrontTirePressure }
         let rightFrontTirePressure = firstDisplayTirePressure(s, corner: .rightFront)
