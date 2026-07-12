@@ -23,6 +23,13 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published private(set) var distance: CLLocationDistance = 0
     @Published private(set) var vehicleAddress: String = ""
 
+    /// 已连车机 BLE 时的离车距离覆盖（米）。地下车库 GPS 漂时优先用这个。
+    /// nil = 回落 GPS。
+    private var bleDistanceOverrideMeters: CLLocationDistance?
+    /// 对外只读：当前用于展示/雷达的有效距离（BLE 优先）
+    @Published private(set) var effectiveDistance: CLLocationDistance = 0
+    @Published private(set) var distanceSource: String = "gps" // gps / ble / cache
+
     private var lastRadarDistance: CLLocationDistance = -1
     private var lastRadarRelativeAngle: CLLocationDirection = -1
     private var lastPublishedDistance: CLLocationDistance = -1
@@ -99,24 +106,57 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         CrashLogger.shared.mark("Location", "update failed", details: error.localizedDescription)
     }
 
+    /// 由 BLE RSSI 估算写入；传 nil 清除覆盖，回落 GPS。
+    func setBLEDistanceOverride(_ meters: CLLocationDistance?) {
+        let normalized: CLLocationDistance?
+        if let meters {
+            normalized = min(max(meters, 0.3), BLEProximityDistanceEstimator.maxTrustedMeters)
+        } else {
+            normalized = nil
+        }
+        let changed: Bool
+        if let a = bleDistanceOverrideMeters, let b = normalized {
+            changed = abs(a - b) >= 0.15
+        } else {
+            changed = bleDistanceOverrideMeters != normalized
+        }
+        bleDistanceOverrideMeters = normalized
+        if changed {
+            publishEffectiveDistance(force: true)
+            // 同步雷达点位距离（方位仍用 GPS/罗盘，距离用 BLE）
+            if let meters = normalized {
+                applyRadarDistance(meters)
+            } else {
+                recalculate()
+            }
+        }
+    }
+
     // MARK: - 计算距离、方位、相对角度
     private func recalculate() {
-        guard let phone = phoneLocation else { return }
+        guard let phone = phoneLocation else {
+            publishEffectiveDistance(force: false)
+            return
+        }
         guard carLatitudeGcj != 0 || carLongitudeGcj != 0 else {
             if lastPublishedDistance != 0 {
                 distance = 0
                 lastPublishedDistance = 0
             }
+            publishEffectiveDistance(force: true)
             return
         }
 
         let phoneGcj = LocationResolver.wgs84ToGcj02(lat: phone.coordinate.latitude, lng: phone.coordinate.longitude)
         let phoneLoc = CLLocation(latitude: phoneGcj.lat, longitude: phoneGcj.lng)
         let carLoc = CLLocation(latitude: carLatitudeGcj, longitude: carLongitudeGcj)
-        let nextDistance = phoneLoc.distance(from: carLoc)
+        let gpsDistance = phoneLoc.distance(from: carLoc)
 
         let nextBearing = calculateBearing(from: phoneLoc, to: carLoc)
         let nextRelativeAngle = normalizeAngle(nextBearing - heading)
+
+        // 有 BLE 覆盖时：雷达距离用 BLE，方位仍用 GPS/罗盘
+        let nextDistance = bleDistanceOverrideMeters ?? gpsDistance
 
         var radarChanged = false
         if lastRadarDistance < 0 || abs(nextDistance - lastRadarDistance) >= 0.25 {
@@ -135,10 +175,53 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             radarPositionHandler?(radarDistance, radarRelativeAngle)
         }
 
-        if lastPublishedDistance < 0 || abs(nextDistance - lastPublishedDistance) >= 0.5 {
-            distance = nextDistance
-            lastPublishedDistance = nextDistance
-            displayCacheStore.setDistance(nextDistance)
+        // GPS 距离始终更新到 distance 字段（供无 BLE 时展示）
+        if lastPublishedDistance < 0 || abs(gpsDistance - lastPublishedDistance) >= 0.5 {
+            distance = gpsDistance
+            lastPublishedDistance = gpsDistance
+            // 仅在无 BLE 覆盖时缓存 GPS 距离，避免地库错误值污染
+            if bleDistanceOverrideMeters == nil {
+                displayCacheStore.setDistance(gpsDistance)
+            }
+        }
+        publishEffectiveDistance(force: false)
+    }
+
+    private func applyRadarDistance(_ meters: CLLocationDistance) {
+        var radarChanged = false
+        if lastRadarDistance < 0 || abs(meters - lastRadarDistance) >= 0.15 {
+            radarDistance = meters
+            lastRadarDistance = meters
+            radarChanged = true
+        }
+        if radarChanged, lastRadarRelativeAngle >= 0 {
+            radarPositionHandler?(radarDistance, radarRelativeAngle)
+        } else if radarChanged {
+            // 尚无角度时也推一次 0 角，避免完全不刷新
+            radarPositionHandler?(radarDistance, radarRelativeAngle)
+        }
+        // BLE 近距也写缓存，便于断连瞬间不跳到错误 GPS
+        displayCacheStore.setDistance(meters)
+        publishEffectiveDistance(force: true)
+    }
+
+    private func publishEffectiveDistance(force: Bool) {
+        let next: CLLocationDistance
+        let source: String
+        if let ble = bleDistanceOverrideMeters {
+            next = ble
+            source = "ble"
+        } else if distance > 0 {
+            next = distance
+            source = "gps"
+        } else {
+            let cached = displayCacheStore.loadSnapshot().distanceMeters
+            next = cached
+            source = cached > 0 ? "cache" : "gps"
+        }
+        if force || abs(next - effectiveDistance) >= 0.15 || source != distanceSource {
+            effectiveDistance = next
+            distanceSource = source
         }
     }
 

@@ -568,12 +568,42 @@ struct RadarCardView: View {
         bleStatus == .connecting || bleStatus == .connected || bleStatus == .authenticating || bleStatus == .authenticated
     }
 
+    /// 已真正连上车机（鉴权中/已鉴权/已连接）才信 BLE 距离；纯扫描不算
+    private var prefersBLEDistance: Bool {
+        switch bleStatus {
+        case .connected, .authenticating, .authenticated:
+            return true
+        default:
+            return false
+        }
+    }
+
     private var isLiveAuthenticatedRSSI: Bool {
         bleStatus == .authenticated && !diagnostics.isPreviewRSSI
     }
 
     private var displayRSSI: Int? {
         diagnostics.debugSmoothedRSSI ?? diagnostics.debugRawRSSI
+    }
+
+    /// 连接上车机后的离车距离：优先 BLE RSSI 估算
+    private var bleEstimatedMeters: Double? {
+        guard prefersBLEDistance, let rssi = displayRSSI else { return nil }
+        // 广播预填 RSSI 也可估距，但 live 鉴权后更准
+        return BLEProximityDistanceEstimator.meters(fromRSSI: rssi)
+    }
+
+    private var bleDistanceText: String? {
+        guard let meters = bleEstimatedMeters else { return nil }
+        return BLEProximityDistanceEstimator.displayText(meters: meters)
+    }
+
+    private var bleDistanceColor: Color {
+        // live 鉴权后用信号色；连接中/鉴权中用中性色
+        if isLiveAuthenticatedRSSI {
+            return rssiSignalColor.opacity(0.95)
+        }
+        return Color.white.opacity(0.55)
     }
 
     private var rssiCenterText: String {
@@ -627,12 +657,17 @@ struct RadarCardView: View {
             }
 
             VStack(spacing: 5) {
-                if locationManager.distance > 0 {
-                    Text(String(format: "距车辆 %.0f 米", locationManager.distance))
+                // 已连上车机 BLE 时优先用 RSSI 估距；地库 GPS 经纬度常漂，不能当真
+                if let bleDistanceText {
+                    Text(bleDistanceText)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(bleDistanceColor)
+                } else if locationManager.distance > 0 {
+                    Text(String(format: "距车辆 %.0f 米 · GPS", locationManager.distance))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.5))
                 } else if cachedDistanceMeters > 0 {
-                    Text(String(format: "距车辆 %.0f 米", cachedDistanceMeters))
+                    Text(String(format: "距车辆 %.0f 米 · 缓存", cachedDistanceMeters))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.42))
                 } else if carLat != 0 && carLng != 0 {
@@ -666,6 +701,19 @@ struct RadarCardView: View {
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
+        .onAppear { syncBLEDistanceOverride() }
+        .onChange(of: diagnostics.debugSmoothedRSSI) { _ in syncBLEDistanceOverride() }
+        .onChange(of: diagnostics.debugRawRSSI) { _ in syncBLEDistanceOverride() }
+        .onChange(of: diagnostics.isPreviewRSSI) { _ in syncBLEDistanceOverride() }
+        .onChange(of: bleStatus) { _ in syncBLEDistanceOverride() }
+    }
+
+    private func syncBLEDistanceOverride() {
+        if prefersBLEDistance, let meters = bleEstimatedMeters {
+            locationManager.setBLEDistanceOverride(meters)
+        } else {
+            locationManager.setBLEDistanceOverride(nil)
+        }
     }
 
     private func currentSearchedAddress() -> String {
