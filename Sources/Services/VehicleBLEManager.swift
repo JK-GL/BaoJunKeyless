@@ -421,11 +421,52 @@ final class VehicleBLEManager: NSObject {
             return
         }
         guard discoveredPeripheral == nil else { return }
-        // 一账号一车：始终优先尝试绑定外设，失败后再宽扫认车
+        // 0) 系统已连接的目标车（iOS 已连上车机 BLE 时，优先接管，避免还在“扫描中”）
+        if connectSystemConnectedPeripheralIfAvailable() {
+            return
+        }
+        // 1) 绑定 UUID 优先直连
         if !hasTriedBoundPeripheral, connectBoundPeripheralIfAvailable() {
             return
         }
+        // 2) 再宽扫
         startScanning()
+    }
+
+    /// 优先接管系统已连接、且像本车钥匙模块的外设（181A/182A）
+    private func connectSystemConnectedPeripheralIfAvailable() -> Bool {
+        guard config != nil else { return false }
+        // 用鉴权/控制服务筛系统已连接设备，避免乱接耳机等
+        let connected = central.retrieveConnectedPeripherals(withServices: [authService, controlService])
+        guard !connected.isEmpty else { return false }
+
+        let bindingId = VehicleBLEBindingStore.loadMatching(keyId: config?.keyId ?? "", bleMac: config?.bleMac ?? "")?.peripheralIdentifier
+        // 优先：已绑定 UUID
+        if let bindingId,
+           let peripheral = connected.first(where: { $0.identifier.uuidString.caseInsensitiveCompare(bindingId) == .orderedSame }) {
+            connectScannedPeripheral(
+                peripheral,
+                localName: peripheral.name ?? "system-connected",
+                rssi: -50,
+                source: .bound,
+                detail: "systemConnected bound id=\(peripheral.identifier.uuidString.prefix(8))"
+            )
+            onLog?("BLE", "prefer system-connected bound peripheral id=\(peripheral.identifier.uuidString.prefix(8)) name=\(peripheral.name ?? "--")")
+            return true
+        }
+        // 其次：任一带 181A/182A 的已连接外设（一车一账号场景）
+        if let peripheral = connected.first {
+            connectScannedPeripheral(
+                peripheral,
+                localName: peripheral.name ?? "system-connected",
+                rssi: -50,
+                source: .manufacturer,
+                detail: "systemConnected serviceMatch id=\(peripheral.identifier.uuidString.prefix(8))"
+            )
+            onLog?("BLE", "prefer system-connected service peripheral id=\(peripheral.identifier.uuidString.prefix(8)) name=\(peripheral.name ?? "--") count=\(connected.count)")
+            return true
+        }
+        return false
     }
 
     private var allowsDebugScoreFallback: Bool {

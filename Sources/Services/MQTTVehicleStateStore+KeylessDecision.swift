@@ -45,8 +45,17 @@ extension MQTTVehicleStateStore {
 
     func scheduleBLESignalLossTimeout() {
         bleSignalLossWorkItem?.cancel()
+        // 坐车内 RSSI 偶发读失败很常见；3s 太短会误判远离→自动上锁
+        // 最近还是强信号时更宽；弱信号时稍短
+        let last = liveBLERSSI ?? liveBLERawRSSI
+        let unlockTh = keylessSettingsStore.settings.unlockThreshold
+        let wasStrong = last.map { Double($0) >= unlockTh } ?? false
+        let timeout: TimeInterval = wasStrong ? 12.0 : 8.0
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
+            // 仍鉴权中：只清 live RSSI，不立刻按“远离上锁”
+            // 真正远离应靠弱 RSSI；信号空洞不等于人已离开
+            let stillAuthed = self.bleStatus == .authenticated || self.hasCompletedBLEAuth
             self.liveBLERawRSSI = nil
             self.liveBLERSSI = nil
             self.liveBLELastSeenAt = nil
@@ -54,8 +63,27 @@ extension MQTTVehicleStateStore {
             self.debugBLESmoothedRSSI = nil
             self.bleDiagnosticsStore.isPreviewRSSI = false
             self.debugBLELastSeenText = "--"
-            self.debugBLELastTransitionText = "BLE信号丢失 · \(formatTime(Date()))"
-            self.logVehicleEvent(.warning, "BLE信号丢失", detail: "连续 3s 未收到 RSSI，按远离处理", identity: "signal-loss", minimumInterval: 8)
+            self.debugBLELastTransitionText = "BLE信号中断 · \(formatTime(Date()))"
+            self.logVehicleEvent(
+                .warning,
+                "BLE信号中断",
+                detail: stillAuthed
+                    ? "连续 \(Int(timeout))s 无 RSSI，暂不清靠近语义（避免车内误上锁）"
+                    : "连续 \(Int(timeout))s 无 RSSI，按远离处理",
+                identity: "signal-loss",
+                minimumInterval: 8
+            )
+
+            if stillAuthed {
+                // 保留 phoneNearby 原值，仅去掉 bleRssi，避免误触发上锁
+                if self.state.bleRssi != nil {
+                    var next = self.state
+                    next.bleRssi = nil
+                    self.apply(next)
+                }
+                return
+            }
+
             var next = self.state
             next.bleRssi = nil
             next.phoneNearby = false
@@ -63,7 +91,7 @@ extension MQTTVehicleStateStore {
             self.evaluateKeylessAutomation(for: next)
         }
         bleSignalLossWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: work)
     }
 
     func applyLiveBLERSSI(_ rawRSSI: Int?) {

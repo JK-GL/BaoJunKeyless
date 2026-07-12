@@ -35,7 +35,7 @@ extension MQTTVehicleStateStore {
                 switch result {
                 case .success(let refreshResult):
                     self.lastHTTPUpdate = refreshResult.fetchedAt
-                    let newState = self.mapHTTPToVehicleState(refreshResult.carStatus)
+                    var newState = self.mapHTTPToVehicleState(refreshResult.carStatus)
                     var newDashboard = self.mapHTTPToDashboard(refreshResult.carStatus)
                     if !refreshResult.tirePressure.isEmpty {
                         newDashboard = VehicleStatusMapper.tirePressureDashboard(
@@ -43,19 +43,17 @@ extension MQTTVehicleStateStore {
                             base: newDashboard
                         )
                     }
-                    let shouldUseHTTP = self.lastMQTTUpdate.map { Date().timeIntervalSince($0) >= 60 } ?? true
-
+                    // HTTP queryDefaultCarStatus 是全量车况快照。
+                    // 以前：MQTT 60s 内有任意字段就整包不用 HTTP，导致“有网开门但门窗不刷新”。
+                    // 现在：始终合并 HTTP 门窗/车锁等车身字段；仅保留手机侧 live BLE 靠近语义。
+                    newState.online = true
                     self.mergeHTTPBaseState(newState: newState, dashboard: newDashboard)
-                    if shouldUseHTTP {
-                        self.apply(newState)
-                        self.applyDashboard(newDashboard)
-                    }
+                    // mergeHTTPBaseState 内已 apply + evaluateKeyless
 
                     self.applyHTTPMeta(carInfo: refreshResult.carInfo, carStatus: refreshResult.carStatus)
                     CrashLogger.shared.mark("HTTP", "status updated")
 
-                    let source = shouldUseHTTP ? "HTTP" : "HTTP(已合并，展示仍偏 MQTT)"
-                    let message = "车况已更新 · \(source) · \(formatTime(refreshResult.fetchedAt))"
+                    let message = "车况已更新 · HTTP · \(formatTime(refreshResult.fetchedAt))"
                     if userInitiated {
                         self.vehicleEventLogStore.add(.action, "车况刷新成功", detail: message)
                     }

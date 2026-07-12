@@ -181,13 +181,14 @@ enum VehicleStateMerger {
         merged.fuelLevel = newState.fuelLevel
         merged.fuelRange = newState.fuelRange
         merged.oilRange = newState.oilRange
-        if merged.locked == nil { merged.locked = newState.locked }
-        if merged.doorsClosed == nil { merged.doorsClosed = newState.doorsClosed }
-        if merged.driverDoorOpen == nil { merged.driverDoorOpen = newState.driverDoorOpen }
-        if merged.trunkOpen == nil { merged.trunkOpen = newState.trunkOpen }
-        if merged.windowsClosed == nil { merged.windowsClosed = newState.windowsClosed }
-        if merged.acOn == nil { merged.acOn = newState.acOn }
-        if merged.acTemperature == nil { merged.acTemperature = newState.acTemperature }
+        // HTTP 全量快照应覆盖车身开闭/车锁；MQTT 增量仍走 mergeRealtime
+        if newState.locked != nil { merged.locked = newState.locked }
+        if newState.doorsClosed != nil { merged.doorsClosed = newState.doorsClosed }
+        if newState.driverDoorOpen != nil { merged.driverDoorOpen = newState.driverDoorOpen }
+        if newState.trunkOpen != nil { merged.trunkOpen = newState.trunkOpen }
+        if newState.windowsClosed != nil { merged.windowsClosed = newState.windowsClosed }
+        if newState.acOn != nil { merged.acOn = newState.acOn }
+        if newState.acTemperature != nil { merged.acTemperature = newState.acTemperature }
         return merged
     }
 
@@ -213,6 +214,20 @@ enum VehicleStateMerger {
         dash.batteryTemperatureText = newDashboard.batteryTemperatureText
         dash.motorTemperatureText = newDashboard.motorTemperatureText
         dash.inverterTemperatureText = newDashboard.inverterTemperatureText
+
+        // HTTP 全量车身状态文案
+        dash.lockStatusText = newDashboard.lockStatusText
+        dash.doorStatusText = newDashboard.doorStatusText
+        dash.windowStatusText = newDashboard.windowStatusText
+        dash.tailgateStatusText = newDashboard.tailgateStatusText
+        dash.driverDoorStatusText = newDashboard.driverDoorStatusText
+        dash.passengerDoorStatusText = newDashboard.passengerDoorStatusText
+        dash.leftRearDoorStatusText = newDashboard.leftRearDoorStatusText
+        dash.rightRearDoorStatusText = newDashboard.rightRearDoorStatusText
+        dash.leftFrontWindowStatusText = newDashboard.leftFrontWindowStatusText
+        dash.rightFrontWindowStatusText = newDashboard.rightFrontWindowStatusText
+        dash.leftRearWindowStatusText = newDashboard.leftRearWindowStatusText
+        dash.rightRearWindowStatusText = newDashboard.rightRearWindowStatusText
 
         dash.isCharging = newDashboard.isCharging
         dash.chargingPowerText = newDashboard.chargingPowerText

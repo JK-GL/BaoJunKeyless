@@ -90,17 +90,14 @@ struct KeylessDecisionEngine {
             return .deny(action: .unlock, reason: "手机未进入解锁范围")
         }
         // 5. 车辆已锁
-        //    - 在线：locked=false 拒绝重复解锁
-        //    - 离线 + BLE 已鉴权：云端/缓存 locked 可能过期，不据此硬拒
-        //    - locked=nil：仅 BLE 已鉴权时放行
-        if state.online, state.locked == false {
+        //    - locked=false：无论在线离线都拒绝（已开锁再解会循环）
+        //    - locked=nil：仅 BLE 已鉴权时允许尝试
+        //    - locked=true：正常放行到后续条件
+        if state.locked == false {
             return .deny(action: .unlock, reason: "车辆未上锁，无需重复解锁")
         }
         if state.locked == nil && !context.bleAuthenticated {
             return .deny(action: .unlock, reason: "车锁状态未知且 BLE 未鉴权")
-        }
-        if !state.online && context.bleAuthenticated && state.locked == false {
-            // 离线缓存显示未锁，仍允许靠近时尝试解锁（BLE 成功会本地回写）
         }
         // 6. 车速 = 0
         if let speed = state.speed, speed > 0 {
@@ -135,8 +132,6 @@ struct KeylessDecisionEngine {
         }
         if state.locked == nil {
             reason += " · 车锁未知按可解锁评估"
-        } else if !state.online && state.locked == false {
-            reason += " · 离线缓存未锁仍尝试"
         }
         return .allow(action: .unlock, reason: reason)
     }
@@ -164,9 +159,9 @@ struct KeylessDecisionEngine {
             return .deny(action: .lock, reason: "手机未离开上锁范围")
         }
         // 5. 车辆未锁
-        //    - 在线：locked=true 拒绝重复上锁
-        //    - 离线 + BLE 已鉴权：缓存 locked 可能过期，不据此硬拒
-        if state.online, state.locked == true {
+        //    - locked=true：拒绝重复上锁（含离线本地回写后的已锁）
+        //    - locked=nil：仅 BLE 已鉴权时允许尝试
+        if state.locked == true {
             return .deny(action: .lock, reason: "车辆已上锁，无需重复上锁")
         }
         if state.locked == nil && !context.bleAuthenticated {
@@ -236,8 +231,6 @@ struct KeylessDecisionEngine {
         }
         if state.locked == nil {
             reason += " · 车锁未知按可上锁评估"
-        } else if !state.online && state.locked == true {
-            reason += " · 离线缓存已锁仍尝试"
         }
         if state.physicalKeyPosition == .inside && context.bleAuthenticated {
             reason += " · 云端钥匙车内按数字钥匙忽略"
