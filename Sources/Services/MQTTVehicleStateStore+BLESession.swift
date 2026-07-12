@@ -231,8 +231,9 @@ extension MQTTVehicleStateStore {
             bleStatus = .scanning
         }
         refreshBLESessionIfNeeded()
-        if !hasUsableBLEKeyInfo || forceRestart {
-            fetchBleKeyInfo()
+        // S1：只有本地钥匙真正不可用才拉网；forceRestart 只重启 BLE，不刷钥匙
+        if !hasUsableBLEKeyInfo {
+            fetchBleKeyInfo(force: false)
         }
     }
 

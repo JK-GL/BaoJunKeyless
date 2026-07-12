@@ -76,14 +76,25 @@ extension MQTTVehicleStateStore {
         vehicleEventLogStore.addThrottled(category, title, detail: detail, identity: identity, minimumInterval: minimumInterval)
     }
 
-    func fetchBleKeyInfo(completion: ((Bool, String) -> Void)? = nil) {
+    /// - force=false：本地材料可用则永不自动打 ble/key/query（钥匙一般不过期）
+    /// - force=true：仅用户手动“拉取钥匙”时强制网络刷新
+    func fetchBleKeyInfo(force: Bool = false, completion: ((Bool, String) -> Void)? = nil) {
         let store = credentialsStore
-        guard !store.accessToken.isEmpty, !store.vin.isEmpty, !store.phone.isEmpty else {
+        // 先尽量用本地缓存补齐，避免无意义网络
+        if latestBleKeyInfo.isEmpty || !hasUsableBLEKeyInfo {
             reloadCachedBLEKeyInfo(preferScoped: true)
-            if !latestBleKeyInfo.isEmpty {
+        }
+
+        guard !store.accessToken.isEmpty, !store.vin.isEmpty, !store.phone.isEmpty else {
+            if hasUsableBLEKeyInfo {
                 refreshBLESessionIfNeeded()
                 let message = "凭证不完整，已使用本地钥匙缓存"
                 vehicleEventLogStore.addThrottled(.warning, "钥匙拉取跳过", detail: message, identity: "ble-key-skip", minimumInterval: 10)
+                completion?(true, message)
+            } else if !latestBleKeyInfo.isEmpty {
+                refreshBLESessionIfNeeded()
+                let message = "凭证不完整，本地钥匙字段不完整"
+                vehicleEventLogStore.addThrottled(.warning, "钥匙拉取跳过", detail: message, identity: "ble-key-skip-partial", minimumInterval: 10)
                 completion?(false, message)
             } else {
                 let message = "无法拉取钥匙：Token / VIN / 手机号不完整"
@@ -93,19 +104,20 @@ extension MQTTVehicleStateStore {
             return
         }
 
-        // 已有可用钥匙材料：短时间不重复打网络（钥匙不过期也别一直拉）
-        if hasUsableBLEKeyInfo {
+        // S1：本地可用就不自动拉网；仅 force（手动拉取）才刷新
+        if hasUsableBLEKeyInfo && !force {
             if isFetchingBleKeyInfo {
                 completion?(true, "钥匙拉取进行中，已有本地材料")
                 return
             }
-            if let last = lastBleKeyFetchAttemptAt, Date().timeIntervalSince(last) < 120 {
-                let message = "本地钥匙材料仍可用，跳过重复拉取"
-                vehicleEventLogStore.addThrottled(.action, "钥匙拉取跳过", detail: message, identity: "ble-key-fresh", minimumInterval: 30)
-                completion?(true, message)
-                return
-            }
-        } else if isFetchingBleKeyInfo {
+            refreshBLESessionIfNeeded()
+            let message = "本地钥匙材料可用，跳过网络拉取"
+            vehicleEventLogStore.addThrottled(.action, "钥匙拉取跳过", detail: message, identity: "ble-key-local-usable", minimumInterval: 60)
+            completion?(true, message)
+            return
+        }
+
+        if isFetchingBleKeyInfo {
             completion?(false, "钥匙拉取进行中")
             return
         }
@@ -260,7 +272,7 @@ extension MQTTVehicleStateStore {
         bleStatus = .connecting
         refreshBLESessionIfNeeded()
         if !hasUsableBLEKeyInfo {
-            fetchBleKeyInfo()
+            fetchBleKeyInfo(force: false)
         }
     }
 

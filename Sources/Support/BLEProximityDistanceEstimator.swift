@@ -22,11 +22,11 @@ enum BLEProximityDistanceEstimator {
         return clamped
     }
 
-    /// 文案：近处更细，远处取整
+    /// 文案：近处更细，远处取整（来源由雷达中心 RSSI/GPS 表达，这里不重复标注）
     static func displayText(meters: Double) -> String {
         if meters < 10 {
-            return String(format: "距车辆 %.1f 米 · 蓝牙", meters)
+            return String(format: "距车辆 %.1f 米", meters)
         }
-        return String(format: "距车辆 %.0f 米 · 蓝牙", meters)
+        return String(format: "距车辆 %.0f 米", meters)
     }
 }

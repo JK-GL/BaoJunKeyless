@@ -70,7 +70,7 @@ extension MQTTVehicleStateStore {
         mqttStatus = .connecting
 
         startHTTPPolling(immediate: true)
-        fetchBleKeyInfo()
+        fetchBleKeyInfo(force: false)
 
         SGMWApiClient.shared.fetchMqttTokenResult(accessToken: credentialsStore.accessToken, vin: credentialsStore.vin) { [weak self] result in
             guard let self else { return }
@@ -118,7 +118,7 @@ extension MQTTVehicleStateStore {
         }
 
         group.enter()
-        fetchBleKeyInfo { ok, message in
+        fetchBleKeyInfo(force: false) { ok, message in
             keyOK = ok
             keyMessage = message
             group.leave()

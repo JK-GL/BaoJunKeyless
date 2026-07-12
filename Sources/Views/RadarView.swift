@@ -663,11 +663,11 @@ struct RadarCardView: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(bleDistanceColor)
                 } else if locationManager.distance > 0 {
-                    Text(String(format: "距车辆 %.0f 米 · GPS", locationManager.distance))
+                    Text(String(format: "距车辆 %.0f 米", locationManager.distance))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.5))
                 } else if cachedDistanceMeters > 0 {
-                    Text(String(format: "距车辆 %.0f 米 · 缓存", cachedDistanceMeters))
+                    Text(String(format: "距车辆 %.0f 米", cachedDistanceMeters))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.42))
                 } else if carLat != 0 && carLng != 0 {

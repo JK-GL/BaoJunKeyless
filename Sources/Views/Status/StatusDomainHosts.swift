@@ -275,7 +275,8 @@ struct StatusVehicleInfoFloatingHost: View {
                         tint: AppTheme.green
                     ) {
                         onToast?("正在拉取钥匙…")
-                        mqttStore?.fetchBleKeyInfo { _, message in
+                        // 仅手动入口强制网络刷新；自动路径本地可用则永不拉
+                        mqttStore?.fetchBleKeyInfo(force: true) { _, message in
                             onToast?(message)
                         }
                     }
