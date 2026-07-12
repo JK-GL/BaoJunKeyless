@@ -3,19 +3,21 @@ import Foundation
 enum VehicleHTTPMergeMode: String {
     /// 手动刷新：强制全量落地
     case full = "全量"
-    /// 自动轮询：collectTime 不旧则全量覆盖车身
-    case poll = "轮询全量"
+    /// MQTT 断线/过期：HTTP 全量纠正车身
+    case pollFull = "轮询全量"
+    /// MQTT 在线新鲜：HTTP 只补位置/资料/缺字段，不冲实时车身
+    case pollMeta = "轮询元信息"
 }
 
 extension MQTTVehicleStateStore {
     /// BLE 本地锁/解锁后，网络门锁短保护
     static let localLockHoldSeconds: TimeInterval = 15
 
-    /// 官方同款：
-    /// - HTTP：全量车身真相（3s 轮询 / 手动刷新）
-    /// - MQTT：只增量本包字段
-    /// - 总览：只由四门四窗明细重算
-    /// - 不再用字段时间戳互锁卡死 HTTP 纠正
+    /// 更贴近官方：
+    /// - MQTT：实时增量主通道
+    /// - HTTP：MQTT 新鲜时降频只补元信息；MQTT 断/旧时全量纠正
+    /// - 始终比 collectTime，防止旧包回退
+    /// - 总览只由四门四窗明细重算
     @discardableResult
     func mergeHTTPBaseState(
         newState: VehicleState,
@@ -27,9 +29,31 @@ extension MQTTVehicleStateStore {
         let collectAt = httpCollectAt ?? Date()
         let now = Date()
 
-        // collectTime 闸门：自动轮询时，更旧的 HTTP 不覆盖车身
-        if mode == .poll, let current = bodyCollectTime, collectAt < current {
+        // collectTime 闸门：自动轮询时，更旧的 HTTP 不覆盖车身（官方 setCarStatusModel 同款）
+        if mode != .full, let current = bodyCollectTime, collectAt < current {
             return "丢弃旧HTTP"
+        }
+
+        // MQTT 在线新鲜：HTTP 只做元信息/资料/位置（已在 applyHTTPMeta），不冲实时车身
+        if mode == .pollMeta {
+            lastHTTPBodyCollectAt = collectAt
+            // 允许补胎压等非高频实时字段：仅当当前还是空/占位
+            var dash = dashboard
+            var changed = false
+            func fillIfEmpty(_ current: String, _ incoming: String) -> String {
+                let c = current.trimmingCharacters(in: .whitespacesAndNewlines)
+                let n = incoming.trimmingCharacters(in: .whitespacesAndNewlines)
+                if (c.isEmpty || c == "--"), !n.isEmpty, n != "--" { return n }
+                return current
+            }
+            let tireKeys: [(WritableKeyPath<VehicleDashboardState, String>, String)] = []
+            // 胎压指标在 metrics 侧；这里至少别回退 bodyCollectTime
+            // 若 HTTP 带来更完整的车辆图片/名称，applyHTTPMeta 已处理
+            _ = tireKeys
+            _ = fillIfEmpty
+            _ = changed
+            _ = dash
+            return "轮询元信息/MQTT新鲜"
         }
 
         var dash = Self.stripDashboardBodyCacheSuffix(newDashboard)

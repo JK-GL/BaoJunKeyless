@@ -52,6 +52,10 @@ extension MQTTVehicleStateStore {
             }
             self.lastMQTTUpdate = Date()
             self.mqttStatus = .connected
+            // MQTT 恢复新鲜后，HTTP 自动降频（下次 timer 重建）
+            if let timer = self.httpTimer, abs(timer.timeInterval - Self.httpPollIntervalMQTTFresh) > 0.5 {
+                self.startHTTPPolling(immediate: false)
+            }
 
             // 只把“值变化”的字段映射进状态；半包里重复的旧值不再二次写入
             // 这样 HTTP 纠正后，不会被下一包相同旧门字段重新钉死

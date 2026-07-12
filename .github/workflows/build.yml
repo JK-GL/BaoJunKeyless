@@ -46,6 +46,17 @@ jobs:
           find "$APP" -maxdepth 1 -ls
           file "$APP/BaoJunKeyless" || echo "NO BINARY"
           ls -lh "$APP" || echo "NO APP DIR"
+          # 图标必须编译进 Assets.car；若只剩 AppIcon.appiconset 源目录，桌面图标不会显示
+          if [ ! -f "$APP/Assets.car" ]; then
+            echo "ERROR: Assets.car missing — AppIcon was not compiled"
+            find "$APP" -name 'AppIcon*' -maxdepth 4 -print || true
+            exit 1
+          fi
+          ls -lh "$APP/Assets.car"
+          # 编译成功后通常不应再把 appiconset 源文件原样塞进 .app 根资源树
+          if [ -d "$APP/Assets.xcassets/AppIcon.appiconset" ]; then
+            echo "WARN: raw AppIcon.appiconset present inside .app (asset catalog may not have been compiled correctly)"
+          fi
 
       - name: Re-sign with TrollStore entitlements
         run: |

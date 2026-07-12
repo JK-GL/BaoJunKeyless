@@ -1,13 +1,35 @@
 import Foundation
 
 extension MQTTVehicleStateStore {
+    /// MQTT 在线新鲜时慢轮询；断线/过期时快轮询全量
+    static let httpPollIntervalMQTTFresh: TimeInterval = 20
+    static let httpPollIntervalMQTTStale: TimeInterval = 3
+    /// MQTT 在此时间内有消息，视为新鲜
+    static let mqttFreshWindow: TimeInterval = 60
+
+    func isMQTTRealtimeFresh(now: Date = Date()) -> Bool {
+        guard mqttStatus == .connected else { return false }
+        guard let last = lastMQTTUpdate else { return false }
+        return now.timeIntervalSince(last) <= Self.mqttFreshWindow
+    }
+
+    func currentHTTPPollInterval(now: Date = Date()) -> TimeInterval {
+        isMQTTRealtimeFresh(now: now) ? Self.httpPollIntervalMQTTFresh : Self.httpPollIntervalMQTTStale
+    }
+
     func startHTTPPolling(immediate: Bool) {
         httpTimer?.invalidate()
-        // 门窗/车锁不能只靠 60s 一轮；有网时提高频率，MQTT 增量到不了也能及时收敛
-        let timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
-            self?.pollHTTPOnce(userInitiated: false, completion: nil)
+        // 动态频率：MQTT 新鲜 20s 元信息；MQTT 断/旧 3s 全量
+        let interval = currentHTTPPollInterval()
+        let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.pollHTTPOnce(userInitiated: false, completion: nil)
+            // 根据 MQTT 状态自适应下一次间隔
+            let next = self.currentHTTPPollInterval()
+            if abs((self.httpTimer?.timeInterval ?? 0) - next) > 0.5 {
+                self.startHTTPPolling(immediate: false)
+            }
         }
-        // 后台/滑动时也尽量触发
         RunLoop.main.add(timer, forMode: .common)
         httpTimer = timer
         if immediate {
@@ -58,7 +80,11 @@ extension MQTTVehicleStateStore {
                     newState.online = true
                     newDashboard = Self.stripDashboardBodyCacheSuffix(newDashboard)
 
-                    let mergeMode: VehicleHTTPMergeMode = userInitiated ? .full : .poll
+                    let mergeMode: VehicleHTTPMergeMode = {
+                        if userInitiated { return .full }
+                        // 官方思路：MQTT 新鲜时 HTTP 不冲实时车身；断/旧才全量
+                        return self.isMQTTRealtimeFresh() ? .pollMeta : .pollFull
+                    }()
                     let mergeNote = self.mergeHTTPBaseState(
                         newState: newState,
                         dashboard: newDashboard,
