@@ -165,10 +165,18 @@ func isClosedStatusText(_ text: String) -> Bool {
 
 func parseACStatus(_ raw: String?) -> Bool? {
     guard let raw else { return nil }
-    switch raw {
-    case "0": return false
-    case "1", "2": return true
-    default: return nil
+    // 文档: 0关 1制冷 2制热 6开 7关；兼容 true/false
+    switch raw.trimmingCharacters(in: .whitespacesAndNewlines) {
+    case "0", "7", "false", "FALSE", "off", "OFF":
+        return false
+    case "1", "2", "6", "true", "TRUE", "on", "ON":
+        return true
+    default:
+        if let v = Int(raw) {
+            if v == 0 || v == 7 { return false }
+            if v > 0 { return true }
+        }
+        return nil
     }
 }
 
@@ -243,42 +251,62 @@ func displayTireTemperature(_ tirePressure: [String: String], fallbackCarStatus:
 
 func parseGear(_ raw: String?) -> VehicleGear? {
     guard let raw else { return nil }
-    switch raw {
-    case "10": return .p
-    case "14": return .r
-    case "13": return .n
-    case "12": return .d
-    default: return .unknown
+    // 兼容两套：E300 常见 10/14/13/12，部分文档/车型 10/20/30/40
+    switch raw.trimmingCharacters(in: .whitespacesAndNewlines) {
+    case "10", "P", "p":
+        return .p
+    case "14", "20", "R", "r":
+        return .r
+    case "13", "30", "N", "n":
+        return .n
+    case "12", "40", "D", "d":
+        return .d
+    default:
+        return .unknown
     }
 }
 
 func parsePowerState(_ s: [String: String]) -> VehiclePowerState? {
-    // 主字段：engineStatus 0=关 1=开（MQTT_FIELDS / status_source_map）
-    let candidates = [
-        s["engineStatus"],
-        s["powerStatus"],
-        s["vehPowerMode"],
-        s["vehiclePowerStatus"],
-        s["sysPowerMode"],
-        s["ignitionStatus"],
-        s["accStatus"]
-    ].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-
-    for raw in candidates {
+    // 上电/电源主字段（Wuling/官方对齐）：
+    // - engineStatus: 0关 1开（最常见）
+    // - powerStatus/vehPowerMode/...: 兼容电源模式
+    // 优先 engineStatus，避免被无关 acc 字段误伤
+    let orderedKeys = [
+        "engineStatus",
+        "powerStatus",
+        "vehPowerMode",
+        "vehiclePowerStatus",
+        "sysPowerMode",
+        "ignitionStatus"
+    ]
+    for key in orderedKeys {
+        guard let raw = s[key]?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { continue }
         switch raw {
         case "0", "off", "OFF", "false", "FALSE":
             return .off
-        case "1", "2", "on", "ON", "ready", "READY", "true", "TRUE":
-            // 1 常表示运行/就绪；细分不足时按 ready，避免误当 unknown 卡无感
-            return .ready
         case "3", "acc", "ACC":
             return .acc
+        case "1", "on", "ON", "true", "TRUE":
+            // engineStatus=1 更接近已上电/运行；UI 显示“已上电”
+            return key == "engineStatus" ? .on : .ready
+        case "2", "ready", "READY":
+            return .ready
         default:
             if let value = Int(raw) {
                 if value == 0 { return .off }
-                if value > 0 { return .ready }
+                if value == 3 { return .acc }
+                if value == 1 { return key == "engineStatus" ? .on : .ready }
+                if value >= 2 { return .ready }
             }
             continue
+        }
+    }
+    // accStatus 单独看：仅在没有更明确电源字段时作为弱信号
+    if let acc = s["accStatus"]?.trimmingCharacters(in: .whitespacesAndNewlines), !acc.isEmpty {
+        switch acc {
+        case "0", "off", "OFF": return .off
+        case "1", "on", "ON", "acc", "ACC": return .acc
+        default: break
         }
     }
     return nil

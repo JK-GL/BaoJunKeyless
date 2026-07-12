@@ -36,7 +36,8 @@ extension MQTTVehicleStateStore {
                 "doorLockStatus", "door1OpenStatus", "door2OpenStatus", "door3OpenStatus", "door4OpenStatus",
                 "tailDoorOpenStatus", "window1Status", "window2Status", "window3Status", "window4Status",
                 "window1OpenDegree", "window2OpenDegree", "window3OpenDegree", "window4OpenDegree",
-                "doorOpenStatus", "windowStatus", "acStatus"
+                "doorOpenStatus", "windowStatus", "acStatus",
+                "engineStatus", "powerStatus", "keyStatus", "batterySoc", "charging", "autoGearStatus"
             ]
             let hasBody = bodyKeys.contains { fields[$0] != nil }
             // 没有任何值变化时，不再 force 合并半包（防止旧门窗被反复重写）

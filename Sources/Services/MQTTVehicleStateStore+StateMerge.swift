@@ -34,25 +34,110 @@ extension MQTTVehicleStateStore {
             return "丢弃旧HTTP"
         }
 
-        // MQTT 在线新鲜：HTTP 只做元信息/资料/位置（已在 applyHTTPMeta），不冲实时车身
+        // MQTT 在线新鲜：HTTP 不冲门窗/锁等实时车身，但补齐 MQTT Protobuf 常缺的字段
+        // （电量/续航/充电/电源/档位/胎压/温度等）——对齐 Wuling：MQTT 主实时 + HTTP 补全
         if mode == .pollMeta {
             lastHTTPBodyCollectAt = collectAt
-            // 允许补胎压等非高频实时字段：仅当当前还是空/占位
             var dash = dashboard
+            var st = state
             var changed = false
-            func fillIfEmpty(_ current: String, _ incoming: String) -> String {
-                let c = current.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            func takeText(_ current: String, _ incoming: String) -> String {
                 let n = incoming.trimmingCharacters(in: .whitespacesAndNewlines)
-                if (c.isEmpty || c == "--"), !n.isEmpty, n != "--" { return n }
-                return current
+                if n.isEmpty || n == "--" { return current }
+                if current != n { changed = true }
+                return n
             }
-            let tireKeys: [(WritableKeyPath<VehicleDashboardState, String>, String)] = []
-            // 胎压指标在 metrics 侧；这里至少别回退 bodyCollectTime
-            // 若 HTTP 带来更完整的车辆图片/名称，applyHTTPMeta 已处理
-            _ = tireKeys
-            _ = fillIfEmpty
-            _ = changed
-            _ = dash
+            func takeOptText(_ current: String, _ incoming: String, onlyIfEmpty: Bool = false) -> String {
+                let n = incoming.trimmingCharacters(in: .whitespacesAndNewlines)
+                if n.isEmpty || n == "--" { return current }
+                if onlyIfEmpty {
+                    let c = current.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !c.isEmpty && c != "--" { return current }
+                }
+                if current != n { changed = true }
+                return n
+            }
+
+            // 电源/档位：上电状态对齐远程启动按钮
+            if newState.power != .unknown, st.power != newState.power {
+                st.power = newState.power
+                changed = true
+            }
+            if newState.gear != .unknown, st.gear != newState.gear {
+                st.gear = newState.gear
+                changed = true
+            }
+            if let v = newState.fuelLevel, st.fuelLevel != v { st.fuelLevel = v; changed = true }
+            if let v = newState.fuelRange, st.fuelRange != v { st.fuelRange = v; changed = true }
+            if let v = newState.oilRange, st.oilRange != v { st.oilRange = v; changed = true }
+            if let v = newState.speed, st.speed != v { st.speed = v; changed = true }
+            // keyStatus：仍更新模型；显示层继续走防误报规则
+            if newState.physicalKeyPosition != .unknown, st.physicalKeyPosition != newState.physicalKeyPosition {
+                st.physicalKeyPosition = newState.physicalKeyPosition
+                changed = true
+            }
+
+            // 仪表/充电/温度/胎压（非门窗锁）
+            if let v = newDashboard.batteryPercentValue, dash.batteryPercentValue != v { dash.batteryPercentValue = v; changed = true }
+            if let v = newDashboard.electricRangeKm, dash.electricRangeKm != v { dash.electricRangeKm = v; changed = true }
+            if let v = newDashboard.fuelRangeKm, dash.fuelRangeKm != v { dash.fuelRangeKm = v; changed = true }
+            if let v = newDashboard.fuelPercentValue, dash.fuelPercentValue != v { dash.fuelPercentValue = v; changed = true }
+            dash.batteryRemainingText = takeText(dash.batteryRemainingText, newDashboard.batteryRemainingText)
+            dash.batteryHealthPercentText = takeText(dash.batteryHealthPercentText, newDashboard.batteryHealthPercentText)
+            dash.batteryVoltageText = takeText(dash.batteryVoltageText, newDashboard.batteryVoltageText)
+            dash.batteryAuxText = takeText(dash.batteryAuxText, newDashboard.batteryAuxText)
+            dash.cabinTemperatureText = takeText(dash.cabinTemperatureText, newDashboard.cabinTemperatureText)
+            dash.batteryTemperatureText = takeText(dash.batteryTemperatureText, newDashboard.batteryTemperatureText)
+            dash.motorTemperatureText = takeText(dash.motorTemperatureText, newDashboard.motorTemperatureText)
+            dash.inverterTemperatureText = takeText(dash.inverterTemperatureText, newDashboard.inverterTemperatureText)
+            if dash.isCharging != newDashboard.isCharging { dash.isCharging = newDashboard.isCharging; changed = true }
+            dash.chargingStatusText = takeText(dash.chargingStatusText, newDashboard.chargingStatusText)
+            dash.chargingPowerText = takeText(dash.chargingPowerText, newDashboard.chargingPowerText)
+            dash.chargingPowerValueText = takeText(dash.chargingPowerValueText, newDashboard.chargingPowerValueText)
+            dash.obcCurrentText = takeText(dash.obcCurrentText, newDashboard.obcCurrentText)
+            dash.obcTemperatureText = takeText(dash.obcTemperatureText, newDashboard.obcTemperatureText)
+            dash.chargingStateText = takeText(dash.chargingStateText, newDashboard.chargingStateText)
+            dash.totalMileageText = takeText(dash.totalMileageText, newDashboard.totalMileageText)
+            dash.yesterdayMileageText = takeText(dash.yesterdayMileageText, newDashboard.yesterdayMileageText)
+            dash.averageFuelConsumptionText = takeText(dash.averageFuelConsumptionText, newDashboard.averageFuelConsumptionText)
+            dash.averagePowerConsumptionText = takeText(dash.averagePowerConsumptionText, newDashboard.averagePowerConsumptionText)
+            dash.steeringAngleText = takeText(dash.steeringAngleText, newDashboard.steeringAngleText)
+            dash.throttlePercentText = takeText(dash.throttlePercentText, newDashboard.throttlePercentText)
+            dash.brakePercentText = takeText(dash.brakePercentText, newDashboard.brakePercentText)
+            // 空调温度文案可补；开关态若 MQTT 刚推过，HTTP 也可纠正（非门窗）
+            dash.acTemperatureText = takeText(dash.acTemperatureText, newDashboard.acTemperatureText)
+            if let ac = newState.acOn, st.acOn != ac { st.acOn = ac; changed = true }
+            if let t = newState.acTemperature, st.acTemperature != t { st.acTemperature = t; changed = true }
+
+            dash.leftFrontTirePressureText = takeOptText(dash.leftFrontTirePressureText, newDashboard.leftFrontTirePressureText)
+            dash.rightFrontTirePressureText = takeOptText(dash.rightFrontTirePressureText, newDashboard.rightFrontTirePressureText)
+            dash.leftRearTirePressureText = takeOptText(dash.leftRearTirePressureText, newDashboard.leftRearTirePressureText)
+            dash.rightRearTirePressureText = takeOptText(dash.rightRearTirePressureText, newDashboard.rightRearTirePressureText)
+            dash.tireTemperatureText = takeOptText(dash.tireTemperatureText, newDashboard.tireTemperatureText)
+
+            // 灯光等（若 HTTP 有）
+            dash.lowBeamText = takeText(dash.lowBeamText, newDashboard.lowBeamText)
+            dash.highBeamText = takeText(dash.highBeamText, newDashboard.highBeamText)
+            dash.leftTurnText = takeText(dash.leftTurnText, newDashboard.leftTurnText)
+            dash.rightTurnText = takeText(dash.rightTurnText, newDashboard.rightTurnText)
+            dash.positionLightText = takeText(dash.positionLightText, newDashboard.positionLightText)
+            dash.frontFogText = takeText(dash.frontFogText, newDashboard.frontFogText)
+
+            // 明确不碰：lock/door/window/tail 明细与总览（MQTT 实时主通道）
+
+            if changed {
+                dash.updatedAt = max(dash.updatedAt, collectAt, now)
+                dash.updatedAtText = formatTime(dash.updatedAt)
+                st.timestamp = max(st.timestamp, collectAt, now)
+                st.online = true
+                bumpStatusRevision()
+                st = applyLiveBLEOverlay(to: st)
+                apply(st)
+                applyDashboard(dash)
+                evaluateKeylessAutomation(for: st)
+                return "轮询元信息补齐/MQTT新鲜"
+            }
             return "轮询元信息/MQTT新鲜"
         }
 

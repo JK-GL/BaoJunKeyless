@@ -274,7 +274,32 @@ enum VehicleStatusMapper {
         if let fog = s["frontFogLight"] { d.frontFogText = displayBool(fog) }
         d.updatedAt = parseTimestamp(s["collectTime"]) ?? Date()
         d.updatedAtText = formatTime(d.updatedAt)
-        return d
+        
+        // MQTT 增量补齐电量/充电/里程/温度（JSON 全量或后续扩展字段）
+        if let soc = parseInt(s["batterySoc"]) { d.batteryPercentValue = soc }
+        if s["batterySoc"] != nil || s["leftBatteryPower"] != nil {
+            d.batteryRemainingText = displayBatteryRemaining(s, fallback: d.batteryRemainingText)
+        }
+        if let left = parseInt(s["leftMileage"]) { d.electricRangeKm = left }
+        if let oil = parseInt(s["oilLeftMileage"]) { d.fuelRangeKm = oil }
+        if let mile = s["mileage"], !mile.isEmpty { d.totalMileageText = "\(mile) km" }
+        if s["charging"] != nil {
+            let charging = s["charging"] == "1" || s["charging"] == "true"
+            d.isCharging = charging
+            d.chargingStatusText = charging ? "是" : "否"
+        }
+        if let cp = s["chargePower"], !cp.isEmpty {
+            d.chargingPowerText = displayValue(cp, suffix: " kW")
+            d.chargingPowerValueText = displayValue(cp, suffix: " kW")
+        }
+        if let cabin = s["interiorTemperature"], !cabin.isEmpty {
+            d.cabinTemperatureText = displayValue(cabin, suffix: "°C")
+        }
+        if let batT = s["batAvgTemp"] ?? s["batMinTemp"], !batT.isEmpty {
+            d.batteryTemperatureText = displayValue(batT, suffix: "°C")
+        }
+
+return d
     }
 
     static func recomputeDoorStatusText(from dashboard: VehicleDashboardState) -> String {

@@ -227,14 +227,20 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
                     DispatchQueue.main.async {
                         let message: String
                         if command.kind == .remoteStart {
-                            message = "远程启动授权请求已发送：\(requestSummary)，后续启动仍以车辆 / BLE 回报为准"
+                            message = "启动授权已发送：\(requestSummary)。请约 30 秒内上车完成 START/Ready；上电状态以车况回报为准（不是远程直接点火）"
+                        } else if command.kind == .remoteStop {
+                            message = "熄火/下电请求已发送：\(requestSummary)。等待车辆电源状态回报"
                         } else {
-                            message = "控制请求已发送：\(requestSummary)，等待车辆真实回报"
+                            message = "控制请求已发送：\(requestSummary)。等待车辆真实回报"
                         }
                         let timing = VehicleCommandTiming(requestBuildMillis: buildMillis, httpRoundTripMillis: Int(Date().timeIntervalSince(httpStart) * 1000))
                         completion(VehicleCommandExecutionResult(command: command, state: .sent, userMessage: message, shouldRefresh: true, refreshDelay: 0, timing: timing))
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.1) {
-                            refresher?.refreshNow()
+                        // 上电/熄火后加快收敛：1.5s + 4s 各刷一次车况
+                        let refreshDelays: [TimeInterval] = (command.kind == .remoteStart || command.kind == .remoteStop) ? [1.5, 4.0] : [2.1]
+                        for delay in refreshDelays {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                                refresher?.refreshNow()
+                            }
                         }
                     }
                 case .failure(let error):

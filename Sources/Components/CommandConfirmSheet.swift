@@ -57,7 +57,7 @@ enum CommandAction: String, Identifiable {
         case .lockUnlock:
             return state.locked == false ? "lock.open.fill" : "lock.fill"
         case .remoteStart:
-            return (state.power == .on || state.power == .ready) ? "power.circle.fill" : "power"
+            return (state.power.isPoweredOn) ? "power.circle.fill" : "power"
         case .findCar:
             return "location.fill"
         case .acToggle:
@@ -74,7 +74,8 @@ enum CommandAction: String, Identifiable {
         case .lockUnlock:
             return state.locked == false ? "已开锁" : "锁车"
         case .remoteStart:
-            return (state.power == .on || state.power == .ready) ? "已启动" : "熄火"
+            // 对齐 Wuling：显示上电态，而不是假装“已远程点火”
+            return state.power.isPoweredOn ? state.power.title : "已熄火"
         case .findCar:
             return "寻车"
         case .acToggle:
@@ -103,7 +104,7 @@ enum CommandAction: String, Identifiable {
         case .lockUnlock:
             return state.locked == false ? AppTheme.red : AppTheme.green
         case .remoteStart:
-            return (state.power == .on || state.power == .ready) ? AppTheme.green : Color(red: 0.55, green: 0.58, blue: 0.62)
+            return (state.power.isPoweredOn) ? AppTheme.green : Color(red: 0.55, green: 0.58, blue: 0.62)
         case .acToggle:
             return state.acOn == true ? AppTheme.accent : Color(red: 0.55, green: 0.58, blue: 0.62)
         case .windowToggle:
@@ -118,7 +119,7 @@ enum CommandAction: String, Identifiable {
         switch self {
         case .lockUnlock:
             return state.locked == false ? "锁车" : "解锁车辆"
-        case .remoteStart:   return (state.power == .on || state.power == .ready) ? "远程熄火" : "远程启动"
+        case .remoteStart:   return (state.power.isPoweredOn) ? "远程熄火" : "远程启动"
         case .findCar:       return "寻车"
         case .acToggle:
             return state.acOn == true ? "关闭空调" : "开启空调"
@@ -133,7 +134,9 @@ enum CommandAction: String, Identifiable {
         switch self {
         case .lockUnlock:
             return state.locked == false ? "车辆将远程上锁，确保车门已关闭" : "车辆将远程解锁，车门锁会解除"
-        case .remoteStart:   return (state.power == .on || state.power == .ready) ? "车辆将优先通过 BLE 熄火；BLE 未连接则尝试 HTTP 远控" : "BLE 已连接走上电/Ready 准备态；未连接走官方启动授权"
+        case .remoteStart:   return state.power.isPoweredOn
+            ? "车辆将优先通过 BLE 熄火；BLE 未连接则尝试 HTTP 远控"
+            : "将下发短时上车启动授权（与 Wuling/官方 ignition/authorize 同款）。请在约 30 秒内解锁上车，踩刹车并按 START/Ready；不是远程直接点火常驻。"
         case .findCar:       return "车辆将双闪鸣笛，方便您定位"
         case .acToggle:
             return state.acOn == true ? "关闭空调压缩机，停止送风" : "开启空调，可调节设定温度"
@@ -326,15 +329,21 @@ struct CommandConfirmPopup: View {
             let startStatusColor: Color
             switch state.power {
             case .on, .ready:
-                startStatusText = "已启动"
+                startStatusText = "已上电"
                 startStatusColor = AppTheme.green
-            case .off, .acc, .unknown:
-                startStatusText = "待启动"
+            case .acc:
+                startStatusText = "ACC"
                 startStatusColor = AppTheme.orange
+            case .off:
+                startStatusText = "待授权"
+                startStatusColor = AppTheme.orange
+            case .unknown:
+                startStatusText = "状态未知"
+                startStatusColor = Color(red: 0.55, green: 0.58, blue: 0.62)
             }
             return [
                 PopupStatusItem(icon: "key.fill", label: "电源",
-                                value: state.power == .unknown ? "熄火" : state.power.title, color: AppTheme.orange),
+                                value: state.power.title, color: AppTheme.orange),
                 PopupStatusItem(icon: "dot.radiowaves.left.and.right", label: "启动",
                                 value: startStatusText, color: startStatusColor),
                 PopupStatusItem(icon: "gearshape.fill", label: "档位",
