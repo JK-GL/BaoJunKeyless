@@ -39,7 +39,9 @@ extension MQTTVehicleStateStore {
                 "doorOpenStatus", "windowStatus", "acStatus"
             ]
             let hasBody = bodyKeys.contains { fields[$0] != nil }
-            guard !changedKeys.isEmpty || hasBody else { return }
+            // 没有任何值变化时，不再 force 合并半包（防止旧门窗被反复重写）
+            guard !changedKeyNames.isEmpty else { return }
+            _ = hasBody
 
             // 主线程合并，避免 background 读到旧 dashboard 导致门窗回退
             self.lastMqttFields.merge(fields) { _, new in new }
@@ -51,15 +53,27 @@ extension MQTTVehicleStateStore {
             self.lastMQTTUpdate = Date()
             self.mqttStatus = .connected
 
-            let newState = self.mapMQTTToVehicleState(fields)
-            let newDashboard = self.mapMQTTToDashboard(fields)
+            // 只把“值变化”的字段映射进状态；半包里重复的旧值不再二次写入
+            // 这样 HTTP 纠正后，不会被下一包相同旧门字段重新钉死
+            var liveFields = fields
+            if !changedKeyNames.isEmpty {
+                // 保留 collectTime + 变化字段
+                var filtered: [String: String] = [:]
+                if let ct = fields["collectTime"] { filtered["collectTime"] = ct }
+                for k in changedKeyNames {
+                    if let v = fields[k] { filtered[k] = v }
+                }
+                // 若只有 collectTime 变化，仍允许空车身（后面 hasBody 可能为 true 但无变化）
+                liveFields = filtered.isEmpty ? fields : filtered
+            }
+
+            let newState = self.mapMQTTToVehicleState(liveFields)
+            let newDashboard = self.mapMQTTToDashboard(liveFields)
             let collectAt = parseTimestamp(fields["collectTime"]) ?? Date()
-            // 关键：只把“值发生变化”的字段交给 merge 打时间戳
-            // 半包里反复携带的旧门窗值不再无限刷新时间戳
             self.mergeRealtimeState(
                 newState: newState,
                 dashboard: newDashboard,
-                sourceFields: fields,
+                sourceFields: liveFields,
                 collectAt: collectAt,
                 changedKeys: changedKeyNames
             )
@@ -67,7 +81,8 @@ extension MQTTVehicleStateStore {
             let packetKeys = Array(fields.keys.sorted()).prefix(10).joined(separator: ",")
             let summary = (changedKeys.isEmpty ? Array(fields.keys.prefix(8)).map { "\($0)=force" } : Array(changedKeys.prefix(8))).joined(separator: ", ")
             CrashLogger.shared.mark("MQTT", "state changed: \(summary)")
-            if hasBody {
+            let bodyChanged = changedKeyNames.contains { bodyKeys.contains($0) || $0.hasPrefix("door") || $0.hasPrefix("window") || $0.hasPrefix("tailDoor") || $0 == "acStatus" }
+            if bodyChanged {
                 let detailParts = [
                     "半包=\(packetKeys)",
                     summary,

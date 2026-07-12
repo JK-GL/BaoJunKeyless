@@ -405,13 +405,9 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     func applyCachedSnapshotIfAvailable() {
+        // 只拿位置/地址兜底，不再把五菱 App 旧车身状态当实时状态写入。
+        // 门/窗/锁/空调/电量等必须等 HTTP/MQTT 实时链路。
         guard let snapshot = WulingAppCacheReader.shared.readStatusCache() else { return }
-
-        var cachedState = mapHTTPToVehicleState(snapshot.carStatus)
-        cachedState.timestamp = Date()
-        var cachedDashboard = mapHTTPToDashboard(snapshot.carStatus)
-        cachedDashboard.updatedAt = Date()
-        cachedDashboard.updatedAtText = formatTime(Date())
 
         if let gcjLat = snapshot.latitude, let gcjLng = snapshot.longitude, gcjLat != 0, gcjLng != 0 {
             cachedLatitudeGcj = gcjLat
@@ -425,10 +421,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         }
 
         persistDisplayCache()
-        apply(cachedState)
-        applyDashboard(cachedDashboard)
-        authStatus = .expired("缓存模式")
-        CrashLogger.shared.mark("CACHE", "loaded Wuling cache from \(snapshot.sourcePath)")
+        CrashLogger.shared.mark("CACHE", "location-only from \(snapshot.sourcePath); body status waits for live HTTP/MQTT")
     }
 
     func loadPersistedDisplayCache() {
