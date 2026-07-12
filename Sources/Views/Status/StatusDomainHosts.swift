@@ -478,41 +478,9 @@ struct StatusMainDashboardHost: View {
     private var dashboard: VehicleDashboardState { vehicleStore.dashboard }
     private var metrics: VehicleDashboardMetrics { vehicleStore.cachedDashboardMetrics }
     private var state: VehicleState { vehicleStore.state }
-    private var bodyRefreshToken: String {
-        [
-            "rev=\(vehicleStore.statusRevision)",
-            dashboard.updatedAtText,
-            dashboard.lockStatusText,
-            dashboard.doorStatusText,
-            dashboard.windowStatusText,
-            dashboard.tailgateStatusText,
-            dashboard.driverDoorStatusText,
-            dashboard.passengerDoorStatusText,
-            dashboard.leftRearDoorStatusText,
-            dashboard.rightRearDoorStatusText,
-            dashboard.leftFrontWindowStatusText,
-            dashboard.rightFrontWindowStatusText,
-            dashboard.leftRearWindowStatusText,
-            dashboard.rightRearWindowStatusText,
-            dashboard.acTemperatureText,
-            dashboard.cabinTemperatureText,
-            dashboard.batteryRemainingText,
-            "\(dashboard.batteryPercentValue ?? -1)",
-            "\(dashboard.electricRangeKm)",
-            "\(dashboard.fuelRangeKm)",
-            dashboard.totalMileageText,
-            dashboard.averageFuelConsumptionText,
-            dashboard.chargingStatusText,
-            dashboard.chargingPowerText,
-            dashboard.speedText,
-            "\(state.locked.map { $0 ? 1 : 0 } ?? -1)",
-            "\(state.doorsClosed.map { $0 ? 1 : 0 } ?? -1)",
-            "\(state.windowsClosed.map { $0 ? 1 : 0 } ?? -1)",
-            "\(state.acOn.map { $0 ? 1 : 0 } ?? -1)"
-        ].joined(separator: "|")
-    }
 
     var body: some View {
+        // 单层 VStack：避免嵌套滚动测量异常导致底部大空白 / 卡片重叠
         VStack(alignment: .leading, spacing: AppSpacing.section) {
             VehicleHeaderSummaryView(
                 energyType: dashboard.energyType,
@@ -557,31 +525,37 @@ struct StatusMainDashboardHost: View {
                 yesterdayMileageText: dashboard.yesterdayMileageText
             )
 
-            VStack(alignment: .leading, spacing: AppSpacing.section) {
-                BodyStatusView(
-                    normalText: dashboard.bodyStatusNormalText,
-                    warnings: dashboard.warningMessages,
-                    topMetrics: Array(metrics.bodyStatus.prefix(4)),
-                    detailMetrics: Array(metrics.bodyStatus.dropFirst(4))
-                )
-                .id(bodyRefreshToken)
-                TirePressureView(
-                    tireTemperatureText: dashboard.tireTemperatureText,
-                    metrics: metrics.tirePressure
-                )
-                StatusDashboardPair {
-                    DrivingStatusView(metrics: metrics.driving)
-                } right: {
-                    BatteryGaugesView(metrics: metrics.battery)
-                }
-                StatusDashboardPair {
-                    TemperatureView(metrics: metrics.temperature)
-                } right: {
-                    ChargingStatusView(metrics: metrics.charging)
-                }
-                LightingStatusView(metrics: metrics.lighting)
-                Spacer(minLength: 100)
+            // 不用 .id(bodyRefreshToken)：高频状态刷新会整段销毁重建，
+            // 在 ScrollView 里容易出现卡片高度跳动、重叠，甚至布局崩溃闪退。
+            BodyStatusView(
+                normalText: dashboard.bodyStatusNormalText,
+                warnings: dashboard.warningMessages,
+                topMetrics: Array(metrics.bodyStatus.prefix(4)),
+                detailMetrics: Array(metrics.bodyStatus.dropFirst(4))
+            )
+
+            TirePressureView(
+                tireTemperatureText: dashboard.tireTemperatureText,
+                metrics: metrics.tirePressure
+            )
+
+            StatusDashboardPair {
+                DrivingStatusView(metrics: metrics.driving)
+            } right: {
+                BatteryGaugesView(metrics: metrics.battery)
             }
+
+            StatusDashboardPair {
+                TemperatureView(metrics: metrics.temperature)
+            } right: {
+                ChargingStatusView(metrics: metrics.charging)
+            }
+
+            LightingStatusView(metrics: metrics.lighting)
+
+            // 给底部 MenuBar 留空，但不要过大造成“拉到底还有一大块空白”
+            Color.clear.frame(height: 24)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

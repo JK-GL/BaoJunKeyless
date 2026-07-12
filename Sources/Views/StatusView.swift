@@ -54,6 +54,8 @@ struct StatusView: View {
                         }
                     )
                 }
+                // 明确内容尺寸，减少 ScrollView 对子视图高度的错误缓存
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .modifier(ChromeScrollTrackingModifier(scrollState: scrollState))
             .onDisappear {

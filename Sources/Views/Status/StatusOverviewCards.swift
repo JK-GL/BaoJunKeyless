@@ -309,37 +309,48 @@ struct BodyStatusView: View, Equatable {
 struct BodyStatusDetailGrid: View {
     let items: [PopupStatusItem]
 
-    private let columns = [
-        GridItem(.flexible(), spacing: 8),
-        GridItem(.flexible(), spacing: 8)
-    ]
-
     var body: some View {
-        LazyVGrid(columns: columns, spacing: 8) {
-            ForEach(items) { item in
-                HStack(spacing: 7) {
-                    Image(systemName: item.icon)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(item.color.opacity(0.82))
-                        .frame(width: 16)
-                    Text(item.label)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.52))
-                        .lineLimit(1)
-                    Spacer(minLength: 4)
-                    Text(item.value)
-                        .font(.system(size: 12.5, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.9))
-                        .lineLimit(1)
+        let rows = stride(from: 0, to: items.count, by: 2).map { idx in
+            Array(items[idx..<min(idx + 2, items.count)])
+        }
+        return VStack(spacing: 8) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 8) {
+                    ForEach(row) { item in
+                        detailCell(item)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if row.count == 1 {
+                        Color.clear.frame(maxWidth: .infinity)
+                    }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color.white.opacity(0.035))
-                )
             }
         }
+    }
+
+    @ViewBuilder
+    private func detailCell(_ item: PopupStatusItem) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: item.icon)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(item.color.opacity(0.82))
+                .frame(width: 16)
+            Text(item.label)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.52))
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            Text(item.value)
+                .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.035))
+        )
     }
 }
 
@@ -376,9 +387,20 @@ struct TirePressureView: View, Equatable {
                 }
             }
         ) {
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                ForEach(metrics) { metric in
-                    TirePressureMetricCard(item: metric)
+            let rows = stride(from: 0, to: metrics.count, by: 2).map { idx in
+                Array(metrics[idx..<min(idx + 2, metrics.count)])
+            }
+            VStack(spacing: 8) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    HStack(spacing: 8) {
+                        ForEach(row) { metric in
+                            TirePressureMetricCard(item: metric)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        if row.count == 1 {
+                            Color.clear.frame(maxWidth: .infinity)
+                        }
+                    }
                 }
             }
         }
@@ -455,7 +477,7 @@ struct StatusDashboardPair<Left: View, Right: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: -18) {
+        HStack(alignment: .top, spacing: 0) {
             left.frame(maxWidth: .infinity)
             right.frame(maxWidth: .infinity)
         }

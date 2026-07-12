@@ -38,9 +38,21 @@ struct VehicleStatusMetricGrid: View {
     init(items: [PopupStatusItem]) { self.metrics = items.map { VehicleStatusMetric(item: $0) } }
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-            ForEach(metrics) { metric in
-                VehicleStatusMetricCard(metric: metric)
+        // ScrollView 内避免 LazyVGrid 异步量高导致相邻卡片重叠
+        let rows = stride(from: 0, to: metrics.count, by: 2).map { idx -> [VehicleStatusMetric] in
+            Array(metrics[idx..<min(idx + 2, metrics.count)])
+        }
+        return VStack(spacing: 10) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(alignment: .top, spacing: 10) {
+                    ForEach(row) { metric in
+                        VehicleStatusMetricCard(metric: metric)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if row.count == 1 {
+                        Color.clear.frame(maxWidth: .infinity)
+                    }
+                }
             }
         }
     }
