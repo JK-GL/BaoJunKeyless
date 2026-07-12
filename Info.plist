@@ -15,7 +15,6 @@
 			<key>CFBundleIconFiles</key>
 			<array>
 				<string>AppIcon60x60</string>
-				<string>AppIcon</string>
 			</array>
 			<key>CFBundleIconName</key>
 			<string>AppIcon</string>
@@ -24,7 +23,6 @@
 	<key>CFBundleIconFiles</key>
 	<array>
 		<string>AppIcon60x60</string>
-		<string>AppIcon</string>
 	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>

@@ -47,12 +47,6 @@
       "scale": "3x",
       "size": "60x60",
       "filename": "quinn.m@example.net"
-    },
-    {
-      "idiom": "ios-marketing",
-      "scale": "1x",
-      "size": "1024x1024",
-      "filename": "AppIcon-1024.png"
     }
   ],
   "info": {

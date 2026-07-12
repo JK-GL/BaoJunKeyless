@@ -47,7 +47,8 @@ jobs:
           ICONSET=Assets.xcassets/AppIcon.appiconset
           ACTOOL=$(xcrun --find actool)
           echo "Using actool: $ACTOOL"
-          # 1) 编译 Assets.car（正式 asset catalog 路径）
+
+          # 1) 编译 Assets.car
           "$ACTOOL" Assets.xcassets \
             --compile "$APP" \
             --platform iphoneos \
@@ -58,48 +59,40 @@ jobs:
             --notices --warnings
           ls -lh "$APP/Assets.car"
 
-          # 2) TrollStore/侧载双保险：把传统 PNG 图标直接放进 .app 根目录
-          # 部分安装器对 Assets.car 支持不完整，会显示空白/默认图标
+          # 2) 学第三方 Wuling：根目录只放最小必要图标，不塞 1024 / 全尺寸重复
+          # Wuling 实测只有 AppIcon60x60@2x.png（约 11KB）+ 可选 iPad
           cp -f "$ICONSET/ivan.p@example.net" "$APP/AppIcon60x60@2x.png"
           cp -f "$ICONSET/quinn.m@example.net" "$APP/AppIcon60x60@3x.png"
-          cp -f "$ICONSET/james.b@example.com" "$APP/AppIcon40x40@2x.png"
-          cp -f "$ICONSET/diana.k@example.org" "$APP/AppIcon40x40@3x.png"
-          cp -f "$ICONSET/carol.u@example.org" "$APP/AppIcon29x29@2x.png"
-          cp -f "$ICONSET/frank.g@example.org" "$APP/AppIcon29x29@3x.png"
-          cp -f "$ICONSET/AppIcon-1024.png" "$APP/AppIcon.png"
-          # 兼容更老的命名
-          cp -f "$ICONSET/ivan.p@example.net" "$APP/Icon-60@2x.png"
-          cp -f "$ICONSET/quinn.m@example.net" "$APP/Icon-60@3x.png"
-          cp -f "$ICONSET/AppIcon-1024.png" "$APP/iTunesArtwork@2x"
 
-          # 3) 强制写传统 + asset catalog 双路径 Info.plist 图标键
+          # 3) Info.plist 只声明 AppIcon60x60
           /usr/libexec/PlistBuddy -c 'Delete :CFBundleIconName' "$APP/Info.plist" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c 'Delete :CFBundleIcons' "$APP/Info.plist" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c 'Delete :CFBundleIconFiles' "$APP/Info.plist" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c 'Add :CFBundleIconName string AppIcon' "$APP/Info.plist"
           /usr/libexec/PlistBuddy -c 'Add :CFBundleIconFiles array' "$APP/Info.plist"
           /usr/libexec/PlistBuddy -c 'Add :CFBundleIconFiles:0 string AppIcon60x60' "$APP/Info.plist"
-          /usr/libexec/PlistBuddy -c 'Add :CFBundleIconFiles:1 string AppIcon' "$APP/Info.plist"
-          /usr/libexec/PlistBuddy -c 'Add :CFBundleIconFiles:2 string Icon-60' "$APP/Info.plist"
           /usr/libexec/PlistBuddy -c 'Add :CFBundleIcons dict' "$APP/Info.plist"
           /usr/libexec/PlistBuddy -c 'Add :CFBundleIcons:CFBundlePrimaryIcon dict' "$APP/Info.plist"
           /usr/libexec/PlistBuddy -c 'Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName string AppIcon' "$APP/Info.plist"
           /usr/libexec/PlistBuddy -c 'Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles array' "$APP/Info.plist"
           /usr/libexec/PlistBuddy -c 'Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles:0 string AppIcon60x60' "$APP/Info.plist"
-          /usr/libexec/PlistBuddy -c 'Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles:1 string AppIcon' "$APP/Info.plist"
-          /usr/libexec/PlistBuddy -c 'Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles:2 string Icon-60' "$APP/Info.plist"
 
-          # 合并 actool 生成键（若有且不冲突）
           if [ -f /tmp/assetcatalog_generated_info.plist ]; then
             echo "actool partial info:"
             plutil -p /tmp/assetcatalog_generated_info.plist || true
           fi
 
-          # 清理可能残留的未编译 asset 源目录
+          # 清理未编译 asset 源目录
           rm -rf "$APP/Assets.xcassets" || true
 
-          echo "Root icon files:"
-          ls -lh "$APP"/AppIcon*.png "$APP"/Icon-60*.png "$APP"/iTunesArtwork@2x 2>/dev/null || true
+          echo "Root icon files (Wuling-style minimal):"
+          ls -lh "$APP"/AppIcon60x60*.png
+          # 明确不应存在的大文件
+          if [ -f "$APP/AppIcon.png" ] || [ -f "$APP/iTunesArtwork@2x" ]; then
+            echo "ERROR: fat marketing icons leaked into app root"
+            exit 1
+          fi
+
 
       - name: Inspect .app
         run: |
@@ -112,9 +105,11 @@ jobs:
             exit 1
           fi
           ls -lh "$APP/Assets.car"
-          # 传统 PNG 图标必须存在（TrollStore 双保险）
+          # Wuling 风格：只要求 60pt 根图标 + Assets.car
+          test -f "$APP/AppIcon60x60@2x.png"
           test -f "$APP/AppIcon60x60@3x.png"
-          test -f "$APP/AppIcon.png"
+          test ! -f "$APP/AppIcon.png"
+          test ! -f "$APP/iTunesArtwork@2x"
           plutil -p "$APP/Info.plist" | sed -n '1,160p'
 
       - name: Re-sign with TrollStore entitlements
