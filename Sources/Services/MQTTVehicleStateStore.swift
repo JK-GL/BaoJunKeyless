@@ -184,8 +184,12 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var credentialsStore: VehicleCredentialsStore
 
     var lastMqttFields: [String: String] = [:]
-    /// 每个车身字段最近来源时间（字段级合并用）
+    /// 每个车身字段最近“值变化”时间（字段级合并用）
     var fieldCollectAt: [String: Date] = [:]
+    /// 字段来源标记，便于日志排查
+    var fieldSource: [String: String] = [:]
+    /// BLE 本地锁/解锁保护截止时间
+    var localDoorLockHoldUntil: Date?
     var httpTimer: Timer?
     var lastMQTTUpdate: Date?
     /// MQTT 车身字段最近 collectTime
@@ -336,14 +340,20 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         let previous = next.locked
         next.locked = locked
         // 本地刚确认过的门锁，刷新时间戳；不依赖网络回报
-        next.timestamp = Date()
+        let now = Date()
+        next.timestamp = now
+        // 保护窗：避免刚 BLE 锁/解锁就被旧 HTTP/MQTT 冲回
+        localDoorLockHoldUntil = now.addingTimeInterval(Self.localLockHoldSeconds)
+        fieldCollectAt["doorLockStatus"] = now
+        fieldSource["doorLockStatus"] = "BLE"
+        bumpStatusRevision()
         apply(next)
 
         var dash = dashboard
         // BLE 本地确认的锁态是实时的，去掉可能残留的“·缓存”后缀
         dash.lockStatusText = locked ? "已锁车" : "未锁"
-        dash.updatedAt = Date()
-        dash.updatedAtText = formatTime(Date())
+        dash.updatedAt = now
+        dash.updatedAtText = formatTime(now)
         applyDashboard(dash)
 
         if suppressOppositeKeyless {

@@ -25,8 +25,10 @@ extension MQTTVehicleStateStore {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
 
+            var changedKeyNames = Set<String>()
             var changedKeys: [String] = []
             for (k, v) in fields where self.lastMqttFields[k] != v {
+                changedKeyNames.insert(k)
                 changedKeys.append("\(k):\(self.lastMqttFields[k] ?? "?")→\(v)")
             }
             // 即使 collectTime 等杂项无变化，门窗字段只要有值也强制合并一次（防丢包后不刷新）
@@ -52,11 +54,14 @@ extension MQTTVehicleStateStore {
             let newState = self.mapMQTTToVehicleState(fields)
             let newDashboard = self.mapMQTTToDashboard(fields)
             let collectAt = parseTimestamp(fields["collectTime"]) ?? Date()
+            // 关键：只把“值发生变化”的字段交给 merge 打时间戳
+            // 半包里反复携带的旧门窗值不再无限刷新时间戳
             self.mergeRealtimeState(
                 newState: newState,
                 dashboard: newDashboard,
                 sourceFields: fields,
-                collectAt: collectAt
+                collectAt: collectAt,
+                changedKeys: changedKeyNames
             )
 
             let packetKeys = Array(fields.keys.sorted()).prefix(10).joined(separator: ",")

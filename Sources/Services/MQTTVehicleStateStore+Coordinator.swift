@@ -163,6 +163,9 @@ extension MQTTVehicleStateStore {
         lastMQTTBodyCollectAt = nil
         lastHTTPBodyCollectAt = nil
         fieldCollectAt.removeAll()
+        fieldSource.removeAll()
+        localDoorLockHoldUntil = nil
+        statusRevision = 0
 
         // 复用 start；用一次性观察给出结果提示
         start(with: credentialsStore)

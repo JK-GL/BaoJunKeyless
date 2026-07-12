@@ -16,6 +16,8 @@ class VehicleStateStore: ObservableObject, VehicleStateReader {
     @Published internal(set) var state: VehicleState
     @Published internal(set) var dashboard: VehicleDashboardState
     @Published internal(set) var cachedDashboardMetrics: VehicleDashboardMetrics
+    /// 状态强制刷新版本号（合并/本地回写时递增，驱动 UI .id）
+    @Published internal(set) var statusRevision: UInt64 = 0
 
     /// 车辆配置（登录后填充）
     @Published internal(set) var profile: VehicleProfile = VehicleProfile()
@@ -59,6 +61,10 @@ class VehicleStateStore: ObservableObject, VehicleStateReader {
     func applyDashboard(_ newDashboard: VehicleDashboardState) {
         dashboard = newDashboard
         cachedDashboardMetrics = newDashboard.metrics
+    }
+
+    func bumpStatusRevision() {
+        statusRevision &+= 1
     }
 
     func applyProfile(_ newProfile: VehicleProfile) {

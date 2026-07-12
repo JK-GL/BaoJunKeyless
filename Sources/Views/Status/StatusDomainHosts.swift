@@ -475,6 +475,7 @@ struct StatusMainDashboardHost: View {
     private var state: VehicleState { vehicleStore.state }
     private var bodyRefreshToken: String {
         [
+            "rev=\(vehicleStore.statusRevision)",
             dashboard.updatedAtText,
             dashboard.lockStatusText,
             dashboard.doorStatusText,

@@ -1,13 +1,18 @@
 import Foundation
 
 enum VehicleHTTPMergeMode: String {
-    /// 手动刷新：HTTP 全量覆盖车身
+    /// 手动刷新：HTTP 全量落地（仅保留极短 BLE 本地锁保护）
     case full = "全量"
-    /// 自动轮询：只补 MQTT 缺失/过期字段
+    /// 自动轮询：HTTP 覆盖“MQTT 最近没改过”的字段
     case fillMissingPreferNewer = "字段补齐"
 }
 
 extension MQTTVehicleStateStore {
+    /// MQTT 刚改过的字段，在此秒数内不被 HTTP 覆盖
+    static let mqttFieldHoldSeconds: TimeInterval = 5
+    /// BLE 本地锁/解锁后，网络侧门锁字段保护秒数
+    static let localLockHoldSeconds: TimeInterval = 15
+
     @discardableResult
     func mergeHTTPBaseState(
         newState: VehicleState,
@@ -17,51 +22,31 @@ extension MQTTVehicleStateStore {
         sourceFields: [String: String] = [:]
     ) -> String {
         let collectAt = httpCollectAt ?? Date()
-        var noteParts: [String] = []
-
-        if mode == .full {
-            // 手动刷新：全量落地
-            let mergedBase = VehicleStateMerger.mergeHTTPBase(current: state, newState: newState)
-            var dash = VehicleStateMerger.mergeHTTPBaseDashboard(current: dashboard, newDashboard: newDashboard)
-            dash.doorStatusText = VehicleStatusMapper.recomputeDoorStatusText(from: dash)
-            dash.windowStatusText = VehicleStatusMapper.recomputeWindowStatusText(from: dash)
-
-            var merged = applyLiveBLEOverlay(to: mergedBase)
-            syncBooleans(from: dash, into: &merged)
-
-            // 全量刷新后，相关字段时间戳都记为 HTTP
-            for key in Self.bodyFieldKeys {
-                if sourceFields[key] != nil || mode == .full {
-                    fieldCollectAt[key] = collectAt
-                }
-            }
-            // 即使 source 没给某些总览字段，也刷新门窗总览时间
-            fieldCollectAt["doorOpenStatus"] = collectAt
-            fieldCollectAt["windowStatus"] = collectAt
-            fieldCollectAt["doorLockStatus"] = collectAt
-            fieldCollectAt["tailDoorOpenStatus"] = collectAt
-
-            apply(merged)
-            applyDashboard(dash)
-            evaluateKeylessAutomation(for: merged)
-            return "手动全量"
-        }
-
-        // 自动：字段级补齐
+        let now = Date()
         var dash = dashboard
         var merged = state
         var filled: [String] = []
-        var keptMQTT: [String] = []
+        var kept: [String] = []
+
+        func isProtectedByLocalLock(_ key: String) -> Bool {
+            guard key == "doorLockStatus" else { return false }
+            guard let until = localDoorLockHoldUntil else { return false }
+            return now < until
+        }
+
+        func isProtectedByRecentMQTT(_ key: String) -> Bool {
+            // 手动全量：只认本地锁保护，不再被 MQTT 时间戳卡死
+            if mode == .full { return false }
+            guard let fieldAt = fieldCollectAt[key] else { return false }
+            // 只保护“最近真的变过”的字段
+            return now.timeIntervalSince(fieldAt) < Self.mqttFieldHoldSeconds
+        }
 
         func canTake(_ key: String, httpHasValue: Bool) -> Bool {
             guard httpHasValue else { return false }
-            // 该字段从未被 MQTT/HTTP 单独打戳：允许 HTTP 补
-            // 典型：MQTT 只推 window2/3，门字段只能靠 HTTP 收敛
-            guard let fieldAt = fieldCollectAt[key] else {
-                return true
-            }
-            // 同字段：HTTP collectTime 不旧于该字段最近时间，才覆盖
-            return collectAt >= fieldAt
+            if isProtectedByLocalLock(key) { return false }
+            if isProtectedByRecentMQTT(key) { return false }
+            return true
         }
 
         func takeText(_ key: String, current: String, incoming: String) -> String {
@@ -69,32 +54,23 @@ extension MQTTVehicleStateStore {
             if v.isEmpty || v == "--" {
                 return current
             }
-            // 当前为空/--：直接补
-            let cur = current.trimmingCharacters(in: .whitespacesAndNewlines)
-            if cur.isEmpty || cur == "--" || cur.contains("缓存") {
-                if canTake(key, httpHasValue: true) {
-                    fieldCollectAt[key] = collectAt
-                    filled.append(key)
-                    return v
-                }
-                keptMQTT.append(key)
-                return current
-            }
-            // 当前已有值：仅当 HTTP 不旧才覆盖（用于门从开到关等收敛）
             if canTake(key, httpHasValue: true) {
+                let cur = current.trimmingCharacters(in: .whitespacesAndNewlines)
                 if v != cur {
                     filled.append("\(key):\(cur)→\(v)")
                 } else {
                     filled.append(key)
                 }
+                // HTTP 落地后也打戳，避免下一秒被旧 MQTT 半包无变化字段冲回
                 fieldCollectAt[key] = collectAt
+                fieldSource[key] = "HTTP"
                 return v
             }
-            keptMQTT.append(key)
+            kept.append(key)
             return current
         }
 
-        // 车身明细
+        // ---- 门锁 / 门 / 窗 / 尾门 ----
         dash.lockStatusText = takeText("doorLockStatus", current: dash.lockStatusText, incoming: newDashboard.lockStatusText)
         dash.driverDoorStatusText = takeText("door1OpenStatus", current: dash.driverDoorStatusText, incoming: newDashboard.driverDoorStatusText)
         dash.passengerDoorStatusText = takeText("door2OpenStatus", current: dash.passengerDoorStatusText, incoming: newDashboard.passengerDoorStatusText)
@@ -106,7 +82,7 @@ extension MQTTVehicleStateStore {
         dash.leftRearWindowStatusText = takeText("window3Status", current: dash.leftRearWindowStatusText, incoming: newDashboard.leftRearWindowStatusText)
         dash.rightRearWindowStatusText = takeText("window4Status", current: dash.rightRearWindowStatusText, incoming: newDashboard.rightRearWindowStatusText)
 
-        // 总览按明细重算；若明细不足再考虑 HTTP 总字段
+        // 总览必须由明细重算，禁止半包/旧总字段钉死
         let doorRe = VehicleStatusMapper.recomputeDoorStatusText(from: dash)
         if doorRe == "全关" || doorRe == "未关" {
             dash.doorStatusText = doorRe
@@ -120,57 +96,77 @@ extension MQTTVehicleStateStore {
             dash.windowStatusText = takeText("windowStatus", current: dash.windowStatusText, incoming: newDashboard.windowStatusText)
         }
 
-        // 非门窗实时字段：电量/空调/里程等，同样字段级
+        // ---- 其它实时字段 ----
         if canTake("batterySoc", httpHasValue: newDashboard.batteryPercentValue != nil) {
             dash.batteryPercentValue = newDashboard.batteryPercentValue
             if newDashboard.batteryRemainingText != "--" { dash.batteryRemainingText = newDashboard.batteryRemainingText }
             fieldCollectAt["batterySoc"] = collectAt
+            fieldSource["batterySoc"] = "HTTP"
             filled.append("batterySoc")
+        } else if newDashboard.batteryPercentValue != nil {
+            kept.append("batterySoc")
         }
+
         if canTake("acStatus", httpHasValue: newDashboard.acTemperatureText != "--") {
             dash.acTemperatureText = newDashboard.acTemperatureText
             fieldCollectAt["acStatus"] = collectAt
+            fieldSource["acStatus"] = "HTTP"
             filled.append("acStatus")
         }
         if newDashboard.cabinTemperatureText != "--", canTake("interiorTemperature", httpHasValue: true) {
             dash.cabinTemperatureText = newDashboard.cabinTemperatureText
             fieldCollectAt["interiorTemperature"] = collectAt
+            fieldSource["interiorTemperature"] = "HTTP"
         }
         if newDashboard.electricRangeKm > 0, canTake("leftMileage", httpHasValue: true) {
             dash.electricRangeKm = newDashboard.electricRangeKm
             fieldCollectAt["leftMileage"] = collectAt
+            fieldSource["leftMileage"] = "HTTP"
         }
         if newDashboard.fuelRangeKm > 0, canTake("oilLeftMileage", httpHasValue: true) {
             dash.fuelRangeKm = newDashboard.fuelRangeKm
             fieldCollectAt["oilLeftMileage"] = collectAt
+            fieldSource["oilLeftMileage"] = "HTTP"
         }
         if newDashboard.totalMileageText != "--", canTake("mileage", httpHasValue: true) {
             dash.totalMileageText = newDashboard.totalMileageText
             fieldCollectAt["mileage"] = collectAt
+            fieldSource["mileage"] = "HTTP"
         }
         if newDashboard.averageFuelConsumptionText != "--", canTake("avgFuel", httpHasValue: true) {
             dash.averageFuelConsumptionText = newDashboard.averageFuelConsumptionText
             fieldCollectAt["avgFuel"] = collectAt
+            fieldSource["avgFuel"] = "HTTP"
         }
         if newDashboard.chargingStatusText != "--", canTake("charging", httpHasValue: true) {
             dash.chargingStatusText = newDashboard.chargingStatusText
             dash.isCharging = (newDashboard.chargingStatusText == "是")
             fieldCollectAt["charging"] = collectAt
+            fieldSource["charging"] = "HTTP"
         }
         if newDashboard.chargingPowerText != "--", canTake("chargePower", httpHasValue: true) {
             dash.chargingPowerText = newDashboard.chargingPowerText
             dash.chargingPowerValueText = newDashboard.chargingPowerValueText
             fieldCollectAt["chargePower"] = collectAt
+            fieldSource["chargePower"] = "HTTP"
         }
 
-        // 胎压通常 HTTP 更全，直接补
+        // 胎压：HTTP 更全，直接补
         if newDashboard.leftFrontTirePressureText != "--" { dash.leftFrontTirePressureText = newDashboard.leftFrontTirePressureText }
         if newDashboard.rightFrontTirePressureText != "--" { dash.rightFrontTirePressureText = newDashboard.rightFrontTirePressureText }
         if newDashboard.leftRearTirePressureText != "--" { dash.leftRearTirePressureText = newDashboard.leftRearTirePressureText }
         if newDashboard.rightRearTirePressureText != "--" { dash.rightRearTirePressureText = newDashboard.rightRearTirePressureText }
         if newDashboard.tireTemperatureText != "--" { dash.tireTemperatureText = newDashboard.tireTemperatureText }
 
-        // state 布尔/基础字段
+        // 灯光等
+        if newDashboard.lowBeamText != "--" { dash.lowBeamText = newDashboard.lowBeamText }
+        if newDashboard.highBeamText != "--" { dash.highBeamText = newDashboard.highBeamText }
+        if newDashboard.leftTurnText != "--" { dash.leftTurnText = newDashboard.leftTurnText }
+        if newDashboard.rightTurnText != "--" { dash.rightTurnText = newDashboard.rightTurnText }
+        if newDashboard.positionLightText != "--" { dash.positionLightText = newDashboard.positionLightText }
+        if newDashboard.frontFogText != "--" { dash.frontFogText = newDashboard.frontFogText }
+
+        // state 同步
         if canTake("doorLockStatus", httpHasValue: newState.locked != nil) { merged.locked = newState.locked }
         if canTake("door1OpenStatus", httpHasValue: newState.driverDoorOpen != nil) { merged.driverDoorOpen = newState.driverDoorOpen }
         if canTake("tailDoorOpenStatus", httpHasValue: newState.trunkOpen != nil) { merged.trunkOpen = newState.trunkOpen }
@@ -181,76 +177,110 @@ extension MQTTVehicleStateStore {
         if canTake("batterySoc", httpHasValue: newState.fuelLevel != nil) { merged.fuelLevel = newState.fuelLevel }
         if canTake("leftMileage", httpHasValue: newState.fuelRange != nil) { merged.fuelRange = newState.fuelRange }
         if canTake("oilLeftMileage", httpHasValue: newState.oilRange != nil) { merged.oilRange = newState.oilRange }
+        if newState.speed != nil { merged.speed = newState.speed }
         merged.online = true
-        merged.timestamp = max(merged.timestamp, newState.timestamp)
+        merged.timestamp = max(merged.timestamp, newState.timestamp, collectAt)
 
-        // 明细回写总览布尔
         syncBooleans(from: dash, into: &merged)
-        dash.updatedAt = max(dash.updatedAt, collectAt)
+        dash.updatedAt = max(dash.updatedAt, collectAt, now)
         dash.updatedAtText = formatTime(dash.updatedAt)
+        lastHTTPBodyCollectAt = collectAt
+
+        // 强制 UI 版本号，避免宿主缓存导致“看起来不刷新”
+        bumpStatusRevision()
 
         merged = applyLiveBLEOverlay(to: merged)
         apply(merged)
         applyDashboard(dash)
         evaluateKeylessAutomation(for: merged)
 
+        var noteParts: [String] = []
+        if mode == .full {
+            noteParts.append("手动全量")
+        }
         if !filled.isEmpty {
             noteParts.append("补\(min(filled.count, 8))项")
+            noteParts.append(filled.prefix(6).joined(separator: ","))
         }
-        if !keptMQTT.isEmpty {
-            noteParts.append("保留MQTT\(min(keptMQTT.count, 6))项")
+        if !kept.isEmpty {
+            noteParts.append("保留\(min(kept.count, 6))项")
         }
-        if filled.isEmpty && keptMQTT.isEmpty {
+        if filled.isEmpty && kept.isEmpty {
             noteParts.append("无变化")
         }
-        // 精简明细，避免日志过长
-        let filledPreview = filled.prefix(6).joined(separator: ",")
-        if !filledPreview.isEmpty {
-            noteParts.append(filledPreview)
+        if isProtectedByLocalLock("doorLockStatus") {
+            noteParts.append("本地锁保护中")
         }
         return noteParts.joined(separator: "/")
     }
 
-    func mergeRealtimeState(newState: VehicleState, dashboard newDashboard: VehicleDashboardState, sourceFields: [String: String] = [:], collectAt: Date? = nil) {
+    /// MQTT 半包合并：只更新本包字段；时间戳只在“值真的变了”时刷新
+    func mergeRealtimeState(
+        newState: VehicleState,
+        dashboard newDashboard: VehicleDashboardState,
+        sourceFields: [String: String] = [:],
+        collectAt: Date? = nil,
+        changedKeys: Set<String> = []
+    ) {
         let at = collectAt ?? parseTimestamp(sourceFields["collectTime"]) ?? Date()
-        let mergedBase = VehicleStateMerger.mergeRealtime(current: state, newState: newState)
-        var dash = VehicleStateMerger.mergeRealtimeDashboard(current: dashboard, newDashboard: newDashboard)
-        // 用明细重算总览，避免半包把“全关/未关”钉死
+        let now = Date()
+
+        // 本地锁保护：MQTT 门锁字段在保护窗内不覆盖
+        var safeState = newState
+        var safeDash = newDashboard
+        if let until = localDoorLockHoldUntil, now < until {
+            safeState.locked = nil
+            safeDash.lockStatusText = "--"
+        }
+
+        let mergedBase = VehicleStateMerger.mergeRealtime(current: state, newState: safeState)
+        var dash = VehicleStateMerger.mergeRealtimeDashboard(current: dashboard, newDashboard: safeDash)
         dash.doorStatusText = VehicleStatusMapper.recomputeDoorStatusText(from: dash)
         dash.windowStatusText = VehicleStatusMapper.recomputeWindowStatusText(from: dash)
+        dash.updatedAt = max(dash.updatedAt, at, now)
+        dash.updatedAtText = formatTime(dash.updatedAt)
 
         var merged = applyLiveBLEOverlay(to: mergedBase)
         syncBooleans(from: dash, into: &merged)
 
-        // 记录 MQTT 实际推到的字段时间，供 HTTP 字段级合并判断
-        let keys = sourceFields.keys.isEmpty ? Self.bodyFieldKeys : Array(sourceFields.keys)
-        for key in keys {
-            // 只给“本包确实带了”的字段打戳
+        // 关键点：只给“本包里值发生变化”的字段打新时间戳
+        // 半包里反复带上的旧 door3=1 不再无限刷新时间戳，HTTP 才能在 5s 后纠正
+        let stampKeys: Set<String>
+        if !changedKeys.isEmpty {
+            stampKeys = changedKeys
+        } else {
+            // 兜底：若上游没给 changedKeys，就对本包键打戳（兼容旧调用）
+            stampKeys = Set(sourceFields.keys)
+        }
+        for key in stampKeys {
             if sourceFields[key] != nil {
                 fieldCollectAt[key] = at
+                fieldSource[key] = "MQTT"
             }
         }
-        // 若本包改了明细，总览也跟着记 MQTT 时间
-        if sourceFields.keys.contains(where: { $0.hasPrefix("door") || $0.hasPrefix("window") || $0.hasPrefix("tailDoor") || $0 == "doorLockStatus" }) {
+        if stampKeys.contains(where: {
+            $0.hasPrefix("door") || $0.hasPrefix("window") || $0.hasPrefix("tailDoor") || $0 == "doorLockStatus" || $0 == "acStatus"
+        }) {
             lastMQTTBodyCollectAt = at
         }
 
+        bumpStatusRevision()
         apply(merged)
         applyDashboard(dash)
         evaluateKeylessAutomation(for: merged)
     }
 
     private func syncBooleans(from dash: VehicleDashboardState, into merged: inout VehicleState) {
-        if dash.doorStatusText == "全关" { merged.doorsClosed = true }
-        else if dash.doorStatusText == "未关" { merged.doorsClosed = false }
-        if dash.windowStatusText == "全关" { merged.windowsClosed = true }
-        else if dash.windowStatusText == "未关" { merged.windowsClosed = false }
-        if dash.tailgateStatusText == "已关" { merged.trunkOpen = false }
-        else if dash.tailgateStatusText == "已开" { merged.trunkOpen = true }
-        if dash.driverDoorStatusText == "已关" { merged.driverDoorOpen = false }
-        else if dash.driverDoorStatusText == "未关" { merged.driverDoorOpen = true }
-        if dash.lockStatusText == "已锁车" { merged.locked = true }
-        else if dash.lockStatusText == "未锁" { merged.locked = false }
+        if dash.doorStatusText == "全关" || dash.doorStatusText.hasPrefix("全关") { merged.doorsClosed = true }
+        else if dash.doorStatusText == "未关" || dash.doorStatusText.hasPrefix("未关") { merged.doorsClosed = false }
+        if dash.windowStatusText == "全关" || dash.windowStatusText.hasPrefix("全关") { merged.windowsClosed = true }
+        else if dash.windowStatusText == "未关" || dash.windowStatusText.hasPrefix("未关") { merged.windowsClosed = false }
+        if dash.tailgateStatusText == "已关" || dash.tailgateStatusText.hasPrefix("已关") { merged.trunkOpen = false }
+        else if dash.tailgateStatusText == "已开" || dash.tailgateStatusText.hasPrefix("已开") { merged.trunkOpen = true }
+        if dash.driverDoorStatusText == "已关" || dash.driverDoorStatusText.hasPrefix("已关") { merged.driverDoorOpen = false }
+        else if dash.driverDoorStatusText == "未关" || dash.driverDoorStatusText.hasPrefix("未关") { merged.driverDoorOpen = true }
+        if dash.lockStatusText == "已锁车" || dash.lockStatusText.hasPrefix("已锁") { merged.locked = true }
+        else if dash.lockStatusText == "未锁" || dash.lockStatusText.hasPrefix("未锁") { merged.locked = false }
     }
 
     static let bodyFieldKeys: [String] = [
