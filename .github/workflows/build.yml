@@ -44,10 +44,10 @@ jobs:
         run: |
           set -euo pipefail
           APP=build/Build/Products/Release-iphoneos/BaoJunKeyless.app
+          ICONSET=Assets.xcassets/AppIcon.appiconset
           ACTOOL=$(xcrun --find actool)
           echo "Using actool: $ACTOOL"
-          # 显式把 Assets.xcassets 编译成 Assets.car，并生成 AppIcon
-          # XcodeGen/resources 有时不会触发 actool，导致桌面图标空白
+          # 1) 编译 Assets.car（正式 asset catalog 路径）
           "$ACTOOL" Assets.xcassets \
             --compile "$APP" \
             --platform iphoneos \
@@ -57,18 +57,49 @@ jobs:
             --compress-pngs \
             --notices --warnings
           ls -lh "$APP/Assets.car"
-          # 合并 actool 生成的图标相关 Info.plist 键（若有）
+
+          # 2) TrollStore/侧载双保险：把传统 PNG 图标直接放进 .app 根目录
+          # 部分安装器对 Assets.car 支持不完整，会显示空白/默认图标
+          cp -f "$ICONSET/ivan.p@example.net" "$APP/AppIcon60x60@2x.png"
+          cp -f "$ICONSET/quinn.m@example.net" "$APP/AppIcon60x60@3x.png"
+          cp -f "$ICONSET/james.b@example.com" "$APP/AppIcon40x40@2x.png"
+          cp -f "$ICONSET/diana.k@example.org" "$APP/AppIcon40x40@3x.png"
+          cp -f "$ICONSET/carol.u@example.org" "$APP/AppIcon29x29@2x.png"
+          cp -f "$ICONSET/frank.g@example.org" "$APP/AppIcon29x29@3x.png"
+          cp -f "$ICONSET/AppIcon-1024.png" "$APP/AppIcon.png"
+          # 兼容更老的命名
+          cp -f "$ICONSET/ivan.p@example.net" "$APP/Icon-60@2x.png"
+          cp -f "$ICONSET/quinn.m@example.net" "$APP/Icon-60@3x.png"
+          cp -f "$ICONSET/AppIcon-1024.png" "$APP/iTunesArtwork@2x"
+
+          # 3) 强制写传统 + asset catalog 双路径 Info.plist 图标键
+          /usr/libexec/PlistBuddy -c 'Delete :CFBundleIconName' "$APP/Info.plist" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c 'Delete :CFBundleIcons' "$APP/Info.plist" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c 'Delete :CFBundleIconFiles' "$APP/Info.plist" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleIconName string AppIcon' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleIconFiles array' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleIconFiles:0 string AppIcon60x60' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleIconFiles:1 string AppIcon' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleIconFiles:2 string Icon-60' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleIcons dict' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleIcons:CFBundlePrimaryIcon dict' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName string AppIcon' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles array' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles:0 string AppIcon60x60' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles:1 string AppIcon' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles:2 string Icon-60' "$APP/Info.plist"
+
+          # 合并 actool 生成键（若有且不冲突）
           if [ -f /tmp/assetcatalog_generated_info.plist ]; then
             echo "actool partial info:"
             plutil -p /tmp/assetcatalog_generated_info.plist || true
-            # 用 PlistBuddy 把 CFBundleIcons 等键合并进 app Info.plist（存在才合并）
-            /usr/libexec/PlistBuddy -c 'Print :CFBundleIcons' /tmp/assetcatalog_generated_info.plist >/dev/null 2>&1 && \
-              /usr/libexec/PlistBuddy -c 'Delete :CFBundleIcons' "$APP/Info.plist" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c 'Print :CFBundleIcons' /tmp/assetcatalog_generated_info.plist >/dev/null 2>&1 && \
-              /usr/libexec/PlistBuddy -c "Merge /tmp/assetcatalog_generated_info.plist" "$APP/Info.plist" || true
           fi
-          # 清理可能残留的未编译 asset 源目录，避免干扰
+
+          # 清理可能残留的未编译 asset 源目录
           rm -rf "$APP/Assets.xcassets" || true
+
+          echo "Root icon files:"
+          ls -lh "$APP"/AppIcon*.png "$APP"/Icon-60*.png "$APP"/iTunesArtwork@2x 2>/dev/null || true
 
       - name: Inspect .app
         run: |
@@ -81,7 +112,10 @@ jobs:
             exit 1
           fi
           ls -lh "$APP/Assets.car"
-          plutil -p "$APP/Info.plist" | sed -n '1,120p'
+          # 传统 PNG 图标必须存在（TrollStore 双保险）
+          test -f "$APP/AppIcon60x60@3x.png"
+          test -f "$APP/AppIcon.png"
+          plutil -p "$APP/Info.plist" | sed -n '1,160p'
 
       - name: Re-sign with TrollStore entitlements
         run: |
