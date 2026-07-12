@@ -26,7 +26,14 @@ extension MQTTVehicleStateStore {
         for (k, v) in fields where lastMqttFields[k] != v {
             changedKeys.append("\(k):\(lastMqttFields[k] ?? "?")→\(v)")
         }
-        guard !changedKeys.isEmpty else { return }
+        // 即使 collectTime 等杂项无变化，门窗字段只要有值也强制合并一次（防丢包后不刷新）
+        let bodyKeys = [
+            "doorLockStatus", "door1OpenStatus", "door2OpenStatus", "door3OpenStatus", "door4OpenStatus",
+            "tailDoorOpenStatus", "window1Status", "window2Status", "window3Status", "window4Status",
+            "doorOpenStatus", "windowStatus", "acStatus"
+        ]
+        let hasBody = bodyKeys.contains { fields[$0] != nil }
+        guard !changedKeys.isEmpty || hasBody else { return }
 
         lastMqttFields.merge(fields) { _, new in new }
         let newState = mapMQTTToVehicleState(fields)
@@ -37,8 +44,18 @@ extension MQTTVehicleStateStore {
             self.lastMQTTUpdate = Date()
             self.mqttStatus = .connected
             self.mergeRealtimeState(newState: newState, dashboard: newDashboard)
-            let summary = changedKeys.prefix(6).joined(separator: ", ")
+            let summary = (changedKeys.isEmpty ? Array(fields.keys.prefix(6)).map { "\($0)=force" } : Array(changedKeys.prefix(6))).joined(separator: ", ")
             CrashLogger.shared.mark("MQTT", "state changed: \(summary)")
+            // 关键门窗变化打到事件日志，方便确认“实时性”
+            if bodyKeys.contains(where: { fields[$0] != nil }) {
+                self.vehicleEventLogStore.addThrottled(
+                    .action,
+                    "MQTT车身更新",
+                    detail: summary,
+                    identity: "mqtt-body",
+                    minimumInterval: 1
+                )
+            }
         }
     }
 

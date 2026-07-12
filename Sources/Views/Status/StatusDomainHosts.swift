@@ -460,7 +460,7 @@ struct StatusCommandConfirmHost: View {
     }
 }
 
-/// 首页主内容：只让这块观察 vehicleStore 的 dashboard/state/metrics，StatusView 根不再直接吃整仓。
+/// 首页主内容：显式观察 dashboard/state/metrics，确保门窗实时刷新。
 struct StatusMainDashboardHost: View {
     @EnvironmentObject var vehicleStore: VehicleStateStore
     @EnvironmentObject var locationManager: LocationManager
@@ -469,11 +469,32 @@ struct StatusMainDashboardHost: View {
     let onOpenVehicleInfo: () -> Void
     let onOpenMQTT: () -> Void
 
-    var body: some View {
-        let dashboard = vehicleStore.dashboard
-        let metrics = vehicleStore.cachedDashboardMetrics
-        let state = vehicleStore.state
+    // 直接读 @Published，避免 body 里 let 快照导致漏刷
+    private var dashboard: VehicleDashboardState { vehicleStore.dashboard }
+    private var metrics: VehicleDashboardMetrics { vehicleStore.cachedDashboardMetrics }
+    private var state: VehicleState { vehicleStore.state }
+    private var bodyRefreshToken: String {
+        [
+            dashboard.updatedAtText,
+            dashboard.lockStatusText,
+            dashboard.doorStatusText,
+            dashboard.windowStatusText,
+            dashboard.tailgateStatusText,
+            dashboard.driverDoorStatusText,
+            dashboard.passengerDoorStatusText,
+            dashboard.leftRearDoorStatusText,
+            dashboard.rightRearDoorStatusText,
+            dashboard.leftFrontWindowStatusText,
+            dashboard.rightFrontWindowStatusText,
+            dashboard.leftRearWindowStatusText,
+            dashboard.rightRearWindowStatusText,
+            "\(state.locked.map { $0 ? 1 : 0 } ?? -1)",
+            "\(state.doorsClosed.map { $0 ? 1 : 0 } ?? -1)",
+            "\(state.windowsClosed.map { $0 ? 1 : 0 } ?? -1)"
+        ].joined(separator: "|")
+    }
 
+    var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.section) {
             VehicleHeaderSummaryView(
                 energyType: dashboard.energyType,
@@ -525,6 +546,7 @@ struct StatusMainDashboardHost: View {
                     topMetrics: Array(metrics.bodyStatus.prefix(4)),
                     detailMetrics: Array(metrics.bodyStatus.dropFirst(4))
                 )
+                .id(bodyRefreshToken)
                 TirePressureView(
                     tireTemperatureText: dashboard.tireTemperatureText,
                     metrics: metrics.tirePressure

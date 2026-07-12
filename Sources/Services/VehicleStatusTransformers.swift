@@ -74,9 +74,7 @@ enum VehicleStatusMapper {
         d.chargingStateText = displayText(s["rechargeStatus"]) ?? displayText(s["vecChrgingSts"]) ?? "--"
 
         d.lockStatusText = (parseLocked(s["doorLockStatus"]) == true) ? "已锁车" : ((parseLocked(s["doorLockStatus"]) == false) ? "未锁" : "--")
-        d.doorStatusText = (parseDoorClosed(s) == true) ? "全关" : ((parseDoorClosed(s) == false) ? "未关" : "--")
-        d.windowStatusText = (parseWindowsClosed(s) == true) ? "全关" : ((parseWindowsClosed(s) == false) ? "未关" : "--")
-        d.tailgateStatusText = displayOpenStatus(s["tailDoorOpenStatus"], closedText: "已锁", openText: "已开")
+        d.tailgateStatusText = displayOpenStatus(s["tailDoorOpenStatus"], closedText: "已关", openText: "已开")
         d.driverDoorStatusText = displayOpenStatus(s["door1OpenStatus"], closedText: "已关", openText: "未关")
         d.passengerDoorStatusText = displayOpenStatus(s["door2OpenStatus"], closedText: "已关", openText: "未关")
         d.leftRearDoorStatusText = displayOpenStatus(s["door3OpenStatus"], closedText: "已关", openText: "未关")
@@ -85,6 +83,16 @@ enum VehicleStatusMapper {
         d.rightFrontWindowStatusText = displayOpenStatus(s["window2Status"], closedText: "已关", openText: "已开")
         d.leftRearWindowStatusText = displayOpenStatus(s["window3Status"], closedText: "已关", openText: "已开")
         d.rightRearWindowStatusText = displayOpenStatus(s["window4Status"], closedText: "已关", openText: "已开")
+        if let doorsClosed = parseDoorClosed(s) {
+            d.doorStatusText = doorsClosed ? "全关" : "未关"
+        } else {
+            d.doorStatusText = recomputeDoorStatusText(from: d)
+        }
+        if let windowsClosed = parseWindowsClosed(s) {
+            d.windowStatusText = windowsClosed ? "全关" : "未关"
+        } else {
+            d.windowStatusText = recomputeWindowStatusText(from: d)
+        }
         d.leftFrontTirePressureText = firstDisplayTirePressure(s, corner: .leftFront)
         d.rightFrontTirePressureText = firstDisplayTirePressure(s, corner: .rightFront)
         d.leftRearTirePressureText = firstDisplayTirePressure(s, corner: .leftRear)
@@ -126,10 +134,22 @@ enum VehicleStatusMapper {
         next.timestamp = parseTimestamp(s["collectTime"]) ?? Date()
         next.online = true
         if let locked = parseLocked(s["doorLockStatus"]) { next.locked = locked }
-        if let doorsClosed = parseDoorClosed(s) { next.doorsClosed = doorsClosed }
+        // 单门增量：只更新对应字段，再基于合并后状态重算 doorsClosed/windowsClosed
         if let driverOpen = parseOpen(s["door1OpenStatus"]) { next.driverDoorOpen = driverOpen }
         if let trunkOpen = parseOpen(s["tailDoorOpenStatus"]) { next.trunkOpen = trunkOpen }
-        if let windowsClosed = parseWindowsClosed(s) { next.windowsClosed = windowsClosed }
+        if let doorsClosed = parseDoorClosed(s) {
+            // 仅当包内自带总字段/足够门字段时才直接写；否则后面用明细重算
+            if s["doorOpenStatus"] != nil ||
+                [s["door1OpenStatus"], s["door2OpenStatus"], s["door3OpenStatus"], s["door4OpenStatus"]].compactMap({ $0 }).count >= 2 {
+                next.doorsClosed = doorsClosed
+            }
+        }
+        if let windowsClosed = parseWindowsClosed(s) {
+            if s["windowStatus"] != nil ||
+                [s["window1Status"], s["window2Status"], s["window3Status"], s["window4Status"]].compactMap({ $0 }).count >= 2 {
+                next.windowsClosed = windowsClosed
+            }
+        }
         if let ac = parseACStatus(s["acStatus"]) { next.acOn = ac }
         if let speed = parseDouble(s["speed"] ?? s["vehSpd"] ?? s["vehSpdAvgDrvn"]) { next.speed = speed }
         return next
@@ -137,10 +157,11 @@ enum VehicleStatusMapper {
 
     static func mqttDashboard(from s: [String: String], base dashboard: VehicleDashboardState) -> VehicleDashboardState {
         var d = dashboard
+        // 先写明细，再根据“合并后的明细”重算总览，避免半包把 全关/未关 算错
         if let locked = parseLocked(s["doorLockStatus"]) { d.lockStatusText = locked ? "已锁车" : "未锁" }
-        if let doorsClosed = parseDoorClosed(s) { d.doorStatusText = doorsClosed ? "全关" : "未关" }
-        if let windowsClosed = parseWindowsClosed(s) { d.windowStatusText = windowsClosed ? "全关" : "未关" }
-        if s["tailDoorOpenStatus"] != nil { d.tailgateStatusText = displayOpenStatus(s["tailDoorOpenStatus"], closedText: "已锁", openText: "已开") }
+        if s["tailDoorOpenStatus"] != nil {
+            d.tailgateStatusText = displayOpenStatus(s["tailDoorOpenStatus"], closedText: "已关", openText: "已开")
+        }
         if s["door1OpenStatus"] != nil { d.driverDoorStatusText = displayOpenStatus(s["door1OpenStatus"], closedText: "已关", openText: "未关") }
         if s["door2OpenStatus"] != nil { d.passengerDoorStatusText = displayOpenStatus(s["door2OpenStatus"], closedText: "已关", openText: "未关") }
         if s["door3OpenStatus"] != nil { d.leftRearDoorStatusText = displayOpenStatus(s["door3OpenStatus"], closedText: "已关", openText: "未关") }
@@ -149,6 +170,18 @@ enum VehicleStatusMapper {
         if s["window2Status"] != nil { d.rightFrontWindowStatusText = displayOpenStatus(s["window2Status"], closedText: "已关", openText: "已开") }
         if s["window3Status"] != nil { d.leftRearWindowStatusText = displayOpenStatus(s["window3Status"], closedText: "已关", openText: "已开") }
         if s["window4Status"] != nil { d.rightRearWindowStatusText = displayOpenStatus(s["window4Status"], closedText: "已关", openText: "已开") }
+
+        // 总览：优先用包内总字段；否则用合并后的四门/四窗明细重算
+        if let doorsClosed = parseDoorClosed(s), s["doorOpenStatus"] != nil {
+            d.doorStatusText = doorsClosed ? "全关" : "未关"
+        } else {
+            d.doorStatusText = recomputeDoorStatusText(from: d)
+        }
+        if let windowsClosed = parseWindowsClosed(s), s["windowStatus"] != nil {
+            d.windowStatusText = windowsClosed ? "全关" : "未关"
+        } else {
+            d.windowStatusText = recomputeWindowStatusText(from: d)
+        }
         let leftFrontTirePressure = firstDisplayTirePressure(s, corner: .leftFront)
         if leftFrontTirePressure != "--" { d.leftFrontTirePressureText = leftFrontTirePressure }
         let rightFrontTirePressure = firstDisplayTirePressure(s, corner: .rightFront)
@@ -166,6 +199,36 @@ enum VehicleStatusMapper {
         d.updatedAtText = formatTime(d.updatedAt)
         return d
     }
+
+    static func recomputeDoorStatusText(from dashboard: VehicleDashboardState) -> String {
+        let details = [
+            dashboard.driverDoorStatusText,
+            dashboard.passengerDoorStatusText,
+            dashboard.leftRearDoorStatusText,
+            dashboard.rightRearDoorStatusText
+        ]
+        let known = details.filter { $0 != "--" && !$0.isEmpty }
+        guard !known.isEmpty else { return dashboard.doorStatusText }
+        if known.contains(where: { isOpenStatusText($0) }) { return "未关" }
+        if known.allSatisfy({ isClosedStatusText($0) }) { return "全关" }
+        return dashboard.doorStatusText
+    }
+
+    static func recomputeWindowStatusText(from dashboard: VehicleDashboardState) -> String {
+        let details = [
+            dashboard.leftFrontWindowStatusText,
+            dashboard.rightFrontWindowStatusText,
+            dashboard.leftRearWindowStatusText,
+            dashboard.rightRearWindowStatusText
+        ]
+        let known = details.filter { $0 != "--" && !$0.isEmpty }
+        guard !known.isEmpty else { return dashboard.windowStatusText }
+        if known.contains(where: { isOpenStatusText($0) }) { return "未关" }
+        if known.allSatisfy({ isClosedStatusText($0) }) { return "全关" }
+        return dashboard.windowStatusText
+    }
+
+
 }
 
 enum VehicleStateMerger {

@@ -51,17 +51,41 @@ func formatDateTime(_ date: Date) -> String {
 }
 
 func parseLocked(_ raw: String?) -> Bool? {
-    guard let raw else { return nil }
-    if raw == "0" { return true }
-    if raw == "1" { return false }
-    return nil
+    // doorLockStatus: 0=锁 1=解锁；兼容 true/false/bool 字符串
+    guard let normalized = normalizeBinaryStatus(raw) else { return nil }
+    switch normalized {
+    case "0", "false", "off", "lock", "locked":
+        return true
+    case "1", "true", "on", "unlock", "unlocked":
+        return false
+    default:
+        return nil
+    }
 }
 
 func parseOpen(_ raw: String?) -> Bool? {
-    guard let raw else { return nil }
-    if raw == "0" { return false }
-    if raw == "1" { return true }
-    return nil
+    // openStatus: 0=关 1=开
+    guard let normalized = normalizeBinaryStatus(raw) else { return nil }
+    switch normalized {
+    case "0", "false", "off", "close", "closed":
+        return false
+    case "1", "true", "on", "open", "opened":
+        return true
+    default:
+        return nil
+    }
+}
+
+/// 兼容 "0"/"1"/0/1/true/false/"true"/"false" 以及 "未关·缓存" 之类脏值前缀
+func normalizeBinaryStatus(_ raw: String?) -> String? {
+    guard var text = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+    if let cacheRange = text.range(of: "·缓存") {
+        text = String(text[..<cacheRange.lowerBound])
+    }
+    text = text.lowercased()
+    if text == "已关" || text == "全关" || text == "已锁" || text == "已锁车" { return "0" }
+    if text == "未关" || text == "已开" || text == "打开" || text == "未锁" { return "1" }
+    return text
 }
 
 func parseDoorClosed(_ s: [String: String]) -> Bool? {
@@ -78,6 +102,16 @@ func parseWindowsClosed(_ s: [String: String]) -> Bool? {
     let parsed = values.compactMap(parseOpen)
     guard !parsed.isEmpty else { return nil }
     return !parsed.contains(true)
+}
+
+func isOpenStatusText(_ text: String) -> Bool {
+    let t = text.replacingOccurrences(of: "·缓存", with: "")
+    return ["未关", "已开", "打开", "未锁"].contains(t)
+}
+
+func isClosedStatusText(_ text: String) -> Bool {
+    let t = text.replacingOccurrences(of: "·缓存", with: "")
+    return ["已关", "全关", "已锁", "已锁车"].contains(t)
 }
 
 func parseACStatus(_ raw: String?) -> Bool? {

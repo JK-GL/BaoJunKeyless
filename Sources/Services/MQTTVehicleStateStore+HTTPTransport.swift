@@ -3,9 +3,12 @@ import Foundation
 extension MQTTVehicleStateStore {
     func startHTTPPolling(immediate: Bool) {
         httpTimer?.invalidate()
-        let timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        // 门窗/车锁不能只靠 60s 一轮；有网时提高频率，MQTT 增量到不了也能及时收敛
+        let timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             self?.pollHTTPOnce(userInitiated: false, completion: nil)
         }
+        // 后台/滑动时也尽量触发
+        RunLoop.main.add(timer, forMode: .common)
         httpTimer = timer
         if immediate {
             pollHTTPOnce(userInitiated: false, completion: nil)
@@ -47,15 +50,29 @@ extension MQTTVehicleStateStore {
                     // 以前：MQTT 60s 内有任意字段就整包不用 HTTP，导致“有网开门但门窗不刷新”。
                     // 现在：始终合并 HTTP 门窗/车锁等车身字段；仅保留手机侧 live BLE 靠近语义。
                     newState.online = true
+                    // 清掉旧缓存后缀，避免 UI 一直显示 ·缓存
+                    newDashboard = Self.stripDashboardBodyCacheSuffix(newDashboard)
                     self.mergeHTTPBaseState(newState: newState, dashboard: newDashboard)
                     // mergeHTTPBaseState 内已 apply + evaluateKeyless
 
                     self.applyHTTPMeta(carInfo: refreshResult.carInfo, carStatus: refreshResult.carStatus)
                     CrashLogger.shared.mark("HTTP", "status updated")
 
-                    let message = "车况已更新 · HTTP · \(formatTime(refreshResult.fetchedAt))"
+                    let lock = newDashboard.lockStatusText
+                    let doors = newDashboard.doorStatusText
+                    let windows = newDashboard.windowStatusText
+                    let tail = newDashboard.tailgateStatusText
+                    let message = "车况已更新 · HTTP · \(formatTime(refreshResult.fetchedAt)) · 锁=\(lock) 门=\(doors) 窗=\(windows) 尾=\(tail)"
                     if userInitiated {
                         self.vehicleEventLogStore.add(.action, "车况刷新成功", detail: message)
+                    } else {
+                        self.vehicleEventLogStore.addThrottled(
+                            .action,
+                            "车况轮询更新",
+                            detail: message,
+                            identity: "http-poll-body",
+                            minimumInterval: 10
+                        )
                     }
                     completion?(true, message)
 
@@ -158,6 +175,26 @@ extension MQTTVehicleStateStore {
         dash.rightFrontWindowStatusText = cache(dash.rightFrontWindowStatusText)
         dash.leftRearWindowStatusText = cache(dash.leftRearWindowStatusText)
         dash.rightRearWindowStatusText = cache(dash.rightRearWindowStatusText)
+        return dash
+    }
+
+    static func stripDashboardBodyCacheSuffix(_ dashboard: VehicleDashboardState) -> VehicleDashboardState {
+        var dash = dashboard
+        func strip(_ text: String) -> String {
+            text.replacingOccurrences(of: "·缓存", with: "")
+        }
+        dash.lockStatusText = strip(dash.lockStatusText)
+        dash.doorStatusText = strip(dash.doorStatusText)
+        dash.windowStatusText = strip(dash.windowStatusText)
+        dash.tailgateStatusText = strip(dash.tailgateStatusText)
+        dash.driverDoorStatusText = strip(dash.driverDoorStatusText)
+        dash.passengerDoorStatusText = strip(dash.passengerDoorStatusText)
+        dash.leftRearDoorStatusText = strip(dash.leftRearDoorStatusText)
+        dash.rightRearDoorStatusText = strip(dash.rightRearDoorStatusText)
+        dash.leftFrontWindowStatusText = strip(dash.leftFrontWindowStatusText)
+        dash.rightFrontWindowStatusText = strip(dash.rightFrontWindowStatusText)
+        dash.leftRearWindowStatusText = strip(dash.leftRearWindowStatusText)
+        dash.rightRearWindowStatusText = strip(dash.rightRearWindowStatusText)
         return dash
     }
 }
