@@ -314,7 +314,6 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         next.locked = locked
         // 标记为本地刚确认过的状态，避免被“无网络旧缓存”继续误导无感
         next.timestamp = Date()
-        next.online = next.online // 保持原 online；离线仍离线
         apply(next)
 
         var dash = dashboard
