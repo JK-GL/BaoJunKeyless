@@ -40,23 +40,48 @@ jobs:
             COPY_PHASE_STRIP=NO \
             CURRENT_PROJECT_VERSION="$BUILD_DATE"
 
+      - name: Compile AppIcon asset catalog
+        run: |
+          set -euo pipefail
+          APP=build/Build/Products/Release-iphoneos/BaoJunKeyless.app
+          ACTOOL=$(xcrun --find actool)
+          echo "Using actool: $ACTOOL"
+          # 显式把 Assets.xcassets 编译成 Assets.car，并生成 AppIcon
+          # XcodeGen/resources 有时不会触发 actool，导致桌面图标空白
+          "$ACTOOL" Assets.xcassets \
+            --compile "$APP" \
+            --platform iphoneos \
+            --minimum-deployment-target 15.0 \
+            --app-icon AppIcon \
+            --output-partial-info-plist /tmp/assetcatalog_generated_info.plist \
+            --compress-pngs \
+            --notices --warnings
+          ls -lh "$APP/Assets.car"
+          # 合并 actool 生成的图标相关 Info.plist 键（若有）
+          if [ -f /tmp/assetcatalog_generated_info.plist ]; then
+            echo "actool partial info:"
+            plutil -p /tmp/assetcatalog_generated_info.plist || true
+            # 用 PlistBuddy 把 CFBundleIcons 等键合并进 app Info.plist（存在才合并）
+            /usr/libexec/PlistBuddy -c 'Print :CFBundleIcons' /tmp/assetcatalog_generated_info.plist >/dev/null 2>&1 && \
+              /usr/libexec/PlistBuddy -c 'Delete :CFBundleIcons' "$APP/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c 'Print :CFBundleIcons' /tmp/assetcatalog_generated_info.plist >/dev/null 2>&1 && \
+              /usr/libexec/PlistBuddy -c "Merge /tmp/assetcatalog_generated_info.plist" "$APP/Info.plist" || true
+          fi
+          # 清理可能残留的未编译 asset 源目录，避免干扰
+          rm -rf "$APP/Assets.xcassets" || true
+
       - name: Inspect .app
         run: |
           APP=build/Build/Products/Release-iphoneos/BaoJunKeyless.app
-          find "$APP" -maxdepth 1 -ls
+          find "$APP" -maxdepth 2 -ls
           file "$APP/BaoJunKeyless" || echo "NO BINARY"
           ls -lh "$APP" || echo "NO APP DIR"
-          # 图标必须编译进 Assets.car；若只剩 AppIcon.appiconset 源目录，桌面图标不会显示
           if [ ! -f "$APP/Assets.car" ]; then
-            echo "ERROR: Assets.car missing — AppIcon was not compiled"
-            find "$APP" -name 'AppIcon*' -maxdepth 4 -print || true
+            echo "ERROR: Assets.car still missing after actool"
             exit 1
           fi
           ls -lh "$APP/Assets.car"
-          # 编译成功后通常不应再把 appiconset 源文件原样塞进 .app 根资源树
-          if [ -d "$APP/Assets.xcassets/AppIcon.appiconset" ]; then
-            echo "WARN: raw AppIcon.appiconset present inside .app (asset catalog may not have been compiled correctly)"
-          fi
+          plutil -p "$APP/Info.plist" | sed -n '1,120p'
 
       - name: Re-sign with TrollStore entitlements
         run: |
