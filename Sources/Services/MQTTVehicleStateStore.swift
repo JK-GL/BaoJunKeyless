@@ -221,8 +221,6 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var hasEnteredVehicleZone = false
     /// 连续真实弱 RSSI 起始时间（信号丢失不算）
     var continuousWeakSince: Date?
-    /// 离开车区确认秒数下限（UI lockDelay=0 时仍保底，防车内误锁）
-    static let vehicleZoneLeaveConfirmMinSeconds: TimeInterval = 15
     var bleScanStartedAt: Date?
     var hasCompletedBLEAuth = false
     var userManuallyStoppedBLE = false

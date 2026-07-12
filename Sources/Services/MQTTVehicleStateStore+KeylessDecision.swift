@@ -178,7 +178,7 @@ extension MQTTVehicleStateStore {
             && phoneNearbySince != nil
             && settings.unlockEnabled
             && settings.unlockApproachDuration > 0
-        let leaveConfirm = max(settings.lockDelay, Self.vehicleZoneLeaveConfirmMinSeconds)
+        let leaveConfirm = max(settings.lockDelay, 0)
         let hasActiveLockDelay = !nextNearby
             && phoneFarAwaySince != nil
             && settings.lockEnabled
@@ -242,7 +242,7 @@ extension MQTTVehicleStateStore {
         }
         guard settings.pluginTakeover || settings.smartSwitch || settings.appManual else { return }
 
-        let leaveConfirm = max(settings.lockDelay, Self.vehicleZoneLeaveConfirmMinSeconds)
+        let leaveConfirm = max(settings.lockDelay, 0)
         let hasActiveUnlockDelay = currentState.phoneNearby
             && phoneNearbySince != nil
             && settings.unlockEnabled
@@ -290,7 +290,7 @@ extension MQTTVehicleStateStore {
                     vehicleEventLogStore.add(
                         .keyless,
                         "上锁等待",
-                        detail: "确认离开中，至少 \(Int(leaveConfirm))s（lockDelay=\(Int(settings.lockDelay))，车区保底 \(Int(Self.vehicleZoneLeaveConfirmMinSeconds))s）"
+                        detail: "确认离开中，等待 \(Int(leaveConfirm))s（按设置 lockDelay）"
                     )
                 }
             }
@@ -367,8 +367,11 @@ extension MQTTVehicleStateStore {
         let decision = KeylessDecisionEngine.evaluateLock(state: state, settings: settings, context: context)
         guard case .allow = decision else { return decision }
 
-        // 离开确认：UI lockDelay 与安全保底取较大值（默认 lockDelay=0 时仍至少 15s）
-        let leaveConfirm = max(settings.lockDelay, Self.vehicleZoneLeaveConfirmMinSeconds)
+        // 离开确认：完全按设置 lockDelay；0 = 判定离开后立即上锁
+        let leaveConfirm = max(settings.lockDelay, 0)
+        if leaveConfirm <= 0 {
+            return .allow(action: .lock, reason: decision.reason + " · 已确认离开")
+        }
         guard let farSince = phoneFarAwaySince else {
             return .wait(action: .lock, reason: "确认离开中")
         }
