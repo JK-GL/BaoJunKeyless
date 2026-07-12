@@ -6,6 +6,8 @@ extension MQTTVehicleStateStore {
     func setupBLECallbacks() {
         bleManager.onStateChange = { [weak self] state in
             guard let self else { return }
+            // 同步“系统是否已连目标车 BLE”，供胶囊文案避免假“连接中”
+            self.connectionStatusStore.isSystemBLEConnected = self.bleManager.isSystemConnectedSession
             switch state {
             case .idle:
                 if self.ignoreNextBLEIdleCallback {
@@ -51,6 +53,7 @@ extension MQTTVehicleStateStore {
                 // 真正断开后才清空
                 let keepPreview = self.bleDiagnosticsStore.isPreviewRSSI
                     && (self.bleStatus == .connecting || self.bleStatus == .authenticating)
+                self.connectionStatusStore.isSystemBLEConnected = false
                 self.bleStatus = .disconnected
                 self.bleScanStartedAt = nil
                 self.hasCompletedBLEAuth = false
@@ -117,6 +120,7 @@ extension MQTTVehicleStateStore {
                 self.setBLEDiagnosticPhase("已鉴权", detail: self.bleDiagnosticCurrentCandidateText)
                 self.setBLEDiagnosticConclusion("鉴权成功", reason: "已完成 BLE 四步鉴权")
                 self.logVehicleEvent(.action, "BLE 鉴权成功", detail: "可发送控车命令", identity: "authenticated", minimumInterval: 3)
+                self.connectionStatusStore.isSystemBLEConnected = true
                 self.bleStatus = .authenticated
             case .authFailed(let reason):
                 self.ignoreNextBLEIdleCallback = false
@@ -305,7 +309,8 @@ extension MQTTVehicleStateStore {
                 } else {
                     self.userManuallyStoppedBLE = false
                     self.bleManager.stop()
-                    self.bleStatus = .disconnected
+                    self.connectionStatusStore.isSystemBLEConnected = false
+                self.bleStatus = .disconnected
                     self.setBLEDiagnosticPhase("无感关闭", detail: "无感开关已关闭")
                     if wasEnabled != false {
                         self.resetKeylessRuntimeState()

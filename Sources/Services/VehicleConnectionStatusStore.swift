@@ -22,6 +22,8 @@ final class VehicleConnectionStatusStore: ObservableObject {
     }
 
     @Published var bleStatus: LiveBLEStatus = .disconnected
+    /// 系统层是否已存在目标车 BLE 连接（retrieveConnected / peripheral.state==.connected）
+    @Published var isSystemBLEConnected: Bool = false
     @Published var mqttStatus: LiveMQTTStatus = .disconnected
     @Published var authStatus: StatusAuthState = .expired("未登录")
 
@@ -30,7 +32,9 @@ final class VehicleConnectionStatusStore: ObservableObject {
         case .authenticated: return .authenticated
         case .authenticating: return .authenticating
         case .connected: return .connected
-        case .connecting: return .connecting
+        case .connecting:
+            // 系统未连上时，不要显示“连接中”误导；显示扫描/寻找
+            return isSystemBLEConnected ? .connecting : .scanning
         case .scanning: return .scanning
         case .error: return .error
         case .disconnected: return .disconnected

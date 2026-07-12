@@ -356,6 +356,7 @@ final class VehicleBLEManager: NSObject {
             self.foregroundObserver = nil
         }
         currentConnectionSource = nil
+        isSystemConnectedSession = false
         hasTriedBoundPeripheral = false
         if let discoveredPeripheral {
             central.cancelPeripheralConnection(discoveredPeripheral)
@@ -367,6 +368,7 @@ final class VehicleBLEManager: NSObject {
 
     private func clearSessionRuntime(cancelPendingControl: Bool) {
         discoveredPeripheral = nil
+        isSystemConnectedSession = false
         authWriteCharacteristic = nil
         controlWriteCharacteristic = nil
         notify181AReady = false
@@ -434,16 +436,22 @@ final class VehicleBLEManager: NSObject {
     }
 
     /// 优先接管系统已连接、且像本车钥匙模块的外设（181A/182A）
+    /// 只有系统层真的 connected 才算“已连接”；否则回落扫描，避免 UI 假“连接中”。
     private func connectSystemConnectedPeripheralIfAvailable() -> Bool {
         guard config != nil else { return false }
         // 用鉴权/控制服务筛系统已连接设备，避免乱接耳机等
         let connected = central.retrieveConnectedPeripherals(withServices: [authService, controlService])
-        guard !connected.isEmpty else { return false }
+            .filter { $0.state == .connected }
+        guard !connected.isEmpty else {
+            onLog?("BLE", "system has no connected 181A/182A peripheral")
+            return false
+        }
 
         let bindingId = VehicleBLEBindingStore.loadMatching(keyId: config?.keyId ?? "", bleMac: config?.bleMac ?? "")?.peripheralIdentifier
         // 优先：已绑定 UUID
         if let bindingId,
            let peripheral = connected.first(where: { $0.identifier.uuidString.caseInsensitiveCompare(bindingId) == .orderedSame }) {
+            isSystemConnectedSession = true
             connectScannedPeripheral(
                 peripheral,
                 localName: peripheral.name ?? "system-connected",
@@ -456,6 +464,7 @@ final class VehicleBLEManager: NSObject {
         }
         // 其次：任一带 181A/182A 的已连接外设（一车一账号场景）
         if let peripheral = connected.first {
+            isSystemConnectedSession = true
             connectScannedPeripheral(
                 peripheral,
                 localName: peripheral.name ?? "system-connected",
@@ -472,6 +481,9 @@ final class VehicleBLEManager: NSObject {
     private var allowsDebugScoreFallback: Bool {
         AppDiagnosticsSettings.vehicleControlRouteMode == .forceBLE
     }
+
+    /// 当前会话是否基于系统已连接外设（retrieveConnected / alreadyConnected）
+    private(set) var isSystemConnectedSession = false
 
     private var connectionSourceText: String {
         switch currentConnectionSource {
@@ -493,34 +505,36 @@ final class VehicleBLEManager: NSObject {
             onLog?("BLE", "bound peripheral miss/mismatch, fallback wide scan")
             return false
         }
+
+        // 关键：绑定 UUID 只有在“系统已连接”时才直连接管。
+        // 系统未连接时不要 central.connect + UI 连接中（用户会误解成已连蓝牙）。
+        // 先扫到目标广播/系统稍后连上，再连接。
+        let systemConnected = central.retrieveConnectedPeripherals(withServices: [authService, controlService])
+            .contains { $0.identifier == uuid && $0.state == .connected }
         let peripherals = central.retrievePeripherals(withIdentifiers: [uuid])
         guard let peripheral = peripherals.first else {
-            // 系统暂时找不到旧 UUID：保留绑定，回退宽扫；
-            // 若扫到目标 mac 并鉴权成功，会自动刷新为新 UUID。
             onLog?("BLE", "bound peripheral not found id=\(binding.shortIdentifier), keep binding, fallback wide scan")
             return false
         }
-        discoveredPeripheral = peripheral
-        currentConnectionSource = .bound
-        peripheral.delegate = self
-        central.stopScan()
-        scanWatchdogWorkItem?.cancel()
-        scanWatchdogWorkItem = nil
-        scanTotalTimeoutWorkItem?.cancel()
-        scanTotalTimeoutWorkItem = nil
 
-        if peripheral.state == .connected {
+        if peripheral.state == .connected || systemConnected {
+            discoveredPeripheral = peripheral
+            currentConnectionSource = .bound
+            isSystemConnectedSession = true
+            peripheral.delegate = self
+            central.stopScan()
+            scanWatchdogWorkItem?.cancel()
+            scanWatchdogWorkItem = nil
+            scanTotalTimeoutWorkItem?.cancel()
+            scanTotalTimeoutWorkItem = nil
             state = .connecting
-            onLog?("BLE", "connecting bound peripheral name=\(binding.peripheralName) id=\(binding.shortIdentifier) keyId=\(binding.keyId) macSuffix=\(binding.bleMacSuffix) alreadyConnected=1")
+            onLog?("BLE", "take over system-connected bound peripheral name=\(binding.peripheralName) id=\(binding.shortIdentifier) keyId=\(binding.keyId) macSuffix=\(binding.bleMacSuffix)")
             peripheral.discoverServices(nil)
             return true
         }
 
-        state = .connecting
-        onLog?("BLE", "connecting bound peripheral name=\(binding.peripheralName) id=\(binding.shortIdentifier) keyId=\(binding.keyId) macSuffix=\(binding.bleMacSuffix)")
-        scheduleConnectionTimeout(uuid: peripheral.identifier, source: "bound")
-        central.connect(peripheral, options: nil)
-        return true
+        onLog?("BLE", "bound peripheral remembered but system not connected id=\(binding.shortIdentifier), fallback wide scan (avoid fake connecting UI)")
+        return false
     }
 
     private func startScanning() {
@@ -1288,14 +1302,17 @@ final class VehicleBLEManager: NSObject {
         scanTotalTimeoutWorkItem = nil
 
         if peripheral.state == .connected {
+            isSystemConnectedSession = true
             state = .connecting
-            onLog?("BLE", "scanned peripheral already connected, discover services: \(peripheral.name ?? localName)")
+            onLog?("BLE", "scanned peripheral already connected (system), discover services: \(peripheral.name ?? localName)")
             peripheral.discoverServices(nil)
             return
         }
 
+        // 系统未连接：仍发起 connect，但标记非系统连接；UI 侧显示扫描/寻找，不显示“已连接”
+        isSystemConnectedSession = false
         state = .connecting
-        onLog?("BLE", "connecting \(connectionSourceText) candidate name=\(localName) rssi=\(rssi) | \(detail)")
+        onLog?("BLE", "connecting \(connectionSourceText) candidate name=\(localName) rssi=\(rssi) systemConnected=0 | \(detail)")
         scheduleConnectionTimeout(uuid: peripheral.identifier, source: connectionSourceText)
         central.connect(peripheral, options: nil)
     }
@@ -1554,6 +1571,8 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        // 链路已建立（无论是否原先系统已连）
+        isSystemConnectedSession = true
         connectionTimeoutWorkItem?.cancel()
         connectionTimeoutWorkItem = nil
         onLog?("BLE", "connected \(peripheral.name ?? "--") source=\(connectionSourceText), discover all services")

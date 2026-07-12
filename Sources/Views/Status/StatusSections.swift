@@ -42,8 +42,9 @@ enum StatusBLEState: Equatable {
         switch self {
         case .disconnected: return "BLE未连接"
         case .scanning: return "BLE扫描中"
+        // connecting = App 正在连，但系统未必已连上；文案用“寻找/连接中”避免误解成“已连上”
         case .connecting: return "BLE连接中"
-        case .connected: return "BLE已连接"
+        case .connected: return "BLE链路中"
         case .authenticating: return "BLE鉴权中"
         case .authenticated: return "BLE已连接"
         case .weak: return "BLE信号弱"
