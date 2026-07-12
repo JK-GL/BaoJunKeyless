@@ -233,7 +233,7 @@ private struct KeylessRealtimeStatusHost: View {
 
     private var lockDelayRemainingText: String {
         guard let farSince = phoneFarAwaySince else { return "--" }
-        let delay = max(settingsStore.settings.lockDelay, 0)
+        let delay = max(settingsStore.settings.lockDelay, 15)
         guard delay > 0 else { return "0s" }
         let elapsed = Date().timeIntervalSince(farSince)
         let remaining = max(0, Int(ceil(delay - elapsed)))

@@ -7,8 +7,11 @@ extension MQTTVehicleStateStore {
         lastEvalLocked = nil
         lastEvalNearby = nil
         lastEvalFarAway = nil
+        lastEvalInVehicleZone = nil
         phoneNearbySince = nil
         phoneFarAwaySince = nil
+        hasEnteredVehicleZone = false
+        continuousWeakSince = nil
         bleScanStartedAt = nil
         hasCompletedBLEAuth = false
         userManuallyStoppedBLE = false
@@ -24,8 +27,10 @@ extension MQTTVehicleStateStore {
     func applyLiveBLEOverlay(to baseState: VehicleState) -> VehicleState {
         guard let rssi = liveBLERSSI else {
             var next = baseState
-            if next.bleRssi != nil || next.phoneNearby {
-                next.bleRssi = nil
+            next.bleRssi = nil
+            // 信号空洞：鉴权中/已进车区时保留靠近语义，避免被当成离开而上锁
+            let keepNear = hasCompletedBLEAuth || hasEnteredVehicleZone || bleStatus == .authenticated
+            if !keepNear {
                 next.phoneNearby = false
             }
             return next
@@ -53,9 +58,9 @@ extension MQTTVehicleStateStore {
         let timeout: TimeInterval = wasStrong ? 12.0 : 8.0
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            // 仍鉴权中：只清 live RSSI，不立刻按“远离上锁”
-            // 真正远离应靠弱 RSSI；信号空洞不等于人已离开
-            let stillAuthed = self.bleStatus == .authenticated || self.hasCompletedBLEAuth
+            // 信号丢失 ≠ 离开。无论是否鉴权，都不因空洞直接上锁。
+            // 真正离开只能靠连续真实弱 RSSI。
+            let keepZone = self.hasCompletedBLEAuth || self.hasEnteredVehicleZone || self.bleStatus == .authenticated || self.state.phoneNearby
             self.liveBLERawRSSI = nil
             self.liveBLERSSI = nil
             self.liveBLELastSeenAt = nil
@@ -64,31 +69,27 @@ extension MQTTVehicleStateStore {
             self.bleDiagnosticsStore.isPreviewRSSI = false
             self.debugBLELastSeenText = "--"
             self.debugBLELastTransitionText = "BLE信号中断 · \(formatTime(Date()))"
+            self.continuousWeakSince = nil
+            self.phoneFarAwaySince = nil
             self.logVehicleEvent(
                 .warning,
                 "BLE信号中断",
-                detail: stillAuthed
-                    ? "连续 \(Int(timeout))s 无 RSSI，暂不清靠近语义（避免车内误上锁）"
-                    : "连续 \(Int(timeout))s 无 RSSI，按远离处理",
+                detail: keepZone
+                    ? "连续 \(Int(timeout))s 无 RSSI，保留车区语义（禁止据此上锁）"
+                    : "连续 \(Int(timeout))s 无 RSSI，暂停靠近判定",
                 identity: "signal-loss",
                 minimumInterval: 8
             )
 
-            if stillAuthed {
-                // 保留 phoneNearby 原值，仅去掉 bleRssi，避免误触发上锁
-                if self.state.bleRssi != nil {
-                    var next = self.state
-                    next.bleRssi = nil
-                    self.apply(next)
-                }
-                return
-            }
-
             var next = self.state
             next.bleRssi = nil
-            next.phoneNearby = false
-            self.apply(next)
-            self.evaluateKeylessAutomation(for: next)
+            if !keepZone {
+                next.phoneNearby = false
+            }
+            // 不 evaluate 上锁：空洞不能推进离开
+            if next != self.state {
+                self.apply(next)
+            }
         }
         bleSignalLossWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: work)
@@ -105,14 +106,22 @@ extension MQTTVehicleStateStore {
             debugBLELastSeenText = "--"
             bleSignalLossWorkItem?.cancel()
             bleSignalLossWorkItem = nil
+            continuousWeakSince = nil
+            phoneFarAwaySince = nil
 
-            // 只有靠近语义或 live 可用性变化时才推整车 state
-            if state.phoneNearby || state.bleRssi != nil {
+            // nil RSSI：只清 live 数值。车区/鉴权中保留靠近语义，绝不因此上锁。
+            let keepZone = hasCompletedBLEAuth || hasEnteredVehicleZone || bleStatus == .authenticated || state.phoneNearby
+            if state.bleRssi != nil || (!keepZone && state.phoneNearby) {
                 var next = state
                 next.bleRssi = nil
-                next.phoneNearby = false
+                if !keepZone {
+                    next.phoneNearby = false
+                }
                 apply(next)
-                evaluateKeylessAutomation(for: next)
+                // 不 evaluate 上锁路径
+                if !keepZone {
+                    evaluateKeylessAutomation(for: next)
+                }
             }
             return
         }
@@ -143,8 +152,11 @@ extension MQTTVehicleStateStore {
         let proximityChanged = previousNearby != nextNearby
         let liveAvailabilityChanged = previousHadLive != true
 
+        // 车区状态机：弱→强进入；强→弱开始离开计时（必须真实 RSSI）
+        updateVehicleZoneTracking(smoothedRSSI: smoothedRSSI, nearby: nextNearby)
+
         if proximityChanged {
-            let detail = "raw=\(rawRSSI), smoothed=\(smoothedRSSI), unlock=\(Int(keylessSettingsStore.settings.unlockThreshold)), lock=\(Int(keylessSettingsStore.settings.lockThreshold))"
+            let detail = "raw=\(rawRSSI), smoothed=\(smoothedRSSI), unlock=\(Int(keylessSettingsStore.settings.unlockThreshold)), lock=\(Int(keylessSettingsStore.settings.lockThreshold)), zone=\(hasEnteredVehicleZone ? 1 : 0)"
             debugBLELastTransitionText = "\(nextNearby ? "靠近" : "远离") · \(formatTime(Date()))"
             vehicleEventLogStore.add(.keyless, nextNearby ? "BLE判定靠近" : "BLE判定远离", detail: detail)
         }
@@ -166,12 +178,48 @@ extension MQTTVehicleStateStore {
             && phoneNearbySince != nil
             && settings.unlockEnabled
             && settings.unlockApproachDuration > 0
+        let leaveConfirm = max(settings.lockDelay, Self.vehicleZoneLeaveConfirmMinSeconds)
         let hasActiveLockDelay = !nextNearby
             && phoneFarAwaySince != nil
             && settings.lockEnabled
-            && settings.lockDelay > 0
+            && leaveConfirm > 0
         if hasActiveUnlockDelay || hasActiveLockDelay {
             evaluateKeylessAutomation(for: state)
+        }
+    }
+
+    /// 车区追踪：
+    /// - 靠近/强信号 → 进入车区（之后禁上锁，可解锁）
+    /// - 连续真实弱信号 → 才开始离开确认
+    /// - 信号丢失不会走到这里
+    func updateVehicleZoneTracking(smoothedRSSI: Int, nearby: Bool) {
+        let unlockTh = keylessSettingsStore.settings.unlockThreshold
+        let lockTh = keylessSettingsStore.settings.lockThreshold
+        let rssi = Double(smoothedRSSI)
+
+        if nearby || rssi >= unlockTh {
+            if !hasEnteredVehicleZone {
+                hasEnteredVehicleZone = true
+                vehicleEventLogStore.addThrottled(
+                    .keyless,
+                    "进入车区",
+                    detail: "rssi=\(smoothedRSSI), 此后禁无感上锁、可解锁",
+                    identity: "enter-vehicle-zone",
+                    minimumInterval: 5
+                )
+            }
+            continuousWeakSince = nil
+            return
+        }
+
+        // 明确弱于上锁阈值：累计离开
+        if rssi <= lockTh {
+            if continuousWeakSince == nil {
+                continuousWeakSince = Date()
+            }
+        } else {
+            // 中间灰区：不算持续离开
+            continuousWeakSince = nil
         }
     }
 
@@ -194,22 +242,25 @@ extension MQTTVehicleStateStore {
         }
         guard settings.pluginTakeover || settings.smartSwitch || settings.appManual else { return }
 
+        let leaveConfirm = max(settings.lockDelay, Self.vehicleZoneLeaveConfirmMinSeconds)
         let hasActiveUnlockDelay = currentState.phoneNearby
             && phoneNearbySince != nil
             && settings.unlockEnabled
             && settings.unlockApproachDuration > 0
         let hasActiveLockDelay = currentState.phoneFarAway
+            && currentState.hasLiveBLEProximity
             && phoneFarAwaySince != nil
             && settings.lockEnabled
-            && settings.lockDelay > 0
+            && leaveConfirm > 0
         let hasActiveDelay = hasActiveUnlockDelay || hasActiveLockDelay
-        let fingerprint = (currentState.locked, currentState.phoneNearby, currentState.phoneFarAway)
-        if fingerprint == (lastEvalLocked, lastEvalNearby, lastEvalFarAway) && !hasActiveDelay {
+        let fingerprint = (currentState.locked, currentState.phoneNearby, currentState.phoneFarAway, hasEnteredVehicleZone)
+        if fingerprint == (lastEvalLocked, lastEvalNearby, lastEvalFarAway, lastEvalInVehicleZone) && !hasActiveDelay {
             return
         }
         lastEvalLocked = fingerprint.0
         lastEvalNearby = fingerprint.1
         lastEvalFarAway = fingerprint.2
+        lastEvalInVehicleZone = fingerprint.3
 
         let canUseStaleStateWithBLE = hasCompletedBLEAuth
             && (currentState.hasLiveBLEProximity || currentState.phoneFarAway)
@@ -217,6 +268,7 @@ extension MQTTVehicleStateStore {
             guard currentState.isFresh() else { return }
         }
 
+        // 远离上锁必须已鉴权，且必须有 live 弱 RSSI（丢失不算）
         if currentState.phoneFarAway && !hasCompletedBLEAuth {
             return
         }
@@ -225,15 +277,21 @@ extension MQTTVehicleStateStore {
             if phoneNearbySince == nil {
                 phoneNearbySince = Date()
             }
+            hasEnteredVehicleZone = true
         } else {
             phoneNearbySince = nil
         }
 
-        if currentState.phoneFarAway {
+        // 只有 live + 远离 才累计离开时间；信号丢失时 phoneFarAwaySince 已被清掉
+        if currentState.phoneFarAway && currentState.hasLiveBLEProximity {
             if phoneFarAwaySince == nil {
-                phoneFarAwaySince = Date()
+                phoneFarAwaySince = continuousWeakSince ?? Date()
                 if settings.lockEnabled {
-                    vehicleEventLogStore.add(.keyless, "上锁等待", detail: "手机远离，等待 \(Int(settings.lockDelay))s")
+                    vehicleEventLogStore.add(
+                        .keyless,
+                        "上锁等待",
+                        detail: "确认离开中，至少 \(Int(leaveConfirm))s（lockDelay=\(Int(settings.lockDelay))，车区保底 \(Int(Self.vehicleZoneLeaveConfirmMinSeconds))s）"
+                    )
                 }
             }
         } else {
@@ -290,18 +348,36 @@ extension MQTTVehicleStateStore {
         settings: KeylessSettings,
         context: KeylessDecisionEngine.Context
     ) -> KeylessDecision {
+        // 硬规则：在车区可解锁、禁上锁（与物理/数字钥匙类型无关）
+        if state.phoneNearby || (hasEnteredVehicleZone && !state.phoneFarAway) {
+            return .deny(action: .lock, reason: "在车区禁止上锁（可解锁）")
+        }
+        // 从未进入车区：不做 walk-away 上锁（避免远处误锁）
+        if !hasEnteredVehicleZone {
+            return .deny(action: .lock, reason: "未进入过车区，不上锁")
+        }
+        // 信号丢失 / 无 live 弱信号：不确认离开
+        if !state.hasLiveBLEProximity {
+            return .deny(action: .lock, reason: "无持续弱信号，不确认离开")
+        }
+        if !state.phoneFarAway {
+            return .deny(action: .lock, reason: "手机未确认远离")
+        }
+
         let decision = KeylessDecisionEngine.evaluateLock(state: state, settings: settings, context: context)
         guard case .allow = decision else { return decision }
-        let delay = max(settings.lockDelay, 0)
-        guard delay > 0 else { return decision }
+
+        // 离开确认：UI lockDelay 与安全保底取较大值（默认 lockDelay=0 时仍至少 15s）
+        let leaveConfirm = max(settings.lockDelay, Self.vehicleZoneLeaveConfirmMinSeconds)
         guard let farSince = phoneFarAwaySince else {
-            return .wait(action: .lock, reason: "手机远离，等待上锁延迟")
+            return .wait(action: .lock, reason: "确认离开中")
         }
         let elapsed = Date().timeIntervalSince(farSince)
-        guard elapsed >= delay else {
-            return .wait(action: .lock, reason: "手机远离，等待上锁延迟")
+        if elapsed < leaveConfirm {
+            let remain = max(0, Int(ceil(leaveConfirm - elapsed)))
+            return .wait(action: .lock, reason: "确认离开中，剩余 \(remain)s")
         }
-        return decision
+        return .allow(action: .lock, reason: decision.reason + " · 已确认离开")
     }
 
     func executeKeylessCommandIfNeeded(action: KeylessAction, state: VehicleState, reason: String) {

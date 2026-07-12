@@ -12,8 +12,8 @@ struct KeylessSettings: Codable {
 
     // 解锁
     var unlockEnabled: Bool = true
-    var unlockThreshold: Double = -48
-    var unlockApproachDuration: Double = 2
+    var unlockThreshold: Double = -85
+    var unlockApproachDuration: Double = 0
     var unlockPopup: Bool = true
     var unlockVibrate: Bool = true
     var unlockVibPreset: String = "shortSingle"
@@ -22,8 +22,8 @@ struct KeylessSettings: Codable {
 
     // 上锁
     var lockEnabled: Bool = true
-    var lockThreshold: Double = -72
-    var lockDelay: Double = 15
+    var lockThreshold: Double = -90
+    var lockDelay: Double = 0
     var lockPopup: Bool = true
     var lockVibrate: Bool = true
     var lockVibPreset: String = "shortSingle"
@@ -52,8 +52,8 @@ struct KeylessSettings: Codable {
         cmdInterval = try c.decodeIfPresent(Double.self, forKey: .cmdInterval) ?? 5
 
         unlockEnabled = try c.decodeIfPresent(Bool.self, forKey: .unlockEnabled) ?? true
-        unlockThreshold = try c.decodeIfPresent(Double.self, forKey: .unlockThreshold) ?? -48
-        unlockApproachDuration = try c.decodeIfPresent(Double.self, forKey: .unlockApproachDuration) ?? 2
+        unlockThreshold = try c.decodeIfPresent(Double.self, forKey: .unlockThreshold) ?? -85
+        unlockApproachDuration = try c.decodeIfPresent(Double.self, forKey: .unlockApproachDuration) ?? 0
         unlockPopup = try c.decodeIfPresent(Bool.self, forKey: .unlockPopup) ?? true
         unlockVibrate = try c.decodeIfPresent(Bool.self, forKey: .unlockVibrate) ?? true
         unlockVibPreset = try c.decodeIfPresent(String.self, forKey: .unlockVibPreset) ?? "shortSingle"
@@ -61,8 +61,8 @@ struct KeylessSettings: Codable {
         unlockVibStrength = try c.decodeIfPresent(Double.self, forKey: .unlockVibStrength) ?? 60
 
         lockEnabled = try c.decodeIfPresent(Bool.self, forKey: .lockEnabled) ?? true
-        lockThreshold = try c.decodeIfPresent(Double.self, forKey: .lockThreshold) ?? -72
-        lockDelay = try c.decodeIfPresent(Double.self, forKey: .lockDelay) ?? 15
+        lockThreshold = try c.decodeIfPresent(Double.self, forKey: .lockThreshold) ?? -90
+        lockDelay = try c.decodeIfPresent(Double.self, forKey: .lockDelay) ?? 0
         lockPopup = try c.decodeIfPresent(Bool.self, forKey: .lockPopup) ?? true
         lockVibrate = try c.decodeIfPresent(Bool.self, forKey: .lockVibrate) ?? true
         lockVibPreset = try c.decodeIfPresent(String.self, forKey: .lockVibPreset) ?? "shortSingle"
