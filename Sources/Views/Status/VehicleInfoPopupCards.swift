@@ -3,7 +3,6 @@ import SwiftUI
 struct VehicleInfoMergedCard: View {
     let dashboard: VehicleDashboardState
     var bleStatusText: String = "--"
-    var latestBLEControlText: String = "--"
     var isEmbedded: Bool = true
     @State private var isExpanded = false
     @State private var showCopiedToast = false
@@ -12,7 +11,6 @@ struct VehicleInfoMergedCard: View {
         [
             PopupInfoRowItem("clock.fill",     "更新时间",   dashboard.vehicleInfoUpdatedAtText),
             PopupInfoRowItem("dot.radiowaves.left.and.right", "蓝牙状态",   bleStatusText, color: AppTheme.accent),
-            PopupInfoRowItem("checkmark.message.fill", "最近控制", latestBLEControlText, color: AppTheme.green),
             PopupInfoRowItem("car.fill",       "车型",       dashboard.vehicleName),
             PopupInfoRowItem("info.circle",    "VIN",        dashboard.vinText, mono: true),
             PopupInfoRowItem("person.fill",    "用户ID",     dashboard.userIdText, mono: true),
@@ -29,7 +27,6 @@ struct VehicleInfoMergedCard: View {
         """
         更新时间: \(dashboard.vehicleInfoUpdatedAtText)
         蓝牙状态: \(bleStatusText)
-        最近控制: \(latestBLEControlText)
         车型: \(dashboard.vehicleName)
         VIN: \(dashboard.vinText)
         用户ID: \(dashboard.userIdText)

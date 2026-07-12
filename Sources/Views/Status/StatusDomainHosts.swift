@@ -162,9 +162,8 @@ struct StatusControlFeedbackBridge: View {
     }
 }
 
-/// 钥匙信息弹窗内容：观察控制回执 + 连接状态 BLE 文案。
+/// 钥匙信息弹窗内容：观察连接状态 BLE 文案。
 struct StatusVehicleInfoCardHost: View {
-    @ObservedObject private var controlFeedbackStore = VehicleControlFeedbackStore.shared
     @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
     let dashboard: VehicleDashboardState
     let isEmbedded: Bool
@@ -173,7 +172,6 @@ struct StatusVehicleInfoCardHost: View {
         VehicleInfoMergedCard(
             dashboard: dashboard,
             bleStatusText: connectionStatusStore.uiBLEStatus.text,
-            latestBLEControlText: controlFeedbackStore.latestBLEControlReceipt?.displayDetail ?? "--",
             isEmbedded: isEmbedded
         )
     }
