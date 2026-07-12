@@ -169,7 +169,9 @@ extension MQTTVehicleStateStore {
         bleManager.onControlCompletion = { [weak self] in
             guard let self else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                self.refreshNow()
+                // 离线时 refreshNow 只会刷失败日志+重复拉钥匙；门锁已本地回写，不必强刷
+                // 在线时只刷车况，不强制重复拉钥匙
+                self.pollHTTPOnce(userInitiated: false, completion: nil)
             }
         }
     }

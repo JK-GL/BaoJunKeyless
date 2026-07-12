@@ -210,6 +210,12 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var lastAutoCommandAt: Date?
     var lastAutoCommandKind: VehicleCommandKind?
     var lastBLEWaitCommandKind: VehicleCommandKind?
+    /// 手动锁/解锁后，短时间抑制无感反向动作，避免“刚锁上又被无感解开”
+    var keylessManualSuppressUntil: Date?
+    var keylessManualSuppressAction: KeylessAction?
+    /// 钥匙材料可用时，离线/短时间不重复打 ble/key/query
+    var lastBleKeyFetchAttemptAt: Date?
+    var isFetchingBleKeyInfo = false
     var liveBLERawRSSI: Int?
     var liveBLERSSI: Int?
     var liveBLELastSeenAt: Date?
@@ -287,14 +293,25 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         case .lock:
             bleManager.sendDoorLockCommand(lock: true) { [weak self] result in
                 if case .success = result {
-                    self?.applyLocalDoorLockState(locked: true, source: "BLE锁车回包")
+                    // 手动/快捷锁车：抑制无感立刻反向解锁
+                    let isKeyless = command.source == .keyless
+                    self?.applyLocalDoorLockState(
+                        locked: true,
+                        source: isKeyless ? "无感锁车回包" : "BLE锁车回包",
+                        suppressOppositeKeyless: !isKeyless
+                    )
                 }
                 completion(result)
             }
         case .unlock:
             bleManager.sendDoorLockCommand(lock: false) { [weak self] result in
                 if case .success = result {
-                    self?.applyLocalDoorLockState(locked: false, source: "BLE解锁回包")
+                    let isKeyless = command.source == .keyless
+                    self?.applyLocalDoorLockState(
+                        locked: false,
+                        source: isKeyless ? "无感解锁回包" : "BLE解锁回包",
+                        suppressOppositeKeyless: !isKeyless
+                    )
                 }
                 completion(result)
             }
@@ -307,12 +324,12 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         }
     }
 
-    /// 离线/无 MQTT 时，BLE 门锁成功后立即回写本地车锁，驱动快捷按钮与无感决策。
-    func applyLocalDoorLockState(locked: Bool, source: String) {
+    /// BLE 门锁成功后立即回写本地车锁，驱动快捷按钮与无感决策。
+    func applyLocalDoorLockState(locked: Bool, source: String, suppressOppositeKeyless: Bool = false) {
         var next = state
         let previous = next.locked
         next.locked = locked
-        // 标记为本地刚确认过的状态，避免被“无网络旧缓存”继续误导无感
+        // 本地刚确认过的门锁，刷新时间戳；不依赖网络回报
         next.timestamp = Date()
         apply(next)
 
@@ -322,12 +339,24 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         dash.updatedAtText = formatTime(Date())
         applyDashboard(dash)
 
+        if suppressOppositeKeyless {
+            // 手动操作后至少压制 20s，或使用命令间隔的 3 倍
+            let hold = max(20, keylessSettingsStore.settings.cmdInterval * 3)
+            keylessManualSuppressUntil = Date().addingTimeInterval(hold)
+            keylessManualSuppressAction = locked ? .unlock : .lock
+            vehicleEventLogStore.add(
+                .keyless,
+                "无感临时抑制",
+                detail: "手动\(locked ? "上锁" : "解锁")后 \(Int(hold))s 内不自动\(locked ? "解锁" : "上锁")"
+            )
+        }
+
         vehicleEventLogStore.add(
             .action,
             "本地车锁已更新",
             detail: "\(source) · \(previous.map { $0 ? "已锁" : "未锁" } ?? "未知") → \(locked ? "已锁" : "未锁")"
         )
-        // 状态变了立刻重算无感（否则会卡在“未上锁/已上锁”旧结论）
+        // 状态变了立刻重算无感
         evaluateKeylessAutomation(for: next)
     }
 

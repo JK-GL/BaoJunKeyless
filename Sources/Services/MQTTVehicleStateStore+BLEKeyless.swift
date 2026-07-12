@@ -83,7 +83,7 @@ extension MQTTVehicleStateStore {
             if !latestBleKeyInfo.isEmpty {
                 refreshBLESessionIfNeeded()
                 let message = "凭证不完整，已使用本地钥匙缓存"
-                vehicleEventLogStore.add(.warning, "钥匙拉取跳过", detail: message)
+                vehicleEventLogStore.addThrottled(.warning, "钥匙拉取跳过", detail: message, identity: "ble-key-skip", minimumInterval: 10)
                 completion?(false, message)
             } else {
                 let message = "无法拉取钥匙：Token / VIN / 手机号不完整"
@@ -93,14 +93,35 @@ extension MQTTVehicleStateStore {
             return
         }
 
+        // 已有可用钥匙材料：短时间不重复打网络（钥匙不过期也别一直拉）
+        if hasUsableBLEKeyInfo {
+            if isFetchingBleKeyInfo {
+                completion?(true, "钥匙拉取进行中，已有本地材料")
+                return
+            }
+            if let last = lastBleKeyFetchAttemptAt, Date().timeIntervalSince(last) < 120 {
+                let message = "本地钥匙材料仍可用，跳过重复拉取"
+                vehicleEventLogStore.addThrottled(.action, "钥匙拉取跳过", detail: message, identity: "ble-key-fresh", minimumInterval: 30)
+                completion?(true, message)
+                return
+            }
+        } else if isFetchingBleKeyInfo {
+            completion?(false, "钥匙拉取进行中")
+            return
+        }
+
+        isFetchingBleKeyInfo = true
+        lastBleKeyFetchAttemptAt = Date()
         vehicleEventLogStore.add(.action, "钥匙拉取开始", detail: "正在请求 ble/key/query")
         SGMWApiClient.shared.queryBleKeyResult(accessToken: store.accessToken, vin: store.vin, phone: store.phone) { [weak self] result in
             guard let self else { return }
             DispatchQueue.main.async {
+                self.isFetchingBleKeyInfo = false
                 switch result {
                 case .success(let info):
                     self.persistBLEKeyInfo(info)
                     self.latestBleKeyInfo = info
+                    self.lastBleKeyFetchAttemptAt = Date()
                     self.refreshBLESessionIfNeeded()
                     self.applyBLEKeyInfoToDashboard(markAsCached: false)
                     let keyId = info["keyId"] ?? "--"
@@ -112,9 +133,11 @@ extension MQTTVehicleStateStore {
                 case .failure(let error):
                     self.reloadCachedBLEKeyInfo(preferScoped: true)
                     if !self.latestBleKeyInfo.isEmpty {
+                        // 缓存可用：拉长冷却，避免离线时每几秒刷失败日志
+                        self.lastBleKeyFetchAttemptAt = Date()
                         self.refreshBLESessionIfNeeded()
                         let message = "钥匙拉取失败，已使用本地缓存：\(error.localizedDescription)"
-                        self.vehicleEventLogStore.add(.warning, "钥匙拉取失败", detail: message)
+                        self.vehicleEventLogStore.addThrottled(.warning, "钥匙拉取失败", detail: message, identity: "ble-key-fail-cache", minimumInterval: 20)
                         completion?(false, message)
                     } else {
                         let message = "钥匙拉取失败：\(error.localizedDescription)"

@@ -283,6 +283,20 @@ extension MQTTVehicleStateStore {
            Date().timeIntervalSince(lastAutoCommandAt) < settings.cmdInterval {
             return
         }
+        // 手动锁/解锁后，短时间禁止无感反向动作（日志里：刚手动锁车立刻被无感解锁）
+        if let until = keylessManualSuppressUntil,
+           Date() < until,
+           keylessManualSuppressAction == action {
+            let remain = max(0, Int(until.timeIntervalSinceNow))
+            vehicleEventLogStore.addThrottled(
+                .keyless,
+                "无感被手动抑制",
+                detail: "\(action.title) · 剩余 \(remain)s · \(reason)",
+                identity: "keyless-manual-suppress|\(action.rawValue)",
+                minimumInterval: 5
+            )
+            return
+        }
 
         let command: VehicleCommand
         switch action {
