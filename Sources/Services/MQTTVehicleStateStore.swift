@@ -184,11 +184,15 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var credentialsStore: VehicleCredentialsStore
 
     var lastMqttFields: [String: String] = [:]
+    /// 每个车身字段最近来源时间（字段级合并用）
+    var fieldCollectAt: [String: Date] = [:]
     var httpTimer: Timer?
     var lastMQTTUpdate: Date?
-    /// MQTT 车身字段最近 collectTime（用于阻止旧 HTTP 覆盖门窗）
+    /// MQTT 车身字段最近 collectTime
     var lastMQTTBodyCollectAt: Date?
     var lastHTTPUpdate: Date?
+    /// HTTP 车身字段最近 collectTime
+    var lastHTTPBodyCollectAt: Date?
     var isConnecting = false
 
     let locationResolver = LocationResolver.shared

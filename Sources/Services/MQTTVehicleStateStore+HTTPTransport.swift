@@ -4,7 +4,7 @@ extension MQTTVehicleStateStore {
     func startHTTPPolling(immediate: Bool) {
         httpTimer?.invalidate()
         // 门窗/车锁不能只靠 60s 一轮；有网时提高频率，MQTT 增量到不了也能及时收敛
-        let timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: 8, repeats: true) { [weak self] _ in
             self?.pollHTTPOnce(userInitiated: false, completion: nil)
         }
         // 后台/滑动时也尽量触发
@@ -38,45 +38,14 @@ extension MQTTVehicleStateStore {
                 switch result {
                 case .success(let refreshResult):
                     self.lastHTTPUpdate = refreshResult.fetchedAt
-                    let httpCollect = parseTimestamp(refreshResult.carStatus["collectTime"])
-                    // 官方规则（BLE_SPEC / setCarStatusModel）：
-                    // MQTT 数据新鲜（60s 内）时，HTTP 车况不覆盖实时状态。
-                    let mqttFresh = self.lastMQTTUpdate.map { Date().timeIntervalSince($0) < 60 } ?? false
-                    let mqttCollect = self.lastMQTTBodyCollectAt
-                    let httpOlderThanMQTT: Bool = {
-                        guard let mqttCollect, let httpCollect else { return false }
-                        return httpCollect < mqttCollect
-                    }()
-                    let shouldIgnoreHTTPBody = mqttFresh || httpOlderThanMQTT
+                    let httpCollect = parseTimestamp(refreshResult.carStatus["collectTime"]) ?? refreshResult.fetchedAt
+                    self.lastHTTPBodyCollectAt = httpCollect
 
-                    // 元信息（车型图/VIN/坐标）始终可更新
+                    // 字段级合并（推荐方案）：
+                    // - 手动刷新：HTTP 全量落地
+                    // - 自动轮询：HTTP 只补“MQTT 没覆盖到 / 或 HTTP 更新的字段”
+                    // 不再“MQTT 新鲜就整包忽略 HTTP”，否则门窗会卡到手动刷新才对
                     self.applyHTTPMeta(carInfo: refreshResult.carInfo, carStatus: refreshResult.carStatus)
-
-                    if shouldIgnoreHTTPBody {
-                        // 仅补胎压等非车身实时字段；门锁/门窗/空调/电量等保持 MQTT
-                        if !refreshResult.tirePressure.isEmpty {
-                            let dash = VehicleStatusMapper.tirePressureDashboard(
-                                from: refreshResult.tirePressure,
-                                base: self.dashboard
-                            )
-                            self.applyDashboard(dash)
-                        }
-                        let message = "车况已更新 · HTTP(忽略车身·MQTT优先) · \(formatTime(refreshResult.fetchedAt)) · 锁=\(self.dashboard.lockStatusText) 门=\(self.dashboard.doorStatusText) 窗=\(self.dashboard.windowStatusText) 尾=\(self.dashboard.tailgateStatusText) · 主驾=\(self.dashboard.driverDoorStatusText)/副驾=\(self.dashboard.passengerDoorStatusText)/左后=\(self.dashboard.leftRearDoorStatusText)/右后=\(self.dashboard.rightRearDoorStatusText) · 电=\(self.dashboard.batteryPercentValue.map(String.init) ?? "--")% 空调=\(self.dashboard.acTemperatureText)"
-                        CrashLogger.shared.mark("HTTP", "status ignored body, mqtt preferred")
-                        if userInitiated {
-                            self.vehicleEventLogStore.add(.action, "车况刷新成功", detail: message)
-                        } else {
-                            self.vehicleEventLogStore.addThrottled(
-                                .action,
-                                "车况轮询更新",
-                                detail: message,
-                                identity: "http-poll-body",
-                                minimumInterval: 10
-                            )
-                        }
-                        completion?(true, message)
-                        return
-                    }
 
                     var newState = self.mapHTTPToVehicleState(refreshResult.carStatus)
                     var newDashboard = self.mapHTTPToDashboard(refreshResult.carStatus)
@@ -88,11 +57,19 @@ extension MQTTVehicleStateStore {
                     }
                     newState.online = true
                     newDashboard = Self.stripDashboardBodyCacheSuffix(newDashboard)
-                    self.mergeHTTPBaseState(newState: newState, dashboard: newDashboard)
-                    CrashLogger.shared.mark("HTTP", "status updated")
+
+                    let mergeMode: VehicleHTTPMergeMode = userInitiated ? .full : .fillMissingPreferNewer
+                    let mergeNote = self.mergeHTTPBaseState(
+                        newState: newState,
+                        dashboard: newDashboard,
+                        mode: mergeMode,
+                        httpCollectAt: httpCollect,
+                        sourceFields: refreshResult.carStatus
+                    )
+                    CrashLogger.shared.mark("HTTP", "status updated mode=\(mergeMode.rawValue)")
 
                     let body = bodyFieldsSummary(refreshResult.carStatus)
-                    let message = "车况已更新 · HTTP · \(formatTime(refreshResult.fetchedAt)) · 锁=\(self.dashboard.lockStatusText) 门=\(self.dashboard.doorStatusText) 窗=\(self.dashboard.windowStatusText) 尾=\(self.dashboard.tailgateStatusText) · 主驾=\(self.dashboard.driverDoorStatusText)/副驾=\(self.dashboard.passengerDoorStatusText)/左后=\(self.dashboard.leftRearDoorStatusText)/右后=\(self.dashboard.rightRearDoorStatusText) · 电=\(self.dashboard.batteryPercentValue.map(String.init) ?? "--")% 空调=\(self.dashboard.acTemperatureText)\(body.isEmpty ? "" : " · raw:\(body)")"
+                    let message = "车况已更新 · HTTP(\(mergeMode.rawValue)\(mergeNote.isEmpty ? "" : "·\(mergeNote)")) · \(formatTime(refreshResult.fetchedAt)) · 锁=\(self.dashboard.lockStatusText) 门=\(self.dashboard.doorStatusText) 窗=\(self.dashboard.windowStatusText) 尾=\(self.dashboard.tailgateStatusText) · 主驾=\(self.dashboard.driverDoorStatusText)/副驾=\(self.dashboard.passengerDoorStatusText)/左后=\(self.dashboard.leftRearDoorStatusText)/右后=\(self.dashboard.rightRearDoorStatusText) · 电=\(self.dashboard.batteryPercentValue.map(String.init) ?? "--")% 空调=\(self.dashboard.acTemperatureText)\(body.isEmpty ? "" : " · raw:\(body)")"
                     if userInitiated {
                         self.vehicleEventLogStore.add(.action, "车况刷新成功", detail: message)
                     } else {
@@ -101,7 +78,7 @@ extension MQTTVehicleStateStore {
                             "车况轮询更新",
                             detail: message,
                             identity: "http-poll-body",
-                            minimumInterval: 10
+                            minimumInterval: 8
                         )
                     }
                     completion?(true, message)

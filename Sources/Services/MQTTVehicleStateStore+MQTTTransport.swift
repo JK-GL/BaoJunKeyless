@@ -51,21 +51,29 @@ extension MQTTVehicleStateStore {
 
             let newState = self.mapMQTTToVehicleState(fields)
             let newDashboard = self.mapMQTTToDashboard(fields)
-            self.mergeRealtimeState(newState: newState, dashboard: newDashboard)
+            let collectAt = parseTimestamp(fields["collectTime"]) ?? Date()
+            self.mergeRealtimeState(
+                newState: newState,
+                dashboard: newDashboard,
+                sourceFields: fields,
+                collectAt: collectAt
+            )
 
+            let packetKeys = Array(fields.keys.sorted()).prefix(10).joined(separator: ",")
             let summary = (changedKeys.isEmpty ? Array(fields.keys.prefix(8)).map { "\($0)=force" } : Array(changedKeys.prefix(8))).joined(separator: ", ")
             CrashLogger.shared.mark("MQTT", "state changed: \(summary)")
             if hasBody {
                 let detailParts = [
+                    "半包=\(packetKeys)",
                     summary,
-                    "锁=\(newDashboard.lockStatusText)",
-                    "门=\(newDashboard.doorStatusText)",
-                    "窗=\(newDashboard.windowStatusText)",
-                    "尾=\(newDashboard.tailgateStatusText)",
-                    "主驾=\(newDashboard.driverDoorStatusText)/副驾=\(newDashboard.passengerDoorStatusText)/左后=\(newDashboard.leftRearDoorStatusText)/右后=\(newDashboard.rightRearDoorStatusText)",
-                    "空调=\(newDashboard.acTemperatureText)",
-                    "电=\(newDashboard.batteryPercentValue.map(String.init) ?? "--")%",
-                    "更新=\(newDashboard.updatedAtText)"
+                    "锁=\(self.dashboard.lockStatusText)",
+                    "门=\(self.dashboard.doorStatusText)",
+                    "窗=\(self.dashboard.windowStatusText)",
+                    "尾=\(self.dashboard.tailgateStatusText)",
+                    "主驾=\(self.dashboard.driverDoorStatusText)/副驾=\(self.dashboard.passengerDoorStatusText)/左后=\(self.dashboard.leftRearDoorStatusText)/右后=\(self.dashboard.rightRearDoorStatusText)",
+                    "空调=\(self.dashboard.acTemperatureText)",
+                    "电=\(self.dashboard.batteryPercentValue.map(String.init) ?? "--")%",
+                    "更新=\(self.dashboard.updatedAtText)"
                 ]
                 self.vehicleEventLogStore.addThrottled(
                     .action,
