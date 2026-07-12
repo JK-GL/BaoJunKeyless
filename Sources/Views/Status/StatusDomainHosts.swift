@@ -83,9 +83,13 @@ struct StatusPillsHost: View {
     }
 
     private var physicalKeyState: StatusPhysicalKeyState {
-        StatusPhysicalKeyState.from(
-            position: vehicleStore.state.physicalKeyPosition,
-            bleAuthenticated: connectionStatusStore.bleStatus == .authenticated
+        let state = vehicleStore.state
+        return StatusPhysicalKeyState.from(
+            position: state.physicalKeyPosition,
+            bleAuthenticated: connectionStatusStore.bleStatus == .authenticated,
+            online: state.online,
+            isFresh: state.isFresh(),
+            hasLiveBLE: state.hasLiveBLEProximity || connectionStatusStore.bleStatus == .authenticating
         )
     }
 

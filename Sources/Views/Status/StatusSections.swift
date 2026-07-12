@@ -131,9 +131,9 @@ enum StatusDoorLockState {
 enum StatusPhysicalKeyState {
     case farAway
     case outside
-    /// 云端 keyStatus=2，且当前无手机 BLE 鉴权：更像实体钥匙在车内
+    /// 在线新鲜且无手机数字钥匙会话时，云端 inside 才提示“感应车内”
     case inCar
-    /// 云端 keyStatus=2，但手机 BLE 已鉴权：常见数字钥匙误报，不当成实体钥匙车内
+    /// 手机数字钥匙会话下的 inside，或云端 inside 但更像手机钥匙
     case digitalNearby
     case unknown
 
@@ -148,7 +148,8 @@ enum StatusPhysicalKeyState {
         switch self {
         case .farAway: return "钥匙远离"
         case .outside: return "钥匙车外"
-        case .inCar: return "钥匙车内"
+        // 不再写“物理钥匙”，避免把数字钥匙误报当成实体钥匙
+        case .inCar: return "感应车内"
         case .digitalNearby: return "数字钥匙附近"
         case .unknown: return "钥匙未知"
         }
@@ -164,13 +165,30 @@ enum StatusPhysicalKeyState {
         }
     }
 
-    /// keyStatus 是车端钥匙感知，手机 BLE 鉴权时 inside 常为数字钥匙误报
-    static func from(position: PhysicalKeyPosition, bleAuthenticated: Bool) -> StatusPhysicalKeyState {
+    /// 云端 keyStatus 不可靠：
+    /// - BLE 已鉴权 / 有 live RSSI：inside 当数字钥匙
+    /// - 离线 / 车况过期：不展示“钥匙车内/物理钥匙”，回落未知
+    /// - 仅在线且新鲜、又无手机 BLE 会话时，才显示感应车内
+    static func from(
+        position: PhysicalKeyPosition,
+        bleAuthenticated: Bool,
+        online: Bool = true,
+        isFresh: Bool = true,
+        hasLiveBLE: Bool = false
+    ) -> StatusPhysicalKeyState {
         switch position {
         case .farAway: return .farAway
         case .outside: return .outside
-        case .inside: return bleAuthenticated ? .digitalNearby : .inCar
-        case .unknown: return .unknown
+        case .inside:
+            if bleAuthenticated || hasLiveBLE {
+                return .digitalNearby
+            }
+            if !online || !isFresh {
+                return .unknown
+            }
+            return .inCar
+        case .unknown:
+            return .unknown
         }
     }
 }
@@ -311,7 +329,7 @@ struct StatusPillsSection: View, Equatable {
         switch physicalKeyState {
         case .farAway: return "钥匙远离"
         case .outside: return "钥匙车外"
-        case .inCar: return "钥匙车内"
+        case .inCar: return "感应车内"
         case .digitalNearby: return "数字钥匙"
         case .unknown: return "钥匙未知"
         }

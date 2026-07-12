@@ -213,8 +213,12 @@ struct KeylessDecisionEngine {
         // 11. 物理钥匙在车内：
         //    - 无手机 BLE 鉴权：按实体钥匙风险拒绝
         //    - 已 BLE 鉴权：云端 inside 常为数字钥匙误报，不拦截远离上锁
+        // 离线/陈旧的 keyStatus=2 不能当实体钥匙；仅在线新鲜且无 BLE 会话时才提示
         if state.physicalKeyPosition == .inside && !context.bleAuthenticated {
-            return .deny(action: .lock, reason: "物理钥匙在车内")
+            if context.vehicleOnline && state.isFresh() {
+                return .deny(action: .lock, reason: "云端钥匙感应在车内")
+            }
+            // 离线或过期：忽略，避免误拦无感/误显示物理钥匙
         }
 
         var reason: String

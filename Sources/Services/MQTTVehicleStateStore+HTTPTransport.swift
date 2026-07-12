@@ -130,6 +130,10 @@ extension MQTTVehicleStateStore {
             // gear/power/key 也别继续用过期硬门禁
             if next.gear != .unknown { next.gear = .unknown }
             if next.power != .unknown { next.power = .unknown }
+            // 离线陈旧 keyStatus=2 常把数字钥匙误显示成“物理钥匙车内”
+            if next.physicalKeyPosition != .unknown {
+                next.physicalKeyPosition = .unknown
+            }
             // locked：仅当本地很久没更新才清空；BLE 刚回写的锁态 timestamp 新，会保留
             if age > 180 {
                 next.locked = nil
