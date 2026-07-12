@@ -66,7 +66,27 @@ struct UnlockSettingsSection: View {
                 get: { settingsStore.settings.unlockEnabled },
                 set: { enabled in
                     settingsStore.settings.unlockEnabled = enabled
+                    if enabled {
+                        // 与启动电源互斥：开解锁就关启动电源
+                        settingsStore.settings.powerStartEnabled = false
+                    }
                     VehicleEventLogStore.shared.add(.keyless, enabled ? "开启无感解锁" : "关闭无感解锁")
+                }
+            ))
+
+            ToggleRow(icon: "power.circle", label: "启动电源", isOn: Binding(
+                get: { settingsStore.settings.powerStartEnabled },
+                set: { enabled in
+                    settingsStore.settings.powerStartEnabled = enabled
+                    if enabled {
+                        // 打开后，无感靠近改为 BLE 启动电源，不再无感解锁
+                        settingsStore.settings.unlockEnabled = false
+                    }
+                    VehicleEventLogStore.shared.add(
+                        .keyless,
+                        enabled ? "开启无感启动电源" : "关闭无感启动电源",
+                        detail: enabled ? "靠近后走 BLE powerOnReady，不再无感解锁" : nil
+                    )
                 }
             ))
 

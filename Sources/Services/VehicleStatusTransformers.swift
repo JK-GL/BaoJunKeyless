@@ -338,10 +338,13 @@ enum VehicleStateMerger {
         var merged = state
         merged.timestamp = newState.timestamp
         merged.online = newState.online
-        merged.gear = newState.gear
-        merged.power = newState.power
+        // 档位/电源：未知值不覆盖已有有效状态（避免 HTTP 缺 engineStatus 时一直“未知”）
+        if newState.gear != .unknown { merged.gear = newState.gear }
+        if newState.power != .unknown { merged.power = newState.power }
         merged.speed = newState.speed
-        merged.physicalKeyPosition = newState.physicalKeyPosition
+        if newState.physicalKeyPosition != .unknown {
+            merged.physicalKeyPosition = newState.physicalKeyPosition
+        }
         // phoneNearby / bleRssi 只信 live BLE overlay，HTTP 合并不覆盖
         merged.fuelLevel = newState.fuelLevel
         merged.fuelRange = newState.fuelRange

@@ -4,11 +4,13 @@ import Foundation
 enum KeylessAction: String, Codable {
     case unlock
     case lock
+    case powerStart
 
     var title: String {
         switch self {
-        case .unlock: return "解锁"
-        case .lock:   return "上锁"
+        case .unlock:     return "解锁"
+        case .lock:       return "上锁"
+        case .powerStart: return "启动电源"
         }
     }
 }
@@ -134,6 +136,74 @@ struct KeylessDecisionEngine {
             reason += " · 车锁未知按可解锁评估"
         }
         return .allow(action: .unlock, reason: reason)
+    }
+
+
+    // MARK: - 启动电源评估（BLE powerOnReady，替代无感解锁）
+    static func evaluatePowerStart(
+        state: VehicleState,
+        settings: KeylessSettings,
+        context: Context = .default
+    ) -> KeylessDecision {
+        guard settings.keylessEnabled else {
+            return .deny(action: .powerStart, reason: "无感开关关闭")
+        }
+        guard settings.powerStartEnabled else {
+            return .deny(action: .powerStart, reason: "启动电源开关关闭")
+        }
+        // 必须 BLE 已鉴权，才能发 powerOnReady
+        guard context.bleAuthenticated else {
+            return .deny(action: .powerStart, reason: "BLE 未鉴权，无法启动电源")
+        }
+        if let availabilityDeny = denyIfStateUnavailable(action: .powerStart, state: state, context: context) {
+            return availabilityDeny
+        }
+        guard state.phoneNearby else {
+            return .deny(action: .powerStart, reason: "手机未进入启动范围")
+        }
+        // 已明确上电则不再重复发
+        if state.power == .on || state.power == .ready {
+            return .deny(action: .powerStart, reason: "车辆已上电 (\(state.power.title))")
+        }
+        if let speed = state.speed, speed > 0 {
+            return .deny(action: .powerStart, reason: "车辆行驶中 (\(Int(speed))km/h)")
+        }
+        if state.gear != .p && state.gear != .unknown {
+            return .deny(action: .powerStart, reason: "档位 \(state.gear.title)，不允许无感启动电源")
+        }
+        if state.gear == .unknown && !context.bleAuthenticated {
+            return .deny(action: .powerStart, reason: "档位未知且 BLE 未鉴权")
+        }
+
+        var reason = "满足无感启动电源条件（BLE powerOnReady）"
+        if state.power == .unknown || state.power == .off {
+            reason += " · 电源按待上电评估"
+        }
+        if state.gear == .unknown {
+            reason += " · 档位未知"
+        }
+        return .allow(action: .powerStart, reason: reason)
+    }
+
+    static func evaluatePowerStartWithDelay(
+        state: VehicleState,
+        settings: KeylessSettings,
+        phoneNearbySince: Date?,
+        context: Context = .default
+    ) -> KeylessDecision {
+        let decision = evaluatePowerStart(state: state, settings: settings, context: context)
+        guard case .allow = decision else { return decision }
+        // 复用解锁靠近确认时长
+        let delay = max(settings.unlockApproachDuration, 0)
+        guard delay > 0 else { return decision }
+        guard let phoneNearbySince else {
+            return .wait(action: .powerStart, reason: "手机靠近，等待启动确认")
+        }
+        let elapsed = Date().timeIntervalSince(phoneNearbySince)
+        guard elapsed >= delay else {
+            return .wait(action: .powerStart, reason: "手机靠近，等待启动确认")
+        }
+        return decision
     }
 
     // MARK: - 上锁评估

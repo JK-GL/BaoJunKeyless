@@ -176,7 +176,7 @@ extension MQTTVehicleStateStore {
         let settings = keylessSettingsStore.settings
         let hasActiveUnlockDelay = nextNearby
             && phoneNearbySince != nil
-            && settings.unlockEnabled
+            && (settings.unlockEnabled || settings.powerStartEnabled)
             && settings.unlockApproachDuration > 0
         let leaveConfirm = max(settings.lockDelay, 0)
         let hasActiveLockDelay = !nextNearby
@@ -245,7 +245,7 @@ extension MQTTVehicleStateStore {
         let leaveConfirm = max(settings.lockDelay, 0)
         let hasActiveUnlockDelay = currentState.phoneNearby
             && phoneNearbySince != nil
-            && settings.unlockEnabled
+            && (settings.unlockEnabled || settings.powerStartEnabled)
             && settings.unlockApproachDuration > 0
         let hasActiveLockDelay = currentState.phoneFarAway
             && currentState.hasLiveBLEProximity
@@ -303,26 +303,50 @@ extension MQTTVehicleStateStore {
             freshnessMaxAge: 90
         )
 
-        let unlockDecision = KeylessDecisionEngine.evaluateUnlockWithDelay(
-            state: currentState,
-            settings: settings,
-            phoneNearbySince: phoneNearbySince,
-            context: decisionContext
-        )
-        if unlockDecision != lastUnlockDecision {
-            let detail = KeylessDecisionEngine.logDetail(decision: unlockDecision, state: currentState, settings: settings)
-            switch unlockDecision {
-            case .allow:
-                vehicleEventLogStore.add(.keyless, "解锁允许", detail: detail)
-            case .deny:
-                vehicleEventLogStore.add(.keyless, "解锁拒绝", detail: detail)
-            case .wait:
-                vehicleEventLogStore.add(.keyless, "解锁等待", detail: detail)
+                if settings.powerStartEnabled {
+            let powerDecision = KeylessDecisionEngine.evaluatePowerStartWithDelay(
+                state: currentState,
+                settings: settings,
+                phoneNearbySince: phoneNearbySince,
+                context: KeylessDecisionEngine.Context(bleAuthenticated: hasCompletedBLEAuth)
+            )
+            if powerDecision != lastUnlockDecision {
+                let detail = KeylessDecisionEngine.logDetail(decision: powerDecision, state: currentState, settings: settings)
+                switch powerDecision {
+                case .allow:
+                    vehicleEventLogStore.add(.keyless, "启动电源允许", detail: detail)
+                case .deny:
+                    vehicleEventLogStore.add(.keyless, "启动电源拒绝", detail: detail)
+                case .wait:
+                    vehicleEventLogStore.add(.keyless, "启动电源等待", detail: detail)
+                }
+                lastUnlockDecision = powerDecision
             }
-            lastUnlockDecision = unlockDecision
-        }
-        if case .allow = unlockDecision {
-            executeKeylessCommandIfNeeded(action: .unlock, state: currentState, reason: unlockDecision.reason)
+            if case .allow = powerDecision {
+                executeKeylessCommandIfNeeded(action: .powerStart, state: currentState, reason: powerDecision.reason)
+            }
+        } else {
+            let unlockDecision = KeylessDecisionEngine.evaluateUnlockWithDelay(
+                state: currentState,
+                settings: settings,
+                phoneNearbySince: phoneNearbySince,
+                context: decisionContext
+            )
+            if unlockDecision != lastUnlockDecision {
+                let detail = KeylessDecisionEngine.logDetail(decision: unlockDecision, state: currentState, settings: settings)
+                switch unlockDecision {
+                case .allow:
+                    vehicleEventLogStore.add(.keyless, "解锁允许", detail: detail)
+                case .deny:
+                    vehicleEventLogStore.add(.keyless, "解锁拒绝", detail: detail)
+                case .wait:
+                    vehicleEventLogStore.add(.keyless, "解锁等待", detail: detail)
+                }
+                lastUnlockDecision = unlockDecision
+            }
+            if case .allow = unlockDecision {
+                executeKeylessCommandIfNeeded(action: .unlock, state: currentState, reason: unlockDecision.reason)
+            }
         }
 
         let lockDecision = evaluateLockDecisionWithDelay(state: currentState, settings: settings, context: decisionContext)
@@ -411,9 +435,19 @@ extension MQTTVehicleStateStore {
             command = VehicleCommand(kind: .unlock, title: "无感解锁", detail: reason, requestedTemperature: nil, source: .keyless, transportHint: .bleControl)
         case .lock:
             command = VehicleCommand(kind: .lock, title: "无感上锁", detail: reason, requestedTemperature: nil, source: .keyless, transportHint: .bleControl)
+        case .powerStart:
+            // 不改 BLE 帧：仍走现有 powerOnReady (40E5/0312)，与快捷远程启动 BLE 路径相同
+            command = VehicleCommand(kind: .remoteStart, title: "无感启动电源", detail: reason, requestedTemperature: nil, source: .keyless, transportHint: .bleControl)
         }
 
-        guard bleManager.canSendDoorLockControl else {
+        let bleReady: Bool
+        switch action {
+        case .unlock, .lock:
+            bleReady = bleManager.canSendDoorLockControl
+        case .powerStart:
+            bleReady = canUseBLEForVehicleControl
+        }
+        guard bleReady else {
             if lastBLEWaitCommandKind != command.kind {
                 vehicleEventLogStore.add(.keyless, "无感等待BLE", detail: "\(command.title) | BLE 未鉴权成功")
                 lastBLEWaitCommandKind = command.kind
@@ -426,7 +460,14 @@ extension MQTTVehicleStateStore {
         lastAutoCommandKind = command.kind
         vehicleEventLogStore.add(.keyless, "无感命令发送", detail: "\(command.title) | \(reason)")
 
-        let transport = BLEDoorLockTransport(bleController: self)
+        let transport: VehicleCommandAsyncTransport
+        switch action {
+        case .unlock, .lock:
+            transport = BLEDoorLockTransport(bleController: self)
+        case .powerStart:
+            // 与状态页 BLE 远程启动同一 transport，不改动 powerOnReady 实现
+            transport = BLEVehicleControlTransport(bleController: self)
+        }
         VehicleCommandExecutor.executeAsync(command, transport: transport, refresher: self) { [weak self] result in
             guard let self else { return }
             DispatchQueue.main.async {
@@ -454,7 +495,8 @@ extension MQTTVehicleStateStore {
     func playKeylessVibrationIfNeeded(for action: KeylessAction) {
         let settings = keylessSettingsStore.settings
         switch action {
-        case .unlock:
+        case .unlock, .powerStart:
+            // 启动电源复用解锁震动反馈设置
             guard settings.unlockVibrate else { return }
             playVibration(choice: keylessSettingsStore.unlockVibChoice(), intensity: settings.unlockVibStrength / 100.0)
         case .lock:
@@ -467,7 +509,7 @@ extension MQTTVehicleStateStore {
         let settings = keylessSettingsStore.settings
         let popupEnabled: Bool
         switch action {
-        case .unlock:
+        case .unlock, .powerStart:
             popupEnabled = settings.unlockPopup
         case .lock:
             popupEnabled = settings.lockPopup

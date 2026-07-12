@@ -12,6 +12,8 @@ struct KeylessSettings: Codable {
 
     // 解锁
     var unlockEnabled: Bool = true
+    /// 无感靠近时发 BLE 启动电源（powerOnReady），替代无感解锁
+    var powerStartEnabled: Bool = false
     var unlockThreshold: Double = -85
     var unlockApproachDuration: Double = 0
     var unlockPopup: Bool = true
@@ -38,7 +40,7 @@ struct KeylessSettings: Codable {
 
     private enum CodingKeys: String, CodingKey {
         case keylessEnabled, pluginTakeover, smartSwitch, appManual, cmdInterval
-        case unlockEnabled, unlockThreshold, unlockApproachDuration, unlockPopup, unlockVibrate, unlockVibPreset, unlockVibCustomID, unlockVibStrength
+        case unlockEnabled, powerStartEnabled, unlockThreshold, unlockApproachDuration, unlockPopup, unlockVibrate, unlockVibPreset, unlockVibCustomID, unlockVibStrength
         case lockEnabled, lockThreshold, lockDelay, lockPopup, lockVibrate, lockVibPreset, lockVibCustomID, lockVibStrength
         case bleScanDuration, bleScanInterval
     }
@@ -52,6 +54,7 @@ struct KeylessSettings: Codable {
         cmdInterval = try c.decodeIfPresent(Double.self, forKey: .cmdInterval) ?? 5
 
         unlockEnabled = try c.decodeIfPresent(Bool.self, forKey: .unlockEnabled) ?? true
+        powerStartEnabled = try c.decodeIfPresent(Bool.self, forKey: .powerStartEnabled) ?? false
         unlockThreshold = try c.decodeIfPresent(Double.self, forKey: .unlockThreshold) ?? -85
         unlockApproachDuration = try c.decodeIfPresent(Double.self, forKey: .unlockApproachDuration) ?? 0
         unlockPopup = try c.decodeIfPresent(Bool.self, forKey: .unlockPopup) ?? true

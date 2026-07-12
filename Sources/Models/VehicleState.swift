@@ -29,17 +29,29 @@ enum VehiclePowerState: String, Codable, CaseIterable {
 
     var title: String {
         switch self {
-        case .off:     return "已熄火"
+        case .off:     return "熄火"
         case .acc:     return "ACC"
-        case .on:      return "已上电"
+        case .on:      return "上电"
         case .ready:   return "Ready"
-        case .unknown: return "未知"
+        // 远程启动场景：未知按熄火展示，避免弹窗写“未知”吓人
+        case .unknown: return "熄火"
         }
     }
 
     /// 是否已处于上电/可驾驶相关态（用于远程启动按钮切换）
     var isPoweredOn: Bool {
         self == .on || self == .ready
+    }
+
+    /// 远程启动弹窗「启动」列文案
+    var remoteStartStatusTitle: String {
+        switch self {
+        case .on:      return "上电"
+        case .ready:   return "Ready"
+        case .acc:     return "ACC"
+        case .off, .unknown:
+            return "待授权"
+        }
     }
 }
 

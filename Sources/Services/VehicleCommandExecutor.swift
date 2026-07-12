@@ -227,7 +227,7 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
                     DispatchQueue.main.async {
                         let message: String
                         if command.kind == .remoteStart {
-                            message = "启动授权已发送：\(requestSummary)。请约 30 秒内上车完成 START/Ready；上电状态以车况回报为准（不是远程直接点火）"
+                            message = "启动授权已发送：\(requestSummary)。请约30秒内解锁上车，踩刹车并按 Ready，不是点火常驻。"
                         } else if command.kind == .remoteStop {
                             message = "熄火/下电请求已发送：\(requestSummary)。等待车辆电源状态回报"
                         } else {
