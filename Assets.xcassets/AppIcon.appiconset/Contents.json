@@ -1,13 +1,62 @@
 {
-  "images" : [
+  "images": [
     {
-      "idiom" : "universal",
-      "platform" : "ios",
-      "size" : "1024x1024"
+      "idiom": "iphone",
+      "scale": "2x",
+      "size": "20x20",
+      "filename": "fiona.g@example.net"
+    },
+    {
+      "idiom": "iphone",
+      "scale": "3x",
+      "size": "20x20",
+      "filename": "wendy.h@example.net"
+    },
+    {
+      "idiom": "iphone",
+      "scale": "2x",
+      "size": "29x29",
+      "filename": "carol.u@example.org"
+    },
+    {
+      "idiom": "iphone",
+      "scale": "3x",
+      "size": "29x29",
+      "filename": "frank.g@example.org"
+    },
+    {
+      "idiom": "iphone",
+      "scale": "2x",
+      "size": "40x40",
+      "filename": "james.b@example.com"
+    },
+    {
+      "idiom": "iphone",
+      "scale": "3x",
+      "size": "40x40",
+      "filename": "diana.k@example.org"
+    },
+    {
+      "idiom": "iphone",
+      "scale": "2x",
+      "size": "60x60",
+      "filename": "ivan.p@example.net"
+    },
+    {
+      "idiom": "iphone",
+      "scale": "3x",
+      "size": "60x60",
+      "filename": "quinn.m@example.net"
+    },
+    {
+      "idiom": "ios-marketing",
+      "scale": "1x",
+      "size": "1024x1024",
+      "filename": "AppIcon-1024.png"
     }
   ],
-  "info" : {
-    "author" : "xcode",
-    "version" : 1
+  "info": {
+    "author": "xcode",
+    "version": 1
   }
 }
