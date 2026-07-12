@@ -37,9 +37,21 @@ func parseDouble(_ raw: String?) -> Double? {
 
 func parseTimestamp(_ raw: String?) -> Date? {
     guard let raw, !raw.isEmpty else { return nil }
-    if let ms = Double(raw), ms > 1000000000000 { return Date(timeIntervalSince1970: ms / 1000) }
-    if let sec = Double(raw), sec > 1000000000 { return Date(timeIntervalSince1970: sec) }
-    return AppDateFormatters.timestampMillis.date(from: raw)
+    let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    // 1) epoch millis / seconds
+    if let ms = Double(text), ms > 1000000000000 { return Date(timeIntervalSince1970: ms / 1000) }
+    if let sec = Double(text), sec > 1000000000 { return Date(timeIntervalSince1970: sec) }
+    // 2) official HTTP/MQTT string formats
+    //    "yyyy-MM-dd HH:mm:ss.SSS" / "yyyy-MM-dd HH:mm:ss"
+    if let d = AppDateFormatters.timestampMillis.date(from: text) { return d }
+    if let d = AppDateFormatters.fullDateTime.date(from: text) { return d }
+    // 3) sometimes trailing Z / timezone-less variants
+    let trimmed = text
+        .replacingOccurrences(of: "T", with: " ")
+        .replacingOccurrences(of: "Z", with: "")
+    if let d = AppDateFormatters.timestampMillis.date(from: trimmed) { return d }
+    if let d = AppDateFormatters.fullDateTime.date(from: trimmed) { return d }
+    return nil
 }
 
 func formatTime(_ date: Date) -> String {

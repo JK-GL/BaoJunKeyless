@@ -488,9 +488,21 @@ struct StatusMainDashboardHost: View {
             dashboard.rightFrontWindowStatusText,
             dashboard.leftRearWindowStatusText,
             dashboard.rightRearWindowStatusText,
+            dashboard.acTemperatureText,
+            dashboard.cabinTemperatureText,
+            dashboard.batteryRemainingText,
+            "\(dashboard.batteryPercentValue ?? -1)",
+            "\(dashboard.electricRangeKm)",
+            "\(dashboard.fuelRangeKm)",
+            dashboard.totalMileageText,
+            dashboard.averageFuelConsumptionText,
+            dashboard.chargingStatusText,
+            dashboard.chargingPowerText,
+            dashboard.speedText,
             "\(state.locked.map { $0 ? 1 : 0 } ?? -1)",
             "\(state.doorsClosed.map { $0 ? 1 : 0 } ?? -1)",
-            "\(state.windowsClosed.map { $0 ? 1 : 0 } ?? -1)"
+            "\(state.windowsClosed.map { $0 ? 1 : 0 } ?? -1)",
+            "\(state.acOn.map { $0 ? 1 : 0 } ?? -1)"
         ].joined(separator: "|")
     }
 

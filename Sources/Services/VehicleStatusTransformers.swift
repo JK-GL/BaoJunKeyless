@@ -175,6 +175,14 @@ enum VehicleStatusMapper {
             }
         }
         if let ac = parseACStatus(s["acStatus"]) { next.acOn = ac }
+        if let temp = parseDouble(s["accCntTemp"] ?? s["interiorTemperature"]) { next.acTemperature = temp }
+        if let gear = parseGear(s["autoGearStatus"]) { next.gear = gear }
+        if let power = parsePowerState(s) { next.power = power }
+        let keyPos = parsePhysicalKeyPosition(s["keyStatus"])
+        if s["keyStatus"] != nil { next.physicalKeyPosition = keyPos }
+        if let batterySoc = parseDouble(s["batterySoc"]) { next.fuelLevel = batterySoc }
+        if let leftMileage = parseDouble(s["leftMileage"]) { next.fuelRange = leftMileage }
+        if let oilMileage = parseDouble(s["oilLeftMileage"]) { next.oilRange = oilMileage }
         if let speed = parseDouble(s["speed"] ?? s["vehSpd"] ?? s["vehSpdAvgDrvn"]) { next.speed = speed }
         return next
     }
@@ -222,9 +230,57 @@ enum VehicleStatusMapper {
         if rightRearTirePressure != "--" { d.rightRearTirePressureText = rightRearTirePressure }
         let tireTemperatureText = displayTireTemperature(s)
         if tireTemperatureText != "--" { d.tireTemperatureText = tireTemperatureText }
-        if let ac = parseACStatus(s["acStatus"]) { d.acTemperatureText = ac ? "开启" : "关闭" }
+        if let ac = parseACStatus(s["acStatus"]) {
+            d.acTemperatureText = displayACTemperature(s, fallback: ac ? "开启" : "关闭")
+        } else if s["accCntTemp"] != nil || s["interiorTemperature"] != nil {
+            d.acTemperatureText = displayACTemperature(s, fallback: d.acTemperatureText)
+        }
+        if let cabin = s["interiorTemperature"], !cabin.isEmpty {
+            d.cabinTemperatureText = displayValue(cabin, suffix: "°C")
+        }
+        if let soc = parseInt(s["batterySoc"]) {
+            d.batteryPercentValue = soc
+            d.batteryRemainingText = displayBatteryRemaining(s, fallback: d.batteryRemainingText)
+        }
+        if let leftMileage = parseInt(s["leftMileage"]) {
+            d.electricRangeKm = leftMileage
+        }
+        if let fuelRange = parseInt(s["oilLeftMileage"]) {
+            d.fuelRangeKm = fuelRange
+        }
+        if let fuelPercent = parseInt(s["fuelPercent"] ?? s["oilPercent"] ?? s["leftFuel"]) {
+            d.fuelPercentValue = fuelPercent
+            d.fuelRemainingText = displayFuelRemaining(s, fallback: d.fuelRemainingText)
+        }
+        if let chargingRaw = s["charging"] {
+            let charging = chargingRaw == "1"
+            d.isCharging = charging
+            d.chargingStatusText = charging ? "是" : "否"
+        }
+        if let chargePower = s["chargePower"], !chargePower.isEmpty {
+            d.chargingPowerText = displayValue(chargePower, suffix: " kW")
+            d.chargingPowerValueText = displayValue(chargePower, suffix: " kW")
+        }
+        if let mileage = s["mileage"], !mileage.isEmpty {
+            d.totalMileageText = displayValue(mileage, suffix: "km")
+        }
+        if let yester = s["yesterMileage"], !yester.isEmpty {
+            d.yesterdayMileageText = displayValue(yester, suffix: "km")
+        }
+        if let avgFuel = s["avgFuel"], !avgFuel.isEmpty {
+            d.averageFuelConsumptionText = displayValue(avgFuel, suffix: "L/100km")
+        }
+        if s["avgElectronFuel"] != nil || s["avgElecFuel"] != nil || s["avgPowerConsumption"] != nil {
+            d.averagePowerConsumptionText = displayPowerConsumption(s, fallback: d.averagePowerConsumptionText)
+        }
         if let speed = s["speed"] ?? s["vehSpd"], !speed.isEmpty { d.speedText = "\(speed)km/h" }
         if let averageSpeed = s["vehSpdAvgDrvn"], !averageSpeed.isEmpty { d.averageSpeedText = "\(averageSpeed)km/h" }
+        if let lowBeam = s["dipHeadLight"] { d.lowBeamText = displayBool(lowBeam) }
+        if let highBeam = s["lowBeamLight"] { d.highBeamText = displayBool(highBeam) }
+        if let leftTurn = s["leftTurnLight"] { d.leftTurnText = displayBool(leftTurn) }
+        if let rightTurn = s["rightTurnLight"] { d.rightTurnText = displayBool(rightTurn) }
+        if let position = s["positionLight"] { d.positionLightText = displayBool(position) }
+        if let fog = s["frontFogLight"] { d.frontFogText = displayBool(fog) }
         d.updatedAt = parseTimestamp(s["collectTime"]) ?? Date()
         d.updatedAtText = formatTime(d.updatedAt)
         return d
@@ -363,6 +419,14 @@ enum VehicleStateMerger {
         if newState.trunkOpen != nil { merged.trunkOpen = newState.trunkOpen }
         if newState.windowsClosed != nil { merged.windowsClosed = newState.windowsClosed }
         if newState.acOn != nil { merged.acOn = newState.acOn }
+        if newState.acTemperature != nil { merged.acTemperature = newState.acTemperature }
+        if newState.gear != .unknown { merged.gear = newState.gear }
+        if newState.power != .unknown { merged.power = newState.power }
+        if newState.physicalKeyPosition != .unknown { merged.physicalKeyPosition = newState.physicalKeyPosition }
+        if newState.fuelLevel != nil { merged.fuelLevel = newState.fuelLevel }
+        if newState.fuelRange != nil { merged.fuelRange = newState.fuelRange }
+        if newState.oilRange != nil { merged.oilRange = newState.oilRange }
+        if newState.speed != nil { merged.speed = newState.speed }
         return merged
     }
 
@@ -391,8 +455,34 @@ enum VehicleStateMerger {
         if newDashboard.leftRearTirePressureText != "--" { dash.leftRearTirePressureText = newDashboard.leftRearTirePressureText }
         if newDashboard.rightRearTirePressureText != "--" { dash.rightRearTirePressureText = newDashboard.rightRearTirePressureText }
         if newDashboard.acTemperatureText != "--" { dash.acTemperatureText = newDashboard.acTemperatureText }
+        if newDashboard.cabinTemperatureText != "--" { dash.cabinTemperatureText = newDashboard.cabinTemperatureText }
+        if newDashboard.batteryPercentValue != nil { dash.batteryPercentValue = newDashboard.batteryPercentValue }
+        if newDashboard.batteryRemainingText != "--" { dash.batteryRemainingText = newDashboard.batteryRemainingText }
+        if newDashboard.electricRangeKm > 0 { dash.electricRangeKm = newDashboard.electricRangeKm }
+        if newDashboard.fuelRangeKm > 0 { dash.fuelRangeKm = newDashboard.fuelRangeKm }
+        if newDashboard.fuelPercentValue != nil { dash.fuelPercentValue = newDashboard.fuelPercentValue }
+        if newDashboard.fuelRemainingText != "--" { dash.fuelRemainingText = newDashboard.fuelRemainingText }
+        if newDashboard.chargingStatusText != "--" {
+            dash.isCharging = (newDashboard.chargingStatusText == "是")
+            dash.chargingStatusText = newDashboard.chargingStatusText
+        } else if newDashboard.isCharging {
+            dash.isCharging = true
+            dash.chargingStatusText = "是"
+        }
+        if newDashboard.chargingPowerText != "--" { dash.chargingPowerText = newDashboard.chargingPowerText }
+        if newDashboard.chargingPowerValueText != "--" { dash.chargingPowerValueText = newDashboard.chargingPowerValueText }
+        if newDashboard.totalMileageText != "--" { dash.totalMileageText = newDashboard.totalMileageText }
+        if newDashboard.yesterdayMileageText != "--" { dash.yesterdayMileageText = newDashboard.yesterdayMileageText }
+        if newDashboard.averageFuelConsumptionText != "--" { dash.averageFuelConsumptionText = newDashboard.averageFuelConsumptionText }
+        if newDashboard.averagePowerConsumptionText != "--" { dash.averagePowerConsumptionText = newDashboard.averagePowerConsumptionText }
         if newDashboard.speedText != "--" { dash.speedText = newDashboard.speedText }
         if newDashboard.averageSpeedText != "--" { dash.averageSpeedText = newDashboard.averageSpeedText }
+        if newDashboard.lowBeamText != "--" { dash.lowBeamText = newDashboard.lowBeamText }
+        if newDashboard.highBeamText != "--" { dash.highBeamText = newDashboard.highBeamText }
+        if newDashboard.leftTurnText != "--" { dash.leftTurnText = newDashboard.leftTurnText }
+        if newDashboard.rightTurnText != "--" { dash.rightTurnText = newDashboard.rightTurnText }
+        if newDashboard.positionLightText != "--" { dash.positionLightText = newDashboard.positionLightText }
+        if newDashboard.frontFogText != "--" { dash.frontFogText = newDashboard.frontFogText }
         dash.updatedAt = newDashboard.updatedAt
         dash.updatedAtText = newDashboard.updatedAtText
         return dash

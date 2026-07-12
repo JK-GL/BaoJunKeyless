@@ -58,12 +58,14 @@ extension MQTTVehicleStateStore {
             if hasBody {
                 let detailParts = [
                     summary,
-                    "主驾=\(newDashboard.driverDoorStatusText)",
-                    "副驾=\(newDashboard.passengerDoorStatusText)",
-                    "左后=\(newDashboard.leftRearDoorStatusText)",
-                    "右后=\(newDashboard.rightRearDoorStatusText)",
+                    "锁=\(newDashboard.lockStatusText)",
+                    "门=\(newDashboard.doorStatusText)",
                     "窗=\(newDashboard.windowStatusText)",
-                    "尾=\(newDashboard.tailgateStatusText)"
+                    "尾=\(newDashboard.tailgateStatusText)",
+                    "主驾=\(newDashboard.driverDoorStatusText)/副驾=\(newDashboard.passengerDoorStatusText)/左后=\(newDashboard.leftRearDoorStatusText)/右后=\(newDashboard.rightRearDoorStatusText)",
+                    "空调=\(newDashboard.acTemperatureText)",
+                    "电=\(newDashboard.batteryPercentValue.map(String.init) ?? "--")%",
+                    "更新=\(newDashboard.updatedAtText)"
                 ]
                 self.vehicleEventLogStore.addThrottled(
                     .action,
