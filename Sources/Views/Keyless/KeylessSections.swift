@@ -85,7 +85,7 @@ struct UnlockSettingsSection: View {
                     VehicleEventLogStore.shared.add(
                         .keyless,
                         enabled ? "开启无感启动电源" : "关闭无感启动电源",
-                        detail: enabled ? "靠近后走 BLE powerOnReady，不再无感解锁" : nil
+                        detail: enabled ? "靠近后走 BLE powerOnReady，不再无感解锁" : ""
                     )
                 }
             ))
