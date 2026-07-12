@@ -100,8 +100,45 @@ func parseWindowsClosed(_ s: [String: String]) -> Bool? {
     if let total = parseOpen(s["windowStatus"]) { return !total }
     let values = [s["window1Status"], s["window2Status"], s["window3Status"], s["window4Status"]]
     let parsed = values.compactMap(parseOpen)
-    guard !parsed.isEmpty else { return nil }
-    return !parsed.contains(true)
+    // 开度 > 0 也视为开
+    let degrees = [s["window1OpenDegree"], s["window2OpenDegree"], s["window3OpenDegree"], s["window4OpenDegree"]]
+    let degreeOpen = degrees.compactMap { parseDouble($0) }.contains { $0 > 0 }
+    if parsed.isEmpty && !degreeOpen {
+        // half-open flags
+        let half = [s["window1HalfOpenStatus"], s["window2HalfOpenStatus"], s["window3HalfOpenStatus"], s["window4HalfOpenStatus"], s["windowHalfOpenStatus"]]
+        let halfOpen = half.compactMap(parseOpen).contains(true)
+        return halfOpen ? false : nil
+    }
+    if degreeOpen { return false }
+    if parsed.contains(true) { return false }
+    if !parsed.isEmpty { return true }
+    return nil
+}
+
+func displayWindowStatus(_ status: String?, degree: String?, half: String? = nil, closedText: String = "已关", openText: String = "已开") -> String {
+    if let open = parseOpen(status) {
+        return open ? openText : closedText
+    }
+    if let halfOpen = parseOpen(half), halfOpen {
+        return openText
+    }
+    if let deg = parseDouble(degree), deg > 0 {
+        return openText
+    }
+    return "--"
+}
+
+func bodyFieldsSummary(_ s: [String: String]) -> String {
+    let keys = [
+        "doorLockStatus", "doorOpenStatus",
+        "door1OpenStatus", "door2OpenStatus", "door3OpenStatus", "door4OpenStatus", "tailDoorOpenStatus",
+        "windowStatus", "window1Status", "window2Status", "window3Status", "window4Status",
+        "window1OpenDegree", "window2OpenDegree", "window3OpenDegree", "window4OpenDegree"
+    ]
+    return keys.compactMap { key in
+        guard let value = s[key], !value.isEmpty else { return nil }
+        return "\(key)=\(value)"
+    }.joined(separator: " ")
 }
 
 func isOpenStatusText(_ text: String) -> Bool {

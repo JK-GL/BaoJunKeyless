@@ -73,25 +73,49 @@ enum VehicleStatusMapper {
         d.obcTemperatureText = displayValue(s["obcTemp"], suffix: "°C")
         d.chargingStateText = displayText(s["rechargeStatus"]) ?? displayText(s["vecChrgingSts"]) ?? "--"
 
-        d.lockStatusText = (parseLocked(s["doorLockStatus"]) == true) ? "已锁车" : ((parseLocked(s["doorLockStatus"]) == false) ? "未锁" : "--")
-        d.tailgateStatusText = displayOpenStatus(s["tailDoorOpenStatus"], closedText: "已关", openText: "已开")
-        d.driverDoorStatusText = displayOpenStatus(s["door1OpenStatus"], closedText: "已关", openText: "未关")
-        d.passengerDoorStatusText = displayOpenStatus(s["door2OpenStatus"], closedText: "已关", openText: "未关")
-        d.leftRearDoorStatusText = displayOpenStatus(s["door3OpenStatus"], closedText: "已关", openText: "未关")
-        d.rightRearDoorStatusText = displayOpenStatus(s["door4OpenStatus"], closedText: "已关", openText: "未关")
-        d.leftFrontWindowStatusText = displayOpenStatus(s["window1Status"], closedText: "已关", openText: "已开")
-        d.rightFrontWindowStatusText = displayOpenStatus(s["window2Status"], closedText: "已关", openText: "已开")
-        d.leftRearWindowStatusText = displayOpenStatus(s["window3Status"], closedText: "已关", openText: "已开")
-        d.rightRearWindowStatusText = displayOpenStatus(s["window4Status"], closedText: "已关", openText: "已开")
-        if let doorsClosed = parseDoorClosed(s) {
-            d.doorStatusText = doorsClosed ? "全关" : "未关"
-        } else {
-            d.doorStatusText = recomputeDoorStatusText(from: d)
+        // 只写 HTTP 实际带了的字段；缺字段保持 base，避免把 MQTT 实时门窗刷成 --/全关
+        if s["doorLockStatus"] != nil {
+            d.lockStatusText = (parseLocked(s["doorLockStatus"]) == true) ? "已锁车" : ((parseLocked(s["doorLockStatus"]) == false) ? "未锁" : d.lockStatusText)
         }
-        if let windowsClosed = parseWindowsClosed(s) {
+        if s["tailDoorOpenStatus"] != nil {
+            d.tailgateStatusText = displayOpenStatus(s["tailDoorOpenStatus"], closedText: "已关", openText: "已开")
+        }
+        if s["door1OpenStatus"] != nil {
+            d.driverDoorStatusText = displayOpenStatus(s["door1OpenStatus"], closedText: "已关", openText: "未关")
+        }
+        if s["door2OpenStatus"] != nil {
+            d.passengerDoorStatusText = displayOpenStatus(s["door2OpenStatus"], closedText: "已关", openText: "未关")
+        }
+        if s["door3OpenStatus"] != nil {
+            d.leftRearDoorStatusText = displayOpenStatus(s["door3OpenStatus"], closedText: "已关", openText: "未关")
+        }
+        if s["door4OpenStatus"] != nil {
+            d.rightRearDoorStatusText = displayOpenStatus(s["door4OpenStatus"], closedText: "已关", openText: "未关")
+        }
+        if s["window1Status"] != nil || s["window1OpenDegree"] != nil || s["window1HalfOpenStatus"] != nil {
+            d.leftFrontWindowStatusText = displayWindowStatus(s["window1Status"], degree: s["window1OpenDegree"], half: s["window1HalfOpenStatus"])
+        }
+        if s["window2Status"] != nil || s["window2OpenDegree"] != nil || s["window2HalfOpenStatus"] != nil {
+            d.rightFrontWindowStatusText = displayWindowStatus(s["window2Status"], degree: s["window2OpenDegree"], half: s["window2HalfOpenStatus"])
+        }
+        if s["window3Status"] != nil || s["window3OpenDegree"] != nil || s["window3HalfOpenStatus"] != nil {
+            d.leftRearWindowStatusText = displayWindowStatus(s["window3Status"], degree: s["window3OpenDegree"], half: s["window3HalfOpenStatus"])
+        }
+        if s["window4Status"] != nil || s["window4OpenDegree"] != nil || s["window4HalfOpenStatus"] != nil {
+            d.rightRearWindowStatusText = displayWindowStatus(s["window4Status"], degree: s["window4OpenDegree"], half: s["window4HalfOpenStatus"])
+        }
+        // 总览优先明细重算；总字段只在明细不足时兜底
+        let recomputedDoors = recomputeDoorStatusText(from: d)
+        if recomputedDoors == "未关" || recomputedDoors == "全关" {
+            d.doorStatusText = recomputedDoors
+        } else if let doorsClosed = parseDoorClosed(s) {
+            d.doorStatusText = doorsClosed ? "全关" : "未关"
+        }
+        let recomputedWindows = recomputeWindowStatusText(from: d)
+        if recomputedWindows == "未关" || recomputedWindows == "全关" {
+            d.windowStatusText = recomputedWindows
+        } else if let windowsClosed = parseWindowsClosed(s) {
             d.windowStatusText = windowsClosed ? "全关" : "未关"
-        } else {
-            d.windowStatusText = recomputeWindowStatusText(from: d)
         }
         d.leftFrontTirePressureText = firstDisplayTirePressure(s, corner: .leftFront)
         d.rightFrontTirePressureText = firstDisplayTirePressure(s, corner: .rightFront)
@@ -166,21 +190,27 @@ enum VehicleStatusMapper {
         if s["door2OpenStatus"] != nil { d.passengerDoorStatusText = displayOpenStatus(s["door2OpenStatus"], closedText: "已关", openText: "未关") }
         if s["door3OpenStatus"] != nil { d.leftRearDoorStatusText = displayOpenStatus(s["door3OpenStatus"], closedText: "已关", openText: "未关") }
         if s["door4OpenStatus"] != nil { d.rightRearDoorStatusText = displayOpenStatus(s["door4OpenStatus"], closedText: "已关", openText: "未关") }
-        if s["window1Status"] != nil { d.leftFrontWindowStatusText = displayOpenStatus(s["window1Status"], closedText: "已关", openText: "已开") }
-        if s["window2Status"] != nil { d.rightFrontWindowStatusText = displayOpenStatus(s["window2Status"], closedText: "已关", openText: "已开") }
-        if s["window3Status"] != nil { d.leftRearWindowStatusText = displayOpenStatus(s["window3Status"], closedText: "已关", openText: "已开") }
-        if s["window4Status"] != nil { d.rightRearWindowStatusText = displayOpenStatus(s["window4Status"], closedText: "已关", openText: "已开") }
-
-        // 总览：优先用包内总字段；否则用合并后的四门/四窗明细重算
-        if let doorsClosed = parseDoorClosed(s), s["doorOpenStatus"] != nil {
-            d.doorStatusText = doorsClosed ? "全关" : "未关"
-        } else {
-            d.doorStatusText = recomputeDoorStatusText(from: d)
+        if s["window1Status"] != nil || s["window1OpenDegree"] != nil || s["window1HalfOpenStatus"] != nil {
+            d.leftFrontWindowStatusText = displayWindowStatus(s["window1Status"], degree: s["window1OpenDegree"], half: s["window1HalfOpenStatus"])
         }
-        if let windowsClosed = parseWindowsClosed(s), s["windowStatus"] != nil {
+        if s["window2Status"] != nil || s["window2OpenDegree"] != nil || s["window2HalfOpenStatus"] != nil {
+            d.rightFrontWindowStatusText = displayWindowStatus(s["window2Status"], degree: s["window2OpenDegree"], half: s["window2HalfOpenStatus"])
+        }
+        if s["window3Status"] != nil || s["window3OpenDegree"] != nil || s["window3HalfOpenStatus"] != nil {
+            d.leftRearWindowStatusText = displayWindowStatus(s["window3Status"], degree: s["window3OpenDegree"], half: s["window3HalfOpenStatus"])
+        }
+        if s["window4Status"] != nil || s["window4OpenDegree"] != nil || s["window4HalfOpenStatus"] != nil {
+            d.rightRearWindowStatusText = displayWindowStatus(s["window4Status"], degree: s["window4OpenDegree"], half: s["window4HalfOpenStatus"])
+        }
+
+        // 总览始终按“合并后明细”重算，避免半包总字段把单门状态冲掉
+        d.doorStatusText = recomputeDoorStatusText(from: d)
+        d.windowStatusText = recomputeWindowStatusText(from: d)
+        if d.doorStatusText != "未关" && d.doorStatusText != "全关", let doorsClosed = parseDoorClosed(s), s["doorOpenStatus"] != nil {
+            d.doorStatusText = doorsClosed ? "全关" : "未关"
+        }
+        if d.windowStatusText != "未关" && d.windowStatusText != "全关", let windowsClosed = parseWindowsClosed(s), s["windowStatus"] != nil {
             d.windowStatusText = windowsClosed ? "全关" : "未关"
-        } else {
-            d.windowStatusText = recomputeWindowStatusText(from: d)
         }
         let leftFrontTirePressure = firstDisplayTirePressure(s, corner: .leftFront)
         if leftFrontTirePressure != "--" { d.leftFrontTirePressureText = leftFrontTirePressure }
@@ -278,19 +308,24 @@ enum VehicleStateMerger {
         dash.motorTemperatureText = newDashboard.motorTemperatureText
         dash.inverterTemperatureText = newDashboard.inverterTemperatureText
 
-        // HTTP 全量车身状态文案
-        dash.lockStatusText = newDashboard.lockStatusText
-        dash.doorStatusText = newDashboard.doorStatusText
-        dash.windowStatusText = newDashboard.windowStatusText
-        dash.tailgateStatusText = newDashboard.tailgateStatusText
-        dash.driverDoorStatusText = newDashboard.driverDoorStatusText
-        dash.passengerDoorStatusText = newDashboard.passengerDoorStatusText
-        dash.leftRearDoorStatusText = newDashboard.leftRearDoorStatusText
-        dash.rightRearDoorStatusText = newDashboard.rightRearDoorStatusText
-        dash.leftFrontWindowStatusText = newDashboard.leftFrontWindowStatusText
-        dash.rightFrontWindowStatusText = newDashboard.rightFrontWindowStatusText
-        dash.leftRearWindowStatusText = newDashboard.leftRearWindowStatusText
-        dash.rightRearWindowStatusText = newDashboard.rightRearWindowStatusText
+        // HTTP 车身：有有效文案才覆盖，避免缺字段 "--" 冲掉 MQTT 实时态
+        func takeBody(_ newValue: String, current: String) -> String {
+            let v = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if v.isEmpty || v == "--" { return current }
+            return v
+        }
+        dash.lockStatusText = takeBody(newDashboard.lockStatusText, current: dash.lockStatusText)
+        dash.doorStatusText = takeBody(newDashboard.doorStatusText, current: dash.doorStatusText)
+        dash.windowStatusText = takeBody(newDashboard.windowStatusText, current: dash.windowStatusText)
+        dash.tailgateStatusText = takeBody(newDashboard.tailgateStatusText, current: dash.tailgateStatusText)
+        dash.driverDoorStatusText = takeBody(newDashboard.driverDoorStatusText, current: dash.driverDoorStatusText)
+        dash.passengerDoorStatusText = takeBody(newDashboard.passengerDoorStatusText, current: dash.passengerDoorStatusText)
+        dash.leftRearDoorStatusText = takeBody(newDashboard.leftRearDoorStatusText, current: dash.leftRearDoorStatusText)
+        dash.rightRearDoorStatusText = takeBody(newDashboard.rightRearDoorStatusText, current: dash.rightRearDoorStatusText)
+        dash.leftFrontWindowStatusText = takeBody(newDashboard.leftFrontWindowStatusText, current: dash.leftFrontWindowStatusText)
+        dash.rightFrontWindowStatusText = takeBody(newDashboard.rightFrontWindowStatusText, current: dash.rightFrontWindowStatusText)
+        dash.leftRearWindowStatusText = takeBody(newDashboard.leftRearWindowStatusText, current: dash.leftRearWindowStatusText)
+        dash.rightRearWindowStatusText = takeBody(newDashboard.rightRearWindowStatusText, current: dash.rightRearWindowStatusText)
 
         dash.isCharging = newDashboard.isCharging
         dash.chargingPowerText = newDashboard.chargingPowerText
@@ -333,26 +368,31 @@ enum VehicleStateMerger {
 
     static func mergeRealtimeDashboard(current dashboard: VehicleDashboardState, newDashboard: VehicleDashboardState) -> VehicleDashboardState {
         var dash = dashboard
-        dash.lockStatusText = newDashboard.lockStatusText
-        dash.doorStatusText = newDashboard.doorStatusText
-        dash.windowStatusText = newDashboard.windowStatusText
-        dash.tailgateStatusText = newDashboard.tailgateStatusText
-        dash.driverDoorStatusText = newDashboard.driverDoorStatusText
-        dash.passengerDoorStatusText = newDashboard.passengerDoorStatusText
-        dash.leftRearDoorStatusText = newDashboard.leftRearDoorStatusText
-        dash.rightRearDoorStatusText = newDashboard.rightRearDoorStatusText
-        dash.leftFrontWindowStatusText = newDashboard.leftFrontWindowStatusText
-        dash.rightFrontWindowStatusText = newDashboard.rightFrontWindowStatusText
-        dash.leftRearWindowStatusText = newDashboard.leftRearWindowStatusText
-        dash.rightRearWindowStatusText = newDashboard.rightRearWindowStatusText
-        dash.tireTemperatureText = newDashboard.tireTemperatureText
-        dash.leftFrontTirePressureText = newDashboard.leftFrontTirePressureText
-        dash.rightFrontTirePressureText = newDashboard.rightFrontTirePressureText
-        dash.leftRearTirePressureText = newDashboard.leftRearTirePressureText
-        dash.rightRearTirePressureText = newDashboard.rightRearTirePressureText
-        dash.acTemperatureText = newDashboard.acTemperatureText
-        dash.speedText = newDashboard.speedText
-        dash.averageSpeedText = newDashboard.averageSpeedText
+        func takeBody(_ newValue: String, current: String) -> String {
+            let v = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if v.isEmpty || v == "--" { return current }
+            return v
+        }
+        dash.lockStatusText = takeBody(newDashboard.lockStatusText, current: dash.lockStatusText)
+        dash.doorStatusText = takeBody(newDashboard.doorStatusText, current: dash.doorStatusText)
+        dash.windowStatusText = takeBody(newDashboard.windowStatusText, current: dash.windowStatusText)
+        dash.tailgateStatusText = takeBody(newDashboard.tailgateStatusText, current: dash.tailgateStatusText)
+        dash.driverDoorStatusText = takeBody(newDashboard.driverDoorStatusText, current: dash.driverDoorStatusText)
+        dash.passengerDoorStatusText = takeBody(newDashboard.passengerDoorStatusText, current: dash.passengerDoorStatusText)
+        dash.leftRearDoorStatusText = takeBody(newDashboard.leftRearDoorStatusText, current: dash.leftRearDoorStatusText)
+        dash.rightRearDoorStatusText = takeBody(newDashboard.rightRearDoorStatusText, current: dash.rightRearDoorStatusText)
+        dash.leftFrontWindowStatusText = takeBody(newDashboard.leftFrontWindowStatusText, current: dash.leftFrontWindowStatusText)
+        dash.rightFrontWindowStatusText = takeBody(newDashboard.rightFrontWindowStatusText, current: dash.rightFrontWindowStatusText)
+        dash.leftRearWindowStatusText = takeBody(newDashboard.leftRearWindowStatusText, current: dash.leftRearWindowStatusText)
+        dash.rightRearWindowStatusText = takeBody(newDashboard.rightRearWindowStatusText, current: dash.rightRearWindowStatusText)
+        if newDashboard.tireTemperatureText != "--" { dash.tireTemperatureText = newDashboard.tireTemperatureText }
+        if newDashboard.leftFrontTirePressureText != "--" { dash.leftFrontTirePressureText = newDashboard.leftFrontTirePressureText }
+        if newDashboard.rightFrontTirePressureText != "--" { dash.rightFrontTirePressureText = newDashboard.rightFrontTirePressureText }
+        if newDashboard.leftRearTirePressureText != "--" { dash.leftRearTirePressureText = newDashboard.leftRearTirePressureText }
+        if newDashboard.rightRearTirePressureText != "--" { dash.rightRearTirePressureText = newDashboard.rightRearTirePressureText }
+        if newDashboard.acTemperatureText != "--" { dash.acTemperatureText = newDashboard.acTemperatureText }
+        if newDashboard.speedText != "--" { dash.speedText = newDashboard.speedText }
+        if newDashboard.averageSpeedText != "--" { dash.averageSpeedText = newDashboard.averageSpeedText }
         dash.updatedAt = newDashboard.updatedAt
         dash.updatedAtText = newDashboard.updatedAtText
         return dash

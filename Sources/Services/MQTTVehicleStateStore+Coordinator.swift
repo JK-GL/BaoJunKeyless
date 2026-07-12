@@ -160,6 +160,7 @@ extension MQTTVehicleStateStore {
         credentials = nil
         lastMqttFields.removeAll()
         lastMQTTUpdate = nil
+        lastMQTTBodyCollectAt = nil
 
         // 复用 start；用一次性观察给出结果提示
         start(with: credentialsStore)

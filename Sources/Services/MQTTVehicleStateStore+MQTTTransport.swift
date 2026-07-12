@@ -22,36 +22,53 @@ extension MQTTVehicleStateStore {
         let fields = decodeMQTTFields(data)
         guard !fields.isEmpty else { return }
 
-        var changedKeys: [String] = []
-        for (k, v) in fields where lastMqttFields[k] != v {
-            changedKeys.append("\(k):\(lastMqttFields[k] ?? "?")→\(v)")
-        }
-        // 即使 collectTime 等杂项无变化，门窗字段只要有值也强制合并一次（防丢包后不刷新）
-        let bodyKeys = [
-            "doorLockStatus", "door1OpenStatus", "door2OpenStatus", "door3OpenStatus", "door4OpenStatus",
-            "tailDoorOpenStatus", "window1Status", "window2Status", "window3Status", "window4Status",
-            "doorOpenStatus", "windowStatus", "acStatus"
-        ]
-        let hasBody = bodyKeys.contains { fields[$0] != nil }
-        guard !changedKeys.isEmpty || hasBody else { return }
-
-        lastMqttFields.merge(fields) { _, new in new }
-        let newState = mapMQTTToVehicleState(fields)
-        let newDashboard = mapMQTTToDashboard(fields)
-
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+
+            var changedKeys: [String] = []
+            for (k, v) in fields where self.lastMqttFields[k] != v {
+                changedKeys.append("\(k):\(self.lastMqttFields[k] ?? "?")→\(v)")
+            }
+            // 即使 collectTime 等杂项无变化，门窗字段只要有值也强制合并一次（防丢包后不刷新）
+            let bodyKeys = [
+                "doorLockStatus", "door1OpenStatus", "door2OpenStatus", "door3OpenStatus", "door4OpenStatus",
+                "tailDoorOpenStatus", "window1Status", "window2Status", "window3Status", "window4Status",
+                "window1OpenDegree", "window2OpenDegree", "window3OpenDegree", "window4OpenDegree",
+                "doorOpenStatus", "windowStatus", "acStatus"
+            ]
+            let hasBody = bodyKeys.contains { fields[$0] != nil }
+            guard !changedKeys.isEmpty || hasBody else { return }
+
+            // 主线程合并，避免 background 读到旧 dashboard 导致门窗回退
+            self.lastMqttFields.merge(fields) { _, new in new }
+            if let collect = parseTimestamp(fields["collectTime"]) {
+                self.lastMQTTBodyCollectAt = collect
+            } else {
+                self.lastMQTTBodyCollectAt = Date()
+            }
             self.lastMQTTUpdate = Date()
             self.mqttStatus = .connected
+
+            let newState = self.mapMQTTToVehicleState(fields)
+            let newDashboard = self.mapMQTTToDashboard(fields)
             self.mergeRealtimeState(newState: newState, dashboard: newDashboard)
-            let summary = (changedKeys.isEmpty ? Array(fields.keys.prefix(6)).map { "\($0)=force" } : Array(changedKeys.prefix(6))).joined(separator: ", ")
+
+            let summary = (changedKeys.isEmpty ? Array(fields.keys.prefix(8)).map { "\($0)=force" } : Array(changedKeys.prefix(8))).joined(separator: ", ")
             CrashLogger.shared.mark("MQTT", "state changed: \(summary)")
-            // 关键门窗变化打到事件日志，方便确认“实时性”
-            if bodyKeys.contains(where: { fields[$0] != nil }) {
+            if hasBody {
+                let detailParts = [
+                    summary,
+                    "主驾=\(newDashboard.driverDoorStatusText)",
+                    "副驾=\(newDashboard.passengerDoorStatusText)",
+                    "左后=\(newDashboard.leftRearDoorStatusText)",
+                    "右后=\(newDashboard.rightRearDoorStatusText)",
+                    "窗=\(newDashboard.windowStatusText)",
+                    "尾=\(newDashboard.tailgateStatusText)"
+                ]
                 self.vehicleEventLogStore.addThrottled(
                     .action,
                     "MQTT车身更新",
-                    detail: summary,
+                    detail: detailParts.joined(separator: " · "),
                     identity: "mqtt-body",
                     minimumInterval: 1
                 )
@@ -133,6 +150,7 @@ extension MQTTVehicleStateStore {
     }
 
     private func decodeMQTTFields(_ data: Data) -> [String: String] {
+        // 1) Protobuf（官方主格式）
         let decoded = ProtobufDecoder.decode(data)
         let nameMap: [Int: String] = [
             1: "collectTime", 2: "acStatus", 3: "doorLockStatus",
@@ -149,6 +167,26 @@ extension MQTTVehicleStateStore {
                 if let val = ProtobufDecoder.int64(field) { result[name] = String(val) }
             case .lengthDelimited:
                 if let val = ProtobufDecoder.string(field) { result[name] = val }
+            }
+        }
+        if !result.isEmpty { return result }
+
+        // 2) JSON 兜底（部分网关/日志链路会推 JSON）
+        if let json = try? JSONSerialization.jsonObject(with: data) {
+            if let dict = json as? [String: Any] {
+                let source = (dict["data"] as? [String: Any]) ?? (dict["carStatus"] as? [String: Any]) ?? dict
+                for (k, v) in source {
+                    switch v {
+                    case let s as String:
+                        if !s.isEmpty { result[k] = s }
+                    case let n as NSNumber:
+                        result[k] = n.stringValue
+                    case let b as Bool:
+                        result[k] = b ? "1" : "0"
+                    default:
+                        continue
+                    }
+                }
             }
         }
         return result

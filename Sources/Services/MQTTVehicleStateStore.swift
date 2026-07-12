@@ -186,6 +186,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var lastMqttFields: [String: String] = [:]
     var httpTimer: Timer?
     var lastMQTTUpdate: Date?
+    /// MQTT 车身字段最近 collectTime（用于阻止旧 HTTP 覆盖门窗）
+    var lastMQTTBodyCollectAt: Date?
     var lastHTTPUpdate: Date?
     var isConnecting = false
 

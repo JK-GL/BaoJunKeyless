@@ -38,6 +38,17 @@ extension MQTTVehicleStateStore {
                 switch result {
                 case .success(let refreshResult):
                     self.lastHTTPUpdate = refreshResult.fetchedAt
+                    let httpCollect = parseTimestamp(refreshResult.carStatus["collectTime"])
+                    // MQTT 车身更新若更新，则 HTTP 旧 collectTime 不覆盖门窗明细
+                    let mqttBodyFresh: Bool = {
+                        guard let mqttAt = self.lastMQTTBodyCollectAt else { return false }
+                        guard let httpAt = httpCollect else {
+                            // HTTP 无 collectTime：若 MQTT 30s 内有车身更新，不让 HTTP 冲门窗
+                            return Date().timeIntervalSince(mqttAt) < 30
+                        }
+                        return mqttAt > httpAt
+                    }()
+
                     var newState = self.mapHTTPToVehicleState(refreshResult.carStatus)
                     var newDashboard = self.mapHTTPToDashboard(refreshResult.carStatus)
                     if !refreshResult.tirePressure.isEmpty {
@@ -46,23 +57,24 @@ extension MQTTVehicleStateStore {
                             base: newDashboard
                         )
                     }
-                    // HTTP queryDefaultCarStatus 是全量车况快照。
-                    // 以前：MQTT 60s 内有任意字段就整包不用 HTTP，导致“有网开门但门窗不刷新”。
-                    // 现在：始终合并 HTTP 门窗/车锁等车身字段；仅保留手机侧 live BLE 靠近语义。
                     newState.online = true
-                    // 清掉旧缓存后缀，避免 UI 一直显示 ·缓存
                     newDashboard = Self.stripDashboardBodyCacheSuffix(newDashboard)
-                    self.mergeHTTPBaseState(newState: newState, dashboard: newDashboard)
-                    // mergeHTTPBaseState 内已 apply + evaluateKeyless
 
+                    if mqttBodyFresh {
+                        // 保留当前 MQTT 门窗明细，只合并非车身/或总锁等可安全字段
+                        newDashboard = Self.preserveBodyStatus(from: self.dashboard, onto: newDashboard)
+                        if self.state.doorsClosed != nil { newState.doorsClosed = self.state.doorsClosed }
+                        if self.state.windowsClosed != nil { newState.windowsClosed = self.state.windowsClosed }
+                        if self.state.driverDoorOpen != nil { newState.driverDoorOpen = self.state.driverDoorOpen }
+                        if self.state.trunkOpen != nil { newState.trunkOpen = self.state.trunkOpen }
+                    }
+
+                    self.mergeHTTPBaseState(newState: newState, dashboard: newDashboard)
                     self.applyHTTPMeta(carInfo: refreshResult.carInfo, carStatus: refreshResult.carStatus)
                     CrashLogger.shared.mark("HTTP", "status updated")
 
-                    let lock = newDashboard.lockStatusText
-                    let doors = newDashboard.doorStatusText
-                    let windows = newDashboard.windowStatusText
-                    let tail = newDashboard.tailgateStatusText
-                    let message = "车况已更新 · HTTP · \(formatTime(refreshResult.fetchedAt)) · 锁=\(lock) 门=\(doors) 窗=\(windows) 尾=\(tail)"
+                    let body = bodyFieldsSummary(refreshResult.carStatus)
+                    let message = "车况已更新 · HTTP · \(formatTime(refreshResult.fetchedAt)) · 锁=\(self.dashboard.lockStatusText) 门=\(self.dashboard.doorStatusText) 窗=\(self.dashboard.windowStatusText) 尾=\(self.dashboard.tailgateStatusText) · 主驾=\(self.dashboard.driverDoorStatusText)/副驾=\(self.dashboard.passengerDoorStatusText)/左后=\(self.dashboard.leftRearDoorStatusText)/右后=\(self.dashboard.rightRearDoorStatusText)\(mqttBodyFresh ? " · 保留MQTT车身" : "")\(body.isEmpty ? "" : " · raw:\(body)")"
                     if userInitiated {
                         self.vehicleEventLogStore.add(.action, "车况刷新成功", detail: message)
                     } else {
@@ -175,6 +187,23 @@ extension MQTTVehicleStateStore {
         dash.rightFrontWindowStatusText = cache(dash.rightFrontWindowStatusText)
         dash.leftRearWindowStatusText = cache(dash.leftRearWindowStatusText)
         dash.rightRearWindowStatusText = cache(dash.rightRearWindowStatusText)
+        return dash
+    }
+
+    static func preserveBodyStatus(from current: VehicleDashboardState, onto target: VehicleDashboardState) -> VehicleDashboardState {
+        var dash = target
+        dash.lockStatusText = current.lockStatusText
+        dash.doorStatusText = current.doorStatusText
+        dash.windowStatusText = current.windowStatusText
+        dash.tailgateStatusText = current.tailgateStatusText
+        dash.driverDoorStatusText = current.driverDoorStatusText
+        dash.passengerDoorStatusText = current.passengerDoorStatusText
+        dash.leftRearDoorStatusText = current.leftRearDoorStatusText
+        dash.rightRearDoorStatusText = current.rightRearDoorStatusText
+        dash.leftFrontWindowStatusText = current.leftFrontWindowStatusText
+        dash.rightFrontWindowStatusText = current.rightFrontWindowStatusText
+        dash.leftRearWindowStatusText = current.leftRearWindowStatusText
+        dash.rightRearWindowStatusText = current.rightRearWindowStatusText
         return dash
     }
 
