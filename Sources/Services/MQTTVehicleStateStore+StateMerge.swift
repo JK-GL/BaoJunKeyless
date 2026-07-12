@@ -79,10 +79,23 @@ extension MQTTVehicleStateStore {
             }
 
             // 仪表/充电/温度/胎压（非门窗锁）
-            if let v = newDashboard.batteryPercentValue, dash.batteryPercentValue != v { dash.batteryPercentValue = v; changed = true }
-            if let v = newDashboard.electricRangeKm, dash.electricRangeKm != v { dash.electricRangeKm = v; changed = true }
-            if let v = newDashboard.fuelRangeKm, dash.fuelRangeKm != v { dash.fuelRangeKm = v; changed = true }
-            if let v = newDashboard.fuelPercentValue, dash.fuelPercentValue != v { dash.fuelPercentValue = v; changed = true }
+            // batteryPercentValue / fuelPercentValue 为 Optional；里程字段为非 Optional Int
+            if let v = newDashboard.batteryPercentValue, dash.batteryPercentValue != v {
+                dash.batteryPercentValue = v
+                changed = true
+            }
+            if newDashboard.electricRangeKm > 0, dash.electricRangeKm != newDashboard.electricRangeKm {
+                dash.electricRangeKm = newDashboard.electricRangeKm
+                changed = true
+            }
+            if newDashboard.fuelRangeKm > 0, dash.fuelRangeKm != newDashboard.fuelRangeKm {
+                dash.fuelRangeKm = newDashboard.fuelRangeKm
+                changed = true
+            }
+            if let v = newDashboard.fuelPercentValue, dash.fuelPercentValue != v {
+                dash.fuelPercentValue = v
+                changed = true
+            }
             dash.batteryRemainingText = takeText(dash.batteryRemainingText, newDashboard.batteryRemainingText)
             dash.batteryHealthPercentText = takeText(dash.batteryHealthPercentText, newDashboard.batteryHealthPercentText)
             dash.batteryVoltageText = takeText(dash.batteryVoltageText, newDashboard.batteryVoltageText)
