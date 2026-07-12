@@ -199,6 +199,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var lastHTTPUpdate: Date?
     /// HTTP 车身字段最近 collectTime
     var lastHTTPBodyCollectAt: Date?
+    /// 自动轮询日志去重：状态指纹未变则不刷屏
+    var lastHTTPPollLogFingerprint: String?
     var isConnecting = false
 
     let locationResolver = LocationResolver.shared

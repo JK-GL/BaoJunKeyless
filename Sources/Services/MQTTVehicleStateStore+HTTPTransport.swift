@@ -68,17 +68,33 @@ extension MQTTVehicleStateStore {
                     )
                     CrashLogger.shared.mark("HTTP", "status updated mode=\(mergeMode.rawValue)")
 
+                    let fingerprint = self.httpPollStatusFingerprint()
                     let body = bodyFieldsSummary(refreshResult.carStatus)
                     let message = "车况已更新 · HTTP(\(mergeMode.rawValue)\(mergeNote.isEmpty ? "" : "·\(mergeNote)")) · \(formatTime(refreshResult.fetchedAt)) · 锁=\(self.dashboard.lockStatusText) 门=\(self.dashboard.doorStatusText) 窗=\(self.dashboard.windowStatusText) 尾=\(self.dashboard.tailgateStatusText) · 主驾=\(self.dashboard.driverDoorStatusText)/副驾=\(self.dashboard.passengerDoorStatusText)/左后=\(self.dashboard.leftRearDoorStatusText)/右后=\(self.dashboard.rightRearDoorStatusText) · 电=\(self.dashboard.batteryPercentValue.map(String.init) ?? "--")% 空调=\(self.dashboard.acTemperatureText)\(body.isEmpty ? "" : " · raw:\(body)")"
+
                     if userInitiated {
+                        self.lastHTTPPollLogFingerprint = fingerprint
                         self.vehicleEventLogStore.add(.action, "车况刷新成功", detail: message)
+                    } else if mergeNote == "丢弃旧HTTP" {
+                        // 旧包丢弃：静默，不刷日志
+                    } else if self.lastHTTPPollLogFingerprint == fingerprint {
+                        // 状态没变：不写新日志，只把同类心跳合并成 ×N（很久才露一次）
+                        self.vehicleEventLogStore.addCoalesced(
+                            .action,
+                            "车况轮询无变化",
+                            detail: "锁=\(self.dashboard.lockStatusText) 门=\(self.dashboard.doorStatusText) 窗=\(self.dashboard.windowStatusText) 尾=\(self.dashboard.tailgateStatusText)",
+                            identity: "http-poll-unchanged",
+                            mergeWindow: 600
+                        )
                     } else {
-                        self.vehicleEventLogStore.addThrottled(
+                        // 有变化：记一条；同指纹短时间重复会 ×N
+                        self.lastHTTPPollLogFingerprint = fingerprint
+                        self.vehicleEventLogStore.addCoalesced(
                             .action,
                             "车况轮询更新",
                             detail: message,
-                            identity: "http-poll-body",
-                            minimumInterval: 3
+                            identity: "http-poll-changed|\(fingerprint)",
+                            mergeWindow: 120
                         )
                     }
                     completion?(true, message)
@@ -225,4 +241,29 @@ extension MQTTVehicleStateStore {
         dash.rightRearWindowStatusText = strip(dash.rightRearWindowStatusText)
         return dash
     }
+
+    /// 自动轮询日志用：只关心用户能感知的车况变化
+    func httpPollStatusFingerprint() -> String {
+        [
+            dashboard.lockStatusText,
+            dashboard.doorStatusText,
+            dashboard.windowStatusText,
+            dashboard.tailgateStatusText,
+            dashboard.driverDoorStatusText,
+            dashboard.passengerDoorStatusText,
+            dashboard.leftRearDoorStatusText,
+            dashboard.rightRearDoorStatusText,
+            dashboard.leftFrontWindowStatusText,
+            dashboard.rightFrontWindowStatusText,
+            dashboard.leftRearWindowStatusText,
+            dashboard.rightRearWindowStatusText,
+            dashboard.acTemperatureText,
+            dashboard.batteryPercentValue.map(String.init) ?? "--",
+            dashboard.chargingStatusText,
+            dashboard.speedText,
+            state.online ? "1" : "0",
+            state.locked.map { $0 ? "1" : "0" } ?? "-"
+        ].joined(separator: "|")
+    }
+
 }

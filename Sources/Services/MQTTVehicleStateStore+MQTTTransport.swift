@@ -95,12 +95,14 @@ extension MQTTVehicleStateStore {
                     "电=\(self.dashboard.batteryPercentValue.map(String.init) ?? "--")%",
                     "更新=\(self.dashboard.updatedAtText)"
                 ]
-                self.vehicleEventLogStore.addThrottled(
+                // 有字段变化才记；相同变化短时间合并 ×N，避免刷屏
+                let changeIdentity = summary.isEmpty ? packetKeys : summary
+                self.vehicleEventLogStore.addCoalesced(
                     .action,
                     "MQTT车身更新",
                     detail: detailParts.joined(separator: " · "),
-                    identity: "mqtt-body",
-                    minimumInterval: 1
+                    identity: "mqtt-body|\(changeIdentity)",
+                    mergeWindow: 90
                 )
             }
         }

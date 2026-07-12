@@ -163,6 +163,7 @@ extension MQTTVehicleStateStore {
         lastMQTTBodyCollectAt = nil
         lastHTTPBodyCollectAt = nil
         bodyCollectTime = nil
+        lastHTTPPollLogFingerprint = nil
         fieldCollectAt.removeAll()
         fieldSource.removeAll()
         localDoorLockHoldUntil = nil
