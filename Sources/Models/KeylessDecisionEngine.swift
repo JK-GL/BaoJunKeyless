@@ -90,16 +90,28 @@ struct KeylessDecisionEngine {
             return .deny(action: .unlock, reason: "手机未进入解锁范围")
         }
         // 5. 车辆已锁
-        guard state.locked == true else {
+        //    - 在线：locked=false 拒绝重复解锁
+        //    - 离线 + BLE 已鉴权：云端/缓存 locked 可能过期，不据此硬拒
+        //    - locked=nil：仅 BLE 已鉴权时放行
+        if state.online, state.locked == false {
             return .deny(action: .unlock, reason: "车辆未上锁，无需重复解锁")
+        }
+        if state.locked == nil && !context.bleAuthenticated {
+            return .deny(action: .unlock, reason: "车锁状态未知且 BLE 未鉴权")
+        }
+        if !state.online && context.bleAuthenticated && state.locked == false {
+            // 离线缓存显示未锁，仍允许靠近时尝试解锁（BLE 成功会本地回写）
         }
         // 6. 车速 = 0
         if let speed = state.speed, speed > 0 {
             return .deny(action: .unlock, reason: "车辆行驶中 (\(Int(speed))km/h)")
         }
-        // 7. 档位必须 P（安全底线，不可关闭）
-        guard state.gear == .p else {
+        // 7. 档位：已知非 P 才拒绝；离线 gear=unknown 不卡死无感
+        if state.gear != .p && state.gear != .unknown {
             return .deny(action: .unlock, reason: "档位 \(state.gear.title)，不允许无感解锁")
+        }
+        if state.gear == .unknown && !context.bleAuthenticated {
+            return .deny(action: .unlock, reason: "档位未知且 BLE 未鉴权")
         }
         // 8. 电源：仅明确通电/就绪时拒绝。
         //    现场车况常缺 engineStatus → power=unknown(--)，不能因此卡死无感。
@@ -117,6 +129,14 @@ struct KeylessDecisionEngine {
         }
         if state.power == .unknown {
             reason += " · 电源未知按熄火评估"
+        }
+        if state.gear == .unknown {
+            reason += " · 档位未知"
+        }
+        if state.locked == nil {
+            reason += " · 车锁未知按可解锁评估"
+        } else if !state.online && state.locked == false {
+            reason += " · 离线缓存未锁仍尝试"
         }
         return .allow(action: .unlock, reason: reason)
     }
@@ -144,17 +164,23 @@ struct KeylessDecisionEngine {
             return .deny(action: .lock, reason: "手机未离开上锁范围")
         }
         // 5. 车辆未锁
-        guard state.locked == false else {
+        //    - 在线：locked=true 拒绝重复上锁
+        //    - 离线 + BLE 已鉴权：缓存 locked 可能过期，不据此硬拒
+        if state.online, state.locked == true {
             return .deny(action: .lock, reason: "车辆已上锁，无需重复上锁")
         }
-        // 6. 所有车门关闭
+        if state.locked == nil && !context.bleAuthenticated {
+            return .deny(action: .lock, reason: "车锁状态未知且 BLE 未鉴权")
+        }
+
+        // 6. 所有车门关闭（未知不拦；明确打开才拒绝）
         if state.doorsClosed == false {
             return .deny(action: .lock, reason: "车门未关闭")
         }
         if state.driverDoorOpen == true {
             return .deny(action: .lock, reason: "主驾门未关闭")
         }
-        // 7. 后备箱关闭
+        // 7. 后备箱关闭（未知不拦）
         if state.trunkOpen == true {
             return .deny(action: .lock, reason: "后备箱未关闭")
         }
@@ -162,9 +188,12 @@ struct KeylessDecisionEngine {
         if let speed = state.speed, speed > 0 {
             return .deny(action: .lock, reason: "车辆行驶中 (\(Int(speed))km/h)")
         }
-        // 9. 档位必须 P（安全底线，不可关闭）
-        guard state.gear == .p else {
+        // 9. 档位：已知非 P 才拒绝；unknown + BLE 鉴权放行
+        if state.gear != .p && state.gear != .unknown {
             return .deny(action: .lock, reason: "档位 \(state.gear.title)，不允许无感上锁")
+        }
+        if state.gear == .unknown && !context.bleAuthenticated {
+            return .deny(action: .lock, reason: "档位未知且 BLE 未鉴权")
         }
         // 10. 电源：仅明确通电/就绪时拒绝；unknown 不拦
         if isPowerClearlyOn(state.power) {
@@ -185,6 +214,14 @@ struct KeylessDecisionEngine {
         }
         if state.power == .unknown {
             reason += " · 电源未知按熄火评估"
+        }
+        if state.gear == .unknown {
+            reason += " · 档位未知"
+        }
+        if state.locked == nil {
+            reason += " · 车锁未知按可上锁评估"
+        } else if !state.online && state.locked == true {
+            reason += " · 离线缓存已锁仍尝试"
         }
         if state.physicalKeyPosition == .inside && context.bleAuthenticated {
             reason += " · 云端钥匙车内按数字钥匙忽略"

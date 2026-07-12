@@ -285,9 +285,19 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     func sendCommandViaBLE(command: VehicleCommand, completion: @escaping (Result<Void, VehicleBLEManager.BLEControlError>) -> Void) {
         switch command.kind {
         case .lock:
-            bleManager.sendDoorLockCommand(lock: true, completion: completion)
+            bleManager.sendDoorLockCommand(lock: true) { [weak self] result in
+                if case .success = result {
+                    self?.applyLocalDoorLockState(locked: true, source: "BLE锁车回包")
+                }
+                completion(result)
+            }
         case .unlock:
-            bleManager.sendDoorLockCommand(lock: false, completion: completion)
+            bleManager.sendDoorLockCommand(lock: false) { [weak self] result in
+                if case .success = result {
+                    self?.applyLocalDoorLockState(locked: false, source: "BLE解锁回包")
+                }
+                completion(result)
+            }
         case .remoteStart:
             bleManager.sendPowerOnReadyCommand(completion: completion)
         case .remoteStop:
@@ -295,6 +305,31 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         default:
             completion(.failure(.frameBuildFailed))
         }
+    }
+
+    /// 离线/无 MQTT 时，BLE 门锁成功后立即回写本地车锁，驱动快捷按钮与无感决策。
+    func applyLocalDoorLockState(locked: Bool, source: String) {
+        var next = state
+        let previous = next.locked
+        next.locked = locked
+        // 标记为本地刚确认过的状态，避免被“无网络旧缓存”继续误导无感
+        next.timestamp = Date()
+        next.online = next.online // 保持原 online；离线仍离线
+        apply(next)
+
+        var dash = dashboard
+        dash.lockStatusText = locked ? "已锁车" : "未锁"
+        dash.updatedAt = Date()
+        dash.updatedAtText = formatTime(Date())
+        applyDashboard(dash)
+
+        vehicleEventLogStore.add(
+            .action,
+            "本地车锁已更新",
+            detail: "\(source) · \(previous.map { $0 ? "已锁" : "未锁" } ?? "未知") → \(locked ? "已锁" : "未锁")"
+        )
+        // 状态变了立刻重算无感（否则会卡在“未上锁/已上锁”旧结论）
+        evaluateKeylessAutomation(for: next)
     }
 
     func sendDoorLockViaBLE(command: VehicleCommand, completion: @escaping (Result<Void, VehicleBLEManager.BLEControlError>) -> Void) {
