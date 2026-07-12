@@ -75,12 +75,16 @@ struct VehicleDashboardState {
     var fuelRemainingText: String = "--"
 
     var bodyStatusNormalText: String {
-        let badStatuses: [String] = ["未关", "未锁", "已开", "打开", "异常", "故障"]
         let statuses = [
             lockStatusText, doorStatusText, windowStatusText, tailgateStatusText,
             driverDoorStatusText, passengerDoorStatusText, leftRearDoorStatusText, rightRearDoorStatusText,
             leftFrontWindowStatusText, rightFrontWindowStatusText, leftRearWindowStatusText, rightRearWindowStatusText
         ]
+        // 离线缓存态不要显示成“异常”，避免把过期门窗当真
+        if statuses.contains(where: { $0.contains("缓存") }) {
+            return "缓存"
+        }
+        let badStatuses: [String] = ["未关", "未锁", "已开", "打开", "异常", "故障"]
         if statuses.contains(where: { badStatuses.contains($0) }) {
             return "异常"
         }
@@ -104,6 +108,8 @@ struct VehicleDashboardState {
             ("左后窗", leftRearWindowStatusText),
             ("右后窗", rightRearWindowStatusText)
         ] {
+            // 缓存态不进“未关提醒”，避免离线误报一堆门窗异常
+            if value.contains("缓存") { continue }
             if badStatuses.contains(value) {
                 warnings.append("\(label)\(value)")
             }
@@ -158,6 +164,10 @@ extension VehicleDashboardState {
         let openColors = ["未关", "未锁", "已开", "打开", "异常", "故障"]
 
         func colorForStatus(_ status: String) -> Color {
+            // “未锁·缓存”这类离线文案按缓存灰显，不当成实时异常红
+            if status.contains("缓存") {
+                return StatusTint.muted
+            }
             if closedColors.contains(status) {
                 return StatusTint.successGreen
             }

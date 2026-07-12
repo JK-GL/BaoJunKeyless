@@ -173,16 +173,32 @@ struct KeylessDecisionEngine {
             return .deny(action: .lock, reason: "车锁状态未知且 BLE 未鉴权")
         }
 
-        // 6. 所有车门关闭（未知不拦；明确打开才拒绝）
-        if state.doorsClosed == false {
-            return .deny(action: .lock, reason: "车门未关闭")
-        }
-        if state.driverDoorOpen == true {
-            return .deny(action: .lock, reason: "主驾门未关闭")
-        }
-        // 7. 后备箱关闭（未知不拦）
-        if state.trunkOpen == true {
-            return .deny(action: .lock, reason: "后备箱未关闭")
+        // 6/7. 门/尾门：
+        //    - 在线且新鲜：明确打开才拒绝
+        //    - 离线或过期：陈旧“门开着”不当真，避免缓存把门窗卡死无感
+        let trustBodyOpenState = state.online && state.isFresh(maxAge: context.freshnessMaxAge)
+        if trustBodyOpenState {
+            if state.doorsClosed == false {
+                return .deny(action: .lock, reason: "车门未关闭")
+            }
+            if state.driverDoorOpen == true {
+                return .deny(action: .lock, reason: "主驾门未关闭")
+            }
+            if state.trunkOpen == true {
+                return .deny(action: .lock, reason: "后备箱未关闭")
+            }
+        } else if context.bleAuthenticated {
+            // 离线 BLE 会话：忽略陈旧门窗开闭
+        } else {
+            if state.doorsClosed == false {
+                return .deny(action: .lock, reason: "车门未关闭")
+            }
+            if state.driverDoorOpen == true {
+                return .deny(action: .lock, reason: "主驾门未关闭")
+            }
+            if state.trunkOpen == true {
+                return .deny(action: .lock, reason: "后备箱未关闭")
+            }
         }
         // 8. 车速 = 0
         if let speed = state.speed, speed > 0 {

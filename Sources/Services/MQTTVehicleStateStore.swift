@@ -334,6 +334,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         apply(next)
 
         var dash = dashboard
+        // BLE 本地确认的锁态是实时的，去掉可能残留的“·缓存”后缀
         dash.lockStatusText = locked ? "已锁车" : "未锁"
         dash.updatedAt = Date()
         dash.updatedAtText = formatTime(Date())

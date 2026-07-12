@@ -64,6 +64,8 @@ extension MQTTVehicleStateStore {
                 case .failure(let error):
                     let message = "车况刷新失败：\(error.localizedDescription)"
                     CrashLogger.shared.mark("HTTP", "status refresh failed: \(error.localizedDescription)")
+                    // 网络失败时明确离线，避免旧门窗/车锁继续被当成“实时真实状态”
+                    self.markVehicleStatusOffline(reason: error.localizedDescription, userInitiated: userInitiated)
                     if userInitiated {
                         self.vehicleEventLogStore.add(.error, "车况刷新失败", detail: message)
                     }
@@ -79,5 +81,85 @@ extension MQTTVehicleStateStore {
 
     func mapHTTPToDashboard(_ s: [String: String]) -> VehicleDashboardState {
         VehicleStatusMapper.httpDashboard(from: s, base: dashboard)
+    }
+
+    /// 车况拉失败时：标记离线；若状态已过期，清掉门窗等“开闭态”避免 UI/无感继续当真。
+    /// 车锁 `locked` 若刚被 BLE 本地回写（timestamp 很新）则保留。
+    func markVehicleStatusOffline(reason: String, userInitiated: Bool) {
+        let now = Date()
+        let mqttFresh = lastMQTTUpdate.map { now.timeIntervalSince($0) < 90 } ?? false
+        if mqttFresh {
+            // MQTT 仍在实时推，只标 online 逻辑由 MQTT 路径维护
+            return
+        }
+
+        var next = state
+        let previousOnline = next.online
+        next.online = false
+
+        let age = now.timeIntervalSince(next.timestamp)
+        let stale = age > 90
+        if stale {
+            // 过期门窗/尾门不再当真；否则离线时会一直显示“门开着/窗开着”
+            next.doorsClosed = nil
+            next.driverDoorOpen = nil
+            next.trunkOpen = nil
+            next.windowsClosed = nil
+            // gear/power/key 也别继续用过期硬门禁
+            if next.gear != .unknown { next.gear = .unknown }
+            if next.power != .unknown { next.power = .unknown }
+            // locked：仅当本地很久没更新才清空；BLE 刚回写的锁态 timestamp 新，会保留
+            if age > 180 {
+                next.locked = nil
+            }
+        }
+
+        if previousOnline != next.online || stale {
+            apply(next)
+        }
+
+        if stale {
+            var dash = dashboard
+            dash = Self.markDashboardBodyStatusStale(dash)
+            applyDashboard(dash)
+            vehicleEventLogStore.addThrottled(
+                .warning,
+                "车况已离线缓存",
+                detail: "网络不可用，门窗/尾门等开闭态已停止当真 · \(reason)",
+                identity: "status-offline-stale",
+                minimumInterval: 20
+            )
+        } else if previousOnline && userInitiated {
+            vehicleEventLogStore.addThrottled(
+                .warning,
+                "车况暂时离线",
+                detail: "网络不可用，暂时使用最近状态 · \(reason)",
+                identity: "status-offline-temp",
+                minimumInterval: 20
+            )
+        }
+    }
+
+    static func markDashboardBodyStatusStale(_ dashboard: VehicleDashboardState) -> VehicleDashboardState {
+        var dash = dashboard
+        func cache(_ text: String) -> String {
+            let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if t.isEmpty || t == "--" { return "--" }
+            if t.contains("缓存") { return t }
+            return "\(t)·缓存"
+        }
+        dash.lockStatusText = cache(dash.lockStatusText)
+        dash.doorStatusText = cache(dash.doorStatusText)
+        dash.windowStatusText = cache(dash.windowStatusText)
+        dash.tailgateStatusText = cache(dash.tailgateStatusText)
+        dash.driverDoorStatusText = cache(dash.driverDoorStatusText)
+        dash.passengerDoorStatusText = cache(dash.passengerDoorStatusText)
+        dash.leftRearDoorStatusText = cache(dash.leftRearDoorStatusText)
+        dash.rightRearDoorStatusText = cache(dash.rightRearDoorStatusText)
+        dash.leftFrontWindowStatusText = cache(dash.leftFrontWindowStatusText)
+        dash.rightFrontWindowStatusText = cache(dash.rightFrontWindowStatusText)
+        dash.leftRearWindowStatusText = cache(dash.leftRearWindowStatusText)
+        dash.rightRearWindowStatusText = cache(dash.rightRearWindowStatusText)
+        return dash
     }
 }
