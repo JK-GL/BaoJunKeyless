@@ -16,7 +16,7 @@ enum CommandResult {
 
     var title: String {
         switch self {
-        case .success:  return "已反馈"
+        case .success:  return "已完成"
         case .failure:  return "执行失败"
         case .timeout:  return "连接超时"
         }
@@ -24,7 +24,7 @@ enum CommandResult {
 
     var message: String {
         switch self {
-        case .success:  return "已收到点击反馈，状态以车辆真实回报为准"
+        case .success:  return "操作已完成"
         case .failure:  return "指令未成功，请稍后重试"
         case .timeout:  return "车辆未响应，请检查网络后重试"
         }
@@ -133,16 +133,19 @@ enum CommandAction: String, Identifiable {
     func confirmMessage(state: VehicleState) -> String {
         switch self {
         case .lockUnlock:
-            return state.locked == false ? "车辆将远程上锁，确保车门已关闭" : "车辆将远程解锁，车门锁会解除"
-        case .remoteStart:   return state.power.isPoweredOn
-            ? "车辆将优先通过 BLE 熄火；BLE 未连接则尝试 HTTP 远控"
-            : "启动授权，请在约30秒内解锁上车，踩刹车并按 Ready，不是点火常驻。"
-        case .findCar:       return "车辆将双闪鸣笛，方便您定位"
+            return state.locked == false ? "确认后将锁止车门，请确保车内无人滞留。" : "确认后将解锁车门，便于您上车。"
+        case .remoteStart:
+            return state.power.isPoweredOn
+                ? "确认后将关闭车辆电源。优先使用近场蓝牙，不可用时自动改用网络。"
+                : "确认后将下发启动授权。请在约 30 秒内解锁上车，踩下刹车仪表亮Ready。"
+        case .findCar:
+            return "确认后车辆将闪灯并鸣笛，便于您快速定位。"
         case .acToggle:
-            return state.acOn == true ? "关闭空调压缩机，停止送风" : "开启空调，可调节设定温度"
+            return state.acOn == true ? "确认后将关闭空调。" : "确认后将开启空调，可调节设定温度。"
         case .windowToggle:
-            return state.windowsClosed == false ? "关闭全部车窗，确保安全" : "打开全部车窗，便于通风"
-        case .quickCool:     return "按设定温度快速降温 · 风量 7 · 可调 5～20 分钟"
+            return state.windowsClosed == false ? "确认后将关闭全部车窗。" : "确认后将打开全部车窗。"
+        case .quickCool:
+            return "确认后将按设定温度快速降温，可调节温度与时长。"
         }
     }
 
@@ -337,7 +340,7 @@ struct CommandConfirmPopup: View {
             return [
                 PopupStatusItem(icon: "key.fill", label: "电源",
                                 value: state.power.title, color: AppTheme.orange),
-                PopupStatusItem(icon: "dot.radiowaves.left.and.right", label: "启动",
+                PopupStatusItem(icon: "dot.radiowaves.left.and.right", label: "状态",
                                 value: startStatusText, color: startStatusColor),
                 PopupStatusItem(icon: "gearshape.fill", label: "档位",
                                 value: state.gear.title, color: AppTheme.accent)
@@ -474,9 +477,9 @@ private extension VehicleCommandExecutionResult {
     var popupButtonTitle: String {
         switch state {
         case .feedbackOnly: return "已反馈 ✓"
-        case .sent: return "已下发 ✓"
-        case .completed: return "已回包 ✓"
-        case .planned: return "已生成"
+        case .sent: return "已发送"
+        case .completed: return "已完成"
+        case .planned: return "已准备"
         case .failed(_): return "执行失败"
         case .timedOut(_): return "连接超时"
         }
@@ -485,13 +488,13 @@ private extension VehicleCommandExecutionResult {
     var popupMessage: String {
         switch state {
         case .feedbackOnly:
-            return userMessage.isEmpty ? "已收到点击反馈，状态以车辆真实回报为准" : userMessage
+            return userMessage.isEmpty ? "操作已完成" : userMessage
         case .sent:
-            return userMessage.isEmpty ? "指令已下发，状态以车辆真实回报为准" : userMessage
+            return userMessage.isEmpty ? "指令已发送，等待车辆状态更新" : userMessage
         case .completed:
-            return userMessage.isEmpty ? "控制回包已收到，状态以车辆真实回报为准" : userMessage
+            return userMessage.isEmpty ? "操作已完成" : userMessage
         case .planned:
-            return userMessage.isEmpty ? "已生成控制请求，等待后续下发" : userMessage
+            return userMessage.isEmpty ? "控制请求已准备就绪" : userMessage
         case .failed(_), .timedOut(_):
             return userMessage.isEmpty ? "指令未成功，请稍后重试" : userMessage
         }

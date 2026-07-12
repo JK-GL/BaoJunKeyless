@@ -64,7 +64,7 @@ struct FeedbackOnlyTransport: VehicleCommandTransport {
         return VehicleCommandExecutionResult(
             command: command,
             state: .feedbackOnly,
-            userMessage: "已收到点击反馈，状态以车辆真实回报为准",
+            userMessage: "操作已提交，请查看车辆状态。",
             shouldRefresh: true,
             refreshDelay: 0
         )
@@ -112,7 +112,7 @@ struct PlaceholderControlTransport: VehicleCommandTransport {
             return VehicleCommandExecutionResult(
                 command: command,
                 state: .planned,
-                userMessage: "已生成控制草稿：\(draft.plan.endpointCandidates.first ?? draft.url.absoluteString)",
+                userMessage: "控制请求已准备就绪",
                 shouldRefresh: false,
                 refreshDelay: 0
             )
@@ -149,7 +149,7 @@ struct BLEVehicleControlTransport: VehicleCommandAsyncTransport {
         bleController.sendCommandViaBLE(command: command) { result in
             switch result {
             case .success:
-                let message = "BLE 控制回包已收到：\(command.title)，状态以车辆真实回报为准"
+                let message = "\(command.title) 已完成"
                 finish(VehicleCommandExecutionResult(command: command, state: .completed, userMessage: message, shouldRefresh: false, refreshDelay: 0))
             case .failure(let error):
                 let state: VehicleCommandExecutionState
@@ -159,7 +159,7 @@ struct BLEVehicleControlTransport: VehicleCommandAsyncTransport {
                 default:
                     state = .failed(error.localizedDescription)
                 }
-                let hint = "；如需对比链路，可到设置切换“强制HTTP”后重试"
+                let hint = "。请检查蓝牙连接后重试"
                 finish(VehicleCommandExecutionResult(command: command, state: state, userMessage: error.localizedDescription + hint, shouldRefresh: false, refreshDelay: 0))
             }
         }
@@ -227,11 +227,11 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
                     DispatchQueue.main.async {
                         let message: String
                         if command.kind == .remoteStart {
-                            message = "启动授权已发送：\(requestSummary)。请约30秒内解锁上车，踩刹车并按 Ready，不是点火常驻。"
+                            message = "启动授权已发送。请在约 30 秒内解锁上车，踩下刹车仪表亮Ready。"
                         } else if command.kind == .remoteStop {
-                            message = "熄火/下电请求已发送：\(requestSummary)。等待车辆电源状态回报"
+                            message = "熄火指令已发送，等待车辆状态更新。"
                         } else {
-                            message = "控制请求已发送：\(requestSummary)。等待车辆真实回报"
+                            message = "\(command.title) 指令已发送，等待车辆状态更新。"
                         }
                         let timing = VehicleCommandTiming(requestBuildMillis: buildMillis, httpRoundTripMillis: Int(Date().timeIntervalSince(httpStart) * 1000))
                         completion(VehicleCommandExecutionResult(command: command, state: .sent, userMessage: message, shouldRefresh: true, refreshDelay: 0, timing: timing))

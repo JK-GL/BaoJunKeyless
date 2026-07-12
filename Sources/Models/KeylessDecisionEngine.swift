@@ -153,13 +153,13 @@ struct KeylessDecisionEngine {
         }
         // 必须 BLE 已鉴权，才能发 powerOnReady
         guard context.bleAuthenticated else {
-            return .deny(action: .powerStart, reason: "BLE 未鉴权，无法启动电源")
+            return .deny(action: .powerStart, reason: "蓝牙未连接，无法启动电源")
         }
         if let availabilityDeny = denyIfStateUnavailable(action: .powerStart, state: state, context: context) {
             return availabilityDeny
         }
         guard state.phoneNearby else {
-            return .deny(action: .powerStart, reason: "手机未进入启动范围")
+            return .deny(action: .powerStart, reason: "尚未靠近车辆")
         }
         // 已明确上电则不再重复发
         if state.power == .on || state.power == .ready {
@@ -175,7 +175,7 @@ struct KeylessDecisionEngine {
             return .deny(action: .powerStart, reason: "档位未知且 BLE 未鉴权")
         }
 
-        var reason = "满足无感启动电源条件（BLE powerOnReady）"
+        var reason = "满足启动电源条件"
         if state.power == .unknown || state.power == .off {
             reason += " · 电源按待上电评估"
         }

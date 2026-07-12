@@ -333,7 +333,7 @@ struct StatusView: View {
                 completion(VehicleCommandExecutionResult(
                     command: command,
                     state: .failed("当前命令不支持 BLE 强制模式"),
-                    userMessage: "已设为强制BLE，但 \(command.title) 不支持 BLE 通道",
+                    userMessage: "\(command.title) 暂不支持蓝牙控制，请改用网络控制。",
                     shouldRefresh: false,
                     refreshDelay: 0
                 ))
@@ -344,7 +344,7 @@ struct StatusView: View {
                 completion(VehicleCommandExecutionResult(
                     command: command,
                     state: .failed("强制BLE，但当前 BLE 未鉴权成功"),
-                    userMessage: "强制BLE模式：当前 BLE 未鉴权成功，请先连上蓝牙后重试",
+                    userMessage: "蓝牙尚未就绪，请连接车辆蓝牙后重试。",
                     shouldRefresh: false,
                     refreshDelay: 0
                 ))
@@ -375,11 +375,11 @@ struct StatusView: View {
 
         VehicleCommandExecutor.executeAsync(command, transport: transport, refresher: mqttStore) { result in
             DispatchQueue.main.async {
-                let routePrefix = "[mode=\(routeModeText) route=\(actualRouteText)] "
+                let routePrefix = ""
                 let patchedResult = VehicleCommandExecutionResult(
                     command: result.command,
                     state: result.state,
-                    userMessage: routePrefix + result.userMessage,
+                    userMessage: result.userMessage,
                     shouldRefresh: result.shouldRefresh,
                     refreshDelay: result.refreshDelay,
                     timing: result.timing

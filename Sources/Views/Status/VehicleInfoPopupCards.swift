@@ -10,34 +10,34 @@ struct VehicleInfoMergedCard: View {
 
     private var rows: [PopupInfoRowItem] {
         [
-            PopupInfoRowItem("clock.fill",     "更新日期",   dashboard.vehicleInfoUpdatedAtText),
-            PopupInfoRowItem("dot.radiowaves.left.and.right", "BLE状态",   bleStatusText, color: AppTheme.accent),
-            PopupInfoRowItem("checkmark.message.fill", "BLE回包", latestBLEControlText, color: AppTheme.green),
+            PopupInfoRowItem("clock.fill",     "更新时间",   dashboard.vehicleInfoUpdatedAtText),
+            PopupInfoRowItem("dot.radiowaves.left.and.right", "蓝牙状态",   bleStatusText, color: AppTheme.accent),
+            PopupInfoRowItem("checkmark.message.fill", "最近控制", latestBLEControlText, color: AppTheme.green),
             PopupInfoRowItem("car.fill",       "车型",       dashboard.vehicleName),
             PopupInfoRowItem("info.circle",    "VIN",        dashboard.vinText, mono: true),
             PopupInfoRowItem("person.fill",    "用户ID",     dashboard.userIdText, mono: true),
             PopupInfoRowItem("key.fill",       "钥匙类型",   dashboard.keyTypeText, color: AppTheme.green),
-            PopupInfoRowItem("antenna.radiowaves.left.and.right", "BLE MAC",    dashboard.bleMacText, mono: true, color: AppTheme.accent),
-            PopupInfoRowItem("number",         "Key ID",     dashboard.keyIdText, mono: true, color: AppTheme.accent),
-            PopupInfoRowItem("lock.fill",      "MasterKey",  dashboard.masterKeyMaskedText, mono: true),
-            PopupInfoRowItem("dice.fill",      "Random",     dashboard.randomMaskedText, mono: true),
+            PopupInfoRowItem("antenna.radiowaves.left.and.right", "蓝牙地址",    dashboard.bleMacText, mono: true, color: AppTheme.accent),
+            PopupInfoRowItem("number",         "钥匙编号",     dashboard.keyIdText, mono: true, color: AppTheme.accent),
+            PopupInfoRowItem("lock.fill",      "主密钥",  dashboard.masterKeyMaskedText, mono: true),
+            PopupInfoRowItem("dice.fill",      "随机数",     dashboard.randomMaskedText, mono: true),
             PopupInfoRowItem("clock.arrow.circlepath", "有效期至",   dashboard.keyExpiryText, color: AppTheme.green),
         ]
     }
 
     private var fullText: String {
         """
-        更新日期: \(dashboard.vehicleInfoUpdatedAtText)
-        BLE状态: \(bleStatusText)
-        BLE回包: \(latestBLEControlText)
+        更新时间: \(dashboard.vehicleInfoUpdatedAtText)
+        蓝牙状态: \(bleStatusText)
+        最近控制: \(latestBLEControlText)
         车型: \(dashboard.vehicleName)
         VIN: \(dashboard.vinText)
         用户ID: \(dashboard.userIdText)
         钥匙类型: \(dashboard.keyTypeText)
-        BLE MAC: \(dashboard.bleMacText)
-        Key ID: \(dashboard.keyIdText)
-        MasterKey: \(dashboard.masterKeyMaskedText)
-        Random: \(dashboard.randomMaskedText)
+        蓝牙地址: \(dashboard.bleMacText)
+        钥匙编号: \(dashboard.keyIdText)
+        主密钥: \(dashboard.masterKeyMaskedText)
+        随机数: \(dashboard.randomMaskedText)
         有效期至: \(dashboard.keyExpiryText)
         """
     }
@@ -48,7 +48,7 @@ struct VehicleInfoMergedCard: View {
                 if isEmbedded {
                     AnyView(
                         CollapsibleCard(
-                            title: "钥匙信息",
+                            title: "车辆与钥匙",
                             icon: "car.fill",
                             iconColor: AppTheme.accent,
                             isExpanded: $isExpanded,
@@ -113,15 +113,15 @@ struct MQTTInfoMergedCard: View {
 
     private var authRows: [PopupInfoRowItem] {
         [
-            PopupInfoRowItem("iphone.radiowaves.left.and.right", "ClientID", clientId, mono: true),
-            PopupInfoRowItem("person.fill", "Username", username, mono: true),
-            PopupInfoRowItem("key.fill", "Password", password, mono: true)
+            PopupInfoRowItem("iphone.radiowaves.left.and.right", "客户端", clientId, mono: true),
+            PopupInfoRowItem("person.fill", "用户名", username, mono: true),
+            PopupInfoRowItem("key.fill", "密码", password, mono: true)
         ]
     }
 
     private var serverRows: [PopupInfoRowItem] {
         [
-            PopupInfoRowItem("network", "Broker", broker, mono: true)
+            PopupInfoRowItem("network", "服务器", broker, mono: true)
         ]
     }
 
@@ -131,7 +131,7 @@ struct MQTTInfoMergedCard: View {
                 PopupInfoRowsView(rows: statusRows, labelWidth: 72)
             }
 
-            infoGroup(title: "认证信息") {
+            infoGroup(title: "连接账号") {
                 PopupInfoRowsView(rows: authRows, labelWidth: 72)
             }
 
@@ -141,14 +141,14 @@ struct MQTTInfoMergedCard: View {
 
             PopupInfoTextBlock(
                 icon: "doc.text.fill",
-                title: "凭证来源",
+                title: "登录来源",
                 value: tokenSource
             )
 
             if !topics.isEmpty {
                 PopupInfoListBlock(
                     icon: "dot.radiowaves.left.and.right",
-                    title: "订阅 Topics",
+                    title: "订阅主题",
                     items: topics,
                     countText: "\(topics.count) 项"
                 )

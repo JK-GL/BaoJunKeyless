@@ -17,14 +17,14 @@ final class VehicleBLEManager: NSObject {
 
         var errorDescription: String? {
             switch self {
-            case .notAuthenticated: return "BLE 未鉴权成功"
-            case .writeCharacteristicMissing: return "BLE 控制写特征不存在"
-            case .invalidConfig: return "BLE 控制配置无效"
-            case .frameBuildFailed: return "BLE 控制帧构造失败"
-            case .writeFailed(let detail): return "BLE 控制写入失败：\(detail)"
-            case .receiptTimeout: return "BLE 控制回包超时"
-            case .controlRejected(let detail): return "BLE 控制失败：\(detail)"
-            case .sessionStopped: return "BLE 会话已停止"
+            case .notAuthenticated: return "蓝牙尚未就绪"
+            case .writeCharacteristicMissing: return "蓝牙控制通道不可用"
+            case .invalidConfig: return "蓝牙配置无效"
+            case .frameBuildFailed: return "蓝牙指令发送失败"
+            case .writeFailed(_): return "蓝牙指令发送失败"
+            case .receiptTimeout: return "蓝牙控制超时"
+            case .controlRejected(_): return "车辆未接受该指令"
+            case .sessionStopped: return "蓝牙连接已断开"
             }
         }
     }
@@ -128,7 +128,7 @@ final class VehicleBLEManager: NSObject {
             case .unlock: return "解锁"
             case .lock: return "锁车"
             case .powerOff: return "远程熄火"
-            case .powerOnReady: return "BLE上电/启动授权"
+            case .powerOnReady: return "启动电源"
             }
         }
 

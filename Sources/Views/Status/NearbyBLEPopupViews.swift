@@ -168,7 +168,7 @@ private struct NearbyBLEDeviceRowView: View, Equatable {
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     if exactMatched {
-                        Text("目标匹配")
+                        Text("匹配")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(.black)
                             .padding(.horizontal, 6)
@@ -184,7 +184,7 @@ private struct NearbyBLEDeviceRowView: View, Equatable {
                             .background(Capsule().fill(AppTheme.accent))
                     }
                 }
-                Text("rssi=\(rssi) · score=\(scoreText) · mac=\(mac)")
+                Text("信号 \(rssi) dBm · 地址 \(mac)")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Color.white.opacity(0.62))
                     .lineLimit(2)

@@ -153,7 +153,7 @@ final class SGMWApiClient {
         case .unlock:
             return VehicleControlRequestPlan(command: .unlock, endpointCandidates: ["car/control/doorLock"], bodyKeys: ["vin", "status"], note: "BLE_SPEC v7.1：门锁控制 status=0 解锁")
         case .remoteStart:
-            return VehicleControlRequestPlan(command: .remoteStart, endpointCandidates: ["car/control/ignition/authorize"], bodyKeys: ["vin"], note: "Wuling/官方同款：ignition/authorize 短时上车启动授权（非远程直接点火）")
+            return VehicleControlRequestPlan(command: .remoteStart, endpointCandidates: ["car/control/ignition/authorize"], bodyKeys: ["vin"], note: "启动授权")
         case .remoteStop:
             return VehicleControlRequestPlan(command: .remoteStop, endpointCandidates: ["remote/V3/safety/sendVhlCtl"], bodyKeys: ["vin", "qgRemoteStopExtendedObjects"], note: "HTTP_BLE_CONTROL_DIG_RESULT：BLE 未连接时尝试 QG sendVhlCtl 一键关上电+关闭发动机")
         case .findCar:

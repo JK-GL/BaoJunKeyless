@@ -66,10 +66,7 @@ struct UnlockSettingsSection: View {
                 get: { settingsStore.settings.unlockEnabled },
                 set: { enabled in
                     settingsStore.settings.unlockEnabled = enabled
-                    if enabled {
-                        // 与启动电源互斥：开解锁就关启动电源
-                        settingsStore.settings.powerStartEnabled = false
-                    }
+                    // 不互斥关 UI：启动电源打开时，解锁仅逻辑失效，设置项仍可调
                     VehicleEventLogStore.shared.add(.keyless, enabled ? "开启无感解锁" : "关闭无感解锁")
                 }
             ))
@@ -78,19 +75,17 @@ struct UnlockSettingsSection: View {
                 get: { settingsStore.settings.powerStartEnabled },
                 set: { enabled in
                     settingsStore.settings.powerStartEnabled = enabled
-                    if enabled {
-                        // 打开后，无感靠近改为 BLE 启动电源，不再无感解锁
-                        settingsStore.settings.unlockEnabled = false
-                    }
+                    // 打开后无感靠近优先 BLE 启动电源；不关闭解锁开关，避免阈值等设置被折叠
                     VehicleEventLogStore.shared.add(
                         .keyless,
                         enabled ? "开启无感启动电源" : "关闭无感启动电源",
-                        detail: enabled ? "靠近后走 BLE powerOnReady，不再无感解锁" : ""
+                        detail: enabled ? "靠近车辆后自动解锁启动电源" : ""
                     )
                 }
             ))
 
-            if settingsStore.settings.unlockEnabled {
+            // 解锁或启动电源任一开启时，都显示阈值/靠近确认等设置
+            if settingsStore.settings.unlockEnabled || settingsStore.settings.powerStartEnabled {
                 VStack(spacing: 12) {
                     SliderRow(icon: "wifi", label: "dBm 阈值",
                               value: $settingsStore.settings.unlockThreshold, range: -110...(-30), step: 1,
