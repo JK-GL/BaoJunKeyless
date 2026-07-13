@@ -12,7 +12,7 @@ extension MQTTVehicleStateStore {
             case .idle:
                 if self.ignoreNextBLEIdleCallback {
                     self.ignoreNextBLEIdleCallback = false
-                    // 主动停扫/重启：保留「围栏外暂停」等策略态，不要被 idle 冲成未连接
+                    // 主动停扫/重启：保留「围栏外休眠」等策略态，不要被 idle 冲成未连接
                     if self.bleStatus == .pausedOutsideFence {
                         return
                     }
@@ -58,7 +58,7 @@ extension MQTTVehicleStateStore {
                 let keepPreview = self.bleDiagnosticsStore.isPreviewRSSI
                     && (self.bleStatus == .connecting || self.bleStatus == .authenticating)
                 self.connectionStatusStore.isSystemBLEConnected = false
-                // 若策略要求圈外暂停，保持专用状态而不是普通未连接
+                // 若策略要求围栏外休眠，保持专用状态而不是普通未连接
                 if self.shouldSuppressAutomaticBLEScan && !self.isBLESessionActive {
                     self.bleStatus = .pausedOutsideFence
                     self.setBLEDiagnosticPhase("围栏外休眠", detail: "仅围栏内扫描 · 进入围栏后自动警戒")
@@ -254,7 +254,7 @@ extension MQTTVehicleStateStore {
         }
     }
 
-    /// 圈外立即停扫：取消底层重试，并给胶囊明确文案状态
+    /// 围栏外立即休眠：取消底层重试，并给胶囊/阶段统一文案
     private func pauseAutomaticBLEScanOutsideFence(reason: String) {
         bleManager.allowsAutomaticScanRetry = false
         ignoreNextBLEIdleCallback = true
@@ -265,8 +265,8 @@ extension MQTTVehicleStateStore {
         setBLEDiagnosticPhase("围栏外休眠", detail: "仅围栏内扫描 · 进入围栏后自动警戒")
         vehicleEventLogStore.addCoalesced(
             .system,
-            "BLE 扫描已暂停",
-            detail: "仅围栏内扫描 · 当前圈外 · \(reason)",
+            "BLE 围栏外休眠",
+            detail: "仅围栏内扫描 · 当前围栏外 · \(reason)",
             identity: "scan-suppress-outside-fence",
             mergeWindow: 180
         )

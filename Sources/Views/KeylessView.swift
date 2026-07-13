@@ -195,14 +195,15 @@ private struct KeylessRealtimeStatusHost: View {
             && VehicleLocationDisplayStore.shared.displayLongitudeGcj != 0
         if !hasVehicleCoord { return "待就绪" }
         if backgroundExecution.isInGeofence { return "圈内 · 警戒" }
-        if settings.scanOnlyInsideGeofence { return "圈外 · 暂停扫描" }
-        return "圈外 · 休眠"
+        // 与 BLE 胶囊 / 当前阶段统一：仅围栏内扫描开启时用「围栏外 · 休眠」
+        if settings.scanOnlyInsideGeofence { return "围栏外 · 休眠" }
+        return "圈外 · 待机"
     }
 
     private var geofenceStatusColor: Color {
         switch geofenceStatusText {
         case "圈内 · 警戒": return AppTheme.green
-        case "圈外 · 暂停扫描": return AppTheme.orange
+        case "围栏外 · 休眠": return AppTheme.orange
         case "权限不足": return AppTheme.red
         case "待就绪": return AppTheme.orange
         case "未开启", "随无感停用": return Color.white.opacity(0.45)

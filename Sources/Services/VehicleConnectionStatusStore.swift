@@ -7,7 +7,7 @@ final class VehicleConnectionStatusStore: ObservableObject {
     enum LiveBLEStatus: Equatable {
         case disconnected
         case scanning
-        /// 仅围栏内扫描开启且当前在圈外：自动扫描暂停
+        /// 仅围栏内扫描开启且当前在围栏外：自动扫描休眠
         case pausedOutsideFence
         case connecting
         case connected

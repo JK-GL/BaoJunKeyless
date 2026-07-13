@@ -22,7 +22,7 @@ enum StatusAuthState {
 enum StatusBLEState: Equatable {
     case disconnected
     case scanning
-    /// 仅围栏内扫描 · 当前圈外，自动扫描暂停
+    /// 仅围栏内扫描 · 当前围栏外，自动扫描休眠
     case pausedOutsideFence
     case connecting
     case connected
@@ -45,7 +45,7 @@ enum StatusBLEState: Equatable {
         switch self {
         case .disconnected: return "BLE未连接"
         case .scanning: return "BLE扫描中"
-        case .pausedOutsideFence: return "BLE围栏外暂停"
+        case .pausedOutsideFence: return "BLE围栏外休眠"
         // connecting = App 正在连，但系统未必已连上；文案用“寻找/连接中”避免误解成“已连上”
         case .connecting: return "BLE连接中"
         case .connected: return "BLE链路中"
