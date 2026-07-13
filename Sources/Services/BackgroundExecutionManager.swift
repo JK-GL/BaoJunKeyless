@@ -45,6 +45,10 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
     private var cancellables = Set<AnyCancellable>()
     private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    /// 当前后台任务申请原因（用于到期时分流日志）
+    private var backgroundTaskReason: String?
+    /// 是否处于系统 expiration 回调路径（避免再刷一条重复的「结束后台任务 id=」）
+    private var isEndingBackgroundTaskFromExpiration = false
     private var monitoredRegion: CLCircularRegion?
     private var lastFenceCenter: CLLocationCoordinate2D?
     private var lastFenceRadius: CLLocationDistance = 0
@@ -439,20 +443,98 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     private func beginBackgroundTask(reason: String) {
         guard settingsStore.settings.backgroundEnhancedEnabled else { return }
         if backgroundTaskID != .invalid { return }
+        backgroundTaskReason = reason
         backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "SGMWKey.\(reason)") { [weak self] in
-            self?.logError("后台任务被系统回收", detail: reason, identity: "bg-task-expired")
-            self?.endBackgroundTask()
+            self?.handleBackgroundTaskExpired()
         }
         logInfo("增强后台执行", detail: reasonText(reason), identity: "bg-task-begin|\(reason)")
         CrashLogger.shared.mark("BG", "beginBackgroundTask \(reason) id=\(backgroundTaskID.rawValue)")
+    }
+
+    /// 系统回收短时后台任务：
+    /// - 圈外/围栏休眠等省电路径 → 系统信息（正常挂起，不标错误）
+    /// - 圈内警戒 / BLE 活跃 / 鉴权中 → 仍记错误（真异常）
+    private func handleBackgroundTaskExpired() {
+        let reason = backgroundTaskReason ?? "unknown"
+        let detailPrefix = expirationDetail(for: reason)
+        if shouldTreatBackgroundExpirationAsError {
+            logError(
+                "后台任务被系统回收",
+                detail: "\(detailPrefix) · \(reason)",
+                identity: "bg-task-expired-error|\(reason)|\(phase.rawValue)"
+            )
+        } else {
+            logInfo(
+                "短时任务结束",
+                detail: "\(detailPrefix) · \(reason)",
+                identity: "bg-task-expired-normal|\(reason)|\(phase.rawValue)"
+            )
+        }
+        CrashLogger.shared.mark(
+            "BG",
+            "backgroundTask expired reason=\(reason) phase=\(phase.rawValue) fence=\(isInGeofence ? 1 : 0) error=\(shouldTreatBackgroundExpirationAsError ? 1 : 0)"
+        )
+        isEndingBackgroundTaskFromExpiration = true
+        endBackgroundTask()
+        isEndingBackgroundTaskFromExpiration = false
+    }
+
+    /// 仅在「确实在干活」时把到期标错误：保活中 / 圈内警戒 / BLE 活跃 / 鉴权中。
+    /// 圈外休眠、无感关闭、兜底 phase 不算错误。
+    private var shouldTreatBackgroundExpirationAsError: Bool {
+        if isKeepAliveActive || keepAliveDesired { return true }
+        if isInGeofence { return true }
+        switch phase {
+        case .bleActive, .keylessAuthenticated:
+            return true
+        case .approachArming:
+            // 只有真在圈内警戒才算；圈外被兜底成 approachArming 不算
+            return isInGeofence
+        case .fenceSleep, .idleDisabled, .degraded:
+            return false
+        }
+    }
+
+    private func expirationDetail(for reason: String) -> String {
+        if shouldTreatBackgroundExpirationAsError {
+            if isKeepAliveActive || keepAliveDesired {
+                return "定位保活中被中断"
+            }
+            if isInGeofence || phase == .approachArming {
+                return "围栏内警戒中被中断"
+            }
+            switch phase {
+            case .bleActive:
+                return "BLE 活跃中被中断"
+            case .keylessAuthenticated:
+                return "鉴权中被中断"
+            default:
+                return "后台执行中被中断 · \(phase.rawValue)"
+            }
+        }
+        // 正常挂起：详细说明当前为何不值得标错误
+        if phase == .fenceSleep || (!isInGeofence && settingsStore.settings.scanOnlyInsideGeofence) {
+            return "围栏外休眠 · 正常挂起"
+        }
+        if !settingsStore.settings.keylessEnabled {
+            return "无感已关 · 正常挂起"
+        }
+        if !isInGeofence {
+            return "围栏外 · 正常挂起 · \(phase.rawValue)"
+        }
+        return "正常挂起 · \(phase.rawValue)"
     }
 
     private func endBackgroundTask() {
         guard backgroundTaskID != .invalid else { return }
         let id = backgroundTaskID
         backgroundTaskID = .invalid
+        backgroundTaskReason = nil
         UIApplication.shared.endBackgroundTask(id)
-        logInfo("结束后台任务", detail: "id=\(id.rawValue)", identity: "bg-task-end")
+        // 到期路径已写「短时任务结束 / 被系统回收」，避免再刷一条重复 id 日志
+        if !isEndingBackgroundTaskFromExpiration {
+            logInfo("结束后台任务", detail: "id=\(id.rawValue)", identity: "bg-task-end")
+        }
         CrashLogger.shared.mark("BG", "endBackgroundTask id=\(id.rawValue)")
     }
 
