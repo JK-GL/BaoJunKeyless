@@ -49,10 +49,6 @@ struct KeylessSettings: Codable {
     var locationKeepAliveEnabled: Bool = true
     /// 后台状态同步
     var backgroundStateSyncEnabled: Bool = true
-    /// 无感结果通知
-    var keylessResultNotificationEnabled: Bool = true
-    /// 后台受限提醒
-    var backgroundLimitationNotificationEnabled: Bool = true
 
     init() {}
 
@@ -64,7 +60,6 @@ struct KeylessSettings: Codable {
         case backgroundSectionExpanded
         case backgroundEnhancedEnabled, geofenceWakeEnabled, geofenceRadiusMeters
         case locationKeepAliveEnabled, backgroundStateSyncEnabled
-        case keylessResultNotificationEnabled, backgroundLimitationNotificationEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -105,8 +100,6 @@ struct KeylessSettings: Codable {
         geofenceRadiusMeters = Self.clampedGeofenceRadius(rawRadius)
         locationKeepAliveEnabled = try c.decodeIfPresent(Bool.self, forKey: .locationKeepAliveEnabled) ?? true
         backgroundStateSyncEnabled = try c.decodeIfPresent(Bool.self, forKey: .backgroundStateSyncEnabled) ?? true
-        keylessResultNotificationEnabled = try c.decodeIfPresent(Bool.self, forKey: .keylessResultNotificationEnabled) ?? true
-        backgroundLimitationNotificationEnabled = try c.decodeIfPresent(Bool.self, forKey: .backgroundLimitationNotificationEnabled) ?? true
     }
 
     static func clampedGeofenceRadius(_ value: Double) -> Double {
@@ -143,11 +136,7 @@ class KeylessSettingsStore: ObservableObject {
                 return
             }
             save()
-            // TODO: wire to BackgroundExecutionManager / MQTTVehicleStateStore.applyRuntimeSettings()
-            // - keylessEnabled false: stop geofence / location keep-alive / auto keyless
-            // - geofence radius/enabled: update monitored region
-            // - backgroundStateSyncEnabled: switch background poll policy
-            // - notification flags: only affect local notifications
+            // BackgroundExecutionManager 自行观察 $settings 并即时应用
         }
     }
 

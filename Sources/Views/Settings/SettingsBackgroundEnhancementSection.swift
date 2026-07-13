@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 设置页「后台增强」折叠组：默认折叠，点击标题展开；开关持久化到 KeylessSettingsStore。
+/// 设置页「后台增强」折叠组：默认折叠，点击标题展开；开关持久化并接线 BackgroundExecutionManager。
 struct SettingsBackgroundEnhancementSection: View {
     @EnvironmentObject var keylessSettings: KeylessSettingsStore
 
@@ -76,7 +76,6 @@ struct SettingsBackgroundEnhancementSection: View {
                                 "修改围栏半径",
                                 detail: "\(Int(KeylessSettings.clampedGeofenceRadius(value))) 米"
                             )
-                            // TODO: wire — update monitored CLCircularRegion
                         }
                         .disabled(!controlsEnabled)
                         .opacity(controlsEnabled ? 1 : 0.45)
@@ -103,21 +102,7 @@ struct SettingsBackgroundEnhancementSection: View {
                     isOn: binding(\.backgroundStateSyncEnabled, log: "后台状态同步")
                 )
 
-                backgroundToggle(
-                    icon: "bell.badge",
-                    title: "无感结果通知",
-                    subtitle: "自动解锁/上锁后发送系统通知",
-                    isOn: binding(\.keylessResultNotificationEnabled, log: "无感结果通知")
-                )
-
-                backgroundToggle(
-                    icon: "exclamationmark.bubble",
-                    title: "后台受限提醒",
-                    subtitle: "当系统限制导致无感暂停时通知你",
-                    isOn: binding(\.backgroundLimitationNotificationEnabled, log: "后台受限提醒")
-                )
-
-                Text("不会夸大为永久后台。系统省电策略仍可能限制执行；请保留必要定位/通知权限。")
+                Text("无感结果通知沿用无感页的解锁/上锁弹窗开关。不会夸大为永久后台；系统省电策略仍可能限制执行，请保留必要定位/蓝牙权限。")
                     .font(.system(size: 11))
                     .foregroundStyle(Color.white.opacity(0.40))
                     .fixedSize(horizontal: false, vertical: true)
@@ -134,7 +119,6 @@ struct SettingsBackgroundEnhancementSection: View {
                     .keyless,
                     newValue ? "开启\(title)" : "关闭\(title)"
                 )
-                // TODO: wire to BackgroundExecutionManager for immediate apply
             }
         )
     }

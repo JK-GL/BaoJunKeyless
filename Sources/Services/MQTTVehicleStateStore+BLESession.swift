@@ -254,8 +254,14 @@ extension MQTTVehicleStateStore {
             guard let self else { return }
             self.isAppInForeground = true
             self.didLogManualForegroundSkip = false
+            BackgroundExecutionManager.shared.handleWillEnterForeground()
+            self.applyBackgroundRuntimeSettings(reason: "enter-foreground")
             if !self.userManuallyStoppedBLE {
                 self.ensureBLESession(forceRestart: false, optimisticScanning: true)
+            }
+            // 回前台强制纠偏一次
+            if self.keylessSettingsStore.settings.backgroundStateSyncEnabled {
+                self.pollHTTPOnce(userInitiated: false, completion: nil)
             }
         }
         backgroundObserver = NotificationCenter.default.addObserver(
@@ -266,6 +272,8 @@ extension MQTTVehicleStateStore {
             guard let self else { return }
             self.isAppInForeground = false
             self.didLogManualForegroundSkip = false
+            BackgroundExecutionManager.shared.handleDidEnterBackground()
+            self.applyBackgroundRuntimeSettings(reason: "enter-background")
         }
     }
 
@@ -293,6 +301,9 @@ extension MQTTVehicleStateStore {
                 let wasEnabled = self.lastObservedKeylessEnabled
                 self.lastObservedKeylessEnabled = settings.keylessEnabled
 
+                // 后台状态同步等开关变化时，立即重算轮询
+                self.applyBackgroundRuntimeSettings(reason: isFirst ? "settings-init" : "settings-change")
+
                 if isFirst {
                     self.refreshBLESessionIfNeeded()
                     return
@@ -311,7 +322,7 @@ extension MQTTVehicleStateStore {
                     self.userManuallyStoppedBLE = false
                     self.bleManager.stop()
                     self.connectionStatusStore.isSystemBLEConnected = false
-                self.bleStatus = .disconnected
+                    self.bleStatus = .disconnected
                     self.setBLEDiagnosticPhase("无感关闭", detail: "无感开关已关闭")
                     if wasEnabled != false {
                         self.resetKeylessRuntimeState()

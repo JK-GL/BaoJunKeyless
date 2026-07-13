@@ -20,6 +20,8 @@ struct BaoJunKeylessApp: App {
         )
         _ = CrashLogger.shared
         AppNotificationManager.shared.configure()
+        // 启动后台增强运行时（围栏 / 保活 / background task）
+        _ = BackgroundExecutionManager.shared
         AppDiagnosticsSettings.resetHiddenDiagnosticsToggles()
         if CrashLogger.shared.isLoggingEnabled {
             CrashLogger.shared.logMemoryBaseline()

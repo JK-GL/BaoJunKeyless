@@ -4,6 +4,12 @@ extension MQTTVehicleStateStore {
     /// MQTT 在线新鲜时慢轮询；断线/过期时快轮询全量
     static let httpPollIntervalMQTTFresh: TimeInterval = 20
     static let httpPollIntervalMQTTStale: TimeInterval = 3
+    /// 后台：MQTT 新鲜 / 断旧
+    static let httpPollIntervalBackgroundMQTTFresh: TimeInterval = 90
+    static let httpPollIntervalBackgroundMQTTStale: TimeInterval = 25
+    /// 后台且关闭状态同步：更低频兜底
+    static let httpPollIntervalBackgroundSyncOffFresh: TimeInterval = 180
+    static let httpPollIntervalBackgroundSyncOffStale: TimeInterval = 60
     /// MQTT 在此时间内有消息，视为新鲜
     static let mqttFreshWindow: TimeInterval = 60
 
@@ -14,17 +20,50 @@ extension MQTTVehicleStateStore {
     }
 
     func currentHTTPPollInterval(now: Date = Date()) -> TimeInterval {
-        isMQTTRealtimeFresh(now: now) ? Self.httpPollIntervalMQTTFresh : Self.httpPollIntervalMQTTStale
+        let fresh = isMQTTRealtimeFresh(now: now)
+        if isAppInForeground {
+            return fresh ? Self.httpPollIntervalMQTTFresh : Self.httpPollIntervalMQTTStale
+        }
+        // 后台
+        if keylessSettingsStore.settings.backgroundStateSyncEnabled {
+            return fresh ? Self.httpPollIntervalBackgroundMQTTFresh : Self.httpPollIntervalBackgroundMQTTStale
+        }
+        return fresh ? Self.httpPollIntervalBackgroundSyncOffFresh : Self.httpPollIntervalBackgroundSyncOffStale
+    }
+
+    /// 前后台 / 设置切换时重算 HTTP 轮询与 MQTT 保活策略
+    func applyBackgroundRuntimeSettings(reason: String) {
+        let settings = keylessSettingsStore.settings
+        CrashLogger.shared.mark(
+            "BG",
+            "applyRuntime \(reason) fg=\(isAppInForeground ? 1 : 0) sync=\(settings.backgroundStateSyncEnabled ? 1 : 0) keyless=\(settings.keylessEnabled ? 1 : 0)"
+        )
+
+        // 始终用当前策略重挂 HTTP 定时器（前台 20/3，后台 90/25 或更慢）
+        if credentialsStore.accessToken.isEmpty {
+            httpTimer?.invalidate()
+            httpTimer = nil
+            return
+        }
+        startHTTPPolling(immediate: false)
+
+        // 后台且允许状态同步时，尽量保持 MQTT
+        if !isAppInForeground && settings.backgroundStateSyncEnabled && settings.keylessEnabled {
+            if mqttStatus != .connected && mqttStatus != .connecting {
+                reconnect()
+            }
+        }
     }
 
     func startHTTPPolling(immediate: Bool) {
         httpTimer?.invalidate()
-        // 动态频率：MQTT 新鲜 20s 元信息；MQTT 断/旧 3s 全量
+        // 动态频率：前台 MQTT 新鲜 20s / 断旧 3s；后台自动降频
         let interval = currentHTTPPollInterval()
         let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             guard let self else { return }
+            // 后台关闭状态同步时仍允许极低频兜底，但不做 immediate 狂刷
             self.pollHTTPOnce(userInitiated: false, completion: nil)
-            // 根据 MQTT 状态自适应下一次间隔
+            // 根据 MQTT / 前后台状态自适应下一次间隔
             let next = self.currentHTTPPollInterval()
             if abs((self.httpTimer?.timeInterval ?? 0) - next) > 0.5 {
                 self.startHTTPPolling(immediate: false)

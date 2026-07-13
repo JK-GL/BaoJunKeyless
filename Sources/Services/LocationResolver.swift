@@ -37,6 +37,18 @@ final class LocationResolver: NSObject, CLLocationManagerDelegate {
         return (lat + latOffset, lng + lngOffset)
     }
 
+    /// GCJ-02 → WGS-84（电子围栏 / CoreLocation 用）。迭代反算，精度约米级。
+    static func gcj02ToWgs84(lat: Double, lng: Double) -> (lat: Double, lng: Double) {
+        var wgsLat = lat
+        var wgsLng = lng
+        for _ in 0..<6 {
+            let gcj = wgs84ToGcj02(lat: wgsLat, lng: wgsLng)
+            wgsLat -= (gcj.lat - lat)
+            wgsLng -= (gcj.lng - lng)
+        }
+        return (wgsLat, wgsLng)
+    }
+
     private static func transformLat(x: Double, y: Double) -> Double {
         var ret = -100 + 2*x + 3*y + 0.2*y*y + 0.1*x*y + 0.2*sqrt(abs(x))
         ret += (20*sin(6*x*Double.pi) + 20*sin(2*x*Double.pi)) * 2/3
