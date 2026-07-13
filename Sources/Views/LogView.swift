@@ -317,9 +317,18 @@ struct LogView: View {
             withAnimation { toastText = "暂无可复制日志" }
             return
         }
-        let text = vehicleLog.exportText(entries: filteredLogs)
+        // 复制 = DEBUG 详细格式（完整时间戳），界面仍显示中文短时间
+        let text = vehicleLog.exportText(
+            entries: filteredLogs,
+            filterTitle: selectedFilter.title,
+            includeDiagnosticsTail: selectedFilter == .category(.error) || filteredLogs.contains(where: { $0.category == .error })
+        )
         UIPasteboard.general.string = text
-        withAnimation { toastText = "已复制今日日志" }
+        withAnimation {
+            toastText = selectedFilter == .category(.error)
+                ? "已复制错误日志（详细）"
+                : "已复制详细日志"
+        }
     }
 
     private func exportFilteredLogs() {
@@ -332,6 +341,11 @@ struct LogView: View {
             return
         }
         sharePayload = SharePayload(activityItems: [url])
+        withAnimation {
+            toastText = selectedFilter == .category(.error)
+                ? "已导出错误日志（详细）"
+                : "已导出详细日志"
+        }
     }
 }
 

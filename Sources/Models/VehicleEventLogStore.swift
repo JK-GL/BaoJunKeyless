@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum VehicleEventLogCategory: String, Codable, CaseIterable, Hashable {
     case system
@@ -104,6 +105,7 @@ struct VehicleEventLogEntry: Identifiable, Codable, Equatable {
     }
 
     var timeText: String {
+        // 界面：短时间，中文可读
         AppDateFormatters.logTime.string(from: date)
     }
 
@@ -116,6 +118,30 @@ struct VehicleEventLogEntry: Identifiable, Codable, Equatable {
         let firstText = AppDateFormatters.logTime.string(from: firstDate)
         let lastText = AppDateFormatters.logTime.string(from: date)
         return "首次 \(firstText) · 最近 \(lastText) · 共 \(repeatCount) 次"
+    }
+
+    /// 复制/导出用：完整时间 + 机器可读字段，方便发给开发排查
+    var debugExportLine: String {
+        let last = AppDateFormatters.timestampMillis.string(from: date)
+        let first = AppDateFormatters.timestampMillis.string(from: firstDate)
+        let cat = "\(category.rawValue.uppercased())/\(category.title)"
+        var parts: [String] = [
+            "[\(last)]",
+            "[\(cat)]",
+            title
+        ]
+        if repeatCount > 1 {
+            parts.append("×\(repeatCount)")
+        }
+        if !detail.isEmpty {
+            parts.append("| detail=\(detail)")
+        }
+        if repeatCount > 1 {
+            parts.append("| first=\(first)")
+            parts.append("| last=\(last)")
+        }
+        parts.append("| id=\(id.uuidString.prefix(8))")
+        return parts.joined(separator: " ")
     }
 }
 
@@ -210,19 +236,55 @@ final class VehicleEventLogStore: ObservableObject {
         UserDefaults.standard.removeObject(forKey: key)
     }
 
-    func exportText(entries: [VehicleEventLogEntry]) -> String {
+    /// 界面不使用；复制/导出使用 debug 格式（完整时间戳 + 可定位字段）。
+    func exportText(
+        entries: [VehicleEventLogEntry],
+        filterTitle: String = "全部",
+        includeDiagnosticsTail: Bool = true
+    ) -> String {
         guard !entries.isEmpty else { return "" }
-        return entries.map { entry in
-            let detail = entry.detail.isEmpty ? "" : " | \(entry.detail)"
-            return "[\(AppDateFormatters.fullDateTime.string(from: entry.date))] [\(entry.category.title)] \(entry.displayTitle)\(detail)"
-        }.joined(separator: "\n")
+
+        let now = Date()
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "--"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "--"
+        let model = UIDevice.current.model
+        let system = "\(UIDevice.current.systemName) \(UIDevice.current.systemVersion)"
+
+        var lines: [String] = []
+        lines.append("=== SGMW Key Event Log (DEBUG) ===")
+        lines.append("exportedAt=\(AppDateFormatters.timestampMillis.string(from: now))")
+        lines.append("filter=\(filterTitle)")
+        lines.append("count=\(entries.count)")
+        lines.append("errorCountInSet=\(entries.filter { $0.category == .error }.count)")
+        lines.append("app=SGMW Key \(version)(\(build))")
+        lines.append("device=\(model) · \(system)")
+        lines.append("note=UI shows Chinese short time; this export is full debug for bugfix.")
+        lines.append("--- events (newest first) ---")
+
+        // 导出按时间新→旧，与界面一致
+        for entry in entries {
+            lines.append(entry.debugExportLine)
+        }
+
+        // 错误相关导出时附带底层诊断尾部，方便一眼对照
+        let hasError = entries.contains { $0.category == .error }
+        if includeDiagnosticsTail && (hasError || filterTitle == "error" || filterTitle == "错误") {
+            let diag = CrashLogger.shared.readReversedRecentLog(limit: 120)
+            if !diag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                lines.append("--- diagnostics tail (CrashLogger, newest first) ---")
+                lines.append(diag)
+            }
+        }
+
+        lines.append("=== end ===")
+        return lines.joined(separator: "\n")
     }
 
     func exportFile(entries: [VehicleEventLogEntry], filterTitle: String) -> URL? {
-        let text = exportText(entries: entries)
+        let text = exportText(entries: entries, filterTitle: filterTitle, includeDiagnosticsTail: true)
         guard !text.isEmpty else { return nil }
         let safeFilter = filterTitle.replacingOccurrences(of: " ", with: "_")
-        let filename = "BaoJunKeyless_vehicle_events_\(safeFilter)_\(AppDateFormatters.fileTimestamp.string(from: Date())).txt"
+        let filename = "SGMWKey_events_\(safeFilter)_\(AppDateFormatters.fileTimestamp.string(from: Date())).txt"
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
         do {
             try text.write(to: url, atomically: true, encoding: .utf8)
