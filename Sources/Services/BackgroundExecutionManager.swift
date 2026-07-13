@@ -26,8 +26,13 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     @Published private(set) var isInGeofence = false
     @Published private(set) var isKeepAliveActive = false
     @Published private(set) var lastLimitationReason: String?
-    /// 围栏摘要（给 UI 校验圆心/半径/距圆心，不含新鲜度）
+    /// 围栏数据行：半径 · 距圆心（无感 A+C 用，不含圈内外/地址）
+    @Published private(set) var geofenceMetricsText: String = "围栏未挂载"
+    /// 设置页数据行：半径 · 距圆心 · 圈内/外
+    @Published private(set) var geofenceSettingsMetricsText: String = "围栏未挂载"
+    /// 兼容旧字段：等同 settings 数据行（日志/旧 UI）
     @Published private(set) var geofenceSummaryText: String = "围栏未挂载"
+    /// 圆心地址；空则 UI 隐藏地址行
     @Published private(set) var geofenceCenterAddress: String = ""
     @Published private(set) var distanceToFenceCenterMeters: CLLocationDistance?
 
@@ -332,24 +337,29 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         return CLLocationCoordinate2D(latitude: wgs.lat, longitude: wgs.lng)
     }
 
-    /// 刷新围栏摘要：半径 + 圆心地址 + 手机距圆心（无新鲜度）
+    /// 刷新围栏摘要：数据行与地址分离（无新鲜度）
     private func refreshGeofenceSummary() {
         let settings = settingsStore.settings
-        geofenceCenterAddress = locationDisplayStore.displayAddress
+        let address = locationDisplayStore.displayAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        geofenceCenterAddress = address
+
+        func applyIdle(_ text: String) {
+            distanceToFenceCenterMeters = nil
+            geofenceMetricsText = text
+            geofenceSettingsMetricsText = text
+            geofenceSummaryText = text
+        }
 
         if !settings.keylessEnabled {
-            distanceToFenceCenterMeters = nil
-            geofenceSummaryText = "随无感停用"
+            applyIdle("随无感停用")
             return
         }
         if !settings.geofenceWakeEnabled {
-            distanceToFenceCenterMeters = nil
-            geofenceSummaryText = "围栏未开启"
+            applyIdle("围栏未开启")
             return
         }
         guard let center = lastFenceCenter ?? currentVehicleCoordinateWGS84() else {
-            distanceToFenceCenterMeters = nil
-            geofenceSummaryText = "待就绪 · 无车辆坐标"
+            applyIdle("待就绪 · 无车辆坐标")
             return
         }
         let radius = Int(lastFenceRadius > 0 ? lastFenceRadius : KeylessSettings.clampedGeofenceRadius(settings.geofenceRadiusMeters))
@@ -368,22 +378,28 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             }
         }
 
-        var parts: [String] = []
-        parts.append("半径 \(radius) 米")
+        let distPart: String
         if let d = distanceToFenceCenterMeters {
             if d < 1000 {
-                parts.append(String(format: "距圆心约 %.0f 米", d))
+                distPart = String(format: "距圆心约 %.0f 米", d)
             } else {
-                parts.append(String(format: "距圆心约 %.1f 公里", d / 1000))
+                distPart = String(format: "距圆心约 %.1f 公里", d / 1000)
             }
         } else {
-            parts.append("距圆心--")
+            distPart = "距圆心--"
         }
-        parts.append(isInGeofence ? "圈内" : "圈外")
-        if !geofenceCenterAddress.isEmpty {
-            parts.append(geofenceCenterAddress)
+        let zonePart = isInGeofence ? "圈内" : "圈外"
+
+        // 无感 A+C：仅 半径 · 距圆心（圈内外由「围栏状态」表达）
+        geofenceMetricsText = "半径 \(radius) 米 · \(distPart)"
+        // 设置两行：数据行含圈内外，地址另起一行
+        geofenceSettingsMetricsText = "半径 \(radius) 米 · \(distPart) · \(zonePart)"
+        // 兼容旧字段（日志等）
+        if address.isEmpty {
+            geofenceSummaryText = geofenceSettingsMetricsText
+        } else {
+            geofenceSummaryText = "\(geofenceSettingsMetricsText) · \(address)"
         }
-        geofenceSummaryText = parts.joined(separator: " · ")
     }
 
     // MARK: - Keep-alive / Background task

@@ -164,9 +164,18 @@ struct SettingsBackgroundEnhancementSection: View {
     }
 }
 
-/// 设置页围栏摘要：半径 · 距圆心 · 圈内/外 · 地址（无新鲜度）
+/// 设置页围栏摘要：上行数据 / 下行地址（无地址则隐藏）
 private struct GeofenceSummarySettingsRow: View {
     @ObservedObject private var backgroundExecution = BackgroundExecutionManager.shared
+
+    private var metricsText: String {
+        let t = backgroundExecution.geofenceSettingsMetricsText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? "--" : t
+    }
+
+    private var addressText: String {
+        backgroundExecution.geofenceCenterAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -175,14 +184,24 @@ private struct GeofenceSummarySettingsRow: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(AppTheme.purple.opacity(0.9))
                     .frame(width: 18)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text("围栏摘要")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.85))
-                    Text(backgroundExecution.geofenceSummaryText)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color.white.opacity(0.55))
-                        .fixedSize(horizontal: false, vertical: true)
+                    // 数据行：半径 · 距圆心 · 圈内/外
+                    Text(metricsText)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.72))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                    // 地址行：与数据分开；无地址则隐藏
+                    if !addressText.isEmpty {
+                        Text(addressText)
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Color.white.opacity(0.48))
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.85)
+                    }
                 }
                 Spacer(minLength: 0)
             }

@@ -211,10 +211,15 @@ private struct KeylessRealtimeStatusHost: View {
         }
     }
 
-    /// 围栏摘要：半径 · 距圆心 · 圈内/外 · 地址（无新鲜度）
-    private var geofenceSummaryDisplay: String {
-        let text = backgroundExecution.geofenceSummaryText.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// 围栏摘要数据行：半径 · 距圆心（圈内外由围栏状态表达）
+    private var geofenceMetricsDisplay: String {
+        let text = backgroundExecution.geofenceMetricsText.trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? "--" : text
+    }
+
+    /// 圆心地址；空则隐藏副行
+    private var geofenceAddressDisplay: String {
+        backgroundExecution.geofenceCenterAddress.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var body: some View {
@@ -229,7 +234,14 @@ private struct KeylessRealtimeStatusHost: View {
                 rows: [
                     PopupInfoRowItem("wave.3.right", "当前阶段", phaseText, color: .white),
                     PopupInfoRowItem("location.circle", "围栏状态", geofenceStatusText, color: geofenceStatusColor),
-                    PopupInfoRowItem("mappin.and.ellipse", "围栏摘要", geofenceSummaryDisplay, color: Color.white.opacity(0.78)),
+                    PopupInfoRowItem(
+                        "mappin.and.ellipse",
+                        "围栏摘要",
+                        geofenceMetricsDisplay,
+                        secondaryValue: geofenceAddressDisplay,
+                        color: Color.white.opacity(0.82),
+                        secondaryColor: Color.white.opacity(0.45)
+                    ),
                     PopupInfoRowItem("iphone.radiowaves.left.and.right", approachLabel, phoneNearbyText),
                     PopupInfoRowItem("dot.radiowaves.left.and.right", "信号", signalText, color: AppTheme.accent),
                     PopupInfoRowItem("lock.fill", "车锁状态", state.locked == true ? "已锁" : (state.locked == false ? "未锁" : "--")),
@@ -254,10 +266,16 @@ private struct KeylessRealtimeStatusHost: View {
                         color: binding == nil ? .secondary : AppTheme.green
                     )
                 ],
-                labelWidth: 74,
-                valueLineLimit: nil,
-                valueMinimumScaleFactor: 0.78,
-                rowVerticalPadding: 8
+                labelWidth: 68,
+                // 主值尽量单行；地址走 secondary，避免整卡上下被长文撑开
+                valueLineLimit: 1,
+                secondaryLineLimit: 2,
+                valueMinimumScaleFactor: 0.72,
+                rowVerticalPadding: 5,
+                labelFontSize: 12,
+                valueFontSize: 12,
+                secondaryFontSize: 10,
+                iconSize: 12
             )
 
             if binding != nil {

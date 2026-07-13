@@ -68,20 +68,36 @@ struct PopupInfoRowItem: Identifiable, Equatable {
     let icon: String
     let label: String
     let value: String
+    /// 可选第二行（如围栏地址）；空则不显示，避免与主值挤成一坨
+    let secondaryValue: String
     let mono: Bool
     let color: Color
+    let secondaryColor: Color
 
-    init(_ icon: String, _ label: String, _ value: String, mono: Bool = false, color: Color = .primary) {
+    init(
+        _ icon: String,
+        _ label: String,
+        _ value: String,
+        secondaryValue: String = "",
+        mono: Bool = false,
+        color: Color = .primary,
+        secondaryColor: Color = Color.white.opacity(0.48)
+    ) {
         self.id = "\(icon)|\(label)"
         self.icon = icon
         self.label = label
         self.value = value
+        self.secondaryValue = secondaryValue
         self.mono = mono
         self.color = color
+        self.secondaryColor = secondaryColor
     }
 
     static func == (lhs: PopupInfoRowItem, rhs: PopupInfoRowItem) -> Bool {
-        lhs.id == rhs.id && lhs.value == rhs.value && lhs.mono == rhs.mono
+        lhs.id == rhs.id
+            && lhs.value == rhs.value
+            && lhs.secondaryValue == rhs.secondaryValue
+            && lhs.mono == rhs.mono
     }
 }
 
@@ -100,8 +116,16 @@ struct PopupInfoRowsView: View {
     let rows: [PopupInfoRowItem]
     var labelWidth: CGFloat? = nil
     var valueLineLimit: Int? = 1
+    var secondaryLineLimit: Int = 2
     var valueMinimumScaleFactor: CGFloat = 0.64
     var rowVerticalPadding: CGFloat = 7
+    /// 标签/图标字号（默认 13；无感实时可略小）
+    var labelFontSize: CGFloat = 13
+    /// 主值字号（mono 会再减 1）
+    var valueFontSize: CGFloat = 13
+    /// 副行字号
+    var secondaryFontSize: CGFloat = 10.5
+    var iconSize: CGFloat = 13
 
     var body: some View {
         VStack(spacing: 0) {
@@ -117,9 +141,11 @@ struct PopupInfoRowsView: View {
 
     @ViewBuilder
     private func infoRow(_ row: PopupInfoRowItem) -> some View {
-        HStack(spacing: 10) {
+        let hasSecondary = !row.secondaryValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // 左标签固定、右值贴右；避免 maxWidth infinity 把值块撑到中间
+        HStack(alignment: .center, spacing: 10) {
             Image(systemName: row.icon)
-                .font(.system(size: 13))
+                .font(.system(size: iconSize))
                 .foregroundColor(.secondary)
                 .frame(width: 20)
 
@@ -127,14 +153,28 @@ struct PopupInfoRowsView: View {
 
             Spacer(minLength: 8)
 
-            Text(row.value.isEmpty ? "--" : row.value)
-                .font(.system(size: row.mono ? 11 : 13,
-                              weight: .medium,
-                              design: row.mono ? .monospaced : .default))
-                .foregroundColor(row.color)
-                .multilineTextAlignment(.trailing)
-                .lineLimit(valueLineLimit)
-                .minimumScaleFactor(valueMinimumScaleFactor)
+            VStack(alignment: .trailing, spacing: hasSecondary ? 2 : 0) {
+                Text(row.value.isEmpty ? "--" : row.value)
+                    .font(.system(
+                        size: row.mono ? max(10, valueFontSize - 1) : valueFontSize,
+                        weight: .medium,
+                        design: row.mono ? .monospaced : .default
+                    ))
+                    .foregroundColor(row.color)
+                    .multilineTextAlignment(.trailing)
+                    .lineLimit(valueLineLimit)
+                    .minimumScaleFactor(valueMinimumScaleFactor)
+
+                if hasSecondary {
+                    Text(row.secondaryValue)
+                        .font(.system(size: secondaryFontSize, weight: .regular))
+                        .foregroundColor(row.secondaryColor)
+                        .multilineTextAlignment(.trailing)
+                        .lineLimit(secondaryLineLimit)
+                        .minimumScaleFactor(0.85)
+                }
+            }
+            .layoutPriority(1)
         }
         .padding(.vertical, rowVerticalPadding)
     }
@@ -143,13 +183,13 @@ struct PopupInfoRowsView: View {
     private func labelText(_ label: String) -> some View {
         if let labelWidth = labelWidth {
             Text(label)
-                .font(.system(size: 13))
+                .font(.system(size: labelFontSize))
                 .foregroundColor(.secondary)
                 .lineLimit(1)
                 .frame(width: labelWidth, alignment: .leading)
         } else {
             Text(label)
-                .font(.system(size: 13))
+                .font(.system(size: labelFontSize))
                 .foregroundColor(.secondary)
                 .lineLimit(1)
         }
