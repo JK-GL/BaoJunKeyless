@@ -26,6 +26,10 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     @Published private(set) var isInGeofence = false
     @Published private(set) var isKeepAliveActive = false
     @Published private(set) var lastLimitationReason: String?
+    /// 围栏摘要（给 UI 校验圆心/半径/距圆心，不含新鲜度）
+    @Published private(set) var geofenceSummaryText: String = "围栏未挂载"
+    @Published private(set) var geofenceCenterAddress: String = ""
+    @Published private(set) var distanceToFenceCenterMeters: CLLocationDistance?
 
     private let locationManager = CLLocationManager()
     private let regionIdentifier = "com.sgmw.key.vehicle.geofence"
@@ -39,6 +43,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     private var monitoredRegion: CLCircularRegion?
     private var lastFenceCenter: CLLocationCoordinate2D?
     private var lastFenceRadius: CLLocationDistance = 0
+    private var lastPhoneLocation: CLLocation?
     private var lastLimitationNotifyAt: Date?
     private var isAppInForeground = true
     private var keepAliveDesired = false
@@ -59,6 +64,12 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
         observeInputs()
         applySettings(settingsStore.settings, reason: "init")
+        // 启动时请求一次定位，便于摘要显示距圆心
+        if locationManager.authorizationStatus == .authorizedAlways
+            || locationManager.authorizationStatus == .authorizedWhenInUse {
+            locationManager.requestLocation()
+        }
+        refreshGeofenceSummary()
     }
 
     // MARK: - Public API
@@ -127,6 +138,16 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             .debounce(for: .seconds(1), scheduler: DispatchQueue.main)
             .sink { [weak self] _, _, _, _ in
                 self?.notifyVehicleCoordinateChanged()
+            }
+            .store(in: &cancellables)
+
+        // 地址变化时只刷摘要，不重挂围栏
+        locationDisplayStore.$liveAddress
+            .combineLatest(locationDisplayStore.$cachedAddress)
+            .receive(on: DispatchQueue.main)
+            .debounce(for: .seconds(0.5), scheduler: DispatchQueue.main)
+            .sink { [weak self] _, _ in
+                self?.refreshGeofenceSummary()
             }
             .store(in: &cancellables)
 
@@ -238,12 +259,15 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
            abs(last.latitude - centerWGS.latitude) < 0.00015,
            abs(last.longitude - centerWGS.longitude) < 0.00015,
            abs(lastFenceRadius - radius) < 1 {
+            // 圆心半径未变，仍刷新摘要（手机距离/地址可能变）
+            refreshGeofenceSummary()
             return
         }
 
         let status = locationManager.authorizationStatus
         guard status == .authorizedAlways || status == .authorizedWhenInUse else {
             enterDegraded(reason: "需要定位权限以启用电子围栏")
+            refreshGeofenceSummary()
             return
         }
 
@@ -261,12 +285,25 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         lastFenceCenter = centerWGS
         lastFenceRadius = radius
 
+        // 同步地址（与雷达同一套车坐标/地址，不含新鲜度）
+        geofenceCenterAddress = locationDisplayStore.displayAddress
+        refreshGeofenceSummary()
+
+        let distText: String
+        if let d = distanceToFenceCenterMeters {
+            distText = d < 1000 ? String(format: "距圆心约 %.0f 米", d) : String(format: "距圆心约 %.1f 公里", d / 1000)
+        } else {
+            distText = "距圆心--"
+        }
         logInfo(
             "电子围栏已更新",
-            detail: "半径 \(Int(radius)) 米 · 中心已同步车辆位置",
+            detail: "半径 \(Int(radius)) 米 · \(distText)" + (geofenceCenterAddress.isEmpty ? "" : " · \(geofenceCenterAddress)"),
             identity: "geofence-update|\(Int(radius))"
         )
-        CrashLogger.shared.mark("BG", "geofence updated r=\(Int(radius)) lat=\(String(format: "%.5f", centerWGS.latitude)) lng=\(String(format: "%.5f", centerWGS.longitude))")
+        CrashLogger.shared.mark(
+            "BG",
+            "geofence updated r=\(Int(radius)) lat=\(String(format: "%.5f", centerWGS.latitude)) lng=\(String(format: "%.5f", centerWGS.longitude)) dist=\(distanceToFenceCenterMeters.map { String(format: "%.0f" , $0) } ?? "--")"
+        )
     }
 
     private func removeGeofence(reason: String) {
@@ -283,6 +320,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         if isInGeofence {
             isInGeofence = false
         }
+        refreshGeofenceSummary()
     }
 
     private func currentVehicleCoordinateWGS84() -> CLLocationCoordinate2D? {
@@ -292,6 +330,60 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         let wgs = LocationResolver.gcj02ToWgs84(lat: latGcj, lng: lngGcj)
         guard abs(wgs.lat) <= 90, abs(wgs.lng) <= 180 else { return nil }
         return CLLocationCoordinate2D(latitude: wgs.lat, longitude: wgs.lng)
+    }
+
+    /// 刷新围栏摘要：半径 + 圆心地址 + 手机距圆心（无新鲜度）
+    private func refreshGeofenceSummary() {
+        let settings = settingsStore.settings
+        geofenceCenterAddress = locationDisplayStore.displayAddress
+
+        if !settings.keylessEnabled {
+            distanceToFenceCenterMeters = nil
+            geofenceSummaryText = "随无感停用"
+            return
+        }
+        if !settings.geofenceWakeEnabled {
+            distanceToFenceCenterMeters = nil
+            geofenceSummaryText = "围栏未开启"
+            return
+        }
+        guard let center = lastFenceCenter ?? currentVehicleCoordinateWGS84() else {
+            distanceToFenceCenterMeters = nil
+            geofenceSummaryText = "待就绪 · 无车辆坐标"
+            return
+        }
+        let radius = Int(lastFenceRadius > 0 ? lastFenceRadius : KeylessSettings.clampedGeofenceRadius(settings.geofenceRadiusMeters))
+
+        // 手机距圆心（WGS 直线距离）
+        if let phone = lastPhoneLocation ?? locationManager.location {
+            lastPhoneLocation = phone
+            let centerLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
+            distanceToFenceCenterMeters = phone.distance(from: centerLoc)
+        } else {
+            distanceToFenceCenterMeters = nil
+            // 无手机点时补一次定位（不开启持续保活）
+            let auth = locationManager.authorizationStatus
+            if auth == .authorizedAlways || auth == .authorizedWhenInUse {
+                locationManager.requestLocation()
+            }
+        }
+
+        var parts: [String] = []
+        parts.append("半径 \(radius) 米")
+        if let d = distanceToFenceCenterMeters {
+            if d < 1000 {
+                parts.append(String(format: "距圆心约 %.0f 米", d))
+            } else {
+                parts.append(String(format: "距圆心约 %.1f 公里", d / 1000))
+            }
+        } else {
+            parts.append("距圆心--")
+        }
+        parts.append(isInGeofence ? "圈内" : "圈外")
+        if !geofenceCenterAddress.isEmpty {
+            parts.append(geofenceCenterAddress)
+        }
+        geofenceSummaryText = parts.joined(separator: " · ")
     }
 
     // MARK: - Keep-alive / Background task
@@ -472,6 +564,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             }
         }
         reevaluate(reason: "enter-region")
+        refreshGeofenceSummary()
         logInfo("进入电子围栏", detail: "启动蓝牙警戒（不直接解锁）", identity: "geofence-enter")
     }
 
@@ -481,6 +574,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         reevaluate(reason: "exit-region")
         // 仅围栏内扫描开启时：出圈停止自动宽扫（已连接会话由 ensure 内部决定保留）
         reapplyBLEScanPolicy(reason: "exit-region")
+        refreshGeofenceSummary()
         logInfo("离开电子围栏", detail: "降低后台活跃度（不自动上锁）", identity: "geofence-exit")
     }
 
@@ -492,14 +586,20 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
                 isInGeofence = true
                 reevaluate(reason: "region-state-inside")
                 reapplyBLEScanPolicy(reason: "region-state-inside")
+                refreshGeofenceSummary()
                 logInfo("围栏状态", detail: "当前在围栏内", identity: "geofence-state-inside")
+            } else {
+                refreshGeofenceSummary()
             }
         case .outside:
             if isInGeofence {
                 isInGeofence = false
                 reevaluate(reason: "region-state-outside")
                 reapplyBLEScanPolicy(reason: "region-state-outside")
+                refreshGeofenceSummary()
                 logInfo("围栏状态", detail: "当前在围栏外", identity: "geofence-state-outside")
+            } else {
+                refreshGeofenceSummary()
             }
         case .unknown:
             break
@@ -538,6 +638,11 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        if let last = locations.last {
+            lastPhoneLocation = last
+            // 更新手机距圆心，方便 UI 校验围栏（无新鲜度字段）
+            refreshGeofenceSummary()
+        }
         // 保活用途：不驱动无感决策，仅维持进程；不写用户日志（太吵）
         if keepAliveDesired, settingsStore.settings.backgroundEnhancedEnabled, !isAppInForeground {
             beginBackgroundTask(reason: "location-keepalive")

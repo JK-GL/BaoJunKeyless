@@ -87,6 +87,9 @@ struct SettingsBackgroundEnhancementSection: View {
                             .font(.system(size: 11))
                             .foregroundStyle(Color.white.opacity(0.45))
                             .fixedSize(horizontal: false, vertical: true)
+
+                        // 圆心摘要：便于核对围栏是否落在车附近（无新鲜度）
+                        GeofenceSummarySettingsRow()
                     }
                     .transition(.opacity.combined(with: .move(edge: .top)))
 
@@ -158,5 +161,36 @@ struct SettingsBackgroundEnhancementSection: View {
                 .padding(.leading, 30)
         }
         .opacity(enabled ? 1 : 0.45)
+    }
+}
+
+/// 设置页围栏摘要：半径 · 距圆心 · 圈内/外 · 地址（无新鲜度）
+private struct GeofenceSummarySettingsRow: View {
+    @ObservedObject private var backgroundExecution = BackgroundExecutionManager.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(AppTheme.purple.opacity(0.9))
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("围栏摘要")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.85))
+                    Text(backgroundExecution.geofenceSummaryText)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.white.opacity(0.55))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            Text("圆心=车辆位置；距圆心=手机到圆心直线距离。用于核对围栏是否落在车附近。")
+                .font(.system(size: 10))
+                .foregroundStyle(Color.white.opacity(0.38))
+                .padding(.leading, 26)
+        }
+        .padding(.top, 4)
     }
 }

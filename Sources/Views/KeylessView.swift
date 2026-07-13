@@ -211,6 +211,12 @@ private struct KeylessRealtimeStatusHost: View {
         }
     }
 
+    /// 围栏摘要：半径 · 距圆心 · 圈内/外 · 地址（无新鲜度）
+    private var geofenceSummaryDisplay: String {
+        let text = backgroundExecution.geofenceSummaryText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "--" : text
+    }
+
     var body: some View {
         let state = evaluationState
         let unlockDecision = self.unlockDecision
@@ -223,6 +229,7 @@ private struct KeylessRealtimeStatusHost: View {
                 rows: [
                     PopupInfoRowItem("wave.3.right", "当前阶段", phaseText, color: .white),
                     PopupInfoRowItem("location.circle", "围栏状态", geofenceStatusText, color: geofenceStatusColor),
+                    PopupInfoRowItem("mappin.and.ellipse", "围栏摘要", geofenceSummaryDisplay, color: Color.white.opacity(0.78)),
                     PopupInfoRowItem("iphone.radiowaves.left.and.right", approachLabel, phoneNearbyText),
                     PopupInfoRowItem("dot.radiowaves.left.and.right", "信号", signalText, color: AppTheme.accent),
                     PopupInfoRowItem("lock.fill", "车锁状态", state.locked == true ? "已锁" : (state.locked == false ? "未锁" : "--")),
