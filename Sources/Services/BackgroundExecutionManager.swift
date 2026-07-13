@@ -232,10 +232,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             lastLoggedKeepAlive = isKeepAliveActive
         }
 
-        CrashLogger.shared.mark(
-            "BG",
-            "reeval \(reason) phase=\(phase.rawValue) fence=\(isInGeofence ? 1 : 0) keepAlive=\(isKeepAliveActive ? 1 : 0) ble=\(String(describing: connectionStatusStore.bleStatus))"
-        )
+        // 例行 reeval 不写错误日志（用户可见阶段/围栏已在事件日志）
     }
 
     private var isBLEBusy: Bool {
@@ -309,10 +306,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             detail: "半径 \(Int(radius)) 米 · \(distText)" + (geofenceCenterAddress.isEmpty ? "" : " · \(geofenceCenterAddress)"),
             identity: "geofence-update|\(Int(radius))"
         )
-        CrashLogger.shared.mark(
-            "BG",
-            "geofence updated r=\(Int(radius)) lat=\(String(format: "%.5f", centerWGS.latitude)) lng=\(String(format: "%.5f", centerWGS.longitude)) dist=\(distanceToFenceCenterMeters.map { String(format: "%.0f" , $0) } ?? "--")"
-        )
+        // 围栏更新已写事件日志，不重复进错误日志
     }
 
     private func removeGeofence(reason: String) {
@@ -321,7 +315,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         }
         if monitoredRegion != nil {
             logInfo("电子围栏已移除", detail: reason, identity: "geofence-remove|\(reason)")
-            CrashLogger.shared.mark("BG", "geofence removed: \(reason)")
+            // 围栏移除已写事件日志
         }
         monitoredRegion = nil
         lastFenceCenter = nil
@@ -416,7 +410,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
                 locationManager.stopUpdatingLocation()
                 isKeepAliveActive = false
                 logInfo("定位保活已停止", detail: "远离/空闲", identity: "keepalive-stop")
-                CrashLogger.shared.mark("BG", "location keep-alive stop")
+                // 保活停止已写事件日志
             }
             return
         }
@@ -436,7 +430,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             isKeepAliveActive = true
             let authText = status == .authorizedAlways ? "始终" : "使用期间"
             logInfo("定位保活已开启", detail: "权限=\(authText) · 按需续命", identity: "keepalive-start")
-            CrashLogger.shared.mark("BG", "location keep-alive start auth=\(status.rawValue)")
+            // 保活开启已写事件日志
         }
     }
 
@@ -448,7 +442,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             self?.handleBackgroundTaskExpired()
         }
         logInfo("增强后台执行", detail: reasonText(reason), identity: "bg-task-begin|\(reason)")
-        CrashLogger.shared.mark("BG", "beginBackgroundTask \(reason) id=\(backgroundTaskID.rawValue)")
+        // 开始后台任务已写事件日志；错误日志只记异常到期
     }
 
     /// 系统回收短时后台任务：
@@ -470,10 +464,13 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
                 identity: "bg-task-expired-normal|\(reason)|\(phase.rawValue)"
             )
         }
-        CrashLogger.shared.mark(
-            "BG",
-            "backgroundTask expired reason=\(reason) phase=\(phase.rawValue) fence=\(isInGeofence ? 1 : 0) error=\(shouldTreatBackgroundExpirationAsError ? 1 : 0)"
-        )
+        // 正常挂起不写错误日志；异常到期上面已 logError，必要时再 mark
+        if shouldTreatBackgroundExpirationAsError {
+            CrashLogger.shared.mark(
+                "BG",
+                "backgroundTask expired reason=\(reason) phase=\(phase.rawValue) fence=\(isInGeofence ? 1 : 0)"
+            )
+        }
         isEndingBackgroundTaskFromExpiration = true
         endBackgroundTask()
         isEndingBackgroundTaskFromExpiration = false
@@ -535,7 +532,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         if !isEndingBackgroundTaskFromExpiration {
             logInfo("结束后台任务", detail: "id=\(id.rawValue)", identity: "bg-task-end")
         }
-        CrashLogger.shared.mark("BG", "endBackgroundTask id=\(id.rawValue)")
+        // 例行 end 不写错误日志
     }
 
     private func stopAll(reason: String) {
@@ -543,7 +540,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         setKeepAliveActive(false)
         endBackgroundTask()
         isInGeofence = false
-        CrashLogger.shared.mark("BG", "stopAll: \(reason)")
+        // stopAll 用户可见路径已有事件；不刷错误日志
     }
 
     // MARK: - Permission / degraded
@@ -603,7 +600,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     func reapplyBLEScanPolicy(reason: String) {
         guard let store = VehicleStateStoreBridge.current as? MQTTVehicleStateStore else { return }
         store.ensureBLESession(forceRestart: false, optimisticScanning: true, userInitiated: false)
-        CrashLogger.shared.mark("BG", "reapply scan policy \(reason) inFence=\(isInGeofence ? 1 : 0)")
+        // 扫描策略重评估不写错误日志
     }
 
     // MARK: - Logging helpers（用户可见 + ×N 合并）

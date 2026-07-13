@@ -23,12 +23,12 @@ final class AddressServiceSettings: ObservableObject {
     func setAmapWebKey(_ value: String) {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         UserDefaults.standard.set(trimmed, forKey: AppDefaultsKey.AddressService.amapWebKey)
-        CrashLogger.shared.mark("AddressService", "amapKey", details: trimmed.isEmpty ? "cleared" : "***")
+        // 密钥配置变更不写错误日志
     }
 
     func clearAmapWebKey() {
         UserDefaults.standard.removeObject(forKey: AppDefaultsKey.AddressService.amapWebKey)
-        CrashLogger.shared.mark("AddressService", "amapKey", details: "cleared")
+        // 清空密钥不写错误日志
     }
 
     func reset() {

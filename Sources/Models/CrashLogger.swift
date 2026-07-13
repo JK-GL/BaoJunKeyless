@@ -36,12 +36,7 @@ class CrashLogger {
             let mem = Self.formatBytes(Self.memoryUsageBytes())
             CrashLogger.shared.logCrash("⚠️ MEMORY WARNING — 当前内存: \(mem)")
         }
-        NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
-            CrashLogger.shared.mark("Lifecycle", "background")
-        }
-        NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in
-            CrashLogger.shared.mark("Lifecycle", "foreground")
-        }
+        // 前后台切换已在控制台事件日志；不再写入错误日志
     }
 
     // MARK: - 记录（磁盘统一 DEBUG 时间戳）
@@ -354,6 +349,8 @@ class CrashLogger {
                              note: String? = nil,
                              file: String = #file,
                              line: Int = #line) {
+        // 图片尺寸诊断默认不写错误日志（非故障）；需要时再开诊断开关
+        guard AppDiagnosticsSettings.isDiagnosticsEnabled else { return }
         let decodedBytes = Int(width * height * 4)
         var details: [String] = ["size=\(Int(width))x\(Int(height))", "decoded≈\(Self.formatBytes(UInt64(max(decodedBytes, 0))))"]
         if let bytes {

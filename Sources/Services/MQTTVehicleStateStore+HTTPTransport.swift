@@ -44,11 +44,7 @@ extension MQTTVehicleStateStore {
             modeText = "后台同步关 · \(Int(interval))s"
         }
 
-        CrashLogger.shared.mark(
-            "BG",
-            "applyRuntime \(reason) fg=\(isAppInForeground ? 1 : 0) sync=\(settings.backgroundStateSyncEnabled ? 1 : 0) keyless=\(settings.keylessEnabled ? 1 : 0) interval=\(Int(interval))"
-        )
-
+        // 运行策略只进控制台事件日志，不进错误日志
         // 用户可见：与轮询/扫描一样可 ×N 合并
         vehicleEventLogStore.addCoalesced(
             .system,
@@ -168,7 +164,7 @@ extension MQTTVehicleStateStore {
                         httpCollectAt: httpCollect,
                         sourceFields: refreshResult.carStatus
                     )
-                    CrashLogger.shared.mark("HTTP", "status updated mode=\(mergeMode.rawValue)")
+                    // 成功轮询只进控制台事件日志，不写错误日志
 
                     let fingerprint = self.httpPollStatusFingerprint()
                     let body = bodyFieldsSummary(refreshResult.carStatus)

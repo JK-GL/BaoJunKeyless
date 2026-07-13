@@ -11,7 +11,7 @@ extension MQTTVehicleStateStore {
         mqtt.autoReconnect = true
         mqtt.delegate = self
         self.mqtt = mqtt
-        CrashLogger.shared.mark("MQTT", "connecting clientId=\(creds.clientId)")
+        // connecting 例行不写错误日志；失败才记
         if !mqtt.connect() {
             mqttStatus = .error
             CrashLogger.shared.mark("MQTT", "connect initiate failed")
@@ -85,7 +85,7 @@ extension MQTTVehicleStateStore {
 
             let packetKeys = Array(fields.keys.sorted()).prefix(10).joined(separator: ",")
             let summary = (changedKeys.isEmpty ? Array(fields.keys.prefix(8)).map { "\($0)=force" } : Array(changedKeys.prefix(8))).joined(separator: ", ")
-            CrashLogger.shared.mark("MQTT", "state changed: \(summary)")
+            // 车身变化只写控制台事件日志，不进错误日志
             let bodyChanged = changedKeyNames.contains { bodyKeys.contains($0) || $0.hasPrefix("door") || $0.hasPrefix("window") || $0.hasPrefix("tailDoor") || $0 == "acStatus" }
             if bodyChanged {
                 let detailParts = [
@@ -119,7 +119,7 @@ extension MQTTVehicleStateStore {
             guard let self else { return }
             self.mqttStatus = .connected
             self.latestControlResult = result
-            CrashLogger.shared.mark("MQTT", "control result: \(result.displayDetail)")
+            // 控制回执走业务层/事件日志，不进错误日志
         }
     }
 
@@ -240,7 +240,7 @@ extension MQTTVehicleStateStore {
     func handleMQTTConnectAck(_ mqtt: CocoaMQTT, ack: CocoaMQTTConnAck) {
         if ack == .accept {
             mqttStatus = .connected
-            CrashLogger.shared.mark("MQTT", "connected (ack=\(ack.rawValue))")
+            // 连接成功不写错误日志
             guard let creds = credentials else { return }
             for topic in creds.topics {
                 mqtt.subscribe(topic, qos: .qos1)
@@ -261,11 +261,17 @@ extension MQTTVehicleStateStore {
     }
 
     func handleMQTTSubscribedTopics(success: NSDictionary, failed: [String]) {
-        CrashLogger.shared.mark("MQTT", "subscribed \(success.count) topics, failed \(failed.count)")
+        // 仅订阅失败进错误日志
+        if !failed.isEmpty {
+            CrashLogger.shared.mark("MQTT", "subscribe failed topics=\(failed.count)")
+        }
     }
 
     func handleMQTTDisconnect(error: Error?) {
         mqttStatus = .error
-        CrashLogger.shared.mark("MQTT", "disconnected: \(error?.localizedDescription ?? "no error")")
+        // 有明确错误才写；正常重连断开不刷错误栏
+        if let error {
+            CrashLogger.shared.mark("MQTT", "disconnected: \(error.localizedDescription)")
+        }
     }
 }

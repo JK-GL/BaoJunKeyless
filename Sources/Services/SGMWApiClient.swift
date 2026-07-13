@@ -85,11 +85,11 @@ final class SGMWApiClient {
     /// 兜底：宝骏 app plist
     func readLocalToken() -> String? {
         if let tokenInfo = WulingAppCacheReader.shared.readTokenInfo() {
-            CrashLogger.shared.mark("SGMW", "token found from \(tokenInfo.sourcePath)")
+            // token 命中是正常路径，不写错误日志
             return tokenInfo.token
         }
 
-        CrashLogger.shared.mark("SGMW", "no Wuling token found")
+        // 无 token 由上层处理，不写错误日志
         return nil
     }
 

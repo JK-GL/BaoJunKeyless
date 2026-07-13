@@ -430,7 +430,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         }
 
         persistDisplayCache()
-        CrashLogger.shared.mark("CACHE", "location-only from \(snapshot.sourcePath); body status waits for live HTTP/MQTT")
+        // 缓存位置恢复是正常路径，不写错误日志
     }
 
     func loadPersistedDisplayCache() {

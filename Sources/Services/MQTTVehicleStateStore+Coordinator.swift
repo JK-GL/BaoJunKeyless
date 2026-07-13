@@ -16,10 +16,10 @@ extension MQTTVehicleStateStore {
         guard let tokenInfo = SGMWApiClient.shared.readLocalTokenInfo() else {
             mqttStatus = .disconnected
             if case .expired("缓存模式") = authStatus {
-                CrashLogger.shared.mark("MQTT", "no local token found, keep cache mode")
+                // 无 token 走缓存是预期路径，不写错误日志
             } else {
                 authStatus = .expired("未读取到Token")
-                CrashLogger.shared.mark("MQTT", "no local token found")
+                // 无 token：用户可见层处理，不写错误日志
             }
             return
         }

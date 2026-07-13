@@ -48,7 +48,7 @@ final class RadarUIView: UIView {
         super.init(frame: frame)
         setup()
         if AppDiagnosticsSettings.isDiagnosticsEnabled {
-            CrashLogger.shared.mark("Radar", "init")
+            // CrashLogger.shared.mark("Radar", "init") // routine: not error log
         }
     }
 
@@ -56,7 +56,7 @@ final class RadarUIView: UIView {
         super.init(coder: coder)
         setup()
         if AppDiagnosticsSettings.isDiagnosticsEnabled {
-            CrashLogger.shared.mark("Radar", "init(coder)")
+            // CrashLogger.shared.mark("Radar", "init(coder)") // routine: not error log
         }
     }
 
@@ -67,7 +67,7 @@ final class RadarUIView: UIView {
             NotificationCenter.default.removeObserver(token)
         }
         if AppDiagnosticsSettings.isDiagnosticsEnabled {
-            CrashLogger.shared.mark("Radar", "deinit")
+            // CrashLogger.shared.mark("Radar", "deinit") // routine: not error log
         }
     }
 
@@ -373,7 +373,7 @@ final class RadarUIView: UIView {
         }
 
         if AppDiagnosticsSettings.isDiagnosticsEnabled {
-            CrashLogger.shared.mark("Radar", "rebuildStaticCache", details: key)
+            // CrashLogger.shared.mark("Radar", "rebuildStaticCache", details: key) // routine: not error log
         }
 
         let renderer = UIGraphicsImageRenderer(size: size)
@@ -435,7 +435,7 @@ final class RadarUIView: UIView {
         guard !AppDiagnosticsSettings.shouldUseSFRadarCarIcon else { return }
         let key = normalizedCarImageCacheKey
         if AppDiagnosticsSettings.isDiagnosticsEnabled {
-            CrashLogger.shared.mark("Radar", "loadCarImage:start", details: key)
+            // CrashLogger.shared.mark("Radar", "loadCarImage:start", details: key) // routine: not error log
         }
         if Self.sharedCarImageLoadInFlight.contains(key) { return }
         Self.sharedCarImageLoadInFlight.insert(key)

@@ -469,11 +469,15 @@ extension MQTTVehicleStateStore {
     }
 
     private func shouldPersistBLECrashLog(_ message: String) -> Bool {
-        if message.contains("manufacturer candidate name=") { return false }
-        if message.contains("debug score candidate name=") { return false }
-        if message.hasPrefix("rssi=") { return false }
-        if message.contains("notify uuid=") { return false }
-        return true
+        // 错误日志只留 BLE 失败/超时；扫描候选与例行连接过程不进错误栏
+        let lower = message.lowercased()
+        if lower.contains("fail") || lower.contains("error") || lower.contains("timeout") || lower.contains("超时") {
+            return true
+        }
+        if message.contains("connect failed") || message.contains("connection timeout") {
+            return true
+        }
+        return false
     }
 
     private func shouldHandleBLEDiagnosticLog(_ message: String) -> Bool {

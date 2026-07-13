@@ -34,14 +34,14 @@ final class MotionManager: ObservableObject {
     }
 
     func pause() {
-        CrashLogger.shared.mark("Motion", "pause")
+        // CrashLogger.shared.mark("Motion", "pause") // routine
         manager.stopDeviceMotionUpdates()
         currentInterval = 0
     }
 
     func resume() {
         guard manager.isDeviceMotionAvailable else { return }
-        CrashLogger.shared.mark("Motion", "resume")
+        // CrashLogger.shared.mark("Motion", "resume") // routine
         stableSampleCount = 0
         if !manager.isDeviceMotionActive {
             startUpdates(mode: .settling)

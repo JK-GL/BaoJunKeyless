@@ -154,8 +154,8 @@ struct SettingsView: View {
 
 
     private func refreshCrashLog() {
-        // 界面：中文短时间可读预览
-        let newText = CrashLogger.shared.readDisplayText(limit: 220)
+        // 界面：中文短时间可读预览（仅异常/诊断，条数少才不卡）
+        let newText = CrashLogger.shared.readDisplayText(limit: 60)
         if crashLogText != newText {
             crashLogText = newText
         }
