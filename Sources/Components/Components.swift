@@ -121,7 +121,9 @@ struct CollapsibleCard<Header: View, Content: View>: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Divider().background(theme.cardStroke)
                     content()
-                }.transition(.opacity.combined(with: .move(edge: .top)))
+                }
+                // 仅淡入，避免 .move(edge: .top) 在 ScrollView 里像「从上面拽下来」
+                .transition(.opacity)
             }
         }
         .padding(AppSpacing.cardPadding)

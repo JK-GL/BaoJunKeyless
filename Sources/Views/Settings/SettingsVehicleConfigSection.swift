@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - 车辆配置
+// MARK: - 车辆配置（折叠组，单层卡片，无内嵌窗口）
 struct SettingsVehicleConfigSection: View {
     @EnvironmentObject var theme: ThemeManager
     let vehicleCredentials: VehicleCredentialsStore
@@ -9,6 +9,9 @@ struct SettingsVehicleConfigSection: View {
     @Binding var toastText: String?
     let onSave: () -> Void
     let onCredentialConfirm: (CredentialConfirmPayload) -> Void
+
+    /// 默认展开：首次配置更方便；之后用户可折叠
+    @AppStorage("Settings.vehicleConfigSectionExpanded") private var isExpanded = true
 
     init(
         vehicleCredentials: VehicleCredentialsStore,
@@ -27,22 +30,50 @@ struct SettingsVehicleConfigSection: View {
         viewModel.isConfigured ? AppTheme.green : Color.white.opacity(0.35)
     }
 
+    private var headerSummary: String {
+        if viewModel.isConfigured {
+            let vin = viewModel.currentVINText
+            if vin.count > 10 {
+                return String(vin.suffix(8))
+            }
+            return vin
+        }
+        return "未配置"
+    }
+
     var body: some View {
-        SettingsPanelView(title: "车辆配置") {
-            VStack(alignment: .leading, spacing: 15) {
+        CollapsibleCard(
+            title: "车辆配置",
+            icon: "car.fill",
+            iconColor: AppTheme.orange,
+            isExpanded: $isExpanded,
+            headerExtra: {
+                HStack(spacing: 6) {
+                    Text(headerSummary)
+                        .font(.system(size: 12, weight: .medium, design: viewModel.isConfigured ? .monospaced : .default))
+                        .foregroundStyle(Color.white.opacity(0.55))
+                        .lineLimit(1)
+                    Image(systemName: viewModel.isConfigured ? "checkmark.seal.fill" : "exclamationmark.circle.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(statusBadgeColor)
+                }
+            }
+        ) {
+            // 单层内容：不再套内层圆角「窗口」
+            VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .center, spacing: 12) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(AppTheme.orange.opacity(0.15))
-                            .frame(width: 46, height: 46)
+                            .frame(width: 42, height: 42)
                         Image(systemName: "car.fill")
-                            .font(.system(size: 19, weight: .semibold))
+                            .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(AppTheme.orange)
                     }
 
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(viewModel.isConfigured ? viewModel.currentVINText : "未配置车辆")
-                            .font(.system(size: 16, weight: .semibold, design: viewModel.isConfigured ? .monospaced : .default))
+                            .font(.system(size: 15, weight: .semibold, design: viewModel.isConfigured ? .monospaced : .default))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                             .minimumScaleFactor(0.78)
@@ -59,9 +90,9 @@ struct SettingsVehicleConfigSection: View {
                     ZStack {
                         Circle()
                             .fill(statusBadgeColor.opacity(viewModel.isConfigured ? 0.18 : 0.12))
-                            .frame(width: 36, height: 36)
+                            .frame(width: 32, height: 32)
                         Image(systemName: viewModel.isConfigured ? "checkmark.seal.fill" : "exclamationmark.circle.fill")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(statusBadgeColor)
                     }
                     .accessibilityLabel(viewModel.statusBadgeText)
@@ -71,16 +102,16 @@ struct SettingsVehicleConfigSection: View {
 
                 HStack(alignment: .center, spacing: 10) {
                     Image(systemName: "doc.text.fill")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(AppTheme.orange)
-                        .frame(width: 28, height: 28)
+                        .frame(width: 26, height: 26)
                         .background(
                             Circle()
                                 .fill(AppTheme.orange.opacity(0.14))
                         )
 
                     Text("导入方式")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.white)
 
                     Spacer(minLength: 8)
@@ -90,16 +121,16 @@ struct SettingsVehicleConfigSection: View {
 
                 HStack(alignment: .center, spacing: 10) {
                     Image(systemName: viewModel.autoReadWulingToken ? "bolt.horizontal.circle.fill" : "folder.fill")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(viewModel.autoReadWulingToken ? AppTheme.accent : AppTheme.orange)
-                        .frame(width: 28, height: 28)
+                        .frame(width: 26, height: 26)
                         .background(
                             Circle()
                                 .fill((viewModel.autoReadWulingToken ? AppTheme.accent : AppTheme.orange).opacity(0.14))
                         )
 
                     Text("自动读取五菱 App 凭证")
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.white)
 
                     Spacer(minLength: 8)
@@ -133,12 +164,12 @@ struct SettingsVehicleConfigSection: View {
                     }
                     .foregroundStyle(AppTheme.accent)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 11)
                     .background(
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(AppTheme.accent.opacity(0.11))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
                                     .stroke(AppTheme.accent.opacity(0.22), lineWidth: 1)
                             )
                     )
@@ -243,15 +274,6 @@ struct SettingsVehicleConfigSection: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.white.opacity(0.04))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
-            )
         }
         .onAppear {
             viewModel.syncFromStore()

@@ -91,7 +91,7 @@ struct SettingsBackgroundEnhancementSection: View {
                         // 圆心摘要：便于核对围栏是否落在车附近（无新鲜度）
                         GeofenceSummarySettingsRow()
                     }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
 
                     // 仅围栏内扫描：依赖电子围栏
                     VStack(alignment: .leading, spacing: 6) {
@@ -103,7 +103,7 @@ struct SettingsBackgroundEnhancementSection: View {
                             enabled: controlsEnabled
                         )
                     }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
                 }
 
                 backgroundToggle(
