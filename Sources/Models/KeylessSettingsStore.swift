@@ -36,6 +36,24 @@ struct KeylessSettings: Codable {
     var bleScanDuration: Double = 20
     var bleScanInterval: Double = 0
 
+    // MARK: - 后台增强（设置页折叠组）
+    /// 设置页「后台增强」是否展开（纯 UI）
+    var backgroundSectionExpanded: Bool = false
+    /// 增强后台执行
+    var backgroundEnhancedEnabled: Bool = true
+    /// 电子围栏预唤醒
+    var geofenceWakeEnabled: Bool = true
+    /// 围栏半径（米）50...500，默认 100；关围栏时隐藏滑块但不重置
+    var geofenceRadiusMeters: Double = 100
+    /// 定位保活（按需）
+    var locationKeepAliveEnabled: Bool = true
+    /// 后台状态同步
+    var backgroundStateSyncEnabled: Bool = true
+    /// 无感结果通知
+    var keylessResultNotificationEnabled: Bool = true
+    /// 后台受限提醒
+    var backgroundLimitationNotificationEnabled: Bool = true
+
     init() {}
 
     private enum CodingKeys: String, CodingKey {
@@ -43,6 +61,10 @@ struct KeylessSettings: Codable {
         case unlockEnabled, powerStartEnabled, unlockThreshold, unlockApproachDuration, unlockPopup, unlockVibrate, unlockVibPreset, unlockVibCustomID, unlockVibStrength
         case lockEnabled, lockThreshold, lockDelay, lockPopup, lockVibrate, lockVibPreset, lockVibCustomID, lockVibStrength
         case bleScanDuration, bleScanInterval
+        case backgroundSectionExpanded
+        case backgroundEnhancedEnabled, geofenceWakeEnabled, geofenceRadiusMeters
+        case locationKeepAliveEnabled, backgroundStateSyncEnabled
+        case keylessResultNotificationEnabled, backgroundLimitationNotificationEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -74,6 +96,37 @@ struct KeylessSettings: Codable {
 
         bleScanDuration = try c.decodeIfPresent(Double.self, forKey: .bleScanDuration) ?? 20
         bleScanInterval = try c.decodeIfPresent(Double.self, forKey: .bleScanInterval) ?? 0
+
+        // 老用户升级只补默认值，不重置原有无感设置
+        backgroundSectionExpanded = try c.decodeIfPresent(Bool.self, forKey: .backgroundSectionExpanded) ?? false
+        backgroundEnhancedEnabled = try c.decodeIfPresent(Bool.self, forKey: .backgroundEnhancedEnabled) ?? true
+        geofenceWakeEnabled = try c.decodeIfPresent(Bool.self, forKey: .geofenceWakeEnabled) ?? true
+        let rawRadius = try c.decodeIfPresent(Double.self, forKey: .geofenceRadiusMeters) ?? 100
+        geofenceRadiusMeters = Self.clampedGeofenceRadius(rawRadius)
+        locationKeepAliveEnabled = try c.decodeIfPresent(Bool.self, forKey: .locationKeepAliveEnabled) ?? true
+        backgroundStateSyncEnabled = try c.decodeIfPresent(Bool.self, forKey: .backgroundStateSyncEnabled) ?? true
+        keylessResultNotificationEnabled = try c.decodeIfPresent(Bool.self, forKey: .keylessResultNotificationEnabled) ?? true
+        backgroundLimitationNotificationEnabled = try c.decodeIfPresent(Bool.self, forKey: .backgroundLimitationNotificationEnabled) ?? true
+    }
+
+    static func clampedGeofenceRadius(_ value: Double) -> Double {
+        let stepped = (value / 10.0).rounded() * 10.0
+        return min(500, max(50, stepped))
+    }
+
+    /// 折叠标题摘要
+    func backgroundEnhancementSummary(keylessEnabled: Bool) -> String {
+        if !keylessEnabled { return "随无感停用" }
+        let flags = [
+            backgroundEnhancedEnabled,
+            geofenceWakeEnabled,
+            locationKeepAliveEnabled,
+            backgroundStateSyncEnabled
+        ]
+        let onCount = flags.filter { $0 }.count
+        if onCount == 0 { return "已关闭" }
+        if onCount == flags.count { return "已开启" }
+        return "部分开启"
     }
 }
 
@@ -82,7 +135,20 @@ class KeylessSettingsStore: ObservableObject {
     static let shared = KeylessSettingsStore()
 
     @Published var settings = KeylessSettings() {
-        didSet { save() }
+        didSet {
+            // 半径硬裁剪
+            let clamped = KeylessSettings.clampedGeofenceRadius(settings.geofenceRadiusMeters)
+            if settings.geofenceRadiusMeters != clamped {
+                settings.geofenceRadiusMeters = clamped
+                return
+            }
+            save()
+            // TODO: wire to BackgroundExecutionManager / MQTTVehicleStateStore.applyRuntimeSettings()
+            // - keylessEnabled false: stop geofence / location keep-alive / auto keyless
+            // - geofence radius/enabled: update monitored region
+            // - backgroundStateSyncEnabled: switch background poll policy
+            // - notification flags: only affect local notifications
+        }
     }
 
     private let key = "KeylessSettings"

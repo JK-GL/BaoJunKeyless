@@ -50,6 +50,9 @@ struct SettingsView: View {
                     }
                 )
 
+                // 后台增强：默认折叠，点击标题展开；开关持久化到 KeylessSettingsStore
+                SettingsBackgroundEnhancementSection()
+
                 SettingsVehicleControlDebugSection(
                     routeMode: vehicleControlRouteModeBinding,
                     toastText: $toastText
