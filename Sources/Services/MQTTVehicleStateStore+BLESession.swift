@@ -207,7 +207,28 @@ extension MQTTVehicleStateStore {
         bleManager.start(config: .init(bleMac: bleMac, keyId: keyId, masterKey: masterKey, keyMasterRandom: keyMasterRandom, controlAes128Key: controlAes128Key, bleType: bleType, bleKey: bleKey))
     }
 
-    func ensureBLESession(forceRestart: Bool, optimisticScanning: Bool) {
+    /// 自动扫描是否允许（前台+后台统一）。
+    /// - 仅围栏内扫描 开 + 电子围栏 开 + 当前圈外 → 禁止自动扫
+    /// - 手动扫描 / forceBLE 不受此限制
+    var shouldSuppressAutomaticBLEScan: Bool {
+        if AppDiagnosticsSettings.vehicleControlRouteMode == .forceBLE { return false }
+        let settings = keylessSettingsStore.settings
+        guard settings.keylessEnabled else { return true }
+        guard settings.scanOnlyInsideGeofence, settings.geofenceWakeEnabled else { return false }
+        return !BackgroundExecutionManager.shared.isInGeofence
+    }
+
+    private var isBLESessionActive: Bool {
+        switch bleStatus {
+        case .connecting, .connected, .authenticating, .authenticated:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// - Parameter userInitiated: 用户手动开始扫描/附近设备/绑定等，绕过「仅围栏内扫描」
+    func ensureBLESession(forceRestart: Bool, optimisticScanning: Bool, userInitiated: Bool = false) {
         if forceRestart {
             userManuallyStoppedBLE = false
             ignoreNextBLEIdleCallback = true
@@ -216,6 +237,32 @@ extension MQTTVehicleStateStore {
         if latestBleKeyInfo.isEmpty {
             reloadCachedBLEKeyInfo(preferScoped: true)
         }
+
+        // 仅围栏内扫描：圈外停止自动找车；已连接会话保留
+        if !userInitiated && shouldSuppressAutomaticBLEScan {
+            if isBLESessionActive {
+                // 已连上：只保持，不新开扫描
+                refreshBLESessionIfNeeded()
+            } else {
+                bleManager.stop()
+                if bleStatus == .scanning || bleStatus == .disconnected {
+                    bleStatus = .disconnected
+                }
+                setBLEDiagnosticPhase("围栏外休眠", detail: "仅围栏内扫描已开 · 进入围栏后自动警戒")
+                vehicleEventLogStore.addCoalesced(
+                    .system,
+                    "BLE 扫描已暂停",
+                    detail: "仅围栏内扫描 · 当前圈外",
+                    identity: "scan-suppress-outside-fence",
+                    mergeWindow: 180
+                )
+            }
+            if !hasUsableBLEKeyInfo {
+                fetchBleKeyInfo(force: false)
+            }
+            return
+        }
+
         if optimisticScanning,
            keylessSettingsStore.settings.keylessEnabled || AppDiagnosticsSettings.vehicleControlRouteMode == .forceBLE,
            !userManuallyStoppedBLE,

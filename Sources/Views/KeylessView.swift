@@ -61,13 +61,14 @@ struct KeylessView: View {
     }
 
     private func setMode(_ mode: KeylessControlMode) {
-        settingsStore.settings.pluginTakeover = (mode == .plugin)
+        // 插件托管 UI 已移除；选智能/前台时顺带清掉旧插件开关，避免模式互斥残留
+        settingsStore.settings.pluginTakeover = false
         settingsStore.settings.smartSwitch = (mode == .smart)
         settingsStore.settings.appManual = (mode == .manual)
 
         let text: String
         switch mode {
-        case .plugin: text = "插件托管"
+        case .plugin: text = "默认自动" // 兼容枚举残留
         case .smart: text = "智能切换"
         case .manual: text = "前台手动"
         }
@@ -94,6 +95,7 @@ private struct KeylessRealtimeStatusHost: View {
     @EnvironmentObject var settingsStore: KeylessSettingsStore
     @ObservedObject private var diagnostics = BLEDiagnosticsStore.shared
     @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
+    @ObservedObject private var backgroundExecution = BackgroundExecutionManager.shared
 
     @State private var decisionSnapshot = KeylessDecisionSnapshot.placeholder
     @State private var phoneNearbySince: Date?
@@ -180,6 +182,34 @@ private struct KeylessRealtimeStatusHost: View {
         settingsStore.settings.powerStartEnabled ? "启动判定" : "解锁判定"
     }
 
+    /// 围栏状态（中文短文案）
+    private var geofenceStatusText: String {
+        let settings = settingsStore.settings
+        if !settings.keylessEnabled { return "随无感停用" }
+        if !settings.geofenceWakeEnabled { return "未开启" }
+        if backgroundExecution.phase == .degraded || backgroundExecution.lastLimitationReason?.contains("权限") == true {
+            return "权限不足"
+        }
+        let hasVehicleCoord =
+            VehicleLocationDisplayStore.shared.displayLatitudeGcj != 0
+            && VehicleLocationDisplayStore.shared.displayLongitudeGcj != 0
+        if !hasVehicleCoord { return "待就绪" }
+        if backgroundExecution.isInGeofence { return "圈内 · 警戒" }
+        if settings.scanOnlyInsideGeofence { return "圈外 · 暂停扫描" }
+        return "圈外 · 休眠"
+    }
+
+    private var geofenceStatusColor: Color {
+        switch geofenceStatusText {
+        case "圈内 · 警戒": return AppTheme.green
+        case "圈外 · 暂停扫描": return AppTheme.orange
+        case "权限不足": return AppTheme.red
+        case "待就绪": return AppTheme.orange
+        case "未开启", "随无感停用": return Color.white.opacity(0.45)
+        default: return Color.white.opacity(0.70)
+        }
+    }
+
     var body: some View {
         let state = evaluationState
         let unlockDecision = self.unlockDecision
@@ -191,6 +221,7 @@ private struct KeylessRealtimeStatusHost: View {
             PopupInfoRowsView(
                 rows: [
                     PopupInfoRowItem("wave.3.right", "当前阶段", phaseText, color: .white),
+                    PopupInfoRowItem("location.circle", "围栏状态", geofenceStatusText, color: geofenceStatusColor),
                     PopupInfoRowItem("iphone.radiowaves.left.and.right", approachLabel, phoneNearbyText),
                     PopupInfoRowItem("dot.radiowaves.left.and.right", "信号", signalText, color: AppTheme.accent),
                     PopupInfoRowItem("lock.fill", "车锁状态", state.locked == true ? "已锁" : (state.locked == false ? "未锁" : "--")),
@@ -227,7 +258,7 @@ private struct KeylessRealtimeStatusHost: View {
                         VehicleBLEBindingStore.clear()
                         binding = nil
                         if let mqtt = VehicleStateStoreBridge.current as? MQTTVehicleStateStore {
-                            mqtt.ensureBLESession(forceRestart: true, optimisticScanning: true)
+                            mqtt.ensureBLESession(forceRestart: true, optimisticScanning: true, userInitiated: true)
                         }
                         VehicleEventLogStore.shared.add(.action, "清除蓝牙绑定", detail: "用户在无感页手动清除")
                     }

@@ -229,6 +229,8 @@ extension MQTTVehicleStateStore {
             resetKeylessRuntimeState()
             return
         }
+        // 插件托管 UI 已移除：无感开着即允许自动执行。
+        // 前台手动：仅后台自动；智能切换/默认：前后台都可自动。
         if settings.appManual {
             guard !isAppInForeground else {
                 if !didLogManualForegroundSkip {
@@ -240,7 +242,6 @@ extension MQTTVehicleStateStore {
         } else {
             didLogManualForegroundSkip = false
         }
-        guard settings.pluginTakeover || settings.smartSwitch || settings.appManual else { return }
 
         let leaveConfirm = max(settings.lockDelay, 0)
         let hasActiveUnlockDelay = currentState.phoneNearby

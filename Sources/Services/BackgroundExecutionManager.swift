@@ -98,6 +98,8 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         requestAuthorizationIfNeeded(for: settings)
         updateGeofenceIfNeeded(settings: settings, force: reason.contains("settings") || reason.contains("radius") || reason == "init")
         reevaluate(reason: reason)
+        // 仅围栏扫描等开关变化后，立刻让 BLE 会话重评估
+        reapplyBLEScanPolicy(reason: reason)
     }
 
     func notifyVehicleCoordinateChanged() {
@@ -401,8 +403,17 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
     private func requestBLESession(forceRestart: Bool, detail: String) {
         guard let store = VehicleStateStoreBridge.current as? MQTTVehicleStateStore else { return }
-        store.ensureBLESession(forceRestart: forceRestart, optimisticScanning: true)
+        // 进圈/后台续命：允许扫描。ensure 内部会再判「仅围栏内扫描」；
+        // 但进圈时 isInGeofence 已 true，不会被抑制。
+        store.ensureBLESession(forceRestart: forceRestart, optimisticScanning: true, userInitiated: false)
         logInfo("后台唤醒 BLE", detail: detail, identity: "bg-wake-ble|\(detail)")
+    }
+
+    /// 设置变化或出圈后，让 Store 重新评估是否应停扫
+    func reapplyBLEScanPolicy(reason: String) {
+        guard let store = VehicleStateStoreBridge.current as? MQTTVehicleStateStore else { return }
+        store.ensureBLESession(forceRestart: false, optimisticScanning: true, userInitiated: false)
+        CrashLogger.shared.mark("BG", "reapply scan policy \(reason) inFence=\(isInGeofence ? 1 : 0)")
     }
 
     // MARK: - Logging helpers（用户可见 + ×N 合并）
@@ -468,6 +479,8 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         guard region.identifier == regionIdentifier else { return }
         isInGeofence = false
         reevaluate(reason: "exit-region")
+        // 仅围栏内扫描开启时：出圈停止自动宽扫（已连接会话由 ensure 内部决定保留）
+        reapplyBLEScanPolicy(reason: "exit-region")
         logInfo("离开电子围栏", detail: "降低后台活跃度（不自动上锁）", identity: "geofence-exit")
     }
 
@@ -478,12 +491,14 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             if !isInGeofence {
                 isInGeofence = true
                 reevaluate(reason: "region-state-inside")
+                reapplyBLEScanPolicy(reason: "region-state-inside")
                 logInfo("围栏状态", detail: "当前在围栏内", identity: "geofence-state-inside")
             }
         case .outside:
             if isInGeofence {
                 isInGeofence = false
                 reevaluate(reason: "region-state-outside")
+                reapplyBLEScanPolicy(reason: "region-state-outside")
                 logInfo("围栏状态", detail: "当前在围栏外", identity: "geofence-state-outside")
             }
         case .unknown:

@@ -5,6 +5,7 @@ import Combine
 struct KeylessSettings: Codable {
     // 无感功能
     var keylessEnabled: Bool = true
+    /// 兼容旧存档；UI 已移除「插件托管」，自动化不再依赖此开关
     var pluginTakeover: Bool = true
     var smartSwitch: Bool = false
     var appManual: Bool = false
@@ -45,6 +46,8 @@ struct KeylessSettings: Codable {
     var geofenceWakeEnabled: Bool = true
     /// 围栏半径（米）50...500，默认 100；关围栏时隐藏滑块但不重置
     var geofenceRadiusMeters: Double = 100
+    /// 仅围栏内扫描：开=圈外几乎不扫，进圈才扫；关=保持现状周期扫。默认关。前台+后台统一。
+    var scanOnlyInsideGeofence: Bool = false
     /// 定位保活（按需）
     var locationKeepAliveEnabled: Bool = true
     /// 后台状态同步
@@ -59,6 +62,7 @@ struct KeylessSettings: Codable {
         case bleScanDuration, bleScanInterval
         case backgroundSectionExpanded
         case backgroundEnhancedEnabled, geofenceWakeEnabled, geofenceRadiusMeters
+        case scanOnlyInsideGeofence
         case locationKeepAliveEnabled, backgroundStateSyncEnabled
     }
 
@@ -98,6 +102,7 @@ struct KeylessSettings: Codable {
         geofenceWakeEnabled = try c.decodeIfPresent(Bool.self, forKey: .geofenceWakeEnabled) ?? true
         let rawRadius = try c.decodeIfPresent(Double.self, forKey: .geofenceRadiusMeters) ?? 100
         geofenceRadiusMeters = Self.clampedGeofenceRadius(rawRadius)
+        scanOnlyInsideGeofence = try c.decodeIfPresent(Bool.self, forKey: .scanOnlyInsideGeofence) ?? false
         locationKeepAliveEnabled = try c.decodeIfPresent(Bool.self, forKey: .locationKeepAliveEnabled) ?? true
         backgroundStateSyncEnabled = try c.decodeIfPresent(Bool.self, forKey: .backgroundStateSyncEnabled) ?? true
     }
@@ -113,12 +118,21 @@ struct KeylessSettings: Codable {
         let flags = [
             backgroundEnhancedEnabled,
             geofenceWakeEnabled,
+            scanOnlyInsideGeofence,
             locationKeepAliveEnabled,
             backgroundStateSyncEnabled
         ]
         let onCount = flags.filter { $0 }.count
         if onCount == 0 { return "已关闭" }
-        if onCount == flags.count { return "已开启" }
+        // 仅围栏扫描默认关，不算“全开”
+        let coreFlags = [
+            backgroundEnhancedEnabled,
+            geofenceWakeEnabled,
+            locationKeepAliveEnabled,
+            backgroundStateSyncEnabled
+        ]
+        if coreFlags.allSatisfy({ $0 }) && !scanOnlyInsideGeofence { return "已开启" }
+        if coreFlags.allSatisfy({ $0 }) && scanOnlyInsideGeofence { return "已开启·省电扫" }
         return "部分开启"
     }
 }

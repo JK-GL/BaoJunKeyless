@@ -16,10 +16,6 @@ struct KeylessMainSection: View {
 
             if settingsStore.settings.keylessEnabled {
                 VStack(spacing: 12) {
-                    ToggleRow(icon: "puzzlepiece", label: "插件托管", isOn: Binding(
-                        get: { settingsStore.settings.pluginTakeover },
-                        set: { if $0 { setMode(.plugin) } else { settingsStore.settings.pluginTakeover = false; VehicleEventLogStore.shared.add(.keyless, "关闭插件托管") } }
-                    ))
                     ToggleRow(icon: "arrow.triangle.2.circlepath", label: "智能切换", isOn: Binding(
                         get: { settingsStore.settings.smartSwitch },
                         set: { if $0 { setMode(.smart) } else { settingsStore.settings.smartSwitch = false; VehicleEventLogStore.shared.add(.keyless, "关闭智能切换") } }

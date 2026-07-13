@@ -278,7 +278,7 @@ extension MQTTVehicleStateStore {
 
     func clearBLEBindingAndRefresh() {
         VehicleBLEBindingStore.clear()
-        ensureBLESession(forceRestart: true, optimisticScanning: true)
+        ensureBLESession(forceRestart: true, optimisticScanning: true, userInitiated: true)
         vehicleEventLogStore.add(.action, "清除蓝牙绑定", detail: "用户手动取消绑定")
     }
 
@@ -323,7 +323,7 @@ extension MQTTVehicleStateStore {
             userManuallyStoppedBLE = false
             resetBLEDiagnosticCycle()
             setBLEDiagnosticPhase("准备扫描", detail: deviceDisplayName)
-            ensureBLESession(forceRestart: true, optimisticScanning: true)
+            ensureBLESession(forceRestart: true, optimisticScanning: true, userInitiated: true)
             vehicleEventLogStore.add(.action, "BLE 手动扫描", detail: "用户触发扫描")
         }
     }
