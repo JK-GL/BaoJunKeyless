@@ -106,13 +106,13 @@ struct CollapsibleCard<Header: View, Content: View>: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // 整行可点：contentShape + 拉高热区，避免只有文字/图标好点
+            // 整行可点、上下居中、折叠时更薄
             Button(action: { withAnimation(PopupMotion.contentEase) { isExpanded.toggle() } }) {
-                HStack(spacing: 8) {
+                HStack(alignment: .center, spacing: 8) {
                     Image(systemName: icon)
                         .foregroundColor(iconColor)
                         .font(.system(size: 15, weight: .semibold))
-                        .frame(width: 22, alignment: .center)
+                        .frame(width: 20, height: 20, alignment: .center)
                     Text(title)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(theme.textPrimary)
@@ -120,20 +120,22 @@ struct CollapsibleCard<Header: View, Content: View>: View {
                     Spacer(minLength: 8)
                     headerExtra?()
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(theme.textSecondary)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .frame(width: 14, height: 14)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                // 扩大点击高度，整行都在热区内
-                .padding(.vertical, 10)
+                // 固定适中行高，内容垂直居中；不用再叠一层 vertical padding
+                .frame(maxWidth: .infinity, minHeight: 28, alignment: .center)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 12) {
-                    Divider().background(theme.cardStroke)
+                    Divider()
+                        .background(theme.cardStroke)
+                        .padding(.top, 10)
                     content()
                 }
                 // 仅淡入，避免 .move(edge: .top) 在 ScrollView 里像「从上面拽下来」
@@ -141,8 +143,8 @@ struct CollapsibleCard<Header: View, Content: View>: View {
             }
         }
         .padding(.horizontal, AppSpacing.cardPadding)
-        .padding(.top, max(0, AppSpacing.cardPadding - 10))
-        .padding(.bottom, AppSpacing.cardPadding)
+        // 折叠更薄、上下对称；展开时底部略多给内容呼吸
+        .padding(.vertical, isExpanded ? 14 : 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
