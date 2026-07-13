@@ -30,13 +30,11 @@ struct SettingsVehicleConfigSection: View {
         viewModel.isConfigured ? AppTheme.green : Color.white.opacity(0.35)
     }
 
-    private var headerSummary: String {
+    /// 折叠时显示完整 VIN；展开时标题旁全隐（内容区已有 VIN）
+    private var collapsedHeaderVIN: String {
         if viewModel.isConfigured {
-            let vin = viewModel.currentVINText
-            if vin.count > 10 {
-                return String(vin.suffix(8))
-            }
-            return vin
+            let vin = viewModel.currentVINText.trimmingCharacters(in: .whitespacesAndNewlines)
+            return vin.isEmpty ? "未配置" : vin
         }
         return "未配置"
     }
@@ -48,14 +46,17 @@ struct SettingsVehicleConfigSection: View {
             iconColor: AppTheme.orange,
             isExpanded: $isExpanded,
             headerExtra: {
-                HStack(spacing: 6) {
-                    Text(headerSummary)
-                        .font(.system(size: 12, weight: .medium, design: viewModel.isConfigured ? .monospaced : .default))
+                // 展开：全隐；折叠：完整 VIN（或未配置）
+                if !isExpanded {
+                    Text(collapsedHeaderVIN)
+                        .font(.system(
+                            size: 11.5,
+                            weight: .medium,
+                            design: viewModel.isConfigured ? .monospaced : .default
+                        ))
                         .foregroundStyle(Color.white.opacity(0.55))
                         .lineLimit(1)
-                    Image(systemName: viewModel.isConfigured ? "checkmark.seal.fill" : "exclamationmark.circle.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(statusBadgeColor)
+                        .minimumScaleFactor(0.62)
                 }
             }
         ) {
