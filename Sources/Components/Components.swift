@@ -106,17 +106,31 @@ struct CollapsibleCard<Header: View, Content: View>: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // 整行可点：contentShape + 拉高热区，避免只有文字/图标好点
             Button(action: { withAnimation(PopupMotion.contentEase) { isExpanded.toggle() } }) {
-                HStack(spacing: 6) {
-                    Image(systemName: icon).foregroundColor(iconColor).font(.system(size: 15, weight: .semibold))
-                    Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.textPrimary)
-                    Spacer()
+                HStack(spacing: 8) {
+                    Image(systemName: icon)
+                        .foregroundColor(iconColor)
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(width: 22, alignment: .center)
+                    Text(title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.textPrimary)
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
                     headerExtra?()
-                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(theme.textSecondary)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 }
-            }.buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                // 扩大点击高度，整行都在热区内
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
             if isExpanded {
                 VStack(alignment: .leading, spacing: 12) {
                     Divider().background(theme.cardStroke)
@@ -126,7 +140,9 @@ struct CollapsibleCard<Header: View, Content: View>: View {
                 .transition(.opacity)
             }
         }
-        .padding(AppSpacing.cardPadding)
+        .padding(.horizontal, AppSpacing.cardPadding)
+        .padding(.top, max(0, AppSpacing.cardPadding - 10))
+        .padding(.bottom, AppSpacing.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
