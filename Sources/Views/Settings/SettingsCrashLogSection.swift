@@ -42,7 +42,7 @@ struct SettingsCrashLogSection: View {
                                 .font(.caption2)
                                 .foregroundStyle(Color.white.opacity(0.45))
                         } else {
-                            Text("有记录")
+                            Text("有记录 · 预览为中文短时间")
                                 .font(.caption2)
                                 .foregroundStyle(Color.orange.opacity(0.9))
                         }
@@ -66,6 +66,11 @@ struct SettingsCrashLogSection: View {
                         .scaleEffect(0.7)
                     }
 
+                    Text("界面只看懂摘要；复制/导出为详细 DEBUG，发给开发排查。")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.white.opacity(0.40))
+                        .fixedSize(horizontal: false, vertical: true)
+
                     if crashLogText.isEmpty {
                         HStack {
                             Image(systemName: "checkmark.circle.fill")
@@ -78,8 +83,8 @@ struct SettingsCrashLogSection: View {
                     } else {
                         ScrollView(.vertical, showsIndicators: true) {
                             Text(crashLogText)
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(Color.white.opacity(0.62))
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(Color.white.opacity(0.72))
                                 .padding(10)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -97,7 +102,7 @@ struct SettingsCrashLogSection: View {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 12)], alignment: .leading, spacing: 10) {
                         Button {
                             refreshCrashLog()
-                            withAnimation { toastText = "日志已刷新" }
+                            withAnimation { toastText = "预览已刷新" }
                         } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.counterclockwise")
@@ -128,7 +133,7 @@ struct SettingsCrashLogSection: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "doc.on.doc")
                                     .font(.system(size: 12))
-                                Text("复制最近")
+                                Text("复制详细")
                                     .font(.system(size: 13, weight: .medium))
                             }
                             .foregroundStyle(AppTheme.accent)
@@ -140,7 +145,7 @@ struct SettingsCrashLogSection: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "square.and.arrow.up")
                                     .font(.system(size: 12))
-                                Text("导出")
+                                Text("导出详细")
                                     .font(.system(size: 13, weight: .medium))
                             }
                             .foregroundStyle(AppTheme.accent)

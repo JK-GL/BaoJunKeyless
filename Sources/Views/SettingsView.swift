@@ -154,16 +154,18 @@ struct SettingsView: View {
 
 
     private func refreshCrashLog() {
-        let newText = CrashLogger.shared.readReversedRecentLog(limit: 300)
+        // 界面：中文短时间可读预览
+        let newText = CrashLogger.shared.readDisplayText(limit: 220)
         if crashLogText != newText {
             crashLogText = newText
         }
     }
 
     private func copyRecentLog() {
-        let text = CrashLogger.shared.readRecentLog(limit: 100)
-        UIPasteboard.general.string = text.isEmpty ? crashLogText : text
-        withAnimation { toastText = "已复制最近日志" }
+        // 复制：DEBUG 详细格式（完整时间戳 + 设备头）
+        let text = CrashLogger.shared.exportDebugText(limit: 300, newestFirst: true, tag: "copy")
+        UIPasteboard.general.string = text
+        withAnimation { toastText = "已复制详细错误日志" }
     }
 
     private func exportCrashLog() {
@@ -173,6 +175,7 @@ struct SettingsView: View {
         }
         sharePayload = SharePayload(activityItems: [url])
         refreshCrashLog()
+        withAnimation { toastText = "已导出详细错误日志" }
     }
 
     private func resetAllSettings() {
