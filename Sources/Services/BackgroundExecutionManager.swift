@@ -9,6 +9,7 @@ import Combine
 /// - 按需定位保活
 /// - 受限提醒
 /// 注意：围栏只负责调度，不直接解锁/上锁。
+/// 用户可见日志走 VehicleEventLogStore（可 ×N 合并）；CrashLogger 仅作底层诊断。
 final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     static let shared = BackgroundExecutionManager()
 
@@ -31,6 +32,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     private let settingsStore = KeylessSettingsStore.shared
     private let locationDisplayStore = VehicleLocationDisplayStore.shared
     private let connectionStatusStore = VehicleConnectionStatusStore.shared
+    private let eventLog = VehicleEventLogStore.shared
 
     private var cancellables = Set<AnyCancellable>()
     private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
@@ -40,6 +42,9 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     private var lastLimitationNotifyAt: Date?
     private var isAppInForeground = true
     private var keepAliveDesired = false
+    private var lastLoggedPhase: RuntimePhase?
+    private var lastLoggedKeepAlive: Bool?
+    private var lastLoggedInFence: Bool?
 
     private override init() {
         super.init()
@@ -61,6 +66,11 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     func handleDidEnterBackground() {
         isAppInForeground = false
         let settings = settingsStore.settings
+        logInfo(
+            "进入后台",
+            detail: settings.keylessEnabled ? "无感开启 · 尝试续命" : "无感关闭",
+            identity: "bg-enter"
+        )
         if settings.keylessEnabled && settings.backgroundEnhancedEnabled {
             beginBackgroundTask(reason: "keyless-background")
         }
@@ -73,6 +83,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     func handleWillEnterForeground() {
         isAppInForeground = true
         endBackgroundTask()
+        logInfo("回到前台", detail: "结束后台任务 · 恢复前台策略", identity: "bg-foreground")
         reevaluate(reason: "enter-foreground")
     }
 
@@ -80,11 +91,12 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         if !settings.keylessEnabled {
             stopAll(reason: "无感关闭")
             phase = .idleDisabled
+            logInfo("后台增强已停用", detail: "无感关闭", identity: "bg-disabled")
             return
         }
 
         requestAuthorizationIfNeeded(for: settings)
-        updateGeofenceIfNeeded(settings: settings, force: reason.contains("settings") || reason.contains("radius"))
+        updateGeofenceIfNeeded(settings: settings, force: reason.contains("settings") || reason.contains("radius") || reason == "init")
         reevaluate(reason: reason)
     }
 
@@ -137,11 +149,10 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         let bleBusy = isBLEBusy
         let auth = connectionStatusStore.bleStatus == .authenticated
 
-        // 权限不足 → 受限
+        // 权限不足 → 受限（错误类）
         if (settings.geofenceWakeEnabled || settings.locationKeepAliveEnabled),
            !hasSufficientLocationPermission(for: settings) {
             enterDegraded(reason: "定位权限不足，后台预唤醒/保活受限")
-            // 仍可尝试 BLE 后台，不强制停
         }
 
         // 定位保活：按需
@@ -150,6 +161,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             && (isInGeofence || bleBusy || auth)
         setKeepAliveActive(wantKeepAlive)
 
+        let previousPhase = phase
         if auth {
             phase = .keylessAuthenticated
         } else if bleBusy {
@@ -163,6 +175,29 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             phase = .fenceSleep
         } else if phase != .degraded {
             phase = .approachArming
+        }
+
+        // 阶段变化写用户日志（合并）
+        if lastLoggedPhase != phase {
+            lastLoggedPhase = phase
+            if phase == .degraded {
+                // 错误路径由 enterDegraded 写
+            } else {
+                logInfo(
+                    "后台阶段",
+                    detail: "\(phase.rawValue) · \(reasonText(reason))",
+                    identity: "bg-phase|\(phase.rawValue)"
+                )
+            }
+        } else if previousPhase != phase {
+            // no-op
+        }
+
+        if lastLoggedInFence != isInGeofence {
+            lastLoggedInFence = isInGeofence
+        }
+        if lastLoggedKeepAlive != isKeepAliveActive {
+            lastLoggedKeepAlive = isKeepAliveActive
         }
 
         CrashLogger.shared.mark(
@@ -189,6 +224,8 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         }
 
         guard let centerWGS = currentVehicleCoordinateWGS84() else {
+            // 无坐标：信息类，合并，不算错误
+            logInfo("电子围栏待就绪", detail: "车辆位置无效，暂未挂载", identity: "geofence-wait-coord")
             removeGeofence(reason: "车辆位置无效")
             return
         }
@@ -202,7 +239,6 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             return
         }
 
-        // 需要 Always 才能可靠后台围栏
         let status = locationManager.authorizationStatus
         guard status == .authorizedAlways || status == .authorizedWhenInUse else {
             enterDegraded(reason: "需要定位权限以启用电子围栏")
@@ -213,24 +249,20 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         region.notifyOnEntry = true
         region.notifyOnExit = true
 
-        // 先清旧再挂新
         for old in locationManager.monitoredRegions where old.identifier == regionIdentifier {
             locationManager.stopMonitoring(for: old)
         }
         locationManager.startMonitoring(for: region)
-        // 立即请求一次当前状态，避免进圈后才挂上导致漏唤醒
         locationManager.requestState(for: region)
 
         monitoredRegion = region
         lastFenceCenter = centerWGS
         lastFenceRadius = radius
 
-        VehicleEventLogStore.shared.addThrottled(
-            .keyless,
+        logInfo(
             "电子围栏已更新",
             detail: "半径 \(Int(radius)) 米 · 中心已同步车辆位置",
-            identity: "geofence-update",
-            minimumInterval: 20
+            identity: "geofence-update|\(Int(radius))"
         )
         CrashLogger.shared.mark("BG", "geofence updated r=\(Int(radius)) lat=\(String(format: "%.5f", centerWGS.latitude)) lng=\(String(format: "%.5f", centerWGS.longitude))")
     }
@@ -240,6 +272,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             locationManager.stopMonitoring(for: old)
         }
         if monitoredRegion != nil {
+            logInfo("电子围栏已移除", detail: reason, identity: "geofence-remove|\(reason)")
             CrashLogger.shared.mark("BG", "geofence removed: \(reason)")
         }
         monitoredRegion = nil
@@ -254,7 +287,6 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         let latGcj = locationDisplayStore.displayLatitudeGcj
         let lngGcj = locationDisplayStore.displayLongitudeGcj
         guard latGcj != 0, lngGcj != 0 else { return nil }
-        // CoreLocation 围栏用 WGS-84；显示层是 GCJ-02
         let wgs = LocationResolver.gcj02ToWgs84(lat: latGcj, lng: lngGcj)
         guard abs(wgs.lat) <= 90, abs(wgs.lng) <= 180 else { return nil }
         return CLLocationCoordinate2D(latitude: wgs.lat, longitude: wgs.lng)
@@ -269,6 +301,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
                 locationManager.allowsBackgroundLocationUpdates = false
                 locationManager.stopUpdatingLocation()
                 isKeepAliveActive = false
+                logInfo("定位保活已停止", detail: "远离/空闲", identity: "keepalive-stop")
                 CrashLogger.shared.mark("BG", "location keep-alive stop")
             }
             return
@@ -280,7 +313,6 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             return
         }
 
-        // Always 更稳；WhenInUse 时仍尝试（前台/短后台可能有效）
         locationManager.allowsBackgroundLocationUpdates = (status == .authorizedAlways)
         locationManager.pausesLocationUpdatesAutomatically = false
         locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
@@ -288,6 +320,8 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         locationManager.startUpdatingLocation()
         if !isKeepAliveActive {
             isKeepAliveActive = true
+            let authText = status == .authorizedAlways ? "始终" : "使用期间"
+            logInfo("定位保活已开启", detail: "权限=\(authText) · 按需续命", identity: "keepalive-start")
             CrashLogger.shared.mark("BG", "location keep-alive start auth=\(status.rawValue)")
         }
     }
@@ -296,8 +330,10 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         guard settingsStore.settings.backgroundEnhancedEnabled else { return }
         if backgroundTaskID != .invalid { return }
         backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "SGMWKey.\(reason)") { [weak self] in
+            self?.logError("后台任务被系统回收", detail: reason, identity: "bg-task-expired")
             self?.endBackgroundTask()
         }
+        logInfo("增强后台执行", detail: reasonText(reason), identity: "bg-task-begin|\(reason)")
         CrashLogger.shared.mark("BG", "beginBackgroundTask \(reason) id=\(backgroundTaskID.rawValue)")
     }
 
@@ -306,6 +342,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         let id = backgroundTaskID
         backgroundTaskID = .invalid
         UIApplication.shared.endBackgroundTask(id)
+        logInfo("结束后台任务", detail: "id=\(id.rawValue)", identity: "bg-task-end")
         CrashLogger.shared.mark("BG", "endBackgroundTask id=\(id.rawValue)")
     }
 
@@ -326,10 +363,8 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
         switch status {
         case .notDetermined:
-            // 先 whenInUse，再在授权后尝试 always
             locationManager.requestWhenInUseAuthorization()
         case .authorizedWhenInUse:
-            // 围栏/保活需要 always 更稳
             locationManager.requestAlwaysAuthorization()
         default:
             break
@@ -338,11 +373,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
     private func hasSufficientLocationPermission(for settings: KeylessSettings) -> Bool {
         let status = locationManager.authorizationStatus
-        if settings.geofenceWakeEnabled {
-            // 围栏后台：Always 最佳；WhenInUse 仅前台有效
-            return status == .authorizedAlways || status == .authorizedWhenInUse
-        }
-        if settings.locationKeepAliveEnabled {
+        if settings.geofenceWakeEnabled || settings.locationKeepAliveEnabled {
             return status == .authorizedAlways || status == .authorizedWhenInUse
         }
         return true
@@ -351,14 +382,9 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     private func enterDegraded(reason: String) {
         phase = .degraded
         lastLimitationReason = reason
+        lastLoggedPhase = .degraded
         postLimitationNotificationIfNeeded(reason: reason)
-        VehicleEventLogStore.shared.addThrottled(
-            .warning,
-            "后台能力受限",
-            detail: reason,
-            identity: "bg-degraded",
-            minimumInterval: 60
-        )
+        logError("后台能力受限", detail: reason, identity: "bg-degraded|\(reason)")
     }
 
     private func postLimitationNotificationIfNeeded(reason: String) {
@@ -376,13 +402,47 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     private func requestBLESession(forceRestart: Bool, detail: String) {
         guard let store = VehicleStateStoreBridge.current as? MQTTVehicleStateStore else { return }
         store.ensureBLESession(forceRestart: forceRestart, optimisticScanning: true)
-        VehicleEventLogStore.shared.addThrottled(
-            .keyless,
-            "后台唤醒 BLE",
+        logInfo("后台唤醒 BLE", detail: detail, identity: "bg-wake-ble|\(detail)")
+    }
+
+    // MARK: - Logging helpers（用户可见 + ×N 合并）
+
+    private func logInfo(_ title: String, detail: String, identity: String, mergeWindow: TimeInterval = 180) {
+        eventLog.addCoalesced(
+            .system,
+            title,
             detail: detail,
-            identity: "bg-wake-ble",
-            minimumInterval: 15
+            identity: identity,
+            mergeWindow: mergeWindow
         )
+    }
+
+    private func logError(_ title: String, detail: String, identity: String, mergeWindow: TimeInterval = 300) {
+        eventLog.addCoalesced(
+            .error,
+            title,
+            detail: detail,
+            identity: identity,
+            mergeWindow: mergeWindow
+        )
+    }
+
+    private func reasonText(_ reason: String) -> String {
+        switch reason {
+        case "keyless-background": return "锁屏/切后台续命"
+        case "approach-arming": return "围栏内警戒"
+        case "geofence-enter": return "进入围栏"
+        case "location-keepalive": return "定位保活续命"
+        case "enter-background": return "进入后台"
+        case "enter-foreground": return "回到前台"
+        case "settings-change", "settings": return "设置变更"
+        case "init": return "启动"
+        case "vehicle-location": return "车辆位置更新"
+        case "ble-status": return "BLE 状态变化"
+        case "enter-region": return "进入围栏"
+        case "exit-region": return "离开围栏"
+        default: return reason
+        }
     }
 
     // MARK: - CLLocationManagerDelegate
@@ -394,7 +454,6 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             beginBackgroundTask(reason: "geofence-enter")
         }
         requestBLESession(forceRestart: false, detail: "进入电子围栏")
-        // 后台状态同步：尝试保活 MQTT/HTTP
         if let store = VehicleStateStoreBridge.current as? MQTTVehicleStateStore {
             store.applyBackgroundRuntimeSettings(reason: "geofence-enter")
             if store.mqttStatus != .connected {
@@ -402,15 +461,14 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             }
         }
         reevaluate(reason: "enter-region")
-        VehicleEventLogStore.shared.add(.keyless, "进入电子围栏", detail: "启动蓝牙警戒（不直接解锁）")
+        logInfo("进入电子围栏", detail: "启动蓝牙警戒（不直接解锁）", identity: "geofence-enter")
     }
 
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
         guard region.identifier == regionIdentifier else { return }
         isInGeofence = false
-        // 出圈不锁车；仅降功耗
         reevaluate(reason: "exit-region")
-        VehicleEventLogStore.shared.add(.keyless, "离开电子围栏", detail: "降低后台活跃度（不自动上锁）")
+        logInfo("离开电子围栏", detail: "降低后台活跃度（不自动上锁）", identity: "geofence-exit")
     }
 
     func locationManager(_ manager: CLLocationManager, didDetermineState state: CLRegionState, for region: CLRegion) {
@@ -420,11 +478,13 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             if !isInGeofence {
                 isInGeofence = true
                 reevaluate(reason: "region-state-inside")
+                logInfo("围栏状态", detail: "当前在围栏内", identity: "geofence-state-inside")
             }
         case .outside:
             if isInGeofence {
                 isInGeofence = false
                 reevaluate(reason: "region-state-outside")
+                logInfo("围栏状态", detail: "当前在围栏外", identity: "geofence-state-outside")
             }
         case .unknown:
             break
@@ -441,10 +501,11 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         let settings = settingsStore.settings
         switch manager.authorizationStatus {
         case .authorizedAlways:
+            logInfo("定位权限", detail: "始终允许", identity: "loc-auth-always")
             updateGeofenceIfNeeded(settings: settings, force: true)
             reevaluate(reason: "auth-always")
         case .authorizedWhenInUse:
-            // 尽量再要 Always
+            logInfo("定位权限", detail: "使用期间 · 建议改为始终允许以提升后台唤醒", identity: "loc-auth-wheninuse")
             if settings.geofenceWakeEnabled || settings.locationKeepAliveEnabled {
                 manager.requestAlwaysAuthorization()
             }
@@ -462,13 +523,15 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        // 保活用途：不驱动无感决策，仅维持进程
+        // 保活用途：不驱动无感决策，仅维持进程；不写用户日志（太吵）
         if keepAliveDesired, settingsStore.settings.backgroundEnhancedEnabled, !isAppInForeground {
             beginBackgroundTask(reason: "location-keepalive")
         }
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        // 真正错误：定位失败
+        logError("定位失败", detail: error.localizedDescription, identity: "loc-fail|\(error.localizedDescription)")
         CrashLogger.shared.mark("BG", "location fail: \(error.localizedDescription)")
     }
 }

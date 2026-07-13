@@ -34,9 +34,28 @@ extension MQTTVehicleStateStore {
     /// 前后台 / 设置切换时重算 HTTP 轮询与 MQTT 保活策略
     func applyBackgroundRuntimeSettings(reason: String) {
         let settings = keylessSettingsStore.settings
+        let interval = currentHTTPPollInterval()
+        let modeText: String
+        if isAppInForeground {
+            modeText = "前台 · \(Int(interval))s"
+        } else if settings.backgroundStateSyncEnabled {
+            modeText = "后台同步开 · \(Int(interval))s"
+        } else {
+            modeText = "后台同步关 · \(Int(interval))s"
+        }
+
         CrashLogger.shared.mark(
             "BG",
-            "applyRuntime \(reason) fg=\(isAppInForeground ? 1 : 0) sync=\(settings.backgroundStateSyncEnabled ? 1 : 0) keyless=\(settings.keylessEnabled ? 1 : 0)"
+            "applyRuntime \(reason) fg=\(isAppInForeground ? 1 : 0) sync=\(settings.backgroundStateSyncEnabled ? 1 : 0) keyless=\(settings.keylessEnabled ? 1 : 0) interval=\(Int(interval))"
+        )
+
+        // 用户可见：与轮询/扫描一样可 ×N 合并
+        vehicleEventLogStore.addCoalesced(
+            .system,
+            "后台状态同步",
+            detail: "\(modeText) · \(backgroundReasonText(reason))",
+            identity: "bg-state-sync|\(isAppInForeground ? "fg" : "bg")|\(settings.backgroundStateSyncEnabled ? 1 : 0)|\(Int(interval))",
+            mergeWindow: 180
         )
 
         // 始终用当前策略重挂 HTTP 定时器（前台 20/3，后台 90/25 或更慢）
@@ -50,8 +69,26 @@ extension MQTTVehicleStateStore {
         // 后台且允许状态同步时，尽量保持 MQTT
         if !isAppInForeground && settings.backgroundStateSyncEnabled && settings.keylessEnabled {
             if mqttStatus != .connected && mqttStatus != .connecting {
+                vehicleEventLogStore.addCoalesced(
+                    .system,
+                    "后台 MQTT 重连",
+                    detail: "状态同步开启 · 尝试保持车况",
+                    identity: "bg-mqtt-reconnect",
+                    mergeWindow: 120
+                )
                 reconnect()
             }
+        }
+    }
+
+    private func backgroundReasonText(_ reason: String) -> String {
+        switch reason {
+        case "enter-background": return "进入后台"
+        case "enter-foreground": return "回到前台"
+        case "settings-init": return "启动"
+        case "settings-change": return "设置变更"
+        case "geofence-enter": return "进入围栏"
+        default: return reason
         }
     }
 

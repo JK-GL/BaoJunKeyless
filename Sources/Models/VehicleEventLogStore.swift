@@ -279,8 +279,9 @@ final class VehicleEventLogStore: ObservableObject {
         let calendar = Calendar.current
         let today = entries.filter { calendar.isDateInToday($0.date) }
         todayEntries = today
+        // 「错误」只计真实 error；warning 走警告筛选，不混进错误数
         todayErrorCount = today.reduce(into: 0) { count, entry in
-            if entry.category == .error || entry.category == .warning {
+            if entry.category == .error {
                 count += 1
             }
         }

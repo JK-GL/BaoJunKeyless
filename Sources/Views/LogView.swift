@@ -81,7 +81,7 @@ struct LogView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
                     consoleBadge(text: "今日 \(todayLogs.count)", color: theme.accent)
-                    consoleBadge(text: "告警 \(errorCount)", color: errorCount > 0 ? AppTheme.orange : theme.textSecondary)
+                    consoleBadge(text: "错误 \(errorCount)", color: errorCount > 0 ? AppTheme.red : theme.textSecondary)
                     consoleBadge(text: selectedFilter.title, color: theme.textSecondary)
                     Spacer(minLength: 0)
                 }
