@@ -22,6 +22,8 @@ enum StatusAuthState {
 enum StatusBLEState: Equatable {
     case disconnected
     case scanning
+    /// 仅围栏内扫描 · 当前圈外，自动扫描暂停
+    case pausedOutsideFence
     case connecting
     case connected
     case authenticating
@@ -34,6 +36,7 @@ enum StatusBLEState: Equatable {
         case .authenticated: return "checkmark.seal.fill"
         case .connected: return "link.circle.fill"
         case .connecting, .authenticating: return "dot.radiowaves.left.and.right"
+        case .pausedOutsideFence: return "location.slash"
         case .disconnected, .scanning, .weak, .error: return "antenna.radiowaves.left.and.right.slash"
         }
     }
@@ -42,6 +45,7 @@ enum StatusBLEState: Equatable {
         switch self {
         case .disconnected: return "BLE未连接"
         case .scanning: return "BLE扫描中"
+        case .pausedOutsideFence: return "BLE围栏外暂停"
         // connecting = App 正在连，但系统未必已连上；文案用“寻找/连接中”避免误解成“已连上”
         case .connecting: return "BLE连接中"
         case .connected: return "BLE链路中"
@@ -55,6 +59,7 @@ enum StatusBLEState: Equatable {
     var color: Color {
         switch self {
         case .disconnected: return Color.white.opacity(0.45)
+        case .pausedOutsideFence: return AppTheme.orange
         case .scanning, .connecting: return AppTheme.accent
         case .connected: return AppTheme.green.opacity(0.82)
         case .authenticating: return AppTheme.orange

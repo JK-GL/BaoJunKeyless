@@ -60,23 +60,27 @@ struct StatusPillsHost: View {
 
     private var modeText: String {
         guard settingsStore.settings.keylessEnabled else { return "无感关闭" }
-        if settingsStore.settings.smartSwitch { return "智能切换" }
+        if settingsStore.settings.pluginTakeover { return "插件托管" }
         if settingsStore.settings.appManual { return "前台手动" }
-        return "自动无感"
+        // 旧存档可能还开着智能切换
+        if settingsStore.settings.smartSwitch { return "智能切换" }
+        return "无感待命"
     }
 
     private var modeColor: Color {
         guard settingsStore.settings.keylessEnabled else { return Color.white.opacity(0.45) }
-        if settingsStore.settings.smartSwitch { return AppTheme.accent }
+        if settingsStore.settings.pluginTakeover { return AppTheme.green }
         if settingsStore.settings.appManual { return AppTheme.purple }
-        return AppTheme.green
+        if settingsStore.settings.smartSwitch { return AppTheme.accent }
+        return AppTheme.orange
     }
 
     private var modeIcon: String {
         guard settingsStore.settings.keylessEnabled else { return "bolt.slash.fill" }
-        if settingsStore.settings.smartSwitch { return "arrow.triangle.2.circlepath" }
+        if settingsStore.settings.pluginTakeover { return "puzzlepiece" }
         if settingsStore.settings.appManual { return "iphone" }
-        return "key.fill"
+        if settingsStore.settings.smartSwitch { return "arrow.triangle.2.circlepath" }
+        return "pause.circle.fill"
     }
 
     private var physicalKeyState: StatusPhysicalKeyState {

@@ -12,6 +12,10 @@ extension MQTTVehicleStateStore {
             case .idle:
                 if self.ignoreNextBLEIdleCallback {
                     self.ignoreNextBLEIdleCallback = false
+                    // 主动停扫/重启：保留「围栏外暂停」等策略态，不要被 idle 冲成未连接
+                    if self.bleStatus == .pausedOutsideFence {
+                        return
+                    }
                     // 主动重启连接时：保留广播预填 RSSI，只清会话态
                     switch self.bleManager.state {
                     case .scanning, .connecting, .connected, .authenticating, .authenticated:
@@ -54,7 +58,13 @@ extension MQTTVehicleStateStore {
                 let keepPreview = self.bleDiagnosticsStore.isPreviewRSSI
                     && (self.bleStatus == .connecting || self.bleStatus == .authenticating)
                 self.connectionStatusStore.isSystemBLEConnected = false
-                self.bleStatus = .disconnected
+                // 若策略要求圈外暂停，保持专用状态而不是普通未连接
+                if self.shouldSuppressAutomaticBLEScan && !self.isBLESessionActive {
+                    self.bleStatus = .pausedOutsideFence
+                    self.setBLEDiagnosticPhase("围栏外休眠", detail: "仅围栏内扫描 · 进入围栏后自动警戒")
+                } else {
+                    self.bleStatus = .disconnected
+                }
                 self.bleScanStartedAt = nil
                 self.hasCompletedBLEAuth = false
                 if !keepPreview {
@@ -186,10 +196,23 @@ extension MQTTVehicleStateStore {
         let shouldKeepBLESession = settings.keylessEnabled || routeMode == .forceBLE
         guard shouldKeepBLESession else {
             bleManager.stop()
-            bleStatus = .disconnected
+            if bleStatus != .pausedOutsideFence {
+                bleStatus = .disconnected
+            }
             return
         }
         guard !userManuallyStoppedBLE else { return }
+
+        // 仅围栏内扫描 + 圈外：禁止 start/重试；已连接会话可保留
+        if shouldSuppressAutomaticBLEScan {
+            if isBLESessionActive {
+                // 已连着只更新参数，不主动宽扫
+            } else {
+                pauseAutomaticBLEScanOutsideFence(reason: "refresh")
+                return
+            }
+        }
+
         let bleMac = latestBleKeyInfo["bleMac"] ?? latestBleKeyInfo["macAddress"] ?? ""
         let keyId = latestBleKeyInfo["keyId"] ?? ""
         let masterKey = latestBleKeyInfo["masterKey"] ?? ""
@@ -199,11 +222,15 @@ extension MQTTVehicleStateStore {
         let bleKey = latestBleKeyInfo["bleKey"]
         guard !bleMac.isEmpty, !keyId.isEmpty, !masterKey.isEmpty, !keyMasterRandom.isEmpty else {
             bleManager.stop()
-            bleStatus = .disconnected
+            if bleStatus != .pausedOutsideFence {
+                bleStatus = .disconnected
+            }
             return
         }
         bleManager.scanTimeoutDuration = max(20, min(300, settings.bleScanDuration))
         bleManager.scanRetryInterval = effectiveScanRetryInterval(baseInterval: settings.bleScanInterval)
+        // 圈外暂停时禁止底层超时后无间隙重试
+        bleManager.allowsAutomaticScanRetry = !shouldSuppressAutomaticBLEScan
         bleManager.start(config: .init(bleMac: bleMac, keyId: keyId, masterKey: masterKey, keyMasterRandom: keyMasterRandom, controlAes128Key: controlAes128Key, bleType: bleType, bleKey: bleKey))
     }
 
@@ -213,7 +240,7 @@ extension MQTTVehicleStateStore {
     var shouldSuppressAutomaticBLEScan: Bool {
         if AppDiagnosticsSettings.vehicleControlRouteMode == .forceBLE { return false }
         let settings = keylessSettingsStore.settings
-        guard settings.keylessEnabled else { return true }
+        guard settings.keylessEnabled else { return false }
         guard settings.scanOnlyInsideGeofence, settings.geofenceWakeEnabled else { return false }
         return !BackgroundExecutionManager.shared.isInGeofence
     }
@@ -227,6 +254,24 @@ extension MQTTVehicleStateStore {
         }
     }
 
+    /// 圈外立即停扫：取消底层重试，并给胶囊明确文案状态
+    private func pauseAutomaticBLEScanOutsideFence(reason: String) {
+        bleManager.allowsAutomaticScanRetry = false
+        ignoreNextBLEIdleCallback = true
+        bleManager.stop()
+        bleScanStartedAt = nil
+        connectionStatusStore.isSystemBLEConnected = false
+        bleStatus = .pausedOutsideFence
+        setBLEDiagnosticPhase("围栏外休眠", detail: "仅围栏内扫描 · 进入围栏后自动警戒")
+        vehicleEventLogStore.addCoalesced(
+            .system,
+            "BLE 扫描已暂停",
+            detail: "仅围栏内扫描 · 当前圈外 · \(reason)",
+            identity: "scan-suppress-outside-fence",
+            mergeWindow: 180
+        )
+    }
+
     /// - Parameter userInitiated: 用户手动开始扫描/附近设备/绑定等，绕过「仅围栏内扫描」
     func ensureBLESession(forceRestart: Bool, optimisticScanning: Bool, userInitiated: Bool = false) {
         if forceRestart {
@@ -238,30 +283,23 @@ extension MQTTVehicleStateStore {
             reloadCachedBLEKeyInfo(preferScoped: true)
         }
 
-        // 仅围栏内扫描：圈外停止自动找车；已连接会话保留
+        // 仅围栏内扫描：圈外立即停止自动找车（含正在扫的一轮）；已连接会话保留
         if !userInitiated && shouldSuppressAutomaticBLEScan {
             if isBLESessionActive {
+                bleManager.allowsAutomaticScanRetry = false
                 // 已连上：只保持，不新开扫描
                 refreshBLESessionIfNeeded()
             } else {
-                bleManager.stop()
-                if bleStatus == .scanning || bleStatus == .disconnected {
-                    bleStatus = .disconnected
-                }
-                setBLEDiagnosticPhase("围栏外休眠", detail: "仅围栏内扫描已开 · 进入围栏后自动警戒")
-                vehicleEventLogStore.addCoalesced(
-                    .system,
-                    "BLE 扫描已暂停",
-                    detail: "仅围栏内扫描 · 当前圈外",
-                    identity: "scan-suppress-outside-fence",
-                    mergeWindow: 180
-                )
+                pauseAutomaticBLEScanOutsideFence(reason: forceRestart ? "重启抑制" : "自动抑制")
             }
             if !hasUsableBLEKeyInfo {
                 fetchBleKeyInfo(force: false)
             }
             return
         }
+
+        // 允许扫描时恢复自动重试
+        bleManager.allowsAutomaticScanRetry = true
 
         if optimisticScanning,
            keylessSettingsStore.settings.keylessEnabled || AppDiagnosticsSettings.vehicleControlRouteMode == .forceBLE,

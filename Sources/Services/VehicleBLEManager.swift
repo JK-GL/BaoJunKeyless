@@ -274,6 +274,8 @@ final class VehicleBLEManager: NSObject {
 
     var scanTimeoutDuration: TimeInterval = 20
     var scanRetryInterval: TimeInterval = 0
+    /// 为 false 时：扫描超时后不再自动重试（用于「仅围栏内扫描」圈外立即停扫）
+    var allowsAutomaticScanRetry: Bool = true
 
     var canSendDoorLockControl: Bool {
         canSendVehicleControl
@@ -600,10 +602,15 @@ final class VehicleBLEManager: NSObject {
         scanRetryWorkItem?.cancel()
         scanRetryWorkItem = nil
         guard config != nil else { return }
+        guard allowsAutomaticScanRetry else {
+            onLog?("BLE", "scan retry suppressed (outside fence / policy)")
+            return
+        }
         let interval = max(0, scanRetryInterval)
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             guard self.config != nil else { return }
+            guard self.allowsAutomaticScanRetry else { return }
             guard case .idle = self.state else { return }
             // 每一轮重试都重新优先绑定车，失败后再宽扫
             self.hasTriedBoundPeripheral = false

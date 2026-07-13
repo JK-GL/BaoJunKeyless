@@ -61,15 +61,15 @@ struct KeylessView: View {
     }
 
     private func setMode(_ mode: KeylessControlMode) {
-        // 插件托管 UI 已移除；选智能/前台时顺带清掉旧插件开关，避免模式互斥残留
-        settingsStore.settings.pluginTakeover = false
-        settingsStore.settings.smartSwitch = (mode == .smart)
+        // 智能切换 UI 已移除；选插件/前台时清掉 smartSwitch，避免互斥残留
+        settingsStore.settings.pluginTakeover = (mode == .plugin)
+        settingsStore.settings.smartSwitch = false
         settingsStore.settings.appManual = (mode == .manual)
 
         let text: String
         switch mode {
-        case .plugin: text = "默认自动" // 兼容枚举残留
-        case .smart: text = "智能切换"
+        case .plugin: text = "插件托管"
+        case .smart: text = "智能切换" // 兼容枚举残留
         case .manual: text = "前台手动"
         }
         VehicleEventLogStore.shared.add(.keyless, "切换无感模式", detail: text)
