@@ -269,18 +269,23 @@ struct BodyStatusView: View, Equatable {
         && lhs.detailMetrics == rhs.detailMetrics
     }
 
+    private var statusColor: Color {
+        if normalText == "未知" || normalText == "部分未知" || normalText == "缓存" { return StatusTint.muted }
+        return warnings.isEmpty ? StatusTint.successGreen : StatusTint.warningAmber
+    }
+
     var body: some View {
         CardView(
             title: "车身状态",
             icon: "car.fill",
-            iconColor: StatusTint.successGreen,
+            iconColor: statusColor,
             headerAccessory: {
                 Text(normalText)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(warnings.isEmpty ? StatusTint.successGreen : StatusTint.warningAmber)
+                    .foregroundColor(statusColor)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(Capsule().fill((warnings.isEmpty ? StatusTint.successGreen : StatusTint.warningAmber).opacity(0.12)))
+                    .background(Capsule().fill(statusColor.opacity(0.12)))
             }
         ) {
             VStack(spacing: 10) {

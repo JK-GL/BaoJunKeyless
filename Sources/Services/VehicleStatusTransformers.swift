@@ -12,33 +12,51 @@ enum VehicleStatusMapper {
         next.timestamp = parseTimestamp(s["collectTime"]) ?? Date()
         next.online = true
 
-        if let locked = parseLocked(s["doorLockStatus"]) { next.locked = locked }
-        if let doorsClosed = parseDoorClosed(s) { next.doorsClosed = doorsClosed }
-        if let driverOpen = parseOpen(s["door1OpenStatus"]) { next.driverDoorOpen = driverOpen }
-        if let trunkOpen = parseOpen(s["tailDoorOpenStatus"]) { next.trunkOpen = trunkOpen }
-        if let windowsClosed = parseWindowsClosed(s) { next.windowsClosed = windowsClosed }
+        next.locked = parseLocked(s["doorLockStatus"])
+        next.doorsClosed = parseDoorClosed(s)
+        next.driverDoorOpen = parseOpen(s["door1OpenStatus"])
+        next.trunkOpen = parseOpen(s["tailDoorOpenStatus"])
+        next.windowsClosed = parseWindowsClosed(s)
 
-        if let batterySoc = parseDouble(s["batterySoc"]) { next.fuelLevel = batterySoc }
-        if let leftMileage = parseDouble(s["leftMileage"]) { next.fuelRange = leftMileage }
-        if let leftFuel = parseDouble(s["leftFuel"]) {
-            next.oilRange = parseDouble(s["oilLeftMileage"]) ?? next.oilRange
-            next.fuelLevel = next.fuelLevel ?? leftFuel
-        }
-        if let oilMileage = parseDouble(s["oilLeftMileage"]) { next.oilRange = oilMileage }
+        // 油量/油续航只使用燃油字段；batterySoc 不能写进 fuelLevel，
+        // 否则纯电车型会被误判成“有油”。
+        next.fuelLevel = parseDouble(s["leftFuel"] ?? s["fuelPercent"] ?? s["oilPercent"])
+        let oilMileage = parseDouble(s["oilLeftMileage"])
+        next.fuelRange = oilMileage
+        next.oilRange = oilMileage
 
-        if let ac = parseACStatus(s["acStatus"]) { next.acOn = ac }
-        if let temp = parseDouble(s["accCntTemp"] ?? s["interiorTemperature"]) { next.acTemperature = temp }
-        if let gear = parseGear(s["autoGearStatus"]) { next.gear = gear }
-        if let speed = parseDouble(s["speed"] ?? s["vehSpd"] ?? s["vehSpdAvgDrvn"]) { next.speed = speed }
-        let physicalKeyPosition = parsePhysicalKeyPosition(s["keyStatus"])
-        next.physicalKeyPosition = physicalKeyPosition
-        // phoneNearby / bleRssi 只由手机侧 live BLE 决定，忽略 HTTP keyStatus / 云端 bleRssi
-        if let power = parsePowerState(s) { next.power = power }
+        next.acOn = parseACStatus(s["acStatus"])
+        // accCntTemp 是空调设定温度；interiorTemperature 是车内温度，不能混用。
+        next.acTemperature = parseDouble(s["accCntTemp"])
+        next.gear = parseGear(s["autoGearStatus"]) ?? .unknown
+        next.power = parsePowerState(s) ?? .unknown
+        // vehSpdAvgDrvn 是平均车速，不能用于实时车速/无感安全门禁。
+        next.speed = parseDouble(s["speed"] ?? s["vehSpd"])
+        next.physicalKeyPosition = parsePhysicalKeyPosition(s["keyStatus"])
+        // phoneNearby / bleRssi 只由手机侧 live BLE 决定。
         return next
     }
 
     static func httpDashboard(from s: [String: String], base dashboard: VehicleDashboardState) -> VehicleDashboardState {
-        var d = dashboard
+        // 每次 HTTP 都从干净仪表快照重建；只保留非车况资料和独立胎压接口结果。
+        var d = VehicleDashboardState()
+        d.energyType = dashboard.energyType
+        d.vehicleName = dashboard.vehicleName
+        d.vehicleImageURL = dashboard.vehicleImageURL
+        d.vinText = dashboard.vinText
+        d.userIdText = dashboard.userIdText
+        d.bleMacText = dashboard.bleMacText
+        d.keyIdText = dashboard.keyIdText
+        d.masterKeyMaskedText = dashboard.masterKeyMaskedText
+        d.randomMaskedText = dashboard.randomMaskedText
+        d.keyTypeText = dashboard.keyTypeText
+        d.keyExpiryText = dashboard.keyExpiryText
+        d.vehicleInfoUpdatedAtText = dashboard.vehicleInfoUpdatedAtText
+        d.tireTemperatureText = dashboard.tireTemperatureText
+        d.leftFrontTirePressureText = dashboard.leftFrontTirePressureText
+        d.rightFrontTirePressureText = dashboard.rightFrontTirePressureText
+        d.leftRearTirePressureText = dashboard.leftRearTirePressureText
+        d.rightRearTirePressureText = dashboard.rightRearTirePressureText
         d.updatedAt = parseTimestamp(s["collectTime"]) ?? Date()
         d.updatedAtText = formatTime(d.updatedAt)
 
@@ -53,25 +71,25 @@ enum VehicleStatusMapper {
             d.fuelFullRangeKm = max(fuelRange, Int(Double(fuelRange) / max(Double(fuelPercent), 1) * 100))
         }
 
-        d.batteryRemainingText = displayBatteryRemaining(s, fallback: dashboard.batteryRemainingText)
-        d.batteryHealthPercentText = displayBatteryHealth(s, fallback: dashboard.batteryHealthPercentText)
+        d.batteryRemainingText = displayBatteryRemaining(s, fallback: "--")
+        d.batteryHealthPercentText = displayBatteryHealth(s, fallback: "--")
         d.batteryVoltageText = displayValue(s["voltage"], suffix: "V")
         d.batteryAuxText = displayValue(s["lowBatVol"], suffix: "V")
 
         d.cabinTemperatureText = displayValue(s["interiorTemperature"], suffix: "°C")
-        d.acTemperatureText = displayACTemperature(s, fallback: dashboard.acTemperatureText)
+        d.acTemperatureText = displayACTemperature(s, fallback: "--")
         d.batteryTemperatureText = displayValue(s["batAvgTemp"] ?? s["batMinTemp"], suffix: "°C")
         d.motorTemperatureText = displayValue(s["tmActTemp"], suffix: "°C")
         d.inverterTemperatureText = displayValue(s["invActTemp"], suffix: "°C")
 
-        let charging = s["charging"] == "1"
-        d.isCharging = charging
-        d.chargingStatusText = charging ? "是" : "否"
+        let charging = parseCharging(s)
+        d.isCharging = charging == true
+        d.chargingStatusText = charging.map { $0 ? "是" : "否" } ?? "--"
         d.chargingPowerText = displayValue(s["chargePower"], suffix: " kW")
         d.chargingPowerValueText = displayValue(s["chargePower"], suffix: " kW")
         d.obcCurrentText = displayValue(s["obcOtpCur"], suffix: "A")
         d.obcTemperatureText = displayValue(s["obcTemp"], suffix: "°C")
-        d.chargingStateText = displayText(s["rechargeStatus"]) ?? displayText(s["vecChrgingSts"]) ?? "--"
+        d.chargingStateText = displayChargingState(s, isCharging: charging)
 
         // 只写 HTTP 实际带了的字段；缺字段保持 base，避免把 MQTT 实时门窗刷成 --/全关
         if s["doorLockStatus"] != nil {
@@ -117,25 +135,31 @@ enum VehicleStatusMapper {
         } else if let windowsClosed = parseWindowsClosed(s) {
             d.windowStatusText = windowsClosed ? "全关" : "未关"
         }
-        d.leftFrontTirePressureText = firstDisplayTirePressure(s, corner: .leftFront)
-        d.rightFrontTirePressureText = firstDisplayTirePressure(s, corner: .rightFront)
-        d.leftRearTirePressureText = firstDisplayTirePressure(s, corner: .leftRear)
-        d.rightRearTirePressureText = firstDisplayTirePressure(s, corner: .rightRear)
-        d.tireTemperatureText = displayTireTemperature([:], fallbackCarStatus: s)
+        let leftFrontPressure = firstDisplayTirePressure(s, corner: .leftFront)
+        if leftFrontPressure != "--" { d.leftFrontTirePressureText = leftFrontPressure }
+        let rightFrontPressure = firstDisplayTirePressure(s, corner: .rightFront)
+        if rightFrontPressure != "--" { d.rightFrontTirePressureText = rightFrontPressure }
+        let leftRearPressure = firstDisplayTirePressure(s, corner: .leftRear)
+        if leftRearPressure != "--" { d.leftRearTirePressureText = leftRearPressure }
+        let rightRearPressure = firstDisplayTirePressure(s, corner: .rightRear)
+        if rightRearPressure != "--" { d.rightRearTirePressureText = rightRearPressure }
+        let tireTemperature = displayTireTemperature([:], fallbackCarStatus: s)
+        if tireTemperature != "--" { d.tireTemperatureText = tireTemperature }
 
-        d.speedText = displayValue(s["speed"] ?? s["vehSpd"] ?? s["vehSpdAvgDrvn"], suffix: "km/h")
+        d.speedText = displayValue(s["speed"] ?? s["vehSpd"], suffix: "km/h")
         d.averageSpeedText = displayValue(s["vehSpdAvgDrvn"], suffix: "km/h")
         d.steeringAngleText = displayValue(s["strWhAng"], suffix: "°")
         d.throttlePercentText = displayValue(s["accActPos"], suffix: "%")
         d.brakePercentText = displayValue(s["brakPedalPos"], suffix: "%")
         d.totalMileageText = displayValue(s["mileage"], suffix: "km")
         d.yesterdayMileageText = displayValue(s["yesterMileage"], suffix: "km")
-        d.fuelRemainingText = displayFuelRemaining(s, fallback: dashboard.fuelRemainingText)
+        d.fuelRemainingText = displayFuelRemaining(s, fallback: "--")
         d.averageFuelConsumptionText = displayValue(s["avgFuel"], suffix: "L/100km")
-        d.averagePowerConsumptionText = displayPowerConsumption(s, fallback: dashboard.averagePowerConsumptionText)
+        d.averagePowerConsumptionText = displayPowerConsumption(s, fallback: "--")
 
-        d.lowBeamText = displayBool(s["dipHeadLight"])
-        d.highBeamText = displayBool(s["lowBeamLight"])
+        // lowBeamLight / dipHeadLight 都指向近光语义；当前无可信 highBeam 字段。
+        d.lowBeamText = displayBool(s["lowBeamLight"] ?? s["dipHeadLight"])
+        d.highBeamText = "--"
         d.leftTurnText = displayBool(s["leftTurnLight"])
         d.rightTurnText = displayBool(s["rightTurnLight"])
         d.positionLightText = displayBool(s["positionLight"])
@@ -303,7 +327,7 @@ return d
         let known = details.filter { $0 != "--" && !$0.isEmpty }
         guard !known.isEmpty else { return dashboard.doorStatusText }
         if known.contains(where: { isOpenStatusText($0) }) { return "未关" }
-        if known.allSatisfy({ isClosedStatusText($0) }) { return "全关" }
+        if known.count == details.count && known.allSatisfy({ isClosedStatusText($0) }) { return "全关" }
         return dashboard.doorStatusText
     }
 
@@ -317,7 +341,7 @@ return d
         let known = details.filter { $0 != "--" && !$0.isEmpty }
         guard !known.isEmpty else { return dashboard.windowStatusText }
         if known.contains(where: { isOpenStatusText($0) }) { return "未关" }
-        if known.allSatisfy({ isClosedStatusText($0) }) { return "全关" }
+        if known.count == details.count && known.allSatisfy({ isClosedStatusText($0) }) { return "全关" }
         return dashboard.windowStatusText
     }
 
@@ -326,28 +350,10 @@ return d
 
 enum VehicleStateMerger {
     static func mergeHTTPBase(current state: VehicleState, newState: VehicleState) -> VehicleState {
-        var merged = state
-        merged.timestamp = newState.timestamp
-        merged.online = newState.online
-        // 档位/电源：未知值不覆盖已有有效状态（避免 HTTP 缺 engineStatus 时一直“未知”）
-        if newState.gear != .unknown { merged.gear = newState.gear }
-        if newState.power != .unknown { merged.power = newState.power }
-        merged.speed = newState.speed
-        if newState.physicalKeyPosition != .unknown {
-            merged.physicalKeyPosition = newState.physicalKeyPosition
-        }
-        // phoneNearby / bleRssi 只信 live BLE overlay，HTTP 合并不覆盖
-        merged.fuelLevel = newState.fuelLevel
-        merged.fuelRange = newState.fuelRange
-        merged.oilRange = newState.oilRange
-        // HTTP 全量快照应覆盖车身开闭/车锁；MQTT 增量仍走 mergeRealtime
-        if newState.locked != nil { merged.locked = newState.locked }
-        if newState.doorsClosed != nil { merged.doorsClosed = newState.doorsClosed }
-        if newState.driverDoorOpen != nil { merged.driverDoorOpen = newState.driverDoorOpen }
-        if newState.trunkOpen != nil { merged.trunkOpen = newState.trunkOpen }
-        if newState.windowsClosed != nil { merged.windowsClosed = newState.windowsClosed }
-        if newState.acOn != nil { merged.acOn = newState.acOn }
-        if newState.acTemperature != nil { merged.acTemperature = newState.acTemperature }
+        var merged = newState
+        // 手机侧 BLE 邻近值不是 HTTP 车况字段，始终保留本地 live overlay 基线。
+        merged.bleRssi = state.bleRssi
+        merged.phoneNearby = state.phoneNearby
         return merged
     }
 

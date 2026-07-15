@@ -53,7 +53,6 @@ extension MQTTVehicleStateStore {
         self.credentialsStore = credentialsStore
         reloadCachedBLEKeyInfo(preferScoped: true)
         updateTokenSource(label: inferredTokenSourceLabel(from: credentialsStore), path: credentialsStore.tokenSourcePath)
-        guard !isConnecting else { return }
         guard !credentialsStore.accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             authStatus = .expired("Token为空")
             mqttStatus = .disconnected
@@ -65,20 +64,47 @@ extension MQTTVehicleStateStore {
             return
         }
 
-        isConnecting = true
         authStatus = .valid
-        mqttStatus = .connecting
-
         startHTTPPolling(immediate: true)
         fetchBleKeyInfo(force: false)
+        startMQTTIfEnabled()
+    }
 
-        SGMWApiClient.shared.fetchMqttTokenResult(accessToken: credentialsStore.accessToken, vin: credentialsStore.vin) { [weak self] result in
+    /// MQTT 为可选增强通道：只在设置开启且尚未连接时获取凭证并连接。
+    func startMQTTIfEnabled() {
+        guard keylessSettingsStore.settings.mqttEnabled else {
+            stopMQTTForSettingsChange(logEvent: false)
+            return
+        }
+        guard credentialsStore.isConfigured else {
+            mqttStatus = .disconnected
+            return
+        }
+        guard mqttStatus != .connected, mqttStatus != .connecting, !isConnecting else { return }
+
+        isConnecting = true
+        mqttConnectionGeneration &+= 1
+        let generation = mqttConnectionGeneration
+        mqttStatus = .connecting
+        SGMWApiClient.shared.fetchMqttTokenResult(
+            accessToken: credentialsStore.accessToken,
+            vin: credentialsStore.vin
+        ) { [weak self] result in
             guard let self else { return }
             DispatchQueue.main.async {
+                guard generation == self.mqttConnectionGeneration else { return }
                 self.isConnecting = false
+                guard self.keylessSettingsStore.settings.mqttEnabled else {
+                    self.stopMQTTForSettingsChange(logEvent: false)
+                    return
+                }
                 switch result {
                 case .success(let mqttToken):
-                    let creds = SGMWApiClient.shared.generateMQTTCredentials(vin: credentialsStore.vin, phone: credentialsStore.phone, mqttToken: mqttToken)
+                    let creds = SGMWApiClient.shared.generateMQTTCredentials(
+                        vin: self.credentialsStore.vin,
+                        phone: self.credentialsStore.phone,
+                        mqttToken: mqttToken
+                    )
                     self.credentials = creds
                     self.connectMQTT(creds)
                 case .failure(let error):
@@ -86,6 +112,23 @@ extension MQTTVehicleStateStore {
                     CrashLogger.shared.mark("MQTT", "mqtt token fetch failed: \(error.localizedDescription)")
                 }
             }
+        }
+    }
+
+    /// 设置关闭 MQTT 时仅停可选通道，不清 HTTP/BLE 状态。
+    func stopMQTTForSettingsChange(logEvent: Bool = true) {
+        mqttConnectionGeneration &+= 1
+        mqtt?.autoReconnect = false
+        mqtt?.disconnect()
+        mqtt = nil
+        credentials = nil
+        isConnecting = false
+        lastMqttFields.removeAll()
+        lastMQTTUpdate = nil
+        lastMQTTBodyCollectAt = nil
+        mqttStatus = .disconnected
+        if logEvent {
+            vehicleEventLogStore.add(.system, "MQTT 已停用", detail: "HTTP 完整车况继续运行")
         }
     }
 
@@ -124,14 +167,18 @@ extension MQTTVehicleStateStore {
             group.leave()
         }
 
-        if mqttStatus != .connected {
-            mqttNote = "MQTT 未连接，正在重连"
-            if userInitiated {
-                vehicleEventLogStore.add(.action, "MQTT 重连开始", detail: mqttNote ?? "")
+        if keylessSettingsStore.settings.mqttEnabled {
+            if mqttStatus != .connected {
+                mqttNote = "MQTT 未连接，正在重连"
+                if userInitiated {
+                    vehicleEventLogStore.add(.action, "MQTT 重连开始", detail: mqttNote ?? "")
+                }
+                reconnect()
+            } else if userInitiated {
+                mqttNote = "MQTT 已连接"
             }
-            reconnect()
         } else if userInitiated {
-            mqttNote = "MQTT 已连接"
+            mqttNote = "MQTT 已关闭"
         }
 
         group.notify(queue: .main) { [weak self] in
@@ -152,25 +199,27 @@ extension MQTTVehicleStateStore {
     }
 
     func reconnect(userInitiated: Bool = false, completion: ((Bool, String) -> Void)? = nil) {
+        guard keylessSettingsStore.settings.mqttEnabled else {
+            stopMQTTForSettingsChange(logEvent: false)
+            completion?(false, "MQTT 已在设置中关闭")
+            return
+        }
         if userInitiated {
             vehicleEventLogStore.add(.action, "MQTT 重连开始", detail: "断开后重新获取 mqtt token")
         }
+        mqttConnectionGeneration &+= 1
+        mqtt?.autoReconnect = false
         mqtt?.disconnect()
         mqtt = nil
         credentials = nil
+        isConnecting = false
         lastMqttFields.removeAll()
         lastMQTTUpdate = nil
         lastMQTTBodyCollectAt = nil
-        lastHTTPBodyCollectAt = nil
-        bodyCollectTime = nil
-        lastHTTPPollLogFingerprint = nil
-        fieldCollectAt.removeAll()
-        fieldSource.removeAll()
-        localDoorLockHoldUntil = nil
-        statusRevision = 0
+        mqttStatus = .disconnected
 
-        // 复用 start；用一次性观察给出结果提示
-        start(with: credentialsStore)
+        // 仅重启 MQTT；HTTP 权威状态、BLE 本地锁保护和状态版本保持不动。
+        startMQTTIfEnabled()
 
         // 给 UI 一个短等待结果：连接成功 / 失败 / 超时
         let startedAt = Date()

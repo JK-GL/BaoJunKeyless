@@ -84,9 +84,22 @@ struct VehicleDashboardState {
         if statuses.contains(where: { $0.contains("缓存") }) {
             return "缓存"
         }
+        // 关键车身项均未知时，不能显示成“正常”。
+        let known = statuses.filter { value in
+            let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return !text.isEmpty && text != "--" && text != "未知"
+        }
+        if known.isEmpty { return "未知" }
         let badStatuses: [String] = ["未关", "未锁", "已开", "打开", "异常", "故障"]
-        if statuses.contains(where: { badStatuses.contains($0) }) {
+        if known.contains(where: { badStatuses.contains($0) }) {
             return "异常"
+        }
+        let topLevel = [lockStatusText, doorStatusText, windowStatusText, tailgateStatusText]
+        if topLevel.contains(where: {
+            let text = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty || text == "--" || text == "未知"
+        }) {
+            return "部分未知"
         }
         return "正常"
     }

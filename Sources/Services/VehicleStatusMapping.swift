@@ -101,42 +101,40 @@ func normalizeBinaryStatus(_ raw: String?) -> String? {
 }
 
 func parseDoorClosed(_ s: [String: String]) -> Bool? {
-    if let total = parseOpen(s["doorOpenStatus"]) { return !total }
+    // 任一明细开即可判未关；只有四门明细齐全且都关，才能由明细判全关。
     let values = [s["door1OpenStatus"], s["door2OpenStatus"], s["door3OpenStatus"], s["door4OpenStatus"]]
-    let parsed = values.compactMap(parseOpen)
-    guard !parsed.isEmpty else { return nil }
-    return !parsed.contains(true)
+    let parsed = values.map(parseOpen)
+    if parsed.contains(where: { $0 == true }) { return false }
+    if parsed.allSatisfy({ $0 == false }) { return true }
+    if let total = parseOpen(s["doorOpenStatus"]) { return !total }
+    return nil
 }
 
 func parseWindowsClosed(_ s: [String: String]) -> Bool? {
-    if let total = parseOpen(s["windowStatus"]) { return !total }
     let values = [s["window1Status"], s["window2Status"], s["window3Status"], s["window4Status"]]
-    let parsed = values.compactMap(parseOpen)
-    // 开度 > 0 也视为开
+    let parsed = values.map(parseOpen)
     let degrees = [s["window1OpenDegree"], s["window2OpenDegree"], s["window3OpenDegree"], s["window4OpenDegree"]]
-    let degreeOpen = degrees.compactMap { parseDouble($0) }.contains { $0 > 0 }
-    if parsed.isEmpty && !degreeOpen {
-        // half-open flags
-        let half = [s["window1HalfOpenStatus"], s["window2HalfOpenStatus"], s["window3HalfOpenStatus"], s["window4HalfOpenStatus"], s["windowHalfOpenStatus"]]
-        let halfOpen = half.compactMap(parseOpen).contains(true)
-        return halfOpen ? false : nil
+    let parsedDegrees = degrees.map(parseDouble)
+    let half = [s["window1HalfOpenStatus"], s["window2HalfOpenStatus"], s["window3HalfOpenStatus"], s["window4HalfOpenStatus"], s["windowHalfOpenStatus"]]
+    let parsedHalf = half.map(parseOpen)
+
+    if parsed.contains(where: { $0 == true })
+        || parsedDegrees.contains(where: { ($0 ?? 0) > 0 })
+        || parsedHalf.contains(where: { $0 == true }) {
+        return false
     }
-    if degreeOpen { return false }
-    if parsed.contains(true) { return false }
-    if !parsed.isEmpty { return true }
+    // 四窗二值状态齐全，或四窗开度齐全且均为 0，才能由明细判全关。
+    if parsed.allSatisfy({ $0 == false }) { return true }
+    if parsedDegrees.allSatisfy({ value in value.map { $0 <= 0 } == true }) { return true }
+    if let total = parseOpen(s["windowStatus"]) { return !total }
     return nil
 }
 
 func displayWindowStatus(_ status: String?, degree: String?, half: String? = nil, closedText: String = "已关", openText: String = "已开") -> String {
-    if let open = parseOpen(status) {
-        return open ? openText : closedText
-    }
-    if let halfOpen = parseOpen(half), halfOpen {
-        return openText
-    }
-    if let deg = parseDouble(degree), deg > 0 {
-        return openText
-    }
+    // 开度/半开比二值 status 更具体；即使 status=0，只要开度>0 也必须显示已开。
+    if let deg = parseDouble(degree), deg > 0 { return openText }
+    if let halfOpen = parseOpen(half), halfOpen { return openText }
+    if let open = parseOpen(status) { return open ? openText : closedText }
     return "--"
 }
 
@@ -225,11 +223,11 @@ enum TireCorner {
         case .leftFront:
             return ["lfTirPrsVal", "fl"]
         case .rightFront:
-            return ["rfTirPrVal", "fr"]
+            return ["rfTirPrsVal", "rfTirPrVal", "fr"]
         case .leftRear:
-            return ["lrTirPrVal", "rl"]
+            return ["lrTirPrsVal", "lrTirPrVal", "rl"]
         case .rightRear:
-            return ["rrTirPrVal", "rr"]
+            return ["rrTirPrsVal", "rrTirPrVal", "rr"]
         }
     }
 }
@@ -242,6 +240,12 @@ func firstDisplayTirePressure(_ s: [String: String], corner: TireCorner, preferT
 func displayTireTemperature(_ tirePressure: [String: String], fallbackCarStatus: [String: String]? = nil) -> String {
     if let tireTemp = tirePressure["tirTemp"], !tireTemp.isEmpty {
         return displayValue(tireTemp, suffix: "°C")
+    }
+    let cornerKeys = ["lfTirTempVal", "rfTirTempVal", "lrTirTempVal", "rrTirTempVal"]
+    let values = cornerKeys.compactMap { parseDouble(tirePressure[$0]) }
+    if !values.isEmpty {
+        let average = values.reduce(0, +) / Double(values.count)
+        return "\(Int(round(average)))°C"
     }
     if let fallbackCarStatus, let tireTemp = fallbackCarStatus["tirTemp"], !tireTemp.isEmpty {
         return displayValue(tireTemp, suffix: "°C")
@@ -346,7 +350,26 @@ func displayPowerConsumption(_ s: [String: String], fallback: String) -> String 
 }
 
 func displayACTemperature(_ s: [String: String], fallback: String) -> String {
-    if let temp = s["interiorTemperature"], !temp.isEmpty { return "\(temp)°C" }
+    if let temp = s["accCntTemp"], !temp.isEmpty { return "\(temp)°C" }
     if let ac = parseACStatus(s["acStatus"]) { return ac ? "开启" : "关闭" }
     return fallback
+}
+
+func parseCharging(_ s: [String: String]) -> Bool? {
+    if let charging = parseOpen(s["charging"]) { return charging }
+    if let indicator = parseOpen(s["vecChrgStsIndOn"]) { return indicator }
+    if let raw = s["vecChrgingSts"]?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
+       let value = Int(raw) {
+        return value > 0
+    }
+    return nil
+}
+
+func displayChargingState(_ s: [String: String], isCharging: Bool?) -> String {
+    if isCharging == true { return "充电中" }
+    if parseOpen(s["wireConnect"]) == true { return "已插枪，未充电" }
+    if let raw = displayText(s["rechargeStatus"]), Int(raw) == nil { return raw }
+    if let raw = displayText(s["vecChrgingSts"]), Int(raw) == nil { return raw }
+    if isCharging == false { return "未充电" }
+    return "--"
 }

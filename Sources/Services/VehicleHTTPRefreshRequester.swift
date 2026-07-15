@@ -16,14 +16,19 @@ final class VehicleHTTPRefreshRequester {
     static let shared = VehicleHTTPRefreshRequester()
     private init() {}
 
-    func fetch(accessToken: String, apiClient: SGMWApiClient = .shared, completion: @escaping (Result<VehicleHTTPRefreshResult, SGMWApiError>) -> Void) {
+    func fetch(
+        accessToken: String,
+        includeTirePressure: Bool = true,
+        apiClient: SGMWApiClient = .shared,
+        completion: @escaping (Result<VehicleHTTPRefreshResult, SGMWApiError>) -> Void
+    ) {
         apiClient.queryVehicleStatusResult(accessToken: accessToken) { result in
             switch result {
             case .failure(let error):
                 completion(.failure(error))
             case .success(let payload):
                 let vin = payload.carInfo["vin"] ?? ""
-                guard !vin.isEmpty else {
+                guard includeTirePressure, !vin.isEmpty else {
                     completion(.success(VehicleHTTPRefreshResult(payload: payload, tirePressure: [:], fetchedAt: Date())))
                     return
                 }

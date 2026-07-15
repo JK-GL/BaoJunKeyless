@@ -3,9 +3,9 @@ import Foundation
 enum VehicleHTTPMergeMode: String {
     /// 手动刷新：强制全量落地
     case full = "全量"
-    /// MQTT 断线/过期：HTTP 全量纠正车身
+    /// 自动轮询：HTTP 完整权威快照
     case pollFull = "轮询全量"
-    /// MQTT 在线新鲜：HTTP 只补位置/资料/缺字段，不冲实时车身
+    /// 兼容旧内部分支；新主链不再选择此模式。
     case pollMeta = "轮询元信息"
 }
 
@@ -13,11 +13,11 @@ extension MQTTVehicleStateStore {
     /// BLE 本地锁/解锁后，网络门锁短保护
     static let localLockHoldSeconds: TimeInterval = 15
 
-    /// 更贴近官方：
-    /// - MQTT：实时增量主通道
-    /// - HTTP：MQTT 新鲜时降频只补元信息；MQTT 断/旧时全量纠正
-    /// - 始终比 collectTime，防止旧包回退
-    /// - 总览只由四门四窗明细重算
+    /// 官方同款状态主链：
+    /// - HTTP：完整权威快照，自动/手动刷新都全量落地
+    /// - MQTT：仅提示变化并唤醒 HTTP，不参与本函数覆盖
+    /// - HTTP 只与上一次 HTTP collectTime 比较，避免 MQTT 半包卡住完整快照
+    /// - 总览由四门四窗明细重算
     @discardableResult
     func mergeHTTPBaseState(
         newState: VehicleState,
@@ -29,8 +29,8 @@ extension MQTTVehicleStateStore {
         let collectAt = httpCollectAt ?? Date()
         let now = Date()
 
-        // collectTime 闸门：自动轮询时，更旧的 HTTP 不覆盖车身（官方 setCarStatusModel 同款）
-        if mode != .full, let current = bodyCollectTime, collectAt < current {
+        // HTTP 只与上一次已采纳的 HTTP 快照比较；MQTT 时间绝不能挡住 HTTP 全量。
+        if let current = lastHTTPBodyCollectAt, collectAt < current {
             return "丢弃旧HTTP"
         }
 
@@ -198,10 +198,11 @@ extension MQTTVehicleStateStore {
         // 明细权威：用 dashboard 回写布尔
         syncBooleans(from: dash, into: &merged)
         merged.online = true
-        merged.timestamp = max(merged.timestamp, collectAt, now)
+        // 新鲜度表示本次 HTTP 成功确认时间；collectTime 只用于 HTTP 包的新旧排序。
+        merged.timestamp = now
 
-        dash.updatedAt = max(collectAt, now)
-        dash.updatedAtText = formatTime(dash.updatedAt)
+        dash.updatedAt = collectAt
+        dash.updatedAtText = formatTime(collectAt)
         bodyCollectTime = collectAt
         lastHTTPBodyCollectAt = collectAt
 

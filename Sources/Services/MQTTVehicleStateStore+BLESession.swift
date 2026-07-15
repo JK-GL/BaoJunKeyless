@@ -132,6 +132,10 @@ extension MQTTVehicleStateStore {
                 self.logVehicleEvent(.action, "BLE 鉴权成功", detail: "可发送控车命令", identity: "authenticated", minimumInterval: 3)
                 self.connectionStatusStore.isSystemBLEConnected = true
                 self.bleStatus = .authenticated
+                self.scheduleHTTPRefreshFromRealtime(reason: "ble-authenticated")
+                if !self.isAppInForeground {
+                    self.startHTTPPolling(immediate: false)
+                }
             case .authFailed(let reason):
                 self.ignoreNextBLEIdleCallback = false
                 self.noteBLEAuthFailed(reason)
@@ -377,6 +381,8 @@ extension MQTTVehicleStateStore {
 
     func setupKeylessSettingsObserver() {
         lastObservedKeylessEnabled = keylessSettingsStore.settings.keylessEnabled
+        lastObservedMQTTEnabled = keylessSettingsStore.settings.mqttEnabled
+        lastObservedLockUnlockConfirmationEnabled = keylessSettingsStore.settings.lockUnlockConfirmationEnabled
         keylessSettingsStore.$settings
             .receive(on: DispatchQueue.main)
             .sink { [weak self] settings in
@@ -384,7 +390,33 @@ extension MQTTVehicleStateStore {
                 let isFirst = !self.hasReceivedKeylessSettings
                 self.hasReceivedKeylessSettings = true
                 let wasEnabled = self.lastObservedKeylessEnabled
+                let wasMQTTEnabled = self.lastObservedMQTTEnabled
+                let wasConfirmationEnabled = self.lastObservedLockUnlockConfirmationEnabled
                 self.lastObservedKeylessEnabled = settings.keylessEnabled
+                self.lastObservedMQTTEnabled = settings.mqttEnabled
+                self.lastObservedLockUnlockConfirmationEnabled = settings.lockUnlockConfirmationEnabled
+
+                // 纯 UI 确认开关不应重挂 HTTP 或刷新 BLE 会话。
+                let confirmationOnlyChange = !isFirst
+                    && wasEnabled == settings.keylessEnabled
+                    && wasMQTTEnabled == settings.mqttEnabled
+                    && wasConfirmationEnabled != settings.lockUnlockConfirmationEnabled
+                if confirmationOnlyChange { return }
+
+                let mqttOnlyChange = !isFirst
+                    && wasMQTTEnabled != settings.mqttEnabled
+                    && wasEnabled == settings.keylessEnabled
+                    && wasConfirmationEnabled == settings.lockUnlockConfirmationEnabled
+
+                // MQTT 是可选增强通道；设置变化不影响 HTTP 权威轮询和 BLE。
+                if !isFirst, wasMQTTEnabled != settings.mqttEnabled {
+                    if settings.mqttEnabled {
+                        self.startMQTTIfEnabled()
+                    } else {
+                        self.stopMQTTForSettingsChange()
+                    }
+                    if mqttOnlyChange { return }
+                }
 
                 // 后台状态同步等开关变化时，立即重算轮询
                 self.applyBackgroundRuntimeSettings(reason: isFirst ? "settings-init" : "settings-change")

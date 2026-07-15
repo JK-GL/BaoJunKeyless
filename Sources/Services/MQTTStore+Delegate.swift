@@ -12,7 +12,7 @@ extension MQTTVehicleStateStore: CocoaMQTTDelegate {
     func mqtt(_ mqtt: CocoaMQTT, didPublishAck id: UInt16) {}
 
     func mqtt(_ mqtt: CocoaMQTT, didReceiveMessage message: CocoaMQTTMessage, id: UInt16) {
-        handleMQTTReceivedMessage(message)
+        handleMQTTReceivedMessage(mqtt, message: message)
     }
 
     func mqtt(_ mqtt: CocoaMQTT, didSubscribeTopics success: NSDictionary, failed: [String]) {
@@ -24,6 +24,6 @@ extension MQTTVehicleStateStore: CocoaMQTTDelegate {
     func mqttDidReceivePong(_ mqtt: CocoaMQTT) {}
 
     func mqttDidDisconnect(_ mqtt: CocoaMQTT, withError err: Error?) {
-        handleMQTTDisconnect(error: err)
+        handleMQTTDisconnect(mqtt, error: err)
     }
 }

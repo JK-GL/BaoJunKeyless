@@ -105,6 +105,7 @@ struct StatusPillsHost: View {
             modeColor: modeColor,
             bleStatus: connectionStatusStore.uiBLEStatus,
             mqttStatus: connectionStatusStore.uiMQTTStatus,
+            showsMQTT: settingsStore.settings.mqttEnabled,
             physicalKeyState: physicalKeyState,
             gearState: gearState,
             onBLETap: onBLETap,

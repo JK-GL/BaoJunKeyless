@@ -32,7 +32,7 @@ enum CommandResult {
 }
 
 // MARK: - 车控指令类型
-enum CommandAction: String, Identifiable {
+enum CommandAction: String, Identifiable, Equatable {
     case lockUnlock     // 解锁/锁车（状态联动）
     case remoteStart    // 远程启动
     case findCar        // 寻车
@@ -74,8 +74,7 @@ enum CommandAction: String, Identifiable {
         case .lockUnlock:
             return state.locked == false ? "已开锁" : "锁车"
         case .remoteStart:
-            // 对齐 Wuling：显示上电态；未知/熄火统一显示“熄火”
-            return state.power.isPoweredOn ? state.power.title : "熄火"
+            return state.power == .unknown ? "电源未知" : (state.power.isPoweredOn ? state.power.title : "熄火")
         case .findCar:
             return "寻车"
         case .acToggle:

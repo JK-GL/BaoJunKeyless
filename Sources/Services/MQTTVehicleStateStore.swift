@@ -193,6 +193,17 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     /// BLE 本地锁/解锁保护截止时间
     var localDoorLockHoldUntil: Date?
     var httpTimer: Timer?
+    /// HTTP 全量车况是状态页权威源；防止 3 秒轮询发生并发覆盖。
+    var isHTTPPollInFlight = false
+    var pendingHTTPPollAfterCurrent = false
+    var pendingHTTPPollCompletions: [((Bool, String) -> Void)] = []
+    /// MQTT / BLE 事件只负责唤醒一次 HTTP 权威刷新。
+    var httpRefreshWakeWorkItem: DispatchWorkItem?
+    var lastHTTPWakeRefreshAt: Date?
+    /// 胎压独立接口低频拉取，避免每 3 秒额外请求一次。
+    var lastTirePressureUpdate: Date?
+    /// 官方 carInfo.conditionPollTime；实车日志为 3 秒。
+    var vehicleHTTPPollInterval: TimeInterval = 3
     var lastMQTTUpdate: Date?
     /// MQTT 车身字段最近 collectTime
     var lastMQTTBodyCollectAt: Date?
@@ -204,6 +215,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     /// 自动轮询日志去重：状态指纹未变则不刷屏
     var lastHTTPPollLogFingerprint: String?
     var isConnecting = false
+    var mqttConnectionGeneration = 0
     /// 门窗开闭权威字段（不含门锁）
     static let doorWindowOpenFieldKeys: [String] = [
         "doorOpenStatus",
@@ -259,6 +271,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var backgroundObserver: NSObjectProtocol?
     var routeModeObserver: NSObjectProtocol?
     var lastObservedKeylessEnabled: Bool?
+    var lastObservedMQTTEnabled: Bool?
+    var lastObservedLockUnlockConfirmationEnabled: Bool?
     var hasReceivedKeylessSettings = false
     var consecutiveScanTimeouts = 0 {
         didSet {
@@ -395,6 +409,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             "本地车锁已更新",
             detail: "\(source) · \(previous.map { $0 ? "已锁" : "未锁" } ?? "未知") → \(locked ? "已锁" : "未锁")"
         )
+        // BLE 锁态立即显示，同时唤醒 HTTP 完整快照确认其余车辆状态。
+        scheduleHTTPRefreshFromRealtime(reason: "ble-door-lock-result")
         // 状态变了立刻重算无感
         evaluateKeylessAutomation(for: next)
     }

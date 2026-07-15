@@ -316,6 +316,7 @@ struct StatusPillsSection: View, Equatable {
     let modeColor: Color
     var bleStatus: StatusBLEState = .authenticated
     var mqttStatus: StatusMQTTState = .disconnected
+    var showsMQTT: Bool = true
     var physicalKeyState: StatusPhysicalKeyState = .outside
     var gearState: StatusGearState = .park
     var onBLETap: (() -> Void)? = nil
@@ -326,6 +327,7 @@ struct StatusPillsSection: View, Equatable {
             && lhs.modeText == rhs.modeText
             && lhs.bleStatus == rhs.bleStatus
             && lhs.mqttStatus == rhs.mqttStatus
+            && lhs.showsMQTT == rhs.showsMQTT
             && lhs.physicalKeyState.text == rhs.physicalKeyState.text
             && lhs.gearState.text == rhs.gearState.text
     }
@@ -354,16 +356,18 @@ struct StatusPillsSection: View, Equatable {
                 } else {
                     StatusPill(icon: bleStatus.icon, text: bleStatus.text, color: bleStatus.color)
                 }
-                if let onMQTTTap {
-                    Button {
-                        AppHaptics.light()
-                        onMQTTTap()
-                    } label: {
+                if showsMQTT {
+                    if let onMQTTTap {
+                        Button {
+                            AppHaptics.light()
+                            onMQTTTap()
+                        } label: {
+                            StatusPill(icon: mqttStatus.icon, text: mqttStatus.text, color: mqttStatus.color)
+                        }
+                        .buttonStyle(ResponsiveButtonStyle(playsHaptic: false))
+                    } else {
                         StatusPill(icon: mqttStatus.icon, text: mqttStatus.text, color: mqttStatus.color)
                     }
-                    .buttonStyle(ResponsiveButtonStyle(playsHaptic: false))
-                } else {
-                    StatusPill(icon: mqttStatus.icon, text: mqttStatus.text, color: mqttStatus.color)
                 }
                 StatusPill(icon: modeIcon, text: modeText, color: modeColor)
                 StatusPill(icon: physicalKeyState.icon, text: compactPhysicalKeyText, color: physicalKeyState.color)

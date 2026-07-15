@@ -4,6 +4,7 @@ struct StatusView: View {
     @EnvironmentObject var scrollState: AppScrollState
     @EnvironmentObject var locationManager: LocationManager
     @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
+    @EnvironmentObject var keylessSettings: KeylessSettingsStore
     @AppStorage(AppDiagnosticsSettings.vehicleControlRouteModeKey) private var vehicleControlRouteModeRaw = VehicleControlRouteMode.auto.rawValue
     @State private var isRefreshing = false
     @State private var refreshScale: CGFloat = 1.0
@@ -13,6 +14,7 @@ struct StatusView: View {
     @State private var isNearbyBLEDevicesFloatingPresented = false
     @State private var statusToastText: String?
     @State private var activeCommand: CommandAction? = nil
+    @State private var isExecutingDirectLockUnlock = false
     @State private var pendingControlServiceCode: String? = nil
     @State private var pendingControlTitle: String? = nil
     @State private var pendingControlSentAt: Date? = nil
@@ -42,8 +44,22 @@ struct StatusView: View {
 
                     StatusMainDashboardHost(
                         onCommand: { command in
-                            withAnimation(PopupMotion.presentSpring) {
-                                activeCommand = command
+                            if command == .lockUnlock,
+                               !keylessSettings.settings.lockUnlockConfirmationEnabled {
+                                guard !isExecutingDirectLockUnlock else { return }
+                                isExecutingDirectLockUnlock = true
+                                handleQuickActionConfirm(
+                                    action: command,
+                                    temperature: nil,
+                                    durationMinutes: nil,
+                                    completion: { _ in
+                                        isExecutingDirectLockUnlock = false
+                                    }
+                                )
+                            } else {
+                                withAnimation(PopupMotion.presentSpring) {
+                                    activeCommand = command
+                                }
                             }
                         },
                         onOpenVehicleInfo: {
@@ -362,7 +378,8 @@ struct StatusView: View {
         VehicleEventLogStore.shared.add(.action, "快捷路由选择", detail: "\(command.title) | mode=\(routeModeText) | route=\(actualRouteText)")
 
         let willUseBLE = selectedRoute == .ble
-        pendingControlServiceCode = willUseBLE ? nil : controlServiceCode(for: command.kind)
+        let mqttReceiptEnabled = keylessSettings.settings.mqttEnabled
+        pendingControlServiceCode = (willUseBLE || !mqttReceiptEnabled) ? nil : controlServiceCode(for: command.kind)
         pendingControlTitle = command.title
         pendingControlSentAt = nil
 
@@ -387,14 +404,18 @@ struct StatusView: View {
 
                 switch patchedResult.state {
                 case .sent, .completed:
-                    if !willUseBLE {
+                    if !willUseBLE, mqttReceiptEnabled {
                         pendingControlSentAt = Date()
                         beginControlReceiptWaitIfNeeded()
                     }
                     withAnimation {
-                        statusToastText = willUseBLE
-                            ? "\(command.title) 已通过 BLE 发送"
-                            : "\(command.title) 已发送，等待回执"
+                        if willUseBLE {
+                            statusToastText = "\(command.title) 已通过 BLE 发送"
+                        } else if mqttReceiptEnabled {
+                            statusToastText = "\(command.title) 已发送，等待回执"
+                        } else {
+                            statusToastText = "\(command.title) 已发送，正在刷新车况"
+                        }
                     }
                 case .failed(let reason):
                     pendingControlServiceCode = nil

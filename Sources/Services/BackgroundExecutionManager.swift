@@ -654,7 +654,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         requestBLESession(forceRestart: false, detail: "进入电子围栏")
         if let store = VehicleStateStoreBridge.current as? MQTTVehicleStateStore {
             store.applyBackgroundRuntimeSettings(reason: "geofence-enter")
-            if store.mqttStatus != .connected {
+            if settingsStore.settings.mqttEnabled, store.mqttStatus != .connected {
                 store.reconnect()
             }
         }

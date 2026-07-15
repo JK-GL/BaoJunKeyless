@@ -1,34 +1,31 @@
 import Foundation
 
 extension MQTTVehicleStateStore {
-    /// MQTT 在线新鲜时慢轮询；断线/过期时快轮询全量
-    static let httpPollIntervalMQTTFresh: TimeInterval = 20
-    static let httpPollIntervalMQTTStale: TimeInterval = 3
-    /// 后台：MQTT 新鲜 / 断旧
-    static let httpPollIntervalBackgroundMQTTFresh: TimeInterval = 90
-    static let httpPollIntervalBackgroundMQTTStale: TimeInterval = 25
-    /// 后台且关闭状态同步：更低频兜底
-    static let httpPollIntervalBackgroundSyncOffFresh: TimeInterval = 180
-    static let httpPollIntervalBackgroundSyncOffStale: TimeInterval = 60
-    /// MQTT 在此时间内有消息，视为新鲜
-    static let mqttFreshWindow: TimeInterval = 60
+    /// 官方车况策略：queryDefaultCarStatus 为完整权威快照，车辆下发 conditionPollTime（实车为 3 秒）。
+    static let backgroundActiveHTTPPollInterval: TimeInterval = 3
+    static let backgroundIdleHTTPPollInterval: TimeInterval = 25
+    static let backgroundSyncOffHTTPPollInterval: TimeInterval = 60
+    static let tirePressureRefreshInterval: TimeInterval = 60
 
-    func isMQTTRealtimeFresh(now: Date = Date()) -> Bool {
-        guard mqttStatus == .connected else { return false }
-        guard let last = lastMQTTUpdate else { return false }
-        return now.timeIntervalSince(last) <= Self.mqttFreshWindow
-    }
-
+    /// 前台始终按官方车况周期；后台仅在近车/未锁/门窗打开等活跃期保持快刷。
     func currentHTTPPollInterval(now: Date = Date()) -> TimeInterval {
-        let fresh = isMQTTRealtimeFresh(now: now)
-        if isAppInForeground {
-            return fresh ? Self.httpPollIntervalMQTTFresh : Self.httpPollIntervalMQTTStale
-        }
-        // 后台
+        let officialInterval = min(max(vehicleHTTPPollInterval, 2), 10)
+        if isAppInForeground { return officialInterval }
+
+        let bodyOpen = dashboard.doorStatusText.hasPrefix("未关")
+            || dashboard.windowStatusText.hasPrefix("未关")
+            || dashboard.tailgateStatusText.hasPrefix("已开")
+        let vehicleActive = hasCompletedBLEAuth
+            || state.hasLiveBLEProximity
+            || state.phoneNearby
+            || state.locked == false
+            || bodyOpen
+            || localDoorLockHoldUntil.map { now < $0 } == true
+
         if keylessSettingsStore.settings.backgroundStateSyncEnabled {
-            return fresh ? Self.httpPollIntervalBackgroundMQTTFresh : Self.httpPollIntervalBackgroundMQTTStale
+            return vehicleActive ? max(officialInterval, Self.backgroundActiveHTTPPollInterval) : Self.backgroundIdleHTTPPollInterval
         }
-        return fresh ? Self.httpPollIntervalBackgroundSyncOffFresh : Self.httpPollIntervalBackgroundSyncOffStale
+        return vehicleActive ? Self.backgroundIdleHTTPPollInterval : Self.backgroundSyncOffHTTPPollInterval
     }
 
     /// 前后台 / 设置切换时重算 HTTP 轮询与 MQTT 保活策略
@@ -54,7 +51,7 @@ extension MQTTVehicleStateStore {
             mergeWindow: 180
         )
 
-        // 始终用当前策略重挂 HTTP 定时器（前台 20/3，后台 90/25 或更慢）
+        // 始终用当前策略重挂 HTTP 定时器：前台按官方 conditionPollTime，后台按活跃度降频。
         if credentialsStore.accessToken.isEmpty {
             httpTimer?.invalidate()
             httpTimer = nil
@@ -63,7 +60,9 @@ extension MQTTVehicleStateStore {
         startHTTPPolling(immediate: false)
 
         // 后台且允许状态同步时，尽量保持 MQTT
-        if !isAppInForeground && settings.backgroundStateSyncEnabled && settings.keylessEnabled {
+        if !isAppInForeground
+            && settings.backgroundStateSyncEnabled
+            && settings.mqttEnabled {
             if mqttStatus != .connected && mqttStatus != .connecting {
                 vehicleEventLogStore.addCoalesced(
                     .system,
@@ -90,13 +89,13 @@ extension MQTTVehicleStateStore {
 
     func startHTTPPolling(immediate: Bool) {
         httpTimer?.invalidate()
-        // 动态频率：前台 MQTT 新鲜 20s / 断旧 3s；后台自动降频
+        // 官方同款：前台完整车况约 3s；MQTT 不再让 HTTP 降频，后台按车辆活跃度自动降频。
         let interval = currentHTTPPollInterval()
         let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             guard let self else { return }
             // 后台关闭状态同步时仍允许极低频兜底，但不做 immediate 狂刷
             self.pollHTTPOnce(userInitiated: false, completion: nil)
-            // 根据 MQTT / 前后台状态自适应下一次间隔
+            // 根据前后台与车辆活跃度自适应下一次间隔
             let next = self.currentHTTPPollInterval()
             if abs((self.httpTimer?.timeInterval ?? 0) - next) > 0.5 {
                 self.startHTTPPolling(immediate: false)
@@ -106,6 +105,62 @@ extension MQTTVehicleStateStore {
         httpTimer = timer
         if immediate {
             pollHTTPOnce(userInitiated: false, completion: nil)
+        }
+    }
+
+    /// MQTT/BLE 事件只唤醒 HTTP 权威刷新；短时间连续半包合并为一次请求。
+    func scheduleHTTPRefreshFromRealtime(reason: String) {
+        _ = reason
+        guard !credentialsStore.accessToken.isEmpty else { return }
+        httpRefreshWakeWorkItem?.cancel()
+        let now = Date()
+        let elapsed = lastHTTPWakeRefreshAt.map { now.timeIntervalSince($0) } ?? 10
+        let delay = max(0.12, 0.8 - elapsed)
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.lastHTTPWakeRefreshAt = Date()
+            if self.isHTTPPollInFlight {
+                // 事件发生在请求期间，完成后必须补刷一次，避免拿到事件前快照。
+                self.pendingHTTPPollAfterCurrent = true
+                return
+            }
+            self.pollHTTPOnce(userInitiated: false, completion: nil)
+        }
+        httpRefreshWakeWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    /// 胎压独立低频刷新，不阻塞三秒车况主请求。
+    func refreshTirePressureIfNeeded(carInfo: [String: String], force: Bool) {
+        let now = Date()
+        if !force, let last = lastTirePressureUpdate,
+           now.timeIntervalSince(last) < Self.tirePressureRefreshInterval { return }
+        let vin = carInfo["vin"] ?? credentialsStore.vin
+        guard !vin.isEmpty, !credentialsStore.accessToken.isEmpty else { return }
+        lastTirePressureUpdate = now
+        SGMWApiClient.shared.queryTirePressureResult(
+            accessToken: credentialsStore.accessToken,
+            vin: vin
+        ) { [weak self] result in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                guard case .success(let tirePressure) = result, !tirePressure.isEmpty else { return }
+                let updated = VehicleStatusMapper.tirePressureDashboard(from: tirePressure, base: self.dashboard)
+                self.applyDashboard(updated)
+            }
+        }
+    }
+
+    private func finishHTTPPoll(ok: Bool, message: String) {
+        isHTTPPollInFlight = false
+        let callbacks = pendingHTTPPollCompletions
+        pendingHTTPPollCompletions.removeAll()
+        callbacks.forEach { $0(ok, message) }
+
+        guard pendingHTTPPollAfterCurrent else { return }
+        pendingHTTPPollAfterCurrent = false
+        DispatchQueue.main.async { [weak self] in
+            self?.pollHTTPOnce(userInitiated: false, completion: nil)
         }
     }
 
@@ -122,26 +177,35 @@ extension MQTTVehicleStateStore {
             return
         }
 
+        if let completion { pendingHTTPPollCompletions.append(completion) }
+        if isHTTPPollInFlight {
+            // 当前请求本身就是完整权威快照；复用其结果，不再排队重复请求。
+            return
+        }
+        isHTTPPollInFlight = true
+
         if userInitiated {
             vehicleEventLogStore.add(.action, "车况刷新开始", detail: "正在请求 queryDefaultCarStatus")
         }
 
-        VehicleHTTPRefreshRequester.shared.fetch(accessToken: token) { [weak self] result in
+        VehicleHTTPRefreshRequester.shared.fetch(accessToken: token, includeTirePressure: false) { [weak self] result in
             guard let self else { return }
             DispatchQueue.main.async {
                 switch result {
                 case .success(let refreshResult):
                     self.lastHTTPUpdate = refreshResult.fetchedAt
                     let httpCollect = parseTimestamp(refreshResult.carStatus["collectTime"]) ?? refreshResult.fetchedAt
-                    self.lastHTTPBodyCollectAt = httpCollect
-                    // HTTP 全量明细作为门窗权威，供 MQTT 半包冲突过滤
-                    self.rememberHTTPDoorWindowAuthority(from: refreshResult.carStatus, at: httpCollect)
 
-                    // 字段级合并（推荐方案）：
-                    // - 手动刷新：HTTP 全量落地
-                    // - 自动轮询：HTTP 只补“MQTT 没覆盖到 / 或 HTTP 更新的字段”
-                    // 不再“MQTT 新鲜就整包忽略 HTTP”，否则门窗会卡到手动刷新才对
+                    // 车辆配置下发官方轮询秒数；异常值仍限制在 2...10 秒。
+                    if let configured = parseDouble(refreshResult.carInfo["conditionPollTime"]), configured > 0 {
+                        let nextInterval = min(max(configured, 2), 10)
+                        if abs(self.vehicleHTTPPollInterval - nextInterval) > 0.1 {
+                            self.vehicleHTTPPollInterval = nextInterval
+                        }
+                    }
+
                     self.applyHTTPMeta(carInfo: refreshResult.carInfo, carStatus: refreshResult.carStatus)
+                    self.refreshTirePressureIfNeeded(carInfo: refreshResult.carInfo, force: userInitiated)
 
                     var newState = self.mapHTTPToVehicleState(refreshResult.carStatus)
                     var newDashboard = self.mapHTTPToDashboard(refreshResult.carStatus)
@@ -154,11 +218,7 @@ extension MQTTVehicleStateStore {
                     newState.online = true
                     newDashboard = Self.stripDashboardBodyCacheSuffix(newDashboard)
 
-                    let mergeMode: VehicleHTTPMergeMode = {
-                        if userInitiated { return .full }
-                        // 官方思路：MQTT 新鲜时 HTTP 不冲实时车身；断/旧才全量
-                        return self.isMQTTRealtimeFresh() ? .pollMeta : .pollFull
-                    }()
+                    let mergeMode: VehicleHTTPMergeMode = userInitiated ? .full : .pollFull
                     let mergeNote = self.mergeHTTPBaseState(
                         newState: newState,
                         dashboard: newDashboard,
@@ -166,6 +226,10 @@ extension MQTTVehicleStateStore {
                         httpCollectAt: httpCollect,
                         sourceFields: refreshResult.carStatus
                     )
+                    if mergeNote != "丢弃旧HTTP" {
+                        self.lastHTTPBodyCollectAt = httpCollect
+                        self.rememberHTTPDoorWindowAuthority(from: refreshResult.carStatus, at: httpCollect)
+                    }
                     // 成功轮询只进控制台事件日志，不写错误日志
 
                     let fingerprint = self.httpPollStatusFingerprint()
@@ -197,7 +261,7 @@ extension MQTTVehicleStateStore {
                             mergeWindow: 120
                         )
                     }
-                    completion?(true, message)
+                    self.finishHTTPPoll(ok: true, message: message)
 
                 case .failure(let error):
                     let message = "车况刷新失败：\(error.localizedDescription)"
@@ -207,7 +271,7 @@ extension MQTTVehicleStateStore {
                     if userInitiated {
                         self.vehicleEventLogStore.add(.error, "车况刷新失败", detail: message)
                     }
-                    completion?(false, message)
+                    self.finishHTTPPoll(ok: false, message: message)
                 }
             }
         }
@@ -232,18 +296,9 @@ extension MQTTVehicleStateStore {
         // 至少有一个门窗字段才记；否则保留旧权威
         guard !snap.isEmpty else { return }
         lastHTTPDoorWindowAuthority = (fields: snap, at: at)
-        // 同步纠正 lastMqttFields 中与 HTTP 冲突的“假开”
-        for key in Self.doorWindowOpenFieldKeys {
-            guard let trusted = snap[key] else { continue }
-            if let current = lastMqttFields[key], current != trusted {
-                if parseOpen(trusted) == false, parseOpen(current) == true {
-                    lastMqttFields[key] = trusted
-                }
-                if let trustedDeg = parseDouble(trusted), trustedDeg <= 0,
-                   let currentDeg = parseDouble(current), currentDeg > 0 {
-                    lastMqttFields[key] = trusted
-                }
-            } else if lastMqttFields[key] == nil {
+        // HTTP 是权威基线：开与关都同步，确保后续 MQTT 反向变化能被识别并触发 HTTP。
+        for key in Set(Self.doorWindowOpenFieldKeys + Self.bodyFieldKeys) {
+            if let trusted = carStatus[key], !trusted.isEmpty {
                 lastMqttFields[key] = trusted
             }
         }
@@ -253,12 +308,7 @@ extension MQTTVehicleStateStore {
     /// 车锁 `locked` 若刚被 BLE 本地回写（timestamp 很新）则保留。
     func markVehicleStatusOffline(reason: String, userInitiated: Bool) {
         let now = Date()
-        let mqttFresh = lastMQTTUpdate.map { now.timeIntervalSince($0) < 90 } ?? false
-        if mqttFresh {
-            // MQTT 仍在实时推，只标 online 逻辑由 MQTT 路径维护
-            return
-        }
-
+        // MQTT 只负责提示/唤醒，不再作为车辆状态真值；HTTP 失败必须如实标记离线。
         var next = state
         let previousOnline = next.online
         next.online = false

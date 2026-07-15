@@ -33,8 +33,7 @@ enum VehiclePowerState: String, Codable, CaseIterable {
         case .acc:     return "ACC"
         case .on:      return "上电"
         case .ready:   return "Ready"
-        // 远程启动场景：未知按熄火展示，避免弹窗写“未知”吓人
-        case .unknown: return "熄火"
+        case .unknown: return "未知"
         }
     }
 

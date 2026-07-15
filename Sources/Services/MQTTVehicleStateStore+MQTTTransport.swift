@@ -3,6 +3,10 @@ import CocoaMQTT
 
 extension MQTTVehicleStateStore {
     func connectMQTT(_ creds: SGMWApiClient.MQTTCredentials) {
+        guard keylessSettingsStore.settings.mqttEnabled else {
+            mqttStatus = .disconnected
+            return
+        }
         let mqtt = CocoaMQTT(clientID: creds.clientId, host: creds.broker, port: creds.port)
         mqtt.username = creds.username
         mqtt.password = creds.password
@@ -19,89 +23,33 @@ extension MQTTVehicleStateStore {
     }
 
     func handleVehicleStatus(_ data: Data) {
+        guard keylessSettingsStore.settings.mqttEnabled else { return }
         let fields = decodeMQTTFields(data)
         guard !fields.isEmpty else { return }
 
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self, self.keylessSettingsStore.settings.mqttEnabled else { return }
 
-            // 官方车端半包有时在锁变化时夹带假门窗翻转；先净化再比较变化
-            let sanitizedFields = self.sanitizeMQTTBodyFields(fields)
-            var changedKeyNames = Set<String>()
-            var changedKeys: [String] = []
-            for (k, v) in sanitizedFields where self.lastMqttFields[k] != v {
-                changedKeyNames.insert(k)
-                changedKeys.append("\(k):\(self.lastMqttFields[k] ?? "?")→\(v)")
+            var changes: [String] = []
+            for (key, value) in fields where key != "collectTime" && self.lastMqttFields[key] != value {
+                changes.append("\(key):\(self.lastMqttFields[key] ?? "?")→\(value)")
             }
-            let bodyKeys = [
-                "doorLockStatus", "door1OpenStatus", "door2OpenStatus", "door3OpenStatus", "door4OpenStatus",
-                "tailDoorOpenStatus", "window1Status", "window2Status", "window3Status", "window4Status",
-                "window1OpenDegree", "window2OpenDegree", "window3OpenDegree", "window4OpenDegree",
-                "doorOpenStatus", "windowStatus", "acStatus",
-                "engineStatus", "powerStatus", "keyStatus", "batterySoc", "charging", "autoGearStatus"
-            ]
-            // 没有任何值变化时，不再 force 合并半包（防止旧门窗被反复重写）
-            guard !changedKeyNames.isEmpty else { return }
-
-            // 主线程合并，避免 background 读到旧 dashboard 导致门窗回退
-            self.lastMqttFields.merge(sanitizedFields) { _, new in new }
-            if let collect = parseTimestamp(sanitizedFields["collectTime"]) {
-                self.lastMQTTBodyCollectAt = collect
-            } else {
-                self.lastMQTTBodyCollectAt = Date()
-            }
+            self.lastMqttFields.merge(fields) { _, new in new }
+            self.lastMQTTBodyCollectAt = parseTimestamp(fields["collectTime"]) ?? Date()
             self.lastMQTTUpdate = Date()
             self.mqttStatus = .connected
-            // MQTT 恢复新鲜后，HTTP 自动降频（下次 timer 重建）
-            if let timer = self.httpTimer, abs(timer.timeInterval - Self.httpPollIntervalMQTTFresh) > 0.5 {
-                self.startHTTPPolling(immediate: false)
-            }
 
-            // 只把“值变化”的字段映射进状态；半包里重复的旧值不再二次写入
-            var liveFields: [String: String] = [:]
-            if let ct = sanitizedFields["collectTime"] { liveFields["collectTime"] = ct }
-            for k in changedKeyNames {
-                if let v = sanitizedFields[k] { liveFields[k] = v }
-            }
-            if liveFields.isEmpty { liveFields = sanitizedFields }
-
-            let newState = self.mapMQTTToVehicleState(liveFields)
-            let newDashboard = self.mapMQTTToDashboard(liveFields)
-            let collectAt = parseTimestamp(sanitizedFields["collectTime"]) ?? Date()
-            self.mergeRealtimeState(
-                newState: newState,
-                dashboard: newDashboard,
-                sourceFields: liveFields,
-                collectAt: collectAt,
-                changedKeys: changedKeyNames
+            // MQTT 半包不再直接写任何车辆状态；只提示有变化并唤醒 HTTP 完整快照。
+            guard !changes.isEmpty else { return }
+            let summary = Array(changes.prefix(8)).joined(separator: ", ")
+            self.vehicleEventLogStore.addCoalesced(
+                .action,
+                "MQTT 状态提示",
+                detail: "检测到增量变化 · \(summary) · 正在触发 HTTP 确认",
+                identity: "mqtt-hint|\(summary)",
+                mergeWindow: 60
             )
-
-            let packetKeys = Array(sanitizedFields.keys.sorted()).prefix(10).joined(separator: ",")
-            let summary = Array(changedKeys.prefix(8)).joined(separator: ", ")
-            // 车身变化只写控制台事件日志，不进错误日志
-            let bodyChanged = changedKeyNames.contains { bodyKeys.contains($0) || $0.hasPrefix("door") || $0.hasPrefix("window") || $0.hasPrefix("tailDoor") || $0 == "acStatus" }
-            if bodyChanged {
-                let detailParts = [
-                    "半包=\(packetKeys)",
-                    summary,
-                    "锁=\(self.dashboard.lockStatusText)",
-                    "门=\(self.dashboard.doorStatusText)",
-                    "窗=\(self.dashboard.windowStatusText)",
-                    "尾=\(self.dashboard.tailgateStatusText)",
-                    "主驾=\(self.dashboard.driverDoorStatusText)/副驾=\(self.dashboard.passengerDoorStatusText)/左后=\(self.dashboard.leftRearDoorStatusText)/右后=\(self.dashboard.rightRearDoorStatusText)",
-                    "空调=\(self.dashboard.acTemperatureText)",
-                    "电=\(self.dashboard.batteryPercentValue.map(String.init) ?? "--")%",
-                    "更新=\(self.dashboard.updatedAtText)"
-                ]
-                let changeIdentity = summary.isEmpty ? packetKeys : summary
-                self.vehicleEventLogStore.addCoalesced(
-                    .action,
-                    "MQTT车身更新",
-                    detail: detailParts.joined(separator: " · "),
-                    identity: "mqtt-body|\(changeIdentity)",
-                    mergeWindow: 90
-                )
-            }
+            self.scheduleHTTPRefreshFromRealtime(reason: "mqtt-status")
         }
     }
 
@@ -299,6 +247,13 @@ extension MQTTVehicleStateStore {
     }
 
     func handleMQTTConnectAck(_ mqtt: CocoaMQTT, ack: CocoaMQTTConnAck) {
+        guard self.mqtt === mqtt else { return }
+        guard keylessSettingsStore.settings.mqttEnabled else {
+            mqtt.autoReconnect = false
+            mqtt.disconnect()
+            mqttStatus = .disconnected
+            return
+        }
         if ack == .accept {
             mqttStatus = .connected
             // 连接成功不写错误日志
@@ -312,7 +267,8 @@ extension MQTTVehicleStateStore {
         }
     }
 
-    func handleMQTTReceivedMessage(_ message: CocoaMQTTMessage) {
+    func handleMQTTReceivedMessage(_ sourceClient: CocoaMQTT, message: CocoaMQTTMessage) {
+        guard mqtt === sourceClient, keylessSettingsStore.settings.mqttEnabled else { return }
         let payload = Data(message.payload)
         if message.topic.hasSuffix("/vehicle/app/status") {
             handleVehicleStatus(payload)
@@ -328,7 +284,13 @@ extension MQTTVehicleStateStore {
         }
     }
 
-    func handleMQTTDisconnect(error: Error?) {
+    func handleMQTTDisconnect(_ disconnectedClient: CocoaMQTT, error: Error?) {
+        // 手动重连时旧 client 的断开回调不能把新连接状态改成 error。
+        guard mqtt === disconnectedClient else { return }
+        guard keylessSettingsStore.settings.mqttEnabled else {
+            mqttStatus = .disconnected
+            return
+        }
         mqttStatus = .error
         // 有明确错误才写；正常重连断开不刷错误栏
         if let error {

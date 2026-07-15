@@ -168,6 +168,10 @@ extension MQTTVehicleStateStore {
             next.bleRssi = smoothedRSSI
             next.phoneNearby = nextNearby
             apply(next)
+            scheduleHTTPRefreshFromRealtime(reason: "ble-proximity-change")
+            if !isAppInForeground {
+                startHTTPPolling(immediate: false)
+            }
             evaluateKeylessAutomation(for: next)
             return
         }
