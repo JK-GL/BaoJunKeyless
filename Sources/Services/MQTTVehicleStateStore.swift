@@ -190,6 +190,10 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var fieldCollectAt: [String: Date] = [:]
     /// 字段来源标记，便于日志排查
     var fieldSource: [String: String] = [:]
+    /// 最近一次由明确字段或 BLE 成功回包确认的电源状态；HTTP 缺字段时短时保留。
+    var lastExplicitPowerStateAt: Date?
+    var lastExplicitPowerStateSource: String?
+    static let explicitPowerStateHoldSeconds: TimeInterval = 180
     /// BLE 本地锁/解锁保护截止时间
     var localDoorLockHoldUntil: Date?
     var httpTimer: Timer?
@@ -362,12 +366,44 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 completion(result)
             }
         case .remoteStart:
-            bleManager.sendPowerOnReadyCommand(completion: completion)
+            bleManager.sendPowerOnReadyCommand { [weak self] result in
+                if case .success = result {
+                    self?.applyExplicitPowerState(.on, source: "BLE上电回包")
+                    self?.scheduleHTTPRefreshFromRealtime(reason: "ble-power-on-result")
+                }
+                completion(result)
+            }
         case .remoteStop:
-            bleManager.sendPowerOffCommand(completion: completion)
+            bleManager.sendPowerOffCommand { [weak self] result in
+                if case .success = result {
+                    self?.applyExplicitPowerState(.off, source: "BLE熄火回包")
+                    self?.scheduleHTTPRefreshFromRealtime(reason: "ble-power-off-result")
+                }
+                completion(result)
+            }
         default:
             completion(.failure(.frameBuildFailed))
         }
+    }
+
+    /// 明确来源（HTTP/MQTT engineStatus 或 BLE 成功回包）确认电源状态。
+    func applyExplicitPowerState(_ power: VehiclePowerState, source: String) {
+        guard power != .unknown else { return }
+        let now = Date()
+        lastExplicitPowerStateAt = now
+        lastExplicitPowerStateSource = source
+        var next = state
+        guard next.power != power else {
+            next.timestamp = now
+            apply(next)
+            return
+        }
+        next.power = power
+        next.timestamp = now
+        bumpStatusRevision()
+        apply(next)
+        evaluateKeylessAutomation(for: next)
+        vehicleEventLogStore.add(.action, "车辆电源已确认", detail: "\(source) · \(power.title)")
     }
 
     /// BLE 门锁成功后立即回写本地车锁，驱动快捷按钮与无感决策。

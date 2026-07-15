@@ -3,9 +3,25 @@ import SwiftUI
 /// 可选连接通道与快捷锁解确认。两项均默认开启。
 struct SettingsConnectionConfirmationSection: View {
     @EnvironmentObject var keylessSettings: KeylessSettingsStore
+    @AppStorage("Settings.connectionConfirmationSectionExpanded") private var isExpanded = false
+
+    private var summaryText: String {
+        "MQTT\(keylessSettings.settings.mqttEnabled ? "开" : "关") · 确认\(keylessSettings.settings.lockUnlockConfirmationEnabled ? "开" : "关")"
+    }
 
     var body: some View {
-        SettingsPanelView(title: "连接与确认") {
+        CollapsibleCard(
+            title: "连接与确认",
+            icon: "link.circle.fill",
+            iconColor: AppTheme.accent,
+            isExpanded: $isExpanded,
+            headerExtra: {
+                Text(summaryText)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.55))
+                    .lineLimit(1)
+            }
+        ) {
             VStack(alignment: .leading, spacing: 14) {
                 settingToggle(
                     icon: "antenna.radiowaves.left.and.right",

@@ -194,6 +194,20 @@ extension MQTTVehicleStateStore {
             dash.lockStatusText = dashboard.lockStatusText
         }
 
+        // HTTP 若带明确电源字段则直接确认；若本车型 HTTP 不带，则短时保留最近的
+        // MQTT engineStatus / BLE 成功回包，超时后回到未知，避免永久显示陈旧状态。
+        if mergedState.power != .unknown {
+            lastExplicitPowerStateAt = now
+            lastExplicitPowerStateSource = "HTTP电源字段"
+        } else if let confirmedAt = lastExplicitPowerStateAt,
+                  now.timeIntervalSince(confirmedAt) <= Self.explicitPowerStateHoldSeconds,
+                  state.power != .unknown {
+            mergedState.power = state.power
+        } else {
+            lastExplicitPowerStateAt = nil
+            lastExplicitPowerStateSource = nil
+        }
+
         var merged = VehicleStateMerger.mergeHTTPBase(current: state, newState: mergedState)
         // 明细权威：用 dashboard 回写布尔
         syncBooleans(from: dash, into: &merged)

@@ -2,11 +2,13 @@ import Foundation
 
 // MARK: - Protobuf Wire Format Parser
 // 手动解析 Protobuf wire format，不需要 swift-protobuf 依赖
-// 只处理 VehicleStatus 用到的字段类型：varint (int64) 和 length-delimited (string)
+// 支持常见 wire type，未知字段也能被完整跳过，避免其截断后续状态字段。
 
 enum ProtobufWireType: UInt8 {
     case varint = 0
+    case fixed64 = 1
     case lengthDelimited = 2
+    case fixed32 = 5
 }
 
 struct ProtobufField {
@@ -34,18 +36,28 @@ enum ProtobufDecoder {
 
             switch type {
             case .varint:
-                guard let value = readVarint(data, &offset) else { break }
+                guard let value = readVarint(data, &offset) else { return fields }
                 // 把 varint 编码回 Data 以便后续按类型解码
                 var encoded = Data()
                 encodeVarint(value, into: &encoded)
                 fields.append(ProtobufField(fieldNumber: fieldNumber, wireType: .varint, data: encoded))
 
+            case .fixed64:
+                guard offset + 8 <= data.count else { return fields }
+                fields.append(ProtobufField(fieldNumber: fieldNumber, wireType: .fixed64, data: Data(data[offset..<(offset + 8)])))
+                offset += 8
+
             case .lengthDelimited:
                 guard let length = readVarint(data, &offset),
-                      offset + Int(length) <= data.count else { break }
+                      offset + Int(length) <= data.count else { return fields }
                 let fieldData = data[offset..<(offset + Int(length))]
                 fields.append(ProtobufField(fieldNumber: fieldNumber, wireType: .lengthDelimited, data: Data(fieldData)))
                 offset += Int(length)
+
+            case .fixed32:
+                guard offset + 4 <= data.count else { return fields }
+                fields.append(ProtobufField(fieldNumber: fieldNumber, wireType: .fixed32, data: Data(data[offset..<(offset + 4)])))
+                offset += 4
             }
         }
 

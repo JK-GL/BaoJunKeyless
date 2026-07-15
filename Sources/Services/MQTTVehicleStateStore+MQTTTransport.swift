@@ -39,7 +39,19 @@ extension MQTTVehicleStateStore {
             self.lastMQTTUpdate = Date()
             self.mqttStatus = .connected
 
-            // MQTT 半包不再直接写任何车辆状态；只提示有变化并唤醒 HTTP 完整快照。
+            // 唯一允许 MQTT 直接更新的车辆状态：明确的 engineStatus/电源字段。
+            // 它是完整单值而非门窗半包；HTTP 本车型不返回时用于真实区分熄火/上电。
+            if fields["engineStatus"] != nil
+                || fields["powerStatus"] != nil
+                || fields["vehPowerMode"] != nil
+                || fields["vehiclePowerStatus"] != nil
+                || fields["sysPowerMode"] != nil
+                || fields["ignitionStatus"] != nil,
+               let power = parsePowerState(fields) {
+                self.applyExplicitPowerState(power, source: "MQTT电源字段")
+            }
+
+            // 其他 MQTT 半包不直接写车辆状态；只提示变化并唤醒 HTTP 完整快照。
             guard !changes.isEmpty else { return }
             let summary = Array(changes.prefix(8)).joined(separator: ", ")
             self.vehicleEventLogStore.addCoalesced(
