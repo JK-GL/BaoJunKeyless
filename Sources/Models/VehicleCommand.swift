@@ -78,10 +78,8 @@ extension CommandAction {
             }
             return VehicleCommand(kind: .unlock, title: "解锁", detail: "快捷操作解锁", requestedTemperature: nil, source: source, transportHint: .httpControl)
         case .remoteStart:
-            if state.power.isPoweredOn {
-                return VehicleCommand(kind: .remoteStop, title: "远程熄火", detail: "快捷操作远程熄火", requestedTemperature: nil, source: source, transportHint: .httpControl)
-            }
-            return VehicleCommand(kind: .remoteStart, title: "远程启动", detail: "快捷操作远程启动", requestedTemperature: nil, source: source, transportHint: .httpControl)
+            // 本车型没有可靠的独立电源回报；该快捷入口固定执行熄火，避免状态缺失时误发启动。
+            return VehicleCommand(kind: .remoteStop, title: "熄火", detail: "快捷操作熄火", requestedTemperature: nil, source: source, transportHint: .httpControl)
         case .findCar:
             return VehicleCommand(kind: .findCar, title: "寻车", detail: "快捷操作寻车", requestedTemperature: nil, source: source, transportHint: .httpControl)
         case .acToggle:

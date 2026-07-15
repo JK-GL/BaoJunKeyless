@@ -85,10 +85,13 @@ enum VehicleStatusMapper {
         let charging = parseCharging(s)
         d.isCharging = charging == true
         d.chargingStatusText = charging.map { $0 ? "是" : "否" } ?? "--"
-        d.chargingPowerText = displayValue(s["chargePower"], suffix: " kW")
-        d.chargingPowerValueText = displayValue(s["chargePower"], suffix: " kW")
-        d.obcCurrentText = displayValue(s["obcOtpCur"], suffix: "A")
-        d.obcTemperatureText = displayValue(s["obcTemp"], suffix: "°C")
+        // 此车型未充电时会返回 chargePower/obcTemp 空串，而非 0。
+        // 明确的 charging=0/vecChrgingSts=0 下按实际状态展示，不能保留成“--”。
+        let notCharging = charging == false
+        d.chargingPowerText = displayText(s["chargePower"]).map { "\($0) kW" } ?? (notCharging ? "0 kW" : "--")
+        d.chargingPowerValueText = displayText(s["chargePower"]).map { "\($0) kW" } ?? (notCharging ? "0 kW" : "--")
+        d.obcCurrentText = displayText(s["obcOtpCur"]).map { "\($0)A" } ?? (notCharging ? "0A" : "--")
+        d.obcTemperatureText = displayText(s["obcTemp"]).map { "\($0)°C" } ?? (notCharging ? "未充电" : "--")
         d.chargingStateText = displayChargingState(s, isCharging: charging)
 
         // 只写 HTTP 实际带了的字段；缺字段保持 base，避免把 MQTT 实时门窗刷成 --/全关
@@ -146,8 +149,10 @@ enum VehicleStatusMapper {
         let tireTemperature = displayTireTemperature([:], fallbackCarStatus: s)
         if tireTemperature != "--" { d.tireTemperatureText = tireTemperature }
 
-        d.speedText = displayValue(s["speed"] ?? s["vehSpd"], suffix: "km/h")
-        d.averageSpeedText = displayValue(s["vehSpdAvgDrvn"], suffix: "km/h")
+        // 日志证实本车型驻车时不下发 speed/vehSpd（平均车速也为空）；P 挡可明确显示 0。
+        let isParked = parseGear(s["autoGearStatus"]) == .p
+        d.speedText = displayText(s["speed"] ?? s["vehSpd"]).map { "\($0)km/h" } ?? (isParked ? "0km/h" : "--")
+        d.averageSpeedText = displayText(s["vehSpdAvgDrvn"]).map { "\($0)km/h" } ?? (isParked ? "0km/h" : "--")
         d.steeringAngleText = displayValue(s["strWhAng"], suffix: "°")
         d.throttlePercentText = displayValue(s["accActPos"], suffix: "%")
         d.brakePercentText = displayValue(s["brakPedalPos"], suffix: "%")
