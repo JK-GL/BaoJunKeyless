@@ -33,7 +33,9 @@ enum VehiclePowerState: String, Codable, CaseIterable {
         case .acc:     return "ACC"
         case .on:      return "上电"
         case .ready:   return "Ready"
-        case .unknown: return "未知"
+        // 本车型服务端不提供独立电源字段；状态未确认时按用户期望显示为“未上电”。
+        // 保留 .unknown 这个内部状态，不能影响无感/控制的安全判断。
+        case .unknown: return "未上电"
         }
     }
 
