@@ -74,7 +74,7 @@ enum CommandAction: String, Identifiable, Equatable {
         case .lockUnlock:
             return state.locked == false ? "已开锁" : "锁车"
         case .remoteStart:
-            return state.power == .unknown ? "电源未知" : (state.power.isPoweredOn ? state.power.title : "熄火")
+            return state.power.isPoweredOn ? state.power.title : "熄火"
         case .findCar:
             return "寻车"
         case .acToggle:
