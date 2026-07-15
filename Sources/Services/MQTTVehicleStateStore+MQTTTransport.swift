@@ -225,6 +225,9 @@ extension MQTTVehicleStateStore {
                 if let val = ProtobufDecoder.int64(field) { result[name] = String(val) }
             case .lengthDelimited:
                 if let val = ProtobufDecoder.string(field) { result[name] = val }
+            case .fixed64, .fixed32:
+                // 当前已验证的车辆状态字段均为 varint 或 string；固定宽度字段仅跳过。
+                continue
             }
         }
         if !result.isEmpty { return result }
