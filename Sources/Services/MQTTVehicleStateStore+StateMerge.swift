@@ -137,19 +137,47 @@ extension MQTTVehicleStateStore {
             dash.positionLightText = takeText(dash.positionLightText, newDashboard.positionLightText)
             dash.frontFogText = takeText(dash.frontFogText, newDashboard.frontFogText)
 
-            // 明确不碰：lock/door/window/tail 明细与总览（MQTT 实时主通道）
+            // 门窗/尾门：MQTT 半包常在解锁时夹带假开门。
+            // HTTP 全量明细是权威；MQTT 新鲜时也允许 HTTP 纠正门窗开闭。
+            // 门锁：BLE 本地保护窗外，允许 HTTP 纠正。
+            let bodyCorrected = applyHTTPDoorWindowAuthority(
+                onto: &dash,
+                state: &st,
+                from: newDashboard,
+                newState: newState,
+                sourceFields: sourceFields
+            )
+            if bodyCorrected { changed = true }
+
+            let lockProtected = localDoorLockHoldUntil.map { now < $0 } ?? false
+            if !lockProtected, sourceFields["doorLockStatus"] != nil {
+                if let locked = newState.locked, st.locked != locked {
+                    st.locked = locked
+                    changed = true
+                }
+                let lockText = newDashboard.lockStatusText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !lockText.isEmpty, lockText != "--", dash.lockStatusText != lockText {
+                    dash.lockStatusText = lockText
+                    changed = true
+                }
+            }
 
             if changed {
                 dash.updatedAt = max(dash.updatedAt, collectAt, now)
                 dash.updatedAtText = formatTime(dash.updatedAt)
                 st.timestamp = max(st.timestamp, collectAt, now)
                 st.online = true
+                // 总览只信明细
+                dash.doorStatusText = VehicleStatusMapper.recomputeDoorStatusText(from: dash)
+                dash.windowStatusText = VehicleStatusMapper.recomputeWindowStatusText(from: dash)
+                syncBooleans(from: dash, into: &st)
+                // 不推进 bodyCollectTime，避免挡住随后真实 MQTT 门窗变化
                 bumpStatusRevision()
                 st = applyLiveBLEOverlay(to: st)
                 apply(st)
                 applyDashboard(dash)
                 evaluateKeylessAutomation(for: st)
-                return "轮询元信息补齐/MQTT新鲜"
+                return bodyCorrected ? "轮询元信息+门窗纠正/MQTT新鲜" : "轮询元信息补齐/MQTT新鲜"
             }
             return "轮询元信息/MQTT新鲜"
         }
@@ -259,6 +287,78 @@ extension MQTTVehicleStateStore {
         else if dash.driverDoorStatusText == "未关" || dash.driverDoorStatusText.hasPrefix("未关") { merged.driverDoorOpen = true }
         if dash.lockStatusText == "已锁车" || dash.lockStatusText.hasPrefix("已锁") { merged.locked = true }
         else if dash.lockStatusText == "未锁" || dash.lockStatusText.hasPrefix("未锁") { merged.locked = false }
+    }
+
+    /// HTTP 全量门窗明细纠正 MQTT 假半包
+    @discardableResult
+    private func applyHTTPDoorWindowAuthority(
+        onto dash: inout VehicleDashboardState,
+        state st: inout VehicleState,
+        from newDashboard: VehicleDashboardState,
+        newState: VehicleState,
+        sourceFields: [String: String]
+    ) -> Bool {
+        var changed = false
+
+        func takeDetail(_ current: String, _ incoming: String) -> String {
+            let n = incoming.trimmingCharacters(in: .whitespacesAndNewlines)
+            if n.isEmpty || n == "--" { return current }
+            if current != n { changed = true }
+            return n
+        }
+
+        if sourceFields["door1OpenStatus"] != nil {
+            dash.driverDoorStatusText = takeDetail(dash.driverDoorStatusText, newDashboard.driverDoorStatusText)
+        }
+        if sourceFields["door2OpenStatus"] != nil {
+            dash.passengerDoorStatusText = takeDetail(dash.passengerDoorStatusText, newDashboard.passengerDoorStatusText)
+        }
+        if sourceFields["door3OpenStatus"] != nil {
+            dash.leftRearDoorStatusText = takeDetail(dash.leftRearDoorStatusText, newDashboard.leftRearDoorStatusText)
+        }
+        if sourceFields["door4OpenStatus"] != nil {
+            dash.rightRearDoorStatusText = takeDetail(dash.rightRearDoorStatusText, newDashboard.rightRearDoorStatusText)
+        }
+        if sourceFields["tailDoorOpenStatus"] != nil {
+            dash.tailgateStatusText = takeDetail(dash.tailgateStatusText, newDashboard.tailgateStatusText)
+        }
+        if sourceFields["window1Status"] != nil || sourceFields["window1OpenDegree"] != nil || sourceFields["window1HalfOpenStatus"] != nil {
+            dash.leftFrontWindowStatusText = takeDetail(dash.leftFrontWindowStatusText, newDashboard.leftFrontWindowStatusText)
+        }
+        if sourceFields["window2Status"] != nil || sourceFields["window2OpenDegree"] != nil || sourceFields["window2HalfOpenStatus"] != nil {
+            dash.rightFrontWindowStatusText = takeDetail(dash.rightFrontWindowStatusText, newDashboard.rightFrontWindowStatusText)
+        }
+        if sourceFields["window3Status"] != nil || sourceFields["window3OpenDegree"] != nil || sourceFields["window3HalfOpenStatus"] != nil {
+            dash.leftRearWindowStatusText = takeDetail(dash.leftRearWindowStatusText, newDashboard.leftRearWindowStatusText)
+        }
+        if sourceFields["window4Status"] != nil || sourceFields["window4OpenDegree"] != nil || sourceFields["window4HalfOpenStatus"] != nil {
+            dash.rightRearWindowStatusText = takeDetail(dash.rightRearWindowStatusText, newDashboard.rightRearWindowStatusText)
+        }
+
+        if let doorsClosed = newState.doorsClosed, st.doorsClosed != doorsClosed {
+            st.doorsClosed = doorsClosed
+            changed = true
+        }
+        if let windowsClosed = newState.windowsClosed, st.windowsClosed != windowsClosed {
+            st.windowsClosed = windowsClosed
+            changed = true
+        }
+        if let trunkOpen = newState.trunkOpen, st.trunkOpen != trunkOpen {
+            st.trunkOpen = trunkOpen
+            changed = true
+        }
+        if let driverOpen = newState.driverDoorOpen, st.driverDoorOpen != driverOpen {
+            st.driverDoorOpen = driverOpen
+            changed = true
+        }
+
+        // 同步 lastMqttFields，避免后续半包继续用假开门做 diff
+        for key in Self.doorWindowOpenFieldKeys {
+            if let value = sourceFields[key], !value.isEmpty {
+                lastMqttFields[key] = value
+            }
+        }
+        return changed
     }
 
     static let bodyFieldKeys: [String] = [

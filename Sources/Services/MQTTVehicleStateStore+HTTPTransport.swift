@@ -134,6 +134,8 @@ extension MQTTVehicleStateStore {
                     self.lastHTTPUpdate = refreshResult.fetchedAt
                     let httpCollect = parseTimestamp(refreshResult.carStatus["collectTime"]) ?? refreshResult.fetchedAt
                     self.lastHTTPBodyCollectAt = httpCollect
+                    // HTTP 全量明细作为门窗权威，供 MQTT 半包冲突过滤
+                    self.rememberHTTPDoorWindowAuthority(from: refreshResult.carStatus, at: httpCollect)
 
                     // 字段级合并（推荐方案）：
                     // - 手动刷新：HTTP 全量落地
@@ -217,6 +219,34 @@ extension MQTTVehicleStateStore {
 
     func mapHTTPToDashboard(_ s: [String: String]) -> VehicleDashboardState {
         VehicleStatusMapper.httpDashboard(from: s, base: dashboard)
+    }
+
+    /// 记住 HTTP 全量门窗明细，供 MQTT 半包假开门过滤
+    func rememberHTTPDoorWindowAuthority(from carStatus: [String: String], at: Date) {
+        var snap: [String: String] = [:]
+        for key in Self.doorWindowOpenFieldKeys {
+            if let value = carStatus[key], !value.isEmpty {
+                snap[key] = value
+            }
+        }
+        // 至少有一个门窗字段才记；否则保留旧权威
+        guard !snap.isEmpty else { return }
+        lastHTTPDoorWindowAuthority = (fields: snap, at: at)
+        // 同步纠正 lastMqttFields 中与 HTTP 冲突的“假开”
+        for key in Self.doorWindowOpenFieldKeys {
+            guard let trusted = snap[key] else { continue }
+            if let current = lastMqttFields[key], current != trusted {
+                if parseOpen(trusted) == false, parseOpen(current) == true {
+                    lastMqttFields[key] = trusted
+                }
+                if let trustedDeg = parseDouble(trusted), trustedDeg <= 0,
+                   let currentDeg = parseDouble(current), currentDeg > 0 {
+                    lastMqttFields[key] = trusted
+                }
+            } else if lastMqttFields[key] == nil {
+                lastMqttFields[key] = trusted
+            }
+        }
     }
 
     /// 车况拉失败时：标记离线；若状态已过期，清掉门窗等“开闭态”避免 UI/无感继续当真。

@@ -199,9 +199,22 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var lastHTTPUpdate: Date?
     /// HTTP 车身字段最近 collectTime
     var lastHTTPBodyCollectAt: Date?
+    /// HTTP 门窗权威快照：用于过滤 MQTT 解锁时夹带的假开门/假开窗
+    var lastHTTPDoorWindowAuthority: (fields: [String: String], at: Date)?
     /// 自动轮询日志去重：状态指纹未变则不刷屏
     var lastHTTPPollLogFingerprint: String?
     var isConnecting = false
+    /// 门窗开闭权威字段（不含门锁）
+    static let doorWindowOpenFieldKeys: [String] = [
+        "doorOpenStatus",
+        "door1OpenStatus", "door2OpenStatus", "door3OpenStatus", "door4OpenStatus",
+        "tailDoorOpenStatus",
+        "windowStatus",
+        "window1Status", "window2Status", "window3Status", "window4Status",
+        "window1OpenDegree", "window2OpenDegree", "window3OpenDegree", "window4OpenDegree",
+        "window1HalfOpenStatus", "window2HalfOpenStatus", "window3HalfOpenStatus", "window4HalfOpenStatus",
+        "windowHalfOpenStatus"
+    ]
 
     let locationResolver = LocationResolver.shared
     let addressSettings: AddressServiceSettings

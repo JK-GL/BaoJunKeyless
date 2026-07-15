@@ -158,19 +158,10 @@ enum VehicleStatusMapper {
         next.timestamp = parseTimestamp(s["collectTime"]) ?? Date()
         next.online = true
         if let locked = parseLocked(s["doorLockStatus"]) { next.locked = locked }
-        // 单门增量：只更新对应字段，再基于合并后状态重算 doorsClosed/windowsClosed
+        // 单门增量：只更新对应字段
+        // doorsClosed / windowsClosed 最终以 merge 后明细重算为准；这里不因半包缺字段写死总览
         if let driverOpen = parseOpen(s["door1OpenStatus"]) { next.driverDoorOpen = driverOpen }
         if let trunkOpen = parseOpen(s["tailDoorOpenStatus"]) { next.trunkOpen = trunkOpen }
-        // 半包禁止用总字段推断整车开闭；总览一律由明细在 merge 后重算
-        // 这里只在“四门字段齐”时才写 doorsClosed，避免只来 door1 却判整车
-        let doorDetails = [s["door1OpenStatus"], s["door2OpenStatus"], s["door3OpenStatus"], s["door4OpenStatus"]].compactMap { $0 }
-        if doorDetails.count == 4, let doorsClosed = parseDoorClosed(s) {
-            next.doorsClosed = doorsClosed
-        }
-        let windowDetails = [s["window1Status"], s["window2Status"], s["window3Status"], s["window4Status"]].compactMap { $0 }
-        if windowDetails.count == 4, let windowsClosed = parseWindowsClosed(s) {
-            next.windowsClosed = windowsClosed
-        }
         if let ac = parseACStatus(s["acStatus"]) { next.acOn = ac }
         if let temp = parseDouble(s["accCntTemp"] ?? s["interiorTemperature"]) { next.acTemperature = temp }
         if let gear = parseGear(s["autoGearStatus"]) { next.gear = gear }

@@ -25,13 +25,14 @@ extension MQTTVehicleStateStore {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
 
+            // 官方车端半包有时在锁变化时夹带假门窗翻转；先净化再比较变化
+            let sanitizedFields = self.sanitizeMQTTBodyFields(fields)
             var changedKeyNames = Set<String>()
             var changedKeys: [String] = []
-            for (k, v) in fields where self.lastMqttFields[k] != v {
+            for (k, v) in sanitizedFields where self.lastMqttFields[k] != v {
                 changedKeyNames.insert(k)
                 changedKeys.append("\(k):\(self.lastMqttFields[k] ?? "?")→\(v)")
             }
-            // 即使 collectTime 等杂项无变化，门窗字段只要有值也强制合并一次（防丢包后不刷新）
             let bodyKeys = [
                 "doorLockStatus", "door1OpenStatus", "door2OpenStatus", "door3OpenStatus", "door4OpenStatus",
                 "tailDoorOpenStatus", "window1Status", "window2Status", "window3Status", "window4Status",
@@ -39,14 +40,12 @@ extension MQTTVehicleStateStore {
                 "doorOpenStatus", "windowStatus", "acStatus",
                 "engineStatus", "powerStatus", "keyStatus", "batterySoc", "charging", "autoGearStatus"
             ]
-            let hasBody = bodyKeys.contains { fields[$0] != nil }
             // 没有任何值变化时，不再 force 合并半包（防止旧门窗被反复重写）
             guard !changedKeyNames.isEmpty else { return }
-            _ = hasBody
 
             // 主线程合并，避免 background 读到旧 dashboard 导致门窗回退
-            self.lastMqttFields.merge(fields) { _, new in new }
-            if let collect = parseTimestamp(fields["collectTime"]) {
+            self.lastMqttFields.merge(sanitizedFields) { _, new in new }
+            if let collect = parseTimestamp(sanitizedFields["collectTime"]) {
                 self.lastMQTTBodyCollectAt = collect
             } else {
                 self.lastMQTTBodyCollectAt = Date()
@@ -59,22 +58,16 @@ extension MQTTVehicleStateStore {
             }
 
             // 只把“值变化”的字段映射进状态；半包里重复的旧值不再二次写入
-            // 这样 HTTP 纠正后，不会被下一包相同旧门字段重新钉死
-            var liveFields = fields
-            if !changedKeyNames.isEmpty {
-                // 保留 collectTime + 变化字段
-                var filtered: [String: String] = [:]
-                if let ct = fields["collectTime"] { filtered["collectTime"] = ct }
-                for k in changedKeyNames {
-                    if let v = fields[k] { filtered[k] = v }
-                }
-                // 若只有 collectTime 变化，仍允许空车身（后面 hasBody 可能为 true 但无变化）
-                liveFields = filtered.isEmpty ? fields : filtered
+            var liveFields: [String: String] = [:]
+            if let ct = sanitizedFields["collectTime"] { liveFields["collectTime"] = ct }
+            for k in changedKeyNames {
+                if let v = sanitizedFields[k] { liveFields[k] = v }
             }
+            if liveFields.isEmpty { liveFields = sanitizedFields }
 
             let newState = self.mapMQTTToVehicleState(liveFields)
             let newDashboard = self.mapMQTTToDashboard(liveFields)
-            let collectAt = parseTimestamp(fields["collectTime"]) ?? Date()
+            let collectAt = parseTimestamp(sanitizedFields["collectTime"]) ?? Date()
             self.mergeRealtimeState(
                 newState: newState,
                 dashboard: newDashboard,
@@ -83,8 +76,8 @@ extension MQTTVehicleStateStore {
                 changedKeys: changedKeyNames
             )
 
-            let packetKeys = Array(fields.keys.sorted()).prefix(10).joined(separator: ",")
-            let summary = (changedKeys.isEmpty ? Array(fields.keys.prefix(8)).map { "\($0)=force" } : Array(changedKeys.prefix(8))).joined(separator: ", ")
+            let packetKeys = Array(sanitizedFields.keys.sorted()).prefix(10).joined(separator: ",")
+            let summary = Array(changedKeys.prefix(8)).joined(separator: ", ")
             // 车身变化只写控制台事件日志，不进错误日志
             let bodyChanged = changedKeyNames.contains { bodyKeys.contains($0) || $0.hasPrefix("door") || $0.hasPrefix("window") || $0.hasPrefix("tailDoor") || $0 == "acStatus" }
             if bodyChanged {
@@ -100,7 +93,6 @@ extension MQTTVehicleStateStore {
                     "电=\(self.dashboard.batteryPercentValue.map(String.init) ?? "--")%",
                     "更新=\(self.dashboard.updatedAtText)"
                 ]
-                // 有字段变化才记；相同变化短时间合并 ×N，避免刷屏
                 let changeIdentity = summary.isEmpty ? packetKeys : summary
                 self.vehicleEventLogStore.addCoalesced(
                     .action,
@@ -111,6 +103,75 @@ extension MQTTVehicleStateStore {
                 )
             }
         }
+    }
+
+    /// 过滤车端半包常见噪声：
+    /// 1) 锁变化时夹带多门/窗/尾门一起翻开
+    /// 2) 单包同时多个门窗“变开”
+    /// 3) 与 HTTP 权威全关快照冲突的假开门
+    private func sanitizeMQTTBodyFields(_ fields: [String: String]) -> [String: String] {
+        var out = fields
+        let openKeys = [
+            "doorOpenStatus",
+            "door1OpenStatus", "door2OpenStatus", "door3OpenStatus", "door4OpenStatus",
+            "tailDoorOpenStatus",
+            "windowStatus",
+            "window1Status", "window2Status", "window3Status", "window4Status"
+        ]
+        let degreeKeys = [
+            "window1OpenDegree", "window2OpenDegree", "window3OpenDegree", "window4OpenDegree"
+        ]
+
+        // 与 HTTP 权威快照冲突时，不采纳“突然开”
+        if let http = lastHTTPDoorWindowAuthority, Date().timeIntervalSince(http.at) <= 90 {
+            for key in openKeys {
+                guard let next = parseOpen(out[key]), next == true else { continue }
+                if let trusted = parseOpen(http.fields[key]), trusted == false {
+                    out.removeValue(forKey: key)
+                }
+            }
+            for key in degreeKeys {
+                guard let deg = parseDouble(out[key]), deg > 0 else { continue }
+                if let trusted = parseDouble(http.fields[key]), trusted <= 0 {
+                    out.removeValue(forKey: key)
+                }
+            }
+        }
+
+        // 本包相对 lastMqttFields 的变化
+        var openTrueChanges = 0
+        var openFalseChanges = 0
+        for key in openKeys {
+            guard let next = parseOpen(out[key]) else { continue }
+            let prev = parseOpen(lastMqttFields[key])
+            if prev != next {
+                if next { openTrueChanges += 1 } else { openFalseChanges += 1 }
+            }
+        }
+        for key in degreeKeys {
+            let next = parseDouble(out[key]) ?? 0
+            let prev = parseDouble(lastMqttFields[key]) ?? 0
+            if next > 0 && prev <= 0 { openTrueChanges += 1 }
+            if next <= 0 && prev > 0 { openFalseChanges += 1 }
+        }
+
+        let lockNext = parseLocked(out["doorLockStatus"])
+        let lockPrev = parseLocked(lastMqttFields["doorLockStatus"])
+        let lockChanged = (lockNext != nil && lockNext != lockPrev)
+
+        // 锁变化瞬间夹带 ≥2 个“变开”：典型假半包，只保留锁/空调/电源等
+        if lockChanged && openTrueChanges >= 2 {
+            for key in openKeys + degreeKeys { out.removeValue(forKey: key) }
+            return out
+        }
+
+        // 没有锁变化时，单包同时 ≥3 个门窗“变开”也极不真实
+        if !lockChanged && openTrueChanges >= 3 && openFalseChanges == 0 {
+            for key in openKeys + degreeKeys { out.removeValue(forKey: key) }
+            return out
+        }
+
+        return out
     }
 
     func handleVehicleControlResult(_ data: Data) {
