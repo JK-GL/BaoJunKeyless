@@ -57,7 +57,7 @@ enum CommandAction: String, Identifiable, Equatable {
         case .lockUnlock:
             return state.locked == false ? "lock.open.fill" : "lock.fill"
         case .remoteStart:
-            return "power.circle.fill"
+            return (state.power.isPoweredOn) ? "power.circle.fill" : "power"
         case .findCar:
             return "location.fill"
         case .acToggle:
@@ -74,7 +74,7 @@ enum CommandAction: String, Identifiable, Equatable {
         case .lockUnlock:
             return state.locked == false ? "已开锁" : "锁车"
         case .remoteStart:
-            return "熄火"
+            return state.power == .unknown ? "电源未知" : (state.power.isPoweredOn ? state.power.title : "熄火")
         case .findCar:
             return "寻车"
         case .acToggle:
@@ -118,7 +118,7 @@ enum CommandAction: String, Identifiable, Equatable {
         switch self {
         case .lockUnlock:
             return state.locked == false ? "锁车" : "解锁车辆"
-        case .remoteStart:   return "熄火"
+        case .remoteStart:   return (state.power.isPoweredOn) ? "远程熄火" : "远程启动"
         case .findCar:       return "寻车"
         case .acToggle:
             return state.acOn == true ? "关闭空调" : "开启空调"
@@ -134,7 +134,9 @@ enum CommandAction: String, Identifiable, Equatable {
         case .lockUnlock:
             return state.locked == false ? "确认后将锁止车门，请确保车内无人滞留。" : "确认后将解锁车门，便于您上车。"
         case .remoteStart:
-            return "确认后将发送熄火指令。优先使用近场蓝牙，不可用时自动改用网络。"
+            return state.power.isPoweredOn
+                ? "确认后将关闭车辆电源。优先使用近场蓝牙，不可用时自动改用网络。"
+                : "确认后将下发启动授权。请在约 30 秒内解锁上车，踩下刹车仪表亮Ready。"
         case .findCar:
             return "确认后车辆将闪灯并鸣笛，便于您快速定位。"
         case .acToggle:
