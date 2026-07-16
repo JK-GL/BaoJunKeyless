@@ -53,7 +53,10 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     private var monitoredRegion: CLCircularRegion?
     private var monitoredParkingRegion: CLCircularRegion?
     private var parkingLocation: CLLocation?
+    /// 只有先离开停车区域，再重新进入，显著位置变化才触发预唤醒。
+    private var parkingFallbackWasOutside = false
     private var pendingConnectStartedAt: Date?
+    private var pendingConnectLastStage: String?
     private var lastFenceCenter: CLLocationCoordinate2D?
     private var lastFenceRadius: CLLocationDistance = 0
     private var lastPhoneLocation: CLLocation?
@@ -168,10 +171,33 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
         connectionStatusStore.$bleStatus
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
+            .sink { [weak self] status in
+                self?.recordPendingConnectStage(status)
                 self?.notifyBLEStatusChanged()
             }
             .store(in: &cancellables)
+    }
+
+    private func recordPendingConnectStage(_ status: VehicleConnectionStatusStore.LiveBLEStatus) {
+        guard let started = pendingConnectStartedAt else { return }
+        let stage: String
+        switch status {
+        case .scanning: stage = "扫描中"
+        case .connecting: stage = "连接中"
+        case .connected, .authenticating: stage = "安全重鉴权中"
+        case .authenticated: stage = "已鉴权"
+        case .error: stage = "失败"
+        case .pausedOutsideFence: stage = "围栏外休眠"
+        case .disconnected: stage = "等待系统机会"
+        }
+        guard stage != pendingConnectLastStage else { return }
+        pendingConnectLastStage = stage
+        let elapsed = String(format: "%.1fs", Date().timeIntervalSince(started))
+        logInfo("后台待连接", detail: "\(stage) · 已用时 \(elapsed)", identity: "pending-connect|\(stage)", mergeWindow: 30)
+        if status == .authenticated || status == .error {
+            pendingConnectStartedAt = nil
+            pendingConnectLastStage = nil
+        }
     }
 
     // MARK: - Evaluate
@@ -327,14 +353,17 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             return
         }
         guard !isAppInForeground else { return }
-        let location = lastPhoneLocation ?? locationManager.location
+        // 圆心优先使用车辆位置；仅车辆位置不可用且手机已在车旁完成 BLE 鉴权时，才用手机当前位置。
+        let vehicleLocation = currentVehicleCoordinateWGS84().map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
+        let authenticatedNearVehicle = connectionStatusStore.bleStatus == .authenticated
+        let location = vehicleLocation ?? (authenticatedNearVehicle ? (lastPhoneLocation ?? locationManager.location) : nil)
         guard let location else {
             locationManager.requestLocation()
-            logInfo("停车位置待记录", detail: "等待定位后挂载备用围栏", identity: "parking-wait")
+            logInfo("停车位置待记录", detail: "车辆位置不可用，等待车旁 BLE 鉴权后采用手机位置", identity: "parking-wait")
             return
         }
-        if let old = parkingLocation, old.distance(from: location) < 40, monitoredParkingRegion != nil { return }
-        removeParkingFallback(reason: "更新停车位置")
+        // 一次后台会话只固定一个停车点，不随手机定位移动。
+        if monitoredParkingRegion != nil { return }
         let radius = max(100, KeylessSettings.clampedGeofenceRadius(settings.geofenceRadiusMeters))
         let region = CLCircularRegion(center: location.coordinate, radius: radius, identifier: parkingRegionIdentifier)
         region.notifyOnEntry = true
@@ -343,6 +372,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         locationManager.startMonitoringSignificantLocationChanges()
         monitoredParkingRegion = region
         parkingLocation = location
+        parkingFallbackWasOutside = false
         logInfo("停车位置备用唤醒已就绪", detail: "半径 \(Int(radius)) 米 · 显著位置变化已监听 · \(reasonText(reason))", identity: "parking-fallback-ready")
     }
 
@@ -351,6 +381,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         if monitoredParkingRegion != nil { logInfo("停车位置备用唤醒已移除", detail: reason, identity: "parking-fallback-remove") }
         monitoredParkingRegion = nil
         parkingLocation = nil
+        parkingFallbackWasOutside = false
         locationManager.stopMonitoringSignificantLocationChanges()
     }
 
@@ -649,9 +680,13 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         guard let store = VehicleStateStoreBridge.current as? MQTTVehicleStateStore else { return }
         // 进圈/后台续命：允许扫描。ensure 内部会再判「仅围栏内扫描」；
         // 但进圈时 isInGeofence 已 true，不会被抑制。
-        pendingConnectStartedAt = Date()
+        if pendingConnectStartedAt == nil {
+            pendingConnectStartedAt = Date()
+            pendingConnectLastStage = "已创建"
+            logInfo("后台待连接", detail: "已创建 · 原因：\(detail)", identity: "pending-connect|created", mergeWindow: 30)
+        }
         store.ensureBLESession(forceRestart: forceRestart, optimisticScanning: true, userInitiated: false)
-        logInfo("后台唤醒 BLE", detail: "\(detail) · pending-connect 已创建", identity: "bg-wake-ble|\(detail)")
+        logInfo("后台唤醒 BLE", detail: "\(detail) · 等待扫描/连接/重鉴权", identity: "bg-wake-ble|\(detail)")
     }
 
     /// 设置变化或出圈后，让 Store 重新评估是否应停扫
@@ -706,7 +741,12 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
         if region.identifier == parkingRegionIdentifier {
-            wakeFromParkingFallback("进入停车位置备用围栏")
+            guard parkingFallbackWasOutside else {
+                logInfo("停车位置预唤醒跳过", detail: "尚未确认离开停车区域", identity: "parking-fallback-no-exit")
+                return
+            }
+            parkingFallbackWasOutside = false
+            wakeFromParkingFallback("离开后重新进入停车位置备用围栏")
             return
         }
         guard region.identifier == regionIdentifier else { return }
@@ -727,6 +767,11 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     }
 
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
+        if region.identifier == parkingRegionIdentifier {
+            parkingFallbackWasOutside = true
+            logInfo("离开停车位置备用围栏", detail: "已武装下次重新进入预唤醒", identity: "parking-fallback-exit")
+            return
+        }
         guard region.identifier == regionIdentifier else { return }
         isInGeofence = false
         reevaluate(reason: "exit-region")
@@ -797,11 +842,20 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         if let last = locations.last {
-            let previousParking = parkingLocation
+            let previousPhone = lastPhoneLocation
             lastPhoneLocation = last
-            if !isAppInForeground { configureParkingFallbackIfNeeded(settings: settingsStore.settings, reason: "location-update") }
-            if let parking = previousParking, last.distance(from: parking) >= 120, !isAppInForeground {
-                wakeFromParkingFallback("显著位置变化，距停车点约 \(Int(last.distance(from: parking))) 米")
+            if !isAppInForeground, monitoredParkingRegion == nil {
+                configureParkingFallbackIfNeeded(settings: settingsStore.settings, reason: "location-update")
+            }
+            if let parking = parkingLocation, !isAppInForeground {
+                let distance = last.distance(from: parking)
+                let previousDistance = previousPhone?.distance(from: parking)
+                if distance > 120 { parkingFallbackWasOutside = true }
+                // 显著位置回调只有“由远到近”才预唤醒；远离时只武装，不唤醒。
+                if parkingFallbackWasOutside, distance <= 120, (previousDistance ?? .greatestFiniteMagnitude) > 120 {
+                    parkingFallbackWasOutside = false
+                    wakeFromParkingFallback("显著位置变化由远到近，距停车点约 \(Int(distance)) 米")
+                }
             }
             // 更新手机距圆心，方便 UI 校验围栏（无新鲜度字段）
             refreshGeofenceSummary()

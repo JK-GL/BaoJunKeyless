@@ -212,6 +212,10 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     /// MQTT 车身字段最近 collectTime
     var lastMQTTBodyCollectAt: Date?
     var lastHTTPUpdate: Date?
+    /// 最近一次 HTTP 完整原始 carStatus；控制后核验必须读取这里，不能读取受 BLE 本地保护的 UI/state。
+    var lastHTTPRawCarStatus: [String: String] = [:]
+    var lastHTTPRawFetchedAt: Date?
+    var lastHTTPRawGeneration: UInt64 = 0
     /// HTTP 车身字段最近 collectTime
     var lastHTTPBodyCollectAt: Date?
     /// HTTP 门窗权威快照：用于过滤 MQTT 解锁时夹带的假开门/假开窗

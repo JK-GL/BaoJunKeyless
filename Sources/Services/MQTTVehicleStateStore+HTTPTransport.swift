@@ -194,6 +194,9 @@ extension MQTTVehicleStateStore {
                 switch result {
                 case .success(let refreshResult):
                     self.lastHTTPUpdate = refreshResult.fetchedAt
+                    self.lastHTTPRawCarStatus = refreshResult.carStatus
+                    self.lastHTTPRawFetchedAt = refreshResult.fetchedAt
+                    self.lastHTTPRawGeneration &+= 1
                     let httpCollect = parseTimestamp(refreshResult.carStatus["collectTime"]) ?? refreshResult.fetchedAt
 
                     // 车辆配置下发官方轮询秒数；异常值仍限制在 2...10 秒。

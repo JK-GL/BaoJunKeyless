@@ -218,9 +218,11 @@ extension MQTTVehicleStateStore {
         let rssi = Double(smoothedRSSI)
 
         if nearby || rssi >= unlockTh {
-            // 只在真实离开后首次重新进入近场时形成解锁边沿。
-            if keylessUnlockDepartureObserved {
+            // 只在真实离开后首次重新进入近场时形成一次边沿；近场连续 RSSI 不得重复武装。
+            if keylessUnlockDepartureObserved && !keylessUnlockApproachEdgeArmed {
                 keylessUnlockApproachEdgeArmed = true
+                keylessUnlockDepartureObserved = false
+                vehicleEventLogStore.add(.keyless, "重新靠近边沿", detail: "真实离开后首次进入近场 · rssi=\(smoothedRSSI)")
             }
             if externalLockRequiresExit && externalLockExitObserved {
                 externalLockRequiresExit = false
@@ -422,6 +424,10 @@ extension MQTTVehicleStateStore {
         if !hasEnteredVehicleZone {
             return .deny(action: .lock, reason: "未进入过车区，不上锁")
         }
+        // 三段 RSSI：灰区不触发上锁，只有真实弱于离开阈值才进入上锁路径。
+        guard keylessRSSIZone == "离开" else {
+            return .deny(action: .lock, reason: "RSSI 灰区不触发上锁")
+        }
         // 信号丢失 / 无 live 弱信号：不确认离开
         if !state.hasLiveBLEProximity {
             return .deny(action: .lock, reason: "无持续弱信号，不确认离开")
@@ -451,7 +457,7 @@ extension MQTTVehicleStateStore {
 
     /// 推荐策略：必须先观察到真实离开，再在首次回到近场时自动解锁/启动电源。
     func guardKeylessUnlockApproachEdge(_ state: VehicleState, action: KeylessAction) -> Bool {
-        guard state.phoneNearby else { return false }
+        guard state.phoneNearby, keylessRSSIZone == "近场" else { return false }
         guard keylessUnlockApproachEdgeArmed else {
             let detail = keylessSafetySnapshot(state) + " | edge=0（需先离开后重新靠近）"
             vehicleEventLogStore.addThrottled(.keyless, "\(action.title)拒绝", detail: detail, identity: "unlock-edge-\(action.rawValue)", minimumInterval: 10)
@@ -462,8 +468,8 @@ extension MQTTVehicleStateStore {
 
     /// 每次判定写出锁、门窗、尾门、档位、电源、HTTP 新鲜度、BLE 鉴权、RSSI 与保护状态。
     func keylessSafetySnapshot(_ state: VehicleState) -> String {
-        let age = max(0, Int(Date().timeIntervalSince(state.timestamp)))
-        return "locked=\(state.locked.map(String.init) ?? "unknown") | doors=\(state.doorsClosed.map { $0 ? "closed" : "open" } ?? "unknown") | windows=\(state.windowsClosed.map { $0 ? "closed" : "open" } ?? "unknown") | trunk=\(state.trunkOpen.map { $0 ? "open" : "closed" } ?? "unknown") | gear=\(state.gear.title) | power=\(state.power.title) | httpAge=\(age)s | bleAuth=\(hasCompletedBLEAuth ? 1 : 0) | rssi=\(state.bleRssi.map(String.init) ?? "--") | zone=\(keylessRSSIZone) | edge=\(keylessUnlockApproachEdgeArmed ? 1 : 0) | reject=\(keylessRejectedActionUntilExit?.rawValue ?? "none") | externalProtect=\(externalLockRequiresExit ? 1 : 0)"
+        let httpAge = lastHTTPUpdate.map { max(0, Int(Date().timeIntervalSince($0))) }
+        return "locked=\(state.locked.map(String.init) ?? "unknown") | doors=\(state.doorsClosed.map { $0 ? "closed" : "open" } ?? "unknown") | windows=\(state.windowsClosed.map { $0 ? "closed" : "open" } ?? "unknown") | trunk=\(state.trunkOpen.map { $0 ? "open" : "closed" } ?? "unknown") | gear=\(state.gear.title) | power=\(state.power.title) | httpAge=\(httpAge.map(String.init) ?? "never") | bleAuth=\(hasCompletedBLEAuth ? 1 : 0) | rssi=\(state.bleRssi.map(String.init) ?? "--") | zone=\(keylessRSSIZone) | edge=\(keylessUnlockApproachEdgeArmed ? 1 : 0) | reject=\(keylessRejectedActionUntilExit?.rawValue ?? "none") | externalProtect=\(externalLockRequiresExit ? 1 : 0)"
     }
 
     func executeKeylessCommandIfNeeded(action: KeylessAction, state: VehicleState, reason: String) {
@@ -511,11 +517,6 @@ extension MQTTVehicleStateStore {
             return
         }
 
-        if (action == .unlock || action == .powerStart) && keylessUnlockApproachEdgeArmed {
-            keylessUnlockApproachEdgeArmed = false
-            vehicleEventLogStore.add(.keyless, "接近边沿已消费", detail: "\(action.title)仅本次重新靠近允许执行")
-        }
-
         let command: VehicleCommand
         switch action {
         case .unlock:
@@ -542,6 +543,10 @@ extension MQTTVehicleStateStore {
             return
         }
         lastBLEWaitCommandKind = nil
+        if action == .unlock || action == .powerStart {
+            keylessUnlockApproachEdgeArmed = false
+            vehicleEventLogStore.add(.keyless, "接近边沿已消费", detail: "\(action.title) · BLE 已就绪，仅本次重新靠近允许执行")
+        }
         isExecutingKeylessCommand = true
         lastAutoCommandAt = Date()
         lastAutoCommandKind = command.kind
@@ -617,20 +622,29 @@ extension MQTTVehicleStateStore {
         return parts
     }
 
-    /// 锁车 BLE 回包只说明指令被接收；最终结果必须等 HTTP 完整快照合并后确认，不能以 UI/本地回写锁态为准。
+    /// 从 HTTP 原始回包识别明确未关闭的部位；不读取受本地保护的 UI/state。
+    func keylessOpenBodyParts(fromHTTP raw: [String: String]) -> [String] {
+        let mapped = VehicleStatusMapper.httpState(from: raw, base: .placeholder)
+        return keylessOpenBodyParts(from: mapped)
+    }
+
+    /// 锁车 BLE 回包只说明指令被接收；最终结果必须等新的 HTTP 原始完整快照确认。
     func confirmKeylessLockViaHTTP(after result: VehicleCommandExecutionResult) {
         switch result.state {
         case .sent, .completed:
-            vehicleEventLogStore.add(.keyless, "无感上锁等待 HTTP 确认", detail: "BLE 指令已发送，2 秒后请求 HTTP 完整车况")
+            let generationBeforeConfirmation = lastHTTPRawGeneration
+            vehicleEventLogStore.add(.keyless, "无感上锁等待 HTTP 确认", detail: "BLE 指令已发送，2 秒后请求 HTTP 原始完整车况")
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.1) { [weak self] in
                 self?.pollHTTPOnce(userInitiated: false) { [weak self] ok, message in
                     guard let self else { return }
-                    let snapshot = self.state
-                    let openParts = self.keylessOpenBodyParts(from: snapshot)
+                    let raw = self.lastHTTPRawCarStatus
+                    let isNewHTTP = self.lastHTTPRawGeneration > generationBeforeConfirmation
+                    let httpLocked = parseLocked(raw["doorLockStatus"])
+                    let openParts = self.keylessOpenBodyParts(fromHTTP: raw)
                     let bodyOpen = !openParts.isEmpty
                     let bodyDetail = bodyOpen ? openParts.joined(separator: "、") : "门窗与尾门状态正常"
 
-                    if ok, snapshot.locked == true {
+                    if ok, isNewHTTP, httpLocked == true {
                         self.vehicleEventLogStore.add(.keyless, "无感上锁 HTTP 已确认", detail: "锁=已锁 · \(bodyDetail)")
                         if self.keylessSettingsStore.settings.lockPopup {
                             AppNotificationManager.shared.postKeylessNotification(title: "无感上锁已确认", body: "HTTP 完整车况确认车辆已上锁。\(bodyOpen ? "但\(bodyDetail)，请检查车辆。" : "")")
@@ -639,7 +653,14 @@ extension MQTTVehicleStateStore {
                             AppNotificationManager.shared.postKeylessNotification(title: "车辆有未关闭部位", body: "HTTP 完整车况：\(bodyDetail)。请检查车辆。")
                         }
                     } else if ok {
-                        let detail = snapshot.locked == false ? "HTTP 返回车辆仍未上锁" : "HTTP 回包未提供可确认的锁态"
+                        let detail: String
+                        if !isNewHTTP {
+                            detail = "未取得锁车后的新 HTTP 快照"
+                        } else if httpLocked == false {
+                            detail = "HTTP 原始 doorLockStatus 返回车辆仍未上锁"
+                        } else {
+                            detail = "HTTP 原始回包未提供可确认的锁态"
+                        }
                         self.vehicleEventLogStore.add(.warning, "无感上锁 HTTP 未确认", detail: "\(detail) · \(bodyDetail)")
                         AppNotificationManager.shared.postKeylessNotification(title: "无感上锁未确认", body: "\(detail)。\(bodyOpen ? "\(bodyDetail)，请检查车辆。" : "")")
                     } else {

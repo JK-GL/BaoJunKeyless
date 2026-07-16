@@ -1505,6 +1505,9 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
         let peripherals = (dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral]) ?? []
         onLog?("BLE", "central restore peripherals=\(peripherals.count) state=\(central.state.rawValue)")
         guard config != nil else { return }
+        // 系统只恢复 peripheral 连接，不恢复可信鉴权会话。先清空随机数/控制密钥/特征/待处理命令，再重新发现服务并完整鉴权。
+        clearSessionRuntime(cancelPendingControl: true)
+        onLog?("BLE", "restore safety reset complete; full re-authentication required")
         if let peripheral = peripherals.first {
             discoveredPeripheral = peripheral
             peripheral.delegate = self

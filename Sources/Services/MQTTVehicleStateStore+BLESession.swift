@@ -159,6 +159,11 @@ extension MQTTVehicleStateStore {
         bleManager.onLog = { [weak self] component, message in
             guard let self else { return }
             if let message {
+                if message.contains("restore safety reset complete") {
+                    DispatchQueue.main.async {
+                        self.vehicleEventLogStore.add(.keyless, "BLE 系统恢复", detail: "旧鉴权上下文已清空，正在完整安全重鉴权")
+                    }
+                }
                 if self.shouldPersistBLECrashLog(message) {
                     CrashLogger.shared.mark(component, message)
                 }
