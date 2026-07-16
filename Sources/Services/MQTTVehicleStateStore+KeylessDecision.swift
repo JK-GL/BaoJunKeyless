@@ -602,7 +602,10 @@ extension MQTTVehicleStateStore {
         }
     }
 
-    /// 未关不自动上锁：先拦锁，再 HTTP 点名推送。依赖「上锁弹窗」；只在决策变化时触发，避免弱 RSSI 刷屏。
+    /// 未关不自动上锁：先拦锁，再 HTTP。
+    /// - HTTP 已锁：自动补锁（同步车辆/本地），最终通知走上锁确认链路
+    /// - HTTP 未锁：推送「车辆无感未上锁」并点名未关部位
+    /// 依赖「上锁弹窗」；只在决策变化时触发，避免弱 RSSI 刷屏。
     func postKeylessBodyOpenReminderIfNeeded(for decision: KeylessDecision, settings: KeylessSettings) {
         guard settings.lockPopup, settings.lockRequireClosedBody else { return }
         let reason = decision.reason
@@ -611,27 +614,50 @@ extension MQTTVehicleStateStore {
         vehicleEventLogStore.add(
             .keyless,
             "未关不自动上锁",
-            detail: "已拦截本次上锁 · \(reason) · 正在 HTTP 点名未关部位"
+            detail: "已拦截本次上锁 · \(reason) · 正在 HTTP 复核锁态与未关部位"
         )
 
-        // A 方案：先拦，再补一次 HTTP 完整车况做点名；HTTP 失败则回落本地拒绝原因。
         pollHTTPOnce(userInitiated: false) { [weak self] ok, message in
             guard let self else { return }
-            let openParts: [String]
-            if ok {
-                openParts = self.keylessOpenBodyParts(fromHTTP: self.lastHTTPRawCarStatus)
-            } else {
-                openParts = [reason]
-            }
+            let raw = self.lastHTTPRawCarStatus
+            let openParts = ok ? self.keylessOpenBodyParts(fromHTTP: raw) : [reason]
             let named = openParts.isEmpty ? [reason] : openParts
             let bodyDetail = named.joined(separator: "、")
+            let httpLocked = ok ? parseLocked(raw["doorLockStatus"]) : nil
+
+            // HTTP 显示已锁：本地曾因未关拦截，现自动补锁以同步车辆/状态。
+            if ok, httpLocked == true {
+                self.vehicleEventLogStore.add(
+                    .keyless,
+                    "拦截后HTTP已锁·自动补锁",
+                    detail: "本地拦截原因=\(reason) · HTTP未关=\(bodyDetail)"
+                )
+                if self.bleManager.canSendDoorLockControl, !self.isExecutingKeylessCommand {
+                    // 补锁后走 confirmKeylessLockViaHTTP，统一发出「车辆无感已上锁」。
+                    self.executeKeylessCommandIfNeeded(
+                        action: .lock,
+                        state: self.state,
+                        reason: "拦截后HTTP已锁·自动补锁"
+                    )
+                } else {
+                    // BLE 暂不可发时，直接按 HTTP 已锁结果通知，避免静默。
+                    AppNotificationManager.shared.postKeylessNotification(
+                        title: "车辆无感已上锁",
+                        body: openParts.isEmpty
+                            ? "HTTP 完整车况确认车辆已上锁。"
+                            : "HTTP 完整车况：\(bodyDetail)。请检查车辆。"
+                    )
+                }
+                return
+            }
+
             self.vehicleEventLogStore.add(
                 .keyless,
-                "未执行无感上锁",
+                "车辆无感未上锁",
                 detail: ok ? bodyDetail : "\(bodyDetail) · HTTP失败:\(message)"
             )
             AppNotificationManager.shared.postKeylessNotification(
-                title: "未执行无感上锁",
+                title: "车辆无感未上锁",
                 body: "检测到 \(bodyDetail)，已取消本次上锁。"
             )
         }
@@ -715,18 +741,29 @@ extension MQTTVehicleStateStore {
                     if ok, isNewHTTP, httpLocked == false {
                         self.vehicleEventLogStore.add(.keyless, "无感解锁 HTTP 已确认", detail: "HTTP 原始 doorLockStatus=未锁")
                         if self.keylessSettingsStore.settings.unlockPopup {
-                            AppNotificationManager.shared.postKeylessNotification(title: "无感解锁已确认", body: "BLE ACK 与 HTTP 完整车况均确认车辆已解锁。")
+                            AppNotificationManager.shared.postKeylessNotification(
+                                title: "车辆无感已解锁",
+                                body: "HTTP 完整车况确认车辆已解锁。"
+                            )
                         }
                     } else if ok {
                         let detail = !isNewHTTP ? "未取得解锁后的新 HTTP 快照" : (httpLocked == true ? "HTTP 原始状态仍为已锁" : "HTTP 原始锁态未知")
                         self.vehicleEventLogStore.add(.warning, "无感解锁 HTTP 未确认", detail: detail)
                         if self.keylessSettingsStore.settings.unlockPopup {
-                            AppNotificationManager.shared.postKeylessNotification(title: "无感解锁待确认", body: detail)
+                            AppNotificationManager.shared.postKeylessNotification(
+                                title: "车辆无感未解锁",
+                                body: httpLocked == true
+                                    ? "HTTP 原始状态仍为已锁，请靠近重试。"
+                                    : "\(detail)。"
+                            )
                         }
                     } else {
                         self.vehicleEventLogStore.add(.warning, "无感解锁 HTTP 确认失败", detail: message)
                         if self.keylessSettingsStore.settings.unlockPopup {
-                            AppNotificationManager.shared.postKeylessNotification(title: "无感解锁待确认", body: "BLE ACK 已完成，但 HTTP 完整车况刷新失败。")
+                            AppNotificationManager.shared.postKeylessNotification(
+                                title: "车辆无感未解锁",
+                                body: "BLE 已执行，但 HTTP 完整车况刷新失败。"
+                            )
                         }
                     }
                 }
@@ -757,11 +794,11 @@ extension MQTTVehicleStateStore {
                     if ok, isNewHTTP, httpLocked == true {
                         self.vehicleEventLogStore.add(.keyless, "无感上锁 HTTP 已确认", detail: "锁=已锁 · \(bodyDetail)")
                         if self.keylessSettingsStore.settings.lockPopup {
-                            // 只弹一条：全关 / 有未关 都用「无感上锁已确认」标题。
+                            // 只弹一条：已上锁 / 已上锁但有未关。
                             AppNotificationManager.shared.postKeylessNotification(
-                                title: "无感上锁已确认",
+                                title: "车辆无感已上锁",
                                 body: bodyOpen
-                                    ? "但仍检测到 \(bodyDetail)，请检查车辆。"
+                                    ? "HTTP 完整车况：\(bodyDetail)。请检查车辆。"
                                     : "HTTP 完整车况确认车辆已上锁。"
                             )
                         }
@@ -770,23 +807,25 @@ extension MQTTVehicleStateStore {
                         if !isNewHTTP {
                             detail = "未取得锁车后的新 HTTP 快照"
                         } else if httpLocked == false {
-                            detail = "HTTP 原始 doorLockStatus 返回车辆仍未上锁"
+                            detail = "HTTP 原始状态仍为未锁"
                         } else {
                             detail = "HTTP 原始回包未提供可确认的锁态"
                         }
                         self.vehicleEventLogStore.add(.warning, "无感上锁 HTTP 未确认", detail: "\(detail) · \(bodyDetail)")
                         if self.keylessSettingsStore.settings.lockPopup {
                             AppNotificationManager.shared.postKeylessNotification(
-                                title: "无感上锁未确认",
-                                body: bodyOpen ? "\(detail)。同时检测到 \(bodyDetail)。" : "\(detail)。"
+                                title: "车辆无感未上锁",
+                                body: bodyOpen
+                                    ? "\(detail)。同时检测到 \(bodyDetail)。"
+                                    : "\(detail)。"
                             )
                         }
                     } else {
                         self.vehicleEventLogStore.add(.warning, "无感上锁 HTTP 确认失败", detail: message)
                         if self.keylessSettingsStore.settings.lockPopup {
                             AppNotificationManager.shared.postKeylessNotification(
-                                title: "无感上锁待确认",
-                                body: "BLE 指令已发送，但 HTTP 完整车况刷新失败，未将本地 UI 状态作为成功依据。"
+                                title: "车辆无感未上锁",
+                                body: "BLE 指令已发送，但 HTTP 完整车况刷新失败。"
                             )
                         }
                     }
@@ -823,14 +862,22 @@ extension MQTTVehicleStateStore {
         }
         guard popupEnabled else { return }
 
-        let actionTitle = action.title
         let title: String
-        switch result.state {
-        case .sent, .completed:
-            title = "无感\(actionTitle)已触发"
-        case .failed(_), .timedOut(_):
-            title = "无感\(actionTitle)失败"
-        case .feedbackOnly, .planned:
+        switch (action, result.state) {
+        case (.lock, .sent), (.lock, .completed):
+            // 成功路径通常走 HTTP 确认；这里仅兜底。
+            title = "车辆无感已上锁"
+        case (.lock, .failed(_)), (.lock, .timedOut(_)):
+            title = "车辆无感未上锁"
+        case (.unlock, .sent), (.unlock, .completed):
+            title = "车辆无感已解锁"
+        case (.unlock, .failed(_)), (.unlock, .timedOut(_)):
+            title = "车辆无感未解锁"
+        case (.powerStart, .sent), (.powerStart, .completed):
+            title = "车辆无感已启动电源"
+        case (.powerStart, .failed(_)), (.powerStart, .timedOut(_)):
+            title = "车辆无感未启动电源"
+        case (_, .feedbackOnly), (_, .planned):
             return
         }
         let body = result.userMessage.isEmpty ? result.command.detail : result.userMessage
