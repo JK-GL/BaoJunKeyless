@@ -4,7 +4,8 @@ import SwiftUI
 private let menuBarCornerRadius: CGFloat = 24
 
 struct MenuBarView: View {
-    private static let tabSelectionAnimation = Animation.spring(response: 0.34, dampingFraction: 0.86)
+    // 导航切换动画放轻：过重 spring 会和状态页首帧渲染抢主线程。
+    private static let tabSelectionAnimation = Animation.easeOut(duration: 0.16)
 
     @EnvironmentObject private var themeManager: ThemeManager
     @Binding var selectedTab: AppTab
