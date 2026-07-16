@@ -52,14 +52,12 @@ final class AppNotificationManager: NSObject, UNUserNotificationCenterDelegate {
     }
 
     private func record(title: String, body: String, source: String, delivered: Bool) {
-        Task { @MainActor in
-            NotificationHistoryStore.shared.add(
-                title: title,
-                body: body,
-                source: source,
-                delivered: delivered
-            )
-        }
+        NotificationHistoryStore.shared.add(
+            title: title,
+            body: body,
+            source: source,
+            delivered: delivered
+        )
     }
 
     private func enqueueNotification(title: String, body: String) {

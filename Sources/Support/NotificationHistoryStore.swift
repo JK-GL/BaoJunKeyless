@@ -43,7 +43,6 @@ struct AppPushRecord: Identifiable, Codable, Equatable {
     }
 }
 
-@MainActor
 final class NotificationHistoryStore: ObservableObject {
     static let shared = NotificationHistoryStore()
 
@@ -66,34 +65,48 @@ final class NotificationHistoryStore: ObservableObject {
     var latest: AppPushRecord? { entries.first }
 
     func add(title: String, body: String, source: String = "other", delivered: Bool) {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty || !trimmedBody.isEmpty else { return }
+        let work = {
+            let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedTitle.isEmpty || !trimmedBody.isEmpty else { return }
 
-        // 1 秒内同 title+body 合并，避免双发刷屏。
-        if let first = entries.first,
-           first.title == trimmedTitle,
-           first.body == trimmedBody,
-           Date().timeIntervalSince(first.date) < 1.0 {
-            return
-        }
+            // 1 秒内同 title+body 合并，避免双发刷屏。
+            if let first = self.entries.first,
+               first.title == trimmedTitle,
+               first.body == trimmedBody,
+               Date().timeIntervalSince(first.date) < 1.0 {
+                return
+            }
 
-        let record = AppPushRecord(
-            title: trimmedTitle.isEmpty ? "(无标题)" : trimmedTitle,
-            body: trimmedBody,
-            source: source,
-            delivered: delivered
-        )
-        entries.insert(record, at: 0)
-        if entries.count > Self.maxEntries {
-            entries = Array(entries.prefix(Self.maxEntries))
+            let record = AppPushRecord(
+                title: trimmedTitle.isEmpty ? "(无标题)" : trimmedTitle,
+                body: trimmedBody,
+                source: source,
+                delivered: delivered
+            )
+            self.entries.insert(record, at: 0)
+            if self.entries.count > Self.maxEntries {
+                self.entries = Array(self.entries.prefix(Self.maxEntries))
+            }
+            self.save()
         }
-        save()
+        if Thread.isMainThread {
+            work()
+        } else {
+            DispatchQueue.main.async(execute: work)
+        }
     }
 
     func clear() {
-        entries.removeAll()
-        save()
+        let work = {
+            self.entries.removeAll()
+            self.save()
+        }
+        if Thread.isMainThread {
+            work()
+        } else {
+            DispatchQueue.main.async(execute: work)
+        }
     }
 
     func exportText(limit: Int = 50) -> String {
