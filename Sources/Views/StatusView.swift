@@ -6,6 +6,8 @@ struct StatusView: View {
     @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
     @EnvironmentObject var keylessSettings: KeylessSettingsStore
     @AppStorage(AppDiagnosticsSettings.vehicleControlRouteModeKey) private var vehicleControlRouteModeRaw = VehicleControlRouteMode.auto.rawValue
+    /// 导航是否正在显示状态页。离开时冻结雷达动画，不销毁整页。
+    var isPageVisible: Bool = true
     @State private var isRefreshing = false
     @State private var refreshScale: CGFloat = 1.0
     @State private var isAddressFloatingPresented = false
@@ -43,6 +45,7 @@ struct StatusView: View {
                     )
 
                     StatusMainDashboardHost(
+                        isPageVisible: isPageVisible,
                         onCommand: { command in
                             if command == .lockUnlock,
                                !keylessSettings.settings.lockUnlockConfirmationEnabled {

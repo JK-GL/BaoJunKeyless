@@ -5,18 +5,34 @@ struct ContentView: View {
     @StateObject private var scrollState = AppScrollState()
     @Namespace private var tabAnimation
 
+    private var isStatusVisible: Bool {
+        selectedTab == .status
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             AppBackgroundView()
 
-            // 单页切换：避免状态页常驻后台继续重绘，导致整 App 发黏。
-            tabContent(for: selectedTab)
+            // 状态页：首次创建后常驻，离开时冻结雷达动画，避免每次导航整页重建。
+            StatusView(isPageVisible: isStatusVisible)
                 .environmentObject(scrollState)
+                .opacity(isStatusVisible ? 1 : 0)
+                .allowsHitTesting(isStatusVisible)
+                .zIndex(isStatusVisible ? 1 : 0)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .id(selectedTab)
+
+            if !isStatusVisible {
+                secondaryTabContent(for: selectedTab)
+                    .environmentObject(scrollState)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .zIndex(2)
+            }
         }
         .appOnChange(of: selectedTab) {
-            scrollState.reset()
+            // 离开状态页时只重置滚动跟踪；状态页本身不销毁。
+            if selectedTab != .status {
+                scrollState.reset()
+            }
         }
         .safeAreaInset(edge: .bottom) {
             MenuBarView(
@@ -30,10 +46,10 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private func tabContent(for tab: AppTab) -> some View {
+    private func secondaryTabContent(for tab: AppTab) -> some View {
         switch tab {
         case .status:
-            StatusView()
+            EmptyView()
         case .keyless:
             KeylessView()
         case .logs:
