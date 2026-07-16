@@ -8,6 +8,7 @@ enum VehicleCommandKind: String, Codable {
     case findCar
     case acOn
     case acOff
+    case setTemperature
     case openWindows
     case closeWindows
     case quickCool
@@ -30,7 +31,7 @@ extension VehicleCommandKind {
         switch self {
         case .lock, .unlock, .remoteStart, .remoteStop:
             return true
-        case .findCar, .acOn, .acOff, .openWindows, .closeWindows, .quickCool:
+        case .findCar, .acOn, .acOff, .setTemperature, .openWindows, .closeWindows, .quickCool:
             return false
         }
     }
@@ -86,6 +87,19 @@ extension CommandAction {
             return VehicleCommand(kind: .findCar, title: "寻车", detail: "快捷操作寻车", requestedTemperature: nil, source: source, transportHint: .httpControl)
         case .acToggle:
             if state.acOn == true {
+                // 空调已开：若用户改了设定温度，则发设定温度；未改温度才关闭。
+                let requested = temperature.map { Int($0.rounded()) }
+                let current = state.acTemperature.map { Int($0.rounded()) }
+                if let requested, requested != current {
+                    return VehicleCommand(
+                        kind: .setTemperature,
+                        title: "设定温度",
+                        detail: "快捷操作设定温度 \(requested)°C",
+                        requestedTemperature: Double(requested),
+                        source: source,
+                        transportHint: .httpControl
+                    )
+                }
                 return VehicleCommand(kind: .acOff, title: "关闭空调", detail: "快捷操作关闭空调", requestedTemperature: temperature, source: source, transportHint: .httpControl)
             }
             return VehicleCommand(kind: .acOn, title: "开启空调", detail: "快捷操作开启空调", requestedTemperature: temperature, source: source, transportHint: .httpControl)

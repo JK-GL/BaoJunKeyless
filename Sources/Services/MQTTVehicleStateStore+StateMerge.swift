@@ -123,10 +123,13 @@ extension MQTTVehicleStateStore {
             dash.steeringAngleText = takeText(dash.steeringAngleText, newDashboard.steeringAngleText)
             dash.throttlePercentText = takeText(dash.throttlePercentText, newDashboard.throttlePercentText)
             dash.brakePercentText = takeText(dash.brakePercentText, newDashboard.brakePercentText)
-            // 空调温度文案可补；开关态若 MQTT 刚推过，HTTP 也可纠正（非门窗）
-            dash.acTemperatureText = takeText(dash.acTemperatureText, newDashboard.acTemperatureText)
-            if let ac = newState.acOn, st.acOn != ac { st.acOn = ac; changed = true }
-            if let t = newState.acTemperature, st.acTemperature != t { st.acTemperature = t; changed = true }
+            // 空调：本地控制乐观更新保护窗内，不让旧 HTTP 快照冲回。
+            let climateProtected = localClimateHoldUntil.map { now < $0 } ?? false
+            if !climateProtected {
+                dash.acTemperatureText = takeText(dash.acTemperatureText, newDashboard.acTemperatureText)
+                if let ac = newState.acOn, st.acOn != ac { st.acOn = ac; changed = true }
+                if let t = newState.acTemperature, st.acTemperature != t { st.acTemperature = t; changed = true }
+            }
 
             dash.leftFrontTirePressureText = takeOptText(dash.leftFrontTirePressureText, newDashboard.leftFrontTirePressureText)
             dash.rightFrontTirePressureText = takeOptText(dash.rightFrontTirePressureText, newDashboard.rightFrontTirePressureText)
@@ -192,11 +195,16 @@ extension MQTTVehicleStateStore {
         dash.doorStatusText = VehicleStatusMapper.recomputeDoorStatusText(from: dash)
         dash.windowStatusText = VehicleStatusMapper.recomputeWindowStatusText(from: dash)
 
-        // BLE 本地锁保护窗内，不覆盖门锁
+        // BLE 本地锁保护窗内，不覆盖门锁；空调本地乐观更新同理。
         var mergedState = newState
         if let until = localDoorLockHoldUntil, now < until {
             mergedState.locked = state.locked
             dash.lockStatusText = dashboard.lockStatusText
+        }
+        if let until = localClimateHoldUntil, now < until {
+            mergedState.acOn = state.acOn
+            mergedState.acTemperature = state.acTemperature
+            dash.acTemperatureText = dashboard.acTemperatureText
         }
 
         // HTTP 若带明确电源字段则直接确认；若本车型 HTTP 不带，则短时保留最近的
@@ -228,10 +236,16 @@ extension MQTTVehicleStateStore {
         // 全量落地后，清理字段保护痕迹（不再用字段戳卡 HTTP）
         fieldCollectAt.removeAll()
         fieldSource.removeAll()
-        // 仅保留 BLE 本地锁戳
+        // 仅保留 BLE 本地锁戳 / 空调本地乐观更新戳
         if let until = localDoorLockHoldUntil, now < until {
             fieldCollectAt["doorLockStatus"] = now
             fieldSource["doorLockStatus"] = "BLE"
+        }
+        if let until = localClimateHoldUntil, now < until {
+            fieldCollectAt["acStatus"] = now
+            fieldSource["acStatus"] = "LOCAL_CLIMATE"
+            fieldCollectAt["accCntTemp"] = now
+            fieldSource["accCntTemp"] = "LOCAL_CLIMATE"
         }
 
         bumpStatusRevision()

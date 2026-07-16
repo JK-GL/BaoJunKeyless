@@ -316,7 +316,7 @@ struct StatusView: View {
             return "doorLockStatus"
         case .findCar:
             return "CarSearch"
-        case .acOn, .acOff, .quickCool:
+        case .acOn, .acOff, .setTemperature, .quickCool:
             return "acStatus"
         case .openWindows, .closeWindows:
             return "windowStatus"
@@ -406,6 +406,15 @@ struct StatusView: View {
                 case .sent, .completed:
                     if !willUseBLE, (command.kind == .lock || command.kind == .unlock) {
                         mqttStore?.noteAppDoorLockCommand(command.kind == .lock)
+                    }
+                    // 空调类命令：HTTP 成功后先本地即时更新，避免关 MQTT 时干等轮询。
+                    if !willUseBLE {
+                        switch command.kind {
+                        case .acOn, .acOff, .setTemperature, .quickCool:
+                            mqttStore?.applyLocalClimateFromCommand(command, source: "HTTP控制成功")
+                        default:
+                            break
+                        }
                     }
                     if !willUseBLE, mqttReceiptEnabled {
                         pendingControlSentAt = Date()

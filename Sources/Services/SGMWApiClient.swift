@@ -165,6 +165,9 @@ final class SGMWApiClient {
         case .acOff:
             // 安卓开源 AppState.CLIMATE_OFF：status/accOnOff 为 0。
             return VehicleControlRequestPlan(command: .acOff, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status"], note: "Android open-source：关空调 status=0 accOnOff=0")
+        case .setTemperature:
+            // 安卓开源自定义温度：空调已开时仍走 status=1 + temperature（本车 status=1 已验证可用）。
+            return VehicleControlRequestPlan(command: .setTemperature, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature", "blowerLvl", "duration"], note: "Android open-source：设温度 status=1 + temperature")
         case .openWindows:
             return VehicleControlRequestPlan(command: .openWindows, endpointCandidates: ["car/control/window"], bodyKeys: ["vin", "status"], note: "Android open-source / BLE_SPEC：车窗 status=0 开窗")
         case .closeWindows:
@@ -193,8 +196,8 @@ final class SGMWApiClient {
                 body["status"] = 1
             case .unlock, .openWindows:
                 body["status"] = 0
-            case .acOn, .quickCool:
-                // 安卓开源：开空调/快冷都用 status=1，不是 BLE_SPEC 的 6/4。
+            case .acOn, .quickCool, .setTemperature:
+                // 安卓开源：开空调/快冷/设温度都用 status=1；本车 status=1 已验证可用。
                 body["status"] = 1
             case .acOff:
                 body["status"] = 0
@@ -204,7 +207,7 @@ final class SGMWApiClient {
         }
         if plan.bodyKeys.contains("accOnOff") {
             switch command.kind {
-            case .acOn, .quickCool:
+            case .acOn, .quickCool, .setTemperature:
                 body["accOnOff"] = "1"
             case .acOff:
                 body["accOnOff"] = "0"
@@ -213,7 +216,15 @@ final class SGMWApiClient {
             }
         }
         if plan.bodyKeys.contains("temperature") {
-            let defaultTemperature = command.kind == .quickCool ? 17 : 24
+            let defaultTemperature: Int
+            switch command.kind {
+            case .quickCool:
+                defaultTemperature = 17
+            case .setTemperature:
+                defaultTemperature = 24
+            default:
+                defaultTemperature = 24
+            }
             let rawTemperature = Int(command.requestedTemperature ?? Double(defaultTemperature))
             // 安卓开源把温度/风速/时长当字符串提交。
             body["temperature"] = String(max(17, min(33, rawTemperature)))

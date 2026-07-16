@@ -121,7 +121,8 @@ enum CommandAction: String, Identifiable, Equatable {
         case .remoteStart:   return (state.power.isPoweredOn) ? "远程熄火" : "远程启动"
         case .findCar:       return "寻车"
         case .acToggle:
-            return state.acOn == true ? "关闭空调" : "开启空调"
+            // 标题只表示按钮意图；真正是设温还是关空调，由确认时温度是否变化决定。
+            return state.acOn == true ? "空调控制" : "开启空调"
         case .windowToggle:
             return state.windowsClosed == false ? "关闭车窗" : "打开车窗"
         case .quickCool:     return "快速降温"
@@ -140,7 +141,9 @@ enum CommandAction: String, Identifiable, Equatable {
         case .findCar:
             return "确认后车辆将闪灯并鸣笛，便于您快速定位。"
         case .acToggle:
-            return state.acOn == true ? "确认后将关闭空调。" : "确认后将开启空调，可调节设定温度。"
+            return state.acOn == true
+                ? "空调已开：改温度将设定新温度，保持原温度则关闭空调。"
+                : "确认后将开启空调，可调节设定温度。"
         case .windowToggle:
             return state.windowsClosed == false ? "确认后将关闭全部车窗。" : "确认后将打开全部车窗。"
         case .quickCool:
