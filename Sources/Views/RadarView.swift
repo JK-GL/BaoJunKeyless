@@ -659,12 +659,9 @@ struct RadarCardView: View {
         return AppTheme.red
     }
 
-    /// 大车图模式：不占雷达方框，上下更贴。
-    private var isLargeCarMode: Bool { showLargeCarImage && !showRadar }
-
     var body: some View {
-        // 大车图模式：间距压到最小；真正“贴”靠裁透明边，不是只改 spacing。
-        VStack(spacing: isLargeCarMode ? 0 : 12) {
+        // 大车图：布局框固定（学 v724），车图单独缩小；间距恢复宽松。
+        VStack(spacing: 12) {
             // 上半区：雷达 / 大车图 互斥；都关时不占位，只留距离地址。
             if showRadar {
                 ZStack {
@@ -696,12 +693,13 @@ struct RadarCardView: View {
                     }
                 }
             } else if showLargeCarImage {
-                // 不用雷达 280 方框；固定测宽，避免 GeometryReader 在滚动页反复重测。
+                // equatable：RSSI/距离高频刷新时不重绘大车图（v724 顺的关键之一是布局稳定 + 少无效重绘）
                 StatusLargeCarImageView(carImageURL: carImageURL)
+                    .equatable()
                     .frame(maxWidth: .infinity)
             }
 
-            VStack(spacing: isLargeCarMode ? 0 : 5) {
+            VStack(spacing: 5) {
                 // 已连上车机 BLE 时优先用 RSSI 估距；地库 GPS 经纬度常漂，不能当真
                 if let bleDistanceText {
                     Text(bleDistanceText)
@@ -744,8 +742,7 @@ struct RadarCardView: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.top, isLargeCarMode ? 0 : 16)
-        .padding(.bottom, isLargeCarMode ? 2 : 16)
+        .padding(.vertical, 16)
         .padding(.horizontal, 16)
         .onAppear { syncBLEDistanceOverride() }
         .onChange(of: diagnostics.debugSmoothedRSSI) { _ in syncBLEDistanceOverride() }
@@ -794,25 +791,29 @@ struct RadarCardView: View {
 }
 
 // MARK: - 状态页大车图（与雷达共用 sharedCarImages；不跑雷达动画）
-/// 关键原则（对齐 v724 流畅原因）：
-/// - 布局宽高固定，绝不随 UIImage.size / 加载完成变化，避免 ScrollView 重排
-/// - 官方车图四周大块透明边是上下收不窄的主因，显示前裁透明边
-/// - 再放大 10%（相对 v727 的 0.92 到 1.01）
-private struct StatusLargeCarImageView: View {
+/// 完全对齐 v724 流畅模型：
+/// - 外框固定宽高（像 420 框），ScrollView 永不因车图重排
+/// - 只缩小车图内容 20%（scale 0.8），外框不动 → 上下间隙自然变宽
+/// - Equatable：父视图 RSSI/距离刷新时跳过 body
+private struct StatusLargeCarImageView: View, Equatable {
     let carImageURL: String
-    /// 显示用图（已裁透明边）；与雷达原图缓存分离，避免污染雷达小车标。
+    /// 显示用图（已裁透明边）；与雷达原图缓存分离。
     @State private var displayImage: UIImage?
     @State private var loadToken = 0
 
-    /// 相对卡片可用宽：v727=0.92，再 +10% → 1.012（≈铺满卡片宽）。
-    private let widthRatio: CGFloat = 1.01
-    /// 固定布局高宽比（宽/高）。不读图片尺寸，保证高度恒定。
-    /// 官方侧视车图裁边后大约 1.9~2.1；取 1.95 偏扁，上下更贴。
+    /// 固定外框宽：接近 v724 的稳定大方框（按屏宽估一次，不读图片）。
+    private let frameWidthRatio: CGFloat = 1.0
+    /// 固定外框高宽比。高度恒定 = 流畅根因。
     private let layoutAspect: CGFloat = 1.95
+    /// 只缩小车图内容 20%，外框不变 → 上下自然留白变宽。
+    private let contentScale: CGFloat = 0.80
+
+    static func == (lhs: StatusLargeCarImageView, rhs: StatusLargeCarImageView) -> Bool {
+        lhs.carImageURL == rhs.carImageURL
+    }
 
     init(carImageURL: String) {
         self.carImageURL = carImageURL
-        // 首帧尽量同步出图：雷达缓存 → 裁边；失败再异步。
         if let raw = RadarUIView.cachedCarImage(for: carImageURL) {
             _displayImage = State(initialValue: Self.trimmedDisplayImage(from: raw, cacheKey: carImageURL))
         } else {
@@ -820,35 +821,36 @@ private struct StatusLargeCarImageView: View {
         }
     }
 
-    /// 固定宽：只依赖屏宽，不依赖图片。
-    private var targetWidth: CGFloat {
+    /// 固定外框宽：只依赖屏宽。
+    private var frameWidth: CGFloat {
         let screen = UIScreen.main.bounds.width
-        let cardInset: CGFloat = 32 // RadarCard 左右 padding 16+16
-        return max(screen - cardInset, 200) * widthRatio
+        let cardInset: CGFloat = 32
+        return max(screen - cardInset, 200) * frameWidthRatio
     }
 
-    /// 固定高：只依赖 targetWidth × 固定比例，加载前后完全一致。
-    private var targetHeight: CGFloat {
-        targetWidth / layoutAspect
+    /// 固定外框高：加载前/后完全一致。
+    private var frameHeight: CGFloat {
+        frameWidth / layoutAspect
     }
 
     var body: some View {
-        // 固定框（像 v724 的 420 一样稳）+ 裁边后 fit；无 GeometryReader、无 image-size 驱动高度。
+        // v724 模型：固定框 + 内容缩放；不改布局尺寸。
         ZStack {
             if let displayImage {
                 Image(uiImage: displayImage)
                     .resizable()
                     .scaledToFit()
+                    .scaleEffect(contentScale)
             } else {
                 Image(systemName: "car.fill")
-                    .font(.system(size: 48, weight: .medium))
+                    .font(.system(size: 40, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.45))
+                    .scaleEffect(contentScale)
             }
         }
-        .frame(width: targetWidth, height: targetHeight)
+        .frame(width: frameWidth, height: frameHeight)
         .frame(maxWidth: .infinity)
-        // 再往距离文案收一点（透明边已裁，这里是真正的视觉贴紧）。
-        .padding(.bottom, -6)
+        // 固定框内内容居中；scale 0.8 后上下左右自然留白更宽。
         .onAppear { applyCacheOrLoad() }
         .onChange(of: carImageURL) { _ in
             displayImage = nil
