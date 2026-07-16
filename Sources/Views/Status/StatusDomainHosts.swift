@@ -483,6 +483,7 @@ struct StatusCommandConfirmHost: View {
 struct StatusMainDashboardHost: View {
     @EnvironmentObject var vehicleStore: VehicleStateStore
     @EnvironmentObject var locationManager: LocationManager
+    @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
     let onCommand: (CommandAction) -> Void
     let onOpenVehicleInfo: () -> Void
@@ -493,8 +494,14 @@ struct StatusMainDashboardHost: View {
     private var metrics: VehicleDashboardMetrics { vehicleStore.cachedDashboardMetrics }
     private var state: VehicleState { vehicleStore.state }
 
+    /// BLE 控制可用性只跟鉴权态走，避免每次读 mqttStore 计算属性。
+    private var bleControlAvailable: Bool {
+        connectionStatusStore.bleStatus == .authenticated
+    }
+
     var body: some View {
         // 单层 VStack：避免嵌套滚动测量异常导致底部大空白 / 卡片重叠
+        // 子卡片 .equatable()：实时更新仍生效，但同值区块跳过 body 重算，不改 UI。
         VStack(alignment: .leading, spacing: AppSpacing.section) {
             VehicleHeaderSummaryView(
                 energyType: dashboard.energyType,
@@ -508,6 +515,7 @@ struct StatusMainDashboardHost: View {
                 chargingPowerText: dashboard.chargingPowerText,
                 updatedAt: dashboard.updatedAtText
             )
+            .equatable()
 
             StatusPillsHost(
                 onBLETap: onOpenVehicleInfo,
@@ -530,14 +538,16 @@ struct StatusMainDashboardHost: View {
             QuickActionsView(
                 onCommand: onCommand,
                 vehicleState: state,
-                bleControlAvailable: (vehicleStore as? MQTTVehicleStateStore)?.canUseBLEForVehicleControl == true
+                bleControlAvailable: bleControlAvailable
             )
+            .equatable()
 
             QuickStatusTripletView(
                 totalMileageText: dashboard.totalMileageText,
                 averageFuelConsumptionText: dashboard.averageFuelConsumptionText,
                 yesterdayMileageText: dashboard.yesterdayMileageText
             )
+            .equatable()
 
             // 不用 .id(bodyRefreshToken)：高频状态刷新会整段销毁重建，
             // 在 ScrollView 里容易出现卡片高度跳动、重叠，甚至布局崩溃闪退。
@@ -547,25 +557,32 @@ struct StatusMainDashboardHost: View {
                 topMetrics: Array(metrics.bodyStatus.prefix(4)),
                 detailMetrics: Array(metrics.bodyStatus.dropFirst(4))
             )
+            .equatable()
 
             TirePressureView(
                 tireTemperatureText: dashboard.tireTemperatureText,
                 metrics: metrics.tirePressure
             )
+            .equatable()
 
             StatusDashboardPair {
                 DrivingStatusView(metrics: metrics.driving)
+                    .equatable()
             } right: {
                 BatteryGaugesView(metrics: metrics.battery)
+                    .equatable()
             }
 
             StatusDashboardPair {
                 TemperatureView(metrics: metrics.temperature)
+                    .equatable()
             } right: {
                 ChargingStatusView(metrics: metrics.charging)
+                    .equatable()
             }
 
             LightingStatusView(metrics: metrics.lighting)
+                .equatable()
 
             // 给底部 MenuBar 留空，但不要过大造成“拉到底还有一大块空白”
             Color.clear.frame(height: 24)

@@ -277,18 +277,17 @@ struct StatusTopBarSection: View, Equatable {
 
             Spacer(minLength: 8)
 
-            // 旧交互：双箭头点击后变沙漏（漏斗感），刷新完再变回箭头。
+            // 一点立即沙漏，完成后回箭头；箭头尺寸恢复旧版。
             Button {
                 AppHaptics.light()
                 onRefresh()
             } label: {
                 Image(systemName: isRefreshing ? "hourglass" : "arrow.triangle.2.circlepath")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(isRefreshing ? 0.72 : 0.62))
-                    .frame(width: 28, height: 28)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.52))
+                    .frame(width: 20, height: 20)
                     .scaleEffect(refreshScale)
                     .contentShape(Rectangle())
-                    .animation(.easeInOut(duration: 0.15), value: isRefreshing)
             }
             .buttonStyle(ResponsiveButtonStyle(playsHaptic: false))
             .layoutPriority(2)

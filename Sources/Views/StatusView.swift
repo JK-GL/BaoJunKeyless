@@ -234,15 +234,9 @@ struct StatusView: View {
 
     private func handleRefresh() {
         AppHaptics.light()
-        withAnimation(PopupMotion.presentSpring) {
-            refreshScale = 1.3
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            withAnimation(PopupMotion.contentEase) {
-                refreshScale = 1.0
-                isRefreshing = true
-            }
-        }
+        // 一点就切沙漏；刷新完成后再变回箭头。
+        isRefreshing = true
+        refreshScale = 1.0
 
         locationManager.forceRequestCurrentLocation()
         locationManager.resume()
@@ -254,22 +248,18 @@ struct StatusView: View {
             locationManager.setCarLocation(lat: lat, lng: lng, address: address.isEmpty ? nil : address)
         }
 
-        withAnimation { statusToastText = "正在刷新车况与钥匙…" }
+        statusToastText = "正在刷新车况与钥匙…"
         mqttStore?.refreshNow(userInitiated: true) { _, message in
-            withAnimation { statusToastText = message }
-            withAnimation(PopupMotion.contentEase) {
-                isRefreshing = false
-                refreshScale = 1.0
-            }
+            statusToastText = message
+            isRefreshing = false
+            refreshScale = 1.0
         }
 
         // 兜底：网络卡住时也不让沙漏无限挂起
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
             if isRefreshing {
-                withAnimation(PopupMotion.contentEase) {
-                    isRefreshing = false
-                    refreshScale = 1.0
-                }
+                isRefreshing = false
+                refreshScale = 1.0
             }
         }
     }

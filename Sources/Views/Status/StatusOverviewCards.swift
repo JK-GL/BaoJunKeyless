@@ -226,7 +226,7 @@ struct VehicleHeaderSummaryView: View, Equatable {
     }
 }
 
-struct BatteryGaugesView: View {
+struct BatteryGaugesView: View, Equatable {
     let metrics: [PopupStatusItem]
 
     var body: some View {
@@ -236,7 +236,7 @@ struct BatteryGaugesView: View {
     }
 }
 
-struct TemperatureView: View {
+struct TemperatureView: View, Equatable {
     let metrics: [PopupStatusItem]
 
     var body: some View {
@@ -246,7 +246,7 @@ struct TemperatureView: View {
     }
 }
 
-struct ChargingStatusView: View {
+struct ChargingStatusView: View, Equatable {
     let metrics: [PopupStatusItem]
 
     var body: some View {
@@ -452,7 +452,7 @@ private struct TirePressureMetricCard: View {
     }
 }
 
-struct DrivingStatusView: View {
+struct DrivingStatusView: View, Equatable {
     let metrics: [PopupStatusItem]
 
     var body: some View {
@@ -462,7 +462,7 @@ struct DrivingStatusView: View {
     }
 }
 
-struct LightingStatusView: View {
+struct LightingStatusView: View, Equatable {
     let metrics: [PopupStatusItem]
 
     var body: some View {
