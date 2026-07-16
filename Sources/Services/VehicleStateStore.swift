@@ -53,18 +53,68 @@ class VehicleStateStore: ObservableObject, VehicleStateReader {
             .store(in: &cancellables)
     }
 
-    func apply(_ newState: VehicleState) {
-        state = newState
+    /// 全车状态统一入口：只有内容真变了才刷新 UI。
+    /// 同值重复 MQTT/HTTP 包只更新内部时间戳，不 bump、不重算 metrics。
+    @discardableResult
+    func apply(_ newState: VehicleState) -> Bool {
+        let incoming = newState
+        // timestamp 不参与“是否变化”判断，避免仅时间刷新导致整页重绘。
+        var oldNoTime = state
+        var newNoTime = incoming
+        oldNoTime.timestamp = .distantPast
+        newNoTime.timestamp = .distantPast
+        guard oldNoTime != newNoTime else {
+            // 仅刷新时间戳，不触发 UI revision。
+            if state.timestamp != incoming.timestamp {
+                state.timestamp = incoming.timestamp
+            }
+            return false
+        }
+        state = incoming
         recomputeEnergyType()
+        return true
     }
 
-    func applyDashboard(_ newDashboard: VehicleDashboardState) {
-        dashboard = newDashboard
-        cachedDashboardMetrics = newDashboard.metrics
+    @discardableResult
+    func applyDashboard(_ newDashboard: VehicleDashboardState) -> Bool {
+        let incoming = newDashboard
+        // updatedAt / updatedAtText 不参与变化判断。
+        var oldNoTime = dashboard
+        var newNoTime = incoming
+        oldNoTime.updatedAt = .distantPast
+        oldNoTime.updatedAtText = ""
+        newNoTime.updatedAt = .distantPast
+        newNoTime.updatedAtText = ""
+        guard oldNoTime != newNoTime else {
+            if dashboard.updatedAt != incoming.updatedAt {
+                dashboard.updatedAt = incoming.updatedAt
+                dashboard.updatedAtText = incoming.updatedAtText
+            }
+            return false
+        }
+        dashboard = incoming
+        cachedDashboardMetrics = incoming.metrics
+        return true
     }
 
     func bumpStatusRevision() {
         statusRevision &+= 1
+    }
+
+    /// 状态或仪表任一变化才推进 UI revision。
+    @discardableResult
+    func applyVehicleSnapshot(
+        state newState: VehicleState,
+        dashboard newDashboard: VehicleDashboardState,
+        bumpIfChanged: Bool = true
+    ) -> Bool {
+        let stateChanged = apply(newState)
+        let dashChanged = applyDashboard(newDashboard)
+        let changed = stateChanged || dashChanged
+        if changed, bumpIfChanged {
+            bumpStatusRevision()
+        }
+        return changed
     }
 
     func applyProfile(_ newProfile: VehicleProfile) {

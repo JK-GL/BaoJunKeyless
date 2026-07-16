@@ -6,7 +6,7 @@ enum VehicleEnergyType: Equatable {
     case pureElectric
 }
 
-struct VehicleDashboardState {
+struct VehicleDashboardState: Equatable {
     var updatedAt: Date = Date()
     var vehicleName: String = ""
     var vehicleImageURL: String = ""

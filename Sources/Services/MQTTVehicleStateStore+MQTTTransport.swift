@@ -51,14 +51,14 @@ extension MQTTVehicleStateStore {
                 self.applyExplicitPowerState(power, source: "MQTT电源字段")
             }
 
-            // 空调开关/设定温度：官方路径是 MQTT 真实字段即时回写，不是控制成功后本地假改。
-            // 门窗仍只提示后走 HTTP，避免半包假开门。
+            // 空调开关/设定温度：官方路径是 MQTT 真实字段即时回写。
+            // 同值重复推送不会写 UI；仅真实变化才补 HTTP。
             let climateAc = parseACStatus(fields["acStatus"])
             let climateTemp = parseDouble(fields["accCntTemp"])
             let climateObservedAt = parseTimestamp(fields["collectTime"]) ?? Date()
+            var climateChanged = false
             if climateAc != nil || climateTemp != nil {
-                // 同值重复推送不会再次刷 UI；只有真实变化才补 HTTP。
-                _ = self.applyAuthoritativeClimateState(
+                climateChanged = self.applyAuthoritativeClimateState(
                     acOn: climateAc,
                     temperature: climateTemp,
                     source: "MQTT空调推送",
@@ -79,7 +79,10 @@ extension MQTTVehicleStateStore {
                 identity: "mqtt-hint|\(summary)",
                 mergeWindow: 60
             )
-            self.scheduleHTTPRefreshFromRealtime(reason: "mqtt-status")
+            // 空调刚变化时已单独补过 HTTP；其它字段变化再补一次。
+            if !climateChanged || !nonClimateChanges.isEmpty {
+                self.scheduleHTTPRefreshFromRealtime(reason: "mqtt-status")
+            }
         }
     }
 

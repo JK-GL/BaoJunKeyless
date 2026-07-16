@@ -423,16 +423,20 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         lastExplicitPowerStateSource = source
         var next = state
         guard next.power != power else {
-            next.timestamp = now
-            apply(next)
+            // 同值重复确认：只记时间，不刷 UI。
+            if next.timestamp != now {
+                next.timestamp = now
+                _ = apply(next)
+            }
             return
         }
         next.power = power
         next.timestamp = now
-        bumpStatusRevision()
-        apply(next)
-        evaluateKeylessAutomation(for: next)
-        vehicleEventLogStore.add(.action, "车辆电源已确认", detail: "\(source) · \(power.title)")
+        if apply(next) {
+            bumpStatusRevision()
+            evaluateKeylessAutomation(for: next)
+            vehicleEventLogStore.add(.action, "车辆电源已确认", detail: "\(source) · \(power.title)")
+        }
     }
 
     /// 空调真实字段回写（官方路径）。
@@ -511,15 +515,14 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             fieldSource["accCntTemp"] = source
         }
 
-        bumpStatusRevision()
-        apply(next)
-        applyDashboard(dash)
+        let changedUI = applyVehicleSnapshot(state: next, dashboard: dash, bumpIfChanged: true)
+        guard changedUI else { return false }
         vehicleEventLogStore.add(
             .action,
             "空调状态已确认",
             detail: "\(source) · 开关=\(next.acOn.map { $0 ? "开" : "关" } ?? "--") · 设定=\(next.acTemperature.map { "\(Int($0.rounded()))°C" } ?? "--")"
         )
-        // 仅在空调真实变化后补一次 HTTP；同值重复推送不再触发，减少旧快照回冲。
+        // 仅在空调真实变化后补一次 HTTP；同值重复推送不再触发。
         if scheduleHTTPConfirm {
             scheduleHTTPRefreshFromRealtime(reason: "mqtt-climate-confirmed")
         }
@@ -556,15 +559,16 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         localDoorLockHoldUntil = now.addingTimeInterval(Self.localLockHoldSeconds)
         fieldCollectAt["doorLockStatus"] = now
         fieldSource["doorLockStatus"] = "BLE"
-        bumpStatusRevision()
-        apply(next)
 
         var dash = dashboard
         // BLE 本地确认的锁态是实时的，去掉可能残留的“·缓存”后缀
         dash.lockStatusText = locked ? "已锁车" : "未锁"
         dash.updatedAt = now
         dash.updatedAtText = formatTime(now)
-        applyDashboard(dash)
+        // 同值门锁重复回写不刷 UI。
+        guard applyVehicleSnapshot(state: next, dashboard: dash, bumpIfChanged: true) || previous != locked else {
+            return
+        }
 
         if suppressOppositeKeyless {
             // 手动操作后至少压制 20s，或使用命令间隔的 3 倍

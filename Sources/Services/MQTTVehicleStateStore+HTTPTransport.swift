@@ -244,8 +244,8 @@ extension MQTTVehicleStateStore {
                         self.vehicleEventLogStore.add(.action, "车况刷新成功", detail: message)
                     } else if mergeNote == "丢弃旧HTTP" {
                         // 旧包丢弃：静默，不刷日志
-                    } else if self.lastHTTPPollLogFingerprint == fingerprint {
-                        // 状态没变：不写新日志，只把同类心跳合并成 ×N（很久才露一次）
+                    } else if mergeNote.contains("无变化") || self.lastHTTPPollLogFingerprint == fingerprint {
+                        // 状态没变：不写新日志，只把同类心跳合并成 ×N
                         self.vehicleEventLogStore.addCoalesced(
                             .action,
                             "车况轮询无变化",

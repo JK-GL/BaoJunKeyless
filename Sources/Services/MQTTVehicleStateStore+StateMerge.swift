@@ -264,14 +264,21 @@ extension MQTTVehicleStateStore {
             fieldSource["doorLockStatus"] = "BLE"
         }
 
-        bumpStatusRevision()
         merged = applyLiveBLEOverlay(to: merged)
-        apply(merged)
-        applyDashboard(dash)
-        evaluateKeylessAutomation(for: merged)
+        // 同值 HTTP 全量不再 bump/整页刷新；仅时间戳推进。
+        let changed = applyVehicleSnapshot(state: merged, dashboard: dash, bumpIfChanged: true)
+        if changed {
+            evaluateKeylessAutomation(for: merged)
+        }
 
         if mode == .full {
+            if !changed {
+                return localDoorLockHoldUntil.map { now < $0 ? "手动全量无变化/本地锁保护中" : "手动全量无变化" } ?? "手动全量无变化"
+            }
             return localDoorLockHoldUntil.map { now < $0 ? "手动全量/本地锁保护中" : "手动全量" } ?? "手动全量"
+        }
+        if !changed {
+            return localDoorLockHoldUntil.map { now < $0 ? "轮询全量无变化/本地锁保护中" : "轮询全量无变化" } ?? "轮询全量无变化"
         }
         return localDoorLockHoldUntil.map { now < $0 ? "轮询全量/本地锁保护中" : "轮询全量" } ?? "轮询全量"
     }
