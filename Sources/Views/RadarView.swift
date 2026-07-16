@@ -663,7 +663,8 @@ struct RadarCardView: View {
     private var isLargeCarMode: Bool { showLargeCarImage && !showRadar }
 
     var body: some View {
-        VStack(spacing: isLargeCarMode ? 4 : 12) {
+        // 大车图模式：上下再收 30%（相对 v726 的 4/2/6 → 约 3/1/4）
+        VStack(spacing: isLargeCarMode ? 3 : 12) {
             // 上半区：雷达 / 大车图 互斥；都关时不占位，只留距离地址。
             if showRadar {
                 ZStack {
@@ -695,12 +696,12 @@ struct RadarCardView: View {
                     }
                 }
             } else if showLargeCarImage {
-                // 不用雷达 280 方框；按车图自身比例排高，再整体缩小 20%。
+                // 不用雷达 280 方框；固定测宽，避免 GeometryReader 在滚动页反复重测。
                 StatusLargeCarImageView(carImageURL: carImageURL)
                     .frame(maxWidth: .infinity)
             }
 
-            VStack(spacing: isLargeCarMode ? 2 : 5) {
+            VStack(spacing: isLargeCarMode ? 1 : 5) {
                 // 已连上车机 BLE 时优先用 RSSI 估距；地库 GPS 经纬度常漂，不能当真
                 if let bleDistanceText {
                     Text(bleDistanceText)
@@ -743,7 +744,7 @@ struct RadarCardView: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.vertical, isLargeCarMode ? 6 : 16)
+        .padding(.vertical, isLargeCarMode ? 4 : 16)
         .padding(.horizontal, 16)
         .onAppear { syncBLEDistanceOverride() }
         .onChange(of: diagnostics.debugSmoothedRSSI) { _ in syncBLEDistanceOverride() }
@@ -803,8 +804,15 @@ private struct StatusLargeCarImageView: View {
         _image = State(initialValue: RadarUIView.cachedCarImage(for: carImageURL))
     }
 
-    /// 相对可用宽度再缩小 20%。
-    private let widthRatio: CGFloat = 0.80
+    /// v726 为 0.80；再放大 15% → 0.92。不用 GeometryReader，避免状态页滚动卡顿。
+    private let widthRatio: CGFloat = 0.92
+
+    /// 用屏宽估算一次目标宽（卡片左右约 16+16）。稳定布局，不在 ScrollView 里反复测。
+    private var targetWidth: CGFloat {
+        let screen = UIScreen.main.bounds.width
+        let cardInset: CGFloat = 32
+        return max(screen - cardInset, 200) * widthRatio
+    }
 
     private var aspect: CGFloat {
         if let image, image.size.width > 1, image.size.height > 1 {
@@ -813,31 +821,25 @@ private struct StatusLargeCarImageView: View {
         return 16.0 / 9.0
     }
 
+    private var targetHeight: CGFloat {
+        targetWidth / max(aspect, 0.01)
+    }
+
     var body: some View {
-        // 彻底不用雷达 280 方框：
-        // - 图宽 = 父宽 × 0.8
-        // - 图高 = 图宽 / 真实比例
-        // - 外框高度 = 图高（上下贴近距离文案）
-        GeometryReader { geo in
-            let width = max(geo.size.width * widthRatio, 1)
-            let height = width / max(aspect, 0.01)
-            Group {
-                if let image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
-                } else {
-                    Image(systemName: "car.fill")
-                        .font(.system(size: 48, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.45))
-                }
+        // 固定宽高测一次即可（像 v724 那样稳），但按真实比例，不套雷达 280 框。
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: "car.fill")
+                    .font(.system(size: 48, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.45))
             }
-            .frame(width: width, height: height)
-            .position(x: geo.size.width / 2, y: height / 2)
         }
-        // 外框高度 = 80% 宽对应的真实图高，而不是固定 280。
-        .aspectRatio(aspect / widthRatio, contentMode: .fit)
-        .frame(maxWidth: .infinity)
+        .frame(width: targetWidth, height: targetHeight)
+        .frame(maxWidth: .infinity) // 水平居中
         .onAppear { applyCacheOrLoad() }
         .onChange(of: carImageURL) { _ in
             applyCacheOrLoad()
