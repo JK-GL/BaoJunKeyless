@@ -157,11 +157,13 @@ extension MQTTVehicleStateStore {
         scheduleBLESignalLossTimeout()
 
         let nextNearby = resolvedPhoneNearby(for: smoothedRSSI, previous: previousNearby)
+        let previousZone = keylessRSSIZone
         let zone: String
         if Double(smoothedRSSI) >= keylessSettingsStore.settings.unlockThreshold { zone = "近场" }
         else if Double(smoothedRSSI) <= keylessSettingsStore.settings.lockThreshold { zone = "离开" }
         else { zone = "灰区" }
-        if zone != keylessRSSIZone {
+        let zoneChanged = zone != previousZone
+        if zoneChanged {
             keylessRSSIZone = zone
             vehicleEventLogStore.add(.keyless, "RSSI 区间", detail: "\(zone) · rssi=\(smoothedRSSI) · 近场≥\(Int(keylessSettingsStore.settings.unlockThreshold)) · 离开≤\(Int(keylessSettingsStore.settings.lockThreshold))；灰区不触发动作")
         }
@@ -179,7 +181,7 @@ extension MQTTVehicleStateStore {
 
         // Apple 风格：纯 RSSI 数字抖动不推整车 state
         // 仅在靠近语义变化 / 首次获得 live RSSI 时 apply
-        if proximityChanged || liveAvailabilityChanged {
+        if proximityChanged || liveAvailabilityChanged || zoneChanged {
             var next = state
             next.bleRssi = smoothedRSSI
             next.phoneNearby = nextNearby
@@ -245,8 +247,9 @@ extension MQTTVehicleStateStore {
 
         // 明确弱于上锁阈值：累计离开
         if rssi <= lockTh {
-            // 真实弱 RSSI 才算离开；灰区与信号丢失均不会给解锁“补票”。
+            // 真实弱 RSSI 才算离开；清掉任何旧边沿，下一次近场必须重新生成。
             keylessUnlockDepartureObserved = true
+            keylessUnlockApproachEdgeArmed = false
             if externalLockRequiresExit {
                 externalLockExitObserved = true
             }
@@ -584,6 +587,8 @@ extension MQTTVehicleStateStore {
                 self.vehicleEventLogStore.add(category, "无感命令结果", detail: detail)
                 if action == .lock {
                     self.confirmKeylessLockViaHTTP(after: result)
+                } else if action == .unlock {
+                    self.confirmKeylessUnlockViaHTTP(after: result)
                 } else {
                     self.postKeylessNotificationIfNeeded(for: action, result: result)
                 }
@@ -626,6 +631,43 @@ extension MQTTVehicleStateStore {
     func keylessOpenBodyParts(fromHTTP raw: [String: String]) -> [String] {
         let mapped = VehicleStatusMapper.httpState(from: raw, base: .placeholder)
         return keylessOpenBodyParts(from: mapped)
+    }
+
+    /// 解锁 BLE ACK 后本地即时显示；最终仍记录新的 HTTP 原始 doorLockStatus 确认。
+    func confirmKeylessUnlockViaHTTP(after result: VehicleCommandExecutionResult) {
+        switch result.state {
+        case .sent, .completed:
+            let generationBeforeConfirmation = lastHTTPRawGeneration
+            vehicleEventLogStore.add(.keyless, "无感解锁等待 HTTP 确认", detail: "BLE ACK 已完成，2 秒后核验 HTTP 原始锁态")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.1) { [weak self] in
+                self?.pollHTTPOnce(userInitiated: false) { [weak self] ok, message in
+                    guard let self else { return }
+                    let isNewHTTP = self.lastHTTPRawGeneration > generationBeforeConfirmation
+                    let httpLocked = parseLocked(self.lastHTTPRawCarStatus["doorLockStatus"])
+                    if ok, isNewHTTP, httpLocked == false {
+                        self.vehicleEventLogStore.add(.keyless, "无感解锁 HTTP 已确认", detail: "HTTP 原始 doorLockStatus=未锁")
+                        if self.keylessSettingsStore.settings.unlockPopup {
+                            AppNotificationManager.shared.postKeylessNotification(title: "无感解锁已确认", body: "BLE ACK 与 HTTP 完整车况均确认车辆已解锁。")
+                        }
+                    } else if ok {
+                        let detail = !isNewHTTP ? "未取得解锁后的新 HTTP 快照" : (httpLocked == true ? "HTTP 原始状态仍为已锁" : "HTTP 原始锁态未知")
+                        self.vehicleEventLogStore.add(.warning, "无感解锁 HTTP 未确认", detail: detail)
+                        if self.keylessSettingsStore.settings.unlockPopup {
+                            AppNotificationManager.shared.postKeylessNotification(title: "无感解锁待确认", body: detail)
+                        }
+                    } else {
+                        self.vehicleEventLogStore.add(.warning, "无感解锁 HTTP 确认失败", detail: message)
+                        if self.keylessSettingsStore.settings.unlockPopup {
+                            AppNotificationManager.shared.postKeylessNotification(title: "无感解锁待确认", body: "BLE ACK 已完成，但 HTTP 完整车况刷新失败。")
+                        }
+                    }
+                }
+            }
+        case .failed(_), .timedOut(_):
+            postKeylessNotificationIfNeeded(for: .unlock, result: result)
+        case .feedbackOnly, .planned:
+            break
+        }
     }
 
     /// 锁车 BLE 回包只说明指令被接收；最终结果必须等新的 HTTP 原始完整快照确认。

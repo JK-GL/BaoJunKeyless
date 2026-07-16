@@ -110,6 +110,8 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
     func handleWillEnterForeground() {
         isAppInForeground = true
+        // 本轮停车备用点生命周期结束；下次进入后台重新固定最新停车位置。
+        removeParkingFallback(reason: "回到前台，等待下次停车")
         endBackgroundTask()
         logInfo("回到前台", detail: "结束后台任务 · 恢复前台策略", identity: "bg-foreground")
         reevaluate(reason: "enter-foreground")
@@ -367,7 +369,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         let radius = max(100, KeylessSettings.clampedGeofenceRadius(settings.geofenceRadiusMeters))
         let region = CLCircularRegion(center: location.coordinate, radius: radius, identifier: parkingRegionIdentifier)
         region.notifyOnEntry = true
-        region.notifyOnExit = false
+        region.notifyOnExit = true
         locationManager.startMonitoring(for: region)
         locationManager.startMonitoringSignificantLocationChanges()
         monitoredParkingRegion = region
