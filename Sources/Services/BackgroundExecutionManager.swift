@@ -38,6 +38,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
     private let locationManager = CLLocationManager()
     private let regionIdentifier = "com.sgmw.key.vehicle.geofence"
+    private let parkingRegionIdentifier = "com.sgmw.key.vehicle.parking-fallback"
     private let settingsStore = KeylessSettingsStore.shared
     private let locationDisplayStore = VehicleLocationDisplayStore.shared
     private let connectionStatusStore = VehicleConnectionStatusStore.shared
@@ -50,6 +51,9 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     /// 是否处于系统 expiration 回调路径（避免再刷一条重复的「结束后台任务 id=」）
     private var isEndingBackgroundTaskFromExpiration = false
     private var monitoredRegion: CLCircularRegion?
+    private var monitoredParkingRegion: CLCircularRegion?
+    private var parkingLocation: CLLocation?
+    private var pendingConnectStartedAt: Date?
     private var lastFenceCenter: CLLocationCoordinate2D?
     private var lastFenceRadius: CLLocationDistance = 0
     private var lastPhoneLocation: CLLocation?
@@ -94,6 +98,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         if settings.keylessEnabled && settings.backgroundEnhancedEnabled {
             beginBackgroundTask(reason: "keyless-background")
         }
+        configureParkingFallbackIfNeeded(settings: settings, reason: "enter-background")
         reevaluate(reason: "enter-background")
         if settings.keylessEnabled {
             requestBLESession(forceRestart: false, detail: "进入后台")
@@ -117,6 +122,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
         requestAuthorizationIfNeeded(for: settings)
         updateGeofenceIfNeeded(settings: settings, force: reason.contains("settings") || reason.contains("radius") || reason == "init")
+        configureParkingFallbackIfNeeded(settings: settings, reason: reason)
         reevaluate(reason: reason)
         // 仅围栏扫描等开关变化后，立刻让 BLE 会话重评估
         reapplyBLEScanPolicy(reason: reason)
@@ -307,6 +313,53 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             identity: "geofence-update|\(Int(radius))"
         )
         // 围栏更新已写事件日志，不重复进错误日志
+    }
+
+    /// 默认关闭的停车位备用策略：进后台时以手机当前位置挂一个小围栏，并启动显著位置变化。
+    /// 仅预唤醒 BLE，不参与任何锁/解锁判断。
+    private func configureParkingFallbackIfNeeded(settings: KeylessSettings, reason: String) {
+        guard settings.keylessEnabled, settings.parkingFallbackWakeEnabled else {
+            removeParkingFallback(reason: "开关关闭")
+            return
+        }
+        guard locationManager.authorizationStatus == .authorizedAlways else {
+            enterDegraded(reason: "停车位置备用唤醒需要“始终允许”定位")
+            return
+        }
+        guard !isAppInForeground else { return }
+        let location = lastPhoneLocation ?? locationManager.location
+        guard let location else {
+            locationManager.requestLocation()
+            logInfo("停车位置待记录", detail: "等待定位后挂载备用围栏", identity: "parking-wait")
+            return
+        }
+        if let old = parkingLocation, old.distance(from: location) < 40, monitoredParkingRegion != nil { return }
+        removeParkingFallback(reason: "更新停车位置")
+        let radius = max(100, KeylessSettings.clampedGeofenceRadius(settings.geofenceRadiusMeters))
+        let region = CLCircularRegion(center: location.coordinate, radius: radius, identifier: parkingRegionIdentifier)
+        region.notifyOnEntry = true
+        region.notifyOnExit = false
+        locationManager.startMonitoring(for: region)
+        locationManager.startMonitoringSignificantLocationChanges()
+        monitoredParkingRegion = region
+        parkingLocation = location
+        logInfo("停车位置备用唤醒已就绪", detail: "半径 \(Int(radius)) 米 · 显著位置变化已监听 · \(reasonText(reason))", identity: "parking-fallback-ready")
+    }
+
+    private func removeParkingFallback(reason: String) {
+        for old in locationManager.monitoredRegions where old.identifier == parkingRegionIdentifier { locationManager.stopMonitoring(for: old) }
+        if monitoredParkingRegion != nil { logInfo("停车位置备用唤醒已移除", detail: reason, identity: "parking-fallback-remove") }
+        monitoredParkingRegion = nil
+        parkingLocation = nil
+        locationManager.stopMonitoringSignificantLocationChanges()
+    }
+
+    private func wakeFromParkingFallback(_ detail: String) {
+        guard settingsStore.settings.keylessEnabled, settingsStore.settings.parkingFallbackWakeEnabled else { return }
+        if settingsStore.settings.backgroundEnhancedEnabled { beginBackgroundTask(reason: "parking-fallback") }
+        pendingConnectStartedAt = Date()
+        requestBLESession(forceRestart: false, detail: detail)
+        logInfo("停车位置预唤醒", detail: "\(detail) · 仅启动扫描/鉴权，不直接控车", identity: "parking-fallback-wake")
     }
 
     private func removeGeofence(reason: String) {
@@ -537,6 +590,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
     private func stopAll(reason: String) {
         removeGeofence(reason: reason)
+        removeParkingFallback(reason: reason)
         setKeepAliveActive(false)
         endBackgroundTask()
         isInGeofence = false
@@ -547,7 +601,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
     private func requestAuthorizationIfNeeded(for settings: KeylessSettings) {
         let status = locationManager.authorizationStatus
-        let needsBackgroundLocation = settings.geofenceWakeEnabled || settings.locationKeepAliveEnabled
+        let needsBackgroundLocation = settings.geofenceWakeEnabled || settings.parkingFallbackWakeEnabled || settings.locationKeepAliveEnabled
         guard needsBackgroundLocation else { return }
 
         switch status {
@@ -562,6 +616,9 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
     private func hasSufficientLocationPermission(for settings: KeylessSettings) -> Bool {
         let status = locationManager.authorizationStatus
+        if settings.parkingFallbackWakeEnabled {
+            return status == .authorizedAlways
+        }
         if settings.geofenceWakeEnabled || settings.locationKeepAliveEnabled {
             return status == .authorizedAlways || status == .authorizedWhenInUse
         }
@@ -592,8 +649,9 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         guard let store = VehicleStateStoreBridge.current as? MQTTVehicleStateStore else { return }
         // 进圈/后台续命：允许扫描。ensure 内部会再判「仅围栏内扫描」；
         // 但进圈时 isInGeofence 已 true，不会被抑制。
+        pendingConnectStartedAt = Date()
         store.ensureBLESession(forceRestart: forceRestart, optimisticScanning: true, userInitiated: false)
-        logInfo("后台唤醒 BLE", detail: detail, identity: "bg-wake-ble|\(detail)")
+        logInfo("后台唤醒 BLE", detail: "\(detail) · pending-connect 已创建", identity: "bg-wake-ble|\(detail)")
     }
 
     /// 设置变化或出圈后，让 Store 重新评估是否应停扫
@@ -639,6 +697,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         case "ble-status": return "BLE 状态变化"
         case "enter-region": return "进入围栏"
         case "exit-region": return "离开围栏"
+        case "parking-fallback": return "停车位置备用唤醒"
         default: return reason
         }
     }
@@ -646,6 +705,10 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     // MARK: - CLLocationManagerDelegate
 
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
+        if region.identifier == parkingRegionIdentifier {
+            wakeFromParkingFallback("进入停车位置备用围栏")
+            return
+        }
         guard region.identifier == regionIdentifier else { return }
         isInGeofence = true
         if settingsStore.settings.backgroundEnhancedEnabled {
@@ -716,7 +779,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             reevaluate(reason: "auth-always")
         case .authorizedWhenInUse:
             logInfo("定位权限", detail: "使用期间 · 建议改为始终允许以提升后台唤醒", identity: "loc-auth-wheninuse")
-            if settings.geofenceWakeEnabled || settings.locationKeepAliveEnabled {
+            if settings.geofenceWakeEnabled || settings.parkingFallbackWakeEnabled || settings.locationKeepAliveEnabled {
                 manager.requestAlwaysAuthorization()
             }
             updateGeofenceIfNeeded(settings: settings, force: true)
@@ -734,7 +797,12 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         if let last = locations.last {
+            let previousParking = parkingLocation
             lastPhoneLocation = last
+            if !isAppInForeground { configureParkingFallbackIfNeeded(settings: settingsStore.settings, reason: "location-update") }
+            if let parking = previousParking, last.distance(from: parking) >= 120, !isAppInForeground {
+                wakeFromParkingFallback("显著位置变化，距停车点约 \(Int(last.distance(from: parking))) 米")
+            }
             // 更新手机距圆心，方便 UI 校验围栏（无新鲜度字段）
             refreshGeofenceSummary()
         }

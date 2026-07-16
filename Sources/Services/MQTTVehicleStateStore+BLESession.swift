@@ -127,6 +127,10 @@ extension MQTTVehicleStateStore {
                 self.ignoreNextBLEIdleCallback = false
                 self.consecutiveScanTimeouts = 0
                 self.hasCompletedBLEAuth = true
+                if let started = self.bleScanStartedAt {
+                    let elapsed = Int(Date().timeIntervalSince(started))
+                    self.vehicleEventLogStore.add(.keyless, "BLE 会话就绪", detail: "扫描/连接/鉴权耗时 \(elapsed)s · 已完成安全重鉴权")
+                }
                 self.setBLEDiagnosticPhase("已鉴权", detail: self.bleDiagnosticCurrentCandidateText)
                 self.setBLEDiagnosticConclusion("鉴权成功", reason: "已完成 BLE 四步鉴权")
                 self.logVehicleEvent(.action, "BLE 鉴权成功", detail: "可发送控车命令", identity: "authenticated", minimumInterval: 3)

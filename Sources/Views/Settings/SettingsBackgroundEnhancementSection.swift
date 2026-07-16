@@ -107,6 +107,14 @@ struct SettingsBackgroundEnhancementSection: View {
                 }
 
                 backgroundToggle(
+                    icon: "parkingsign.circle",
+                    title: "停车位置备用唤醒",
+                    subtitle: "默认关闭。记录进入后台时的停车位置，配合显著位置变化在接近时预唤醒 BLE；需要“始终允许”定位，会增加定位使用。",
+                    isOn: binding(\.parkingFallbackWakeEnabled, log: "停车位置备用唤醒"),
+                    enabled: controlsEnabled
+                )
+
+                backgroundToggle(
                     icon: "location.fill",
                     title: "定位保活",
                     subtitle: "无感警戒期间借助定位延长后台存活（会增加耗电）",

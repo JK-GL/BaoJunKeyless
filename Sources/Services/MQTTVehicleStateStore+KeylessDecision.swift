@@ -12,6 +12,9 @@ extension MQTTVehicleStateStore {
         phoneFarAwaySince = nil
         hasEnteredVehicleZone = false
         continuousWeakSince = nil
+        keylessUnlockDepartureObserved = false
+        keylessUnlockApproachEdgeArmed = false
+        keylessRSSIZone = "未知"
         bleScanStartedAt = nil
         hasCompletedBLEAuth = false
         userManuallyStoppedBLE = false
@@ -154,6 +157,14 @@ extension MQTTVehicleStateStore {
         scheduleBLESignalLossTimeout()
 
         let nextNearby = resolvedPhoneNearby(for: smoothedRSSI, previous: previousNearby)
+        let zone: String
+        if Double(smoothedRSSI) >= keylessSettingsStore.settings.unlockThreshold { zone = "近场" }
+        else if Double(smoothedRSSI) <= keylessSettingsStore.settings.lockThreshold { zone = "离开" }
+        else { zone = "灰区" }
+        if zone != keylessRSSIZone {
+            keylessRSSIZone = zone
+            vehicleEventLogStore.add(.keyless, "RSSI 区间", detail: "\(zone) · rssi=\(smoothedRSSI) · 近场≥\(Int(keylessSettingsStore.settings.unlockThreshold)) · 离开≤\(Int(keylessSettingsStore.settings.lockThreshold))；灰区不触发动作")
+        }
         let proximityChanged = previousNearby != nextNearby
         let liveAvailabilityChanged = previousHadLive != true
 
@@ -207,6 +218,10 @@ extension MQTTVehicleStateStore {
         let rssi = Double(smoothedRSSI)
 
         if nearby || rssi >= unlockTh {
+            // 只在真实离开后首次重新进入近场时形成解锁边沿。
+            if keylessUnlockDepartureObserved {
+                keylessUnlockApproachEdgeArmed = true
+            }
             if externalLockRequiresExit && externalLockExitObserved {
                 externalLockRequiresExit = false
                 externalLockExitObserved = false
@@ -228,6 +243,8 @@ extension MQTTVehicleStateStore {
 
         // 明确弱于上锁阈值：累计离开
         if rssi <= lockTh {
+            // 真实弱 RSSI 才算离开；灰区与信号丢失均不会给解锁“补票”。
+            keylessUnlockDepartureObserved = true
             if externalLockRequiresExit {
                 externalLockExitObserved = true
             }
@@ -335,7 +352,7 @@ extension MQTTVehicleStateStore {
                 context: KeylessDecisionEngine.Context(bleAuthenticated: hasCompletedBLEAuth)
             )
             if powerDecision != lastUnlockDecision {
-                let detail = KeylessDecisionEngine.logDetail(decision: powerDecision, state: currentState, settings: settings)
+                let detail = KeylessDecisionEngine.logDetail(decision: powerDecision, state: currentState, settings: settings) + " | " + keylessSafetySnapshot(currentState)
                 switch powerDecision {
                 case .allow:
                     vehicleEventLogStore.add(.keyless, "启动电源允许", detail: detail)
@@ -357,7 +374,7 @@ extension MQTTVehicleStateStore {
                 context: decisionContext
             )
             if unlockDecision != lastUnlockDecision {
-                let detail = KeylessDecisionEngine.logDetail(decision: unlockDecision, state: currentState, settings: settings)
+                let detail = KeylessDecisionEngine.logDetail(decision: unlockDecision, state: currentState, settings: settings) + " | " + keylessSafetySnapshot(currentState)
                 switch unlockDecision {
                 case .allow:
                     vehicleEventLogStore.add(.keyless, "解锁允许", detail: detail)
@@ -375,7 +392,7 @@ extension MQTTVehicleStateStore {
 
         let lockDecision = evaluateLockDecisionWithDelay(state: currentState, settings: settings, context: decisionContext)
         if lockDecision != lastLockDecision {
-            let detail = KeylessDecisionEngine.logDetail(decision: lockDecision, state: currentState, settings: settings)
+            let detail = KeylessDecisionEngine.logDetail(decision: lockDecision, state: currentState, settings: settings) + " | " + keylessSafetySnapshot(currentState)
             switch lockDecision {
             case .allow:
                 vehicleEventLogStore.add(.keyless, "上锁允许", detail: detail)
@@ -432,8 +449,28 @@ extension MQTTVehicleStateStore {
         return .allow(action: .lock, reason: decision.reason + " · 已确认离开")
     }
 
+    /// 推荐策略：必须先观察到真实离开，再在首次回到近场时自动解锁/启动电源。
+    func guardKeylessUnlockApproachEdge(_ state: VehicleState, action: KeylessAction) -> Bool {
+        guard state.phoneNearby else { return false }
+        guard keylessUnlockApproachEdgeArmed else {
+            let detail = keylessSafetySnapshot(state) + " | edge=0（需先离开后重新靠近）"
+            vehicleEventLogStore.addThrottled(.keyless, "\(action.title)拒绝", detail: detail, identity: "unlock-edge-\(action.rawValue)", minimumInterval: 10)
+            return false
+        }
+        return true
+    }
+
+    /// 每次判定写出锁、门窗、尾门、档位、电源、HTTP 新鲜度、BLE 鉴权、RSSI 与保护状态。
+    func keylessSafetySnapshot(_ state: VehicleState) -> String {
+        let age = max(0, Int(Date().timeIntervalSince(state.timestamp)))
+        return "locked=\(state.locked.map(String.init) ?? "unknown") | doors=\(state.doorsClosed.map { $0 ? "closed" : "open" } ?? "unknown") | windows=\(state.windowsClosed.map { $0 ? "closed" : "open" } ?? "unknown") | trunk=\(state.trunkOpen.map { $0 ? "open" : "closed" } ?? "unknown") | gear=\(state.gear.title) | power=\(state.power.title) | httpAge=\(age)s | bleAuth=\(hasCompletedBLEAuth ? 1 : 0) | rssi=\(state.bleRssi.map(String.init) ?? "--") | zone=\(keylessRSSIZone) | edge=\(keylessUnlockApproachEdgeArmed ? 1 : 0) | reject=\(keylessRejectedActionUntilExit?.rawValue ?? "none") | externalProtect=\(externalLockRequiresExit ? 1 : 0)"
+    }
+
     func executeKeylessCommandIfNeeded(action: KeylessAction, state: VehicleState, reason: String) {
         guard !isExecutingKeylessCommand else { return }
+        if (action == .unlock || action == .powerStart), !guardKeylessUnlockApproachEdge(state, action: action) {
+            return
+        }
         let settings = keylessSettingsStore.settings
         if let lastAutoCommandAt,
            Date().timeIntervalSince(lastAutoCommandAt) < settings.cmdInterval {
@@ -472,6 +509,11 @@ extension MQTTVehicleStateStore {
                 minimumInterval: 5
             )
             return
+        }
+
+        if (action == .unlock || action == .powerStart) && keylessUnlockApproachEdgeArmed {
+            keylessUnlockApproachEdgeArmed = false
+            vehicleEventLogStore.add(.keyless, "接近边沿已消费", detail: "\(action.title)仅本次重新靠近允许执行")
         }
 
         let command: VehicleCommand

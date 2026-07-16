@@ -56,6 +56,8 @@ struct KeylessSettings: Codable {
     var geofenceRadiusMeters: Double = 100
     /// 仅围栏内扫描：开=圈外几乎不扫，进圈才扫；关=保持现状周期扫。默认关。前台+后台统一。
     var scanOnlyInsideGeofence: Bool = false
+    /// 停车位置备用围栏 + 显著位置变化唤醒（需 Always 定位，默认关闭）
+    var parkingFallbackWakeEnabled: Bool = false
     /// 定位保活（按需）
     var locationKeepAliveEnabled: Bool = true
     /// 后台状态同步
@@ -71,7 +73,7 @@ struct KeylessSettings: Codable {
         case bleScanDuration, bleScanInterval
         case backgroundSectionExpanded
         case backgroundEnhancedEnabled, geofenceWakeEnabled, geofenceRadiusMeters
-        case scanOnlyInsideGeofence
+        case scanOnlyInsideGeofence, parkingFallbackWakeEnabled
         case locationKeepAliveEnabled, backgroundStateSyncEnabled
     }
 
@@ -115,6 +117,7 @@ struct KeylessSettings: Codable {
         let rawRadius = try c.decodeIfPresent(Double.self, forKey: .geofenceRadiusMeters) ?? 100
         geofenceRadiusMeters = Self.clampedGeofenceRadius(rawRadius)
         scanOnlyInsideGeofence = try c.decodeIfPresent(Bool.self, forKey: .scanOnlyInsideGeofence) ?? false
+        parkingFallbackWakeEnabled = try c.decodeIfPresent(Bool.self, forKey: .parkingFallbackWakeEnabled) ?? false
         locationKeepAliveEnabled = try c.decodeIfPresent(Bool.self, forKey: .locationKeepAliveEnabled) ?? true
         backgroundStateSyncEnabled = try c.decodeIfPresent(Bool.self, forKey: .backgroundStateSyncEnabled) ?? true
     }
@@ -131,6 +134,7 @@ struct KeylessSettings: Codable {
             backgroundEnhancedEnabled,
             geofenceWakeEnabled,
             scanOnlyInsideGeofence,
+            parkingFallbackWakeEnabled,
             locationKeepAliveEnabled,
             backgroundStateSyncEnabled
         ]

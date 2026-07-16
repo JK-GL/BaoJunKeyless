@@ -252,6 +252,12 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var hasEnteredVehicleZone = false
     /// 连续真实弱 RSSI 起始时间（信号丢失不算）
     var continuousWeakSince: Date?
+    /// 自动解锁必须先经历真实离开；防止 App 恢复或车旁启动误解锁。
+    var keylessUnlockDepartureObserved = false
+    /// 离开后首次进入近场的边沿，只能消费一次。
+    var keylessUnlockApproachEdgeArmed = false
+    /// 三段 RSSI 语义，灰区不驱动动作。
+    var keylessRSSIZone = "未知"
     var bleScanStartedAt: Date?
     var hasCompletedBLEAuth = false
     var userManuallyStoppedBLE = false
