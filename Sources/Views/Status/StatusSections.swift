@@ -266,41 +266,33 @@ struct StatusTopBarSection: View, Equatable {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            HStack(spacing: 8) {
-                Text(vehicleName)
-                    .font(.system(size: 21, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
+        HStack(alignment: .center, spacing: 12) {
+            Text(vehicleName)
+                .font(.system(size: 21, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.9)
 
-                AuthStatusBadge(authStatus: authStatus)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            AuthStatusBadge(authStatus: authStatus)
 
-            // 右上角刷新按钮固定占位，避免车名/鉴权文案把它挤没。
+            Spacer(minLength: 8)
+
+            // 旧交互：双箭头点击后变沙漏（漏斗感），刷新完再变回箭头。
             Button {
                 AppHaptics.light()
                 onRefresh()
             } label: {
                 Image(systemName: isRefreshing ? "hourglass" : "arrow.triangle.2.circlepath")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(isRefreshing ? 0.85 : 0.78))
-                    .frame(width: 34, height: 34)
-                    .background(
-                        Circle()
-                            .fill(Color.white.opacity(0.08))
-                    )
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                    )
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(isRefreshing ? 0.72 : 0.62))
+                    .frame(width: 28, height: 28)
                     .scaleEffect(refreshScale)
-                    .contentShape(Circle())
+                    .contentShape(Rectangle())
+                    .animation(.easeInOut(duration: 0.15), value: isRefreshing)
             }
             .buttonStyle(ResponsiveButtonStyle(playsHaptic: false))
             .layoutPriority(2)
-            .accessibilityLabel("刷新车况")
+            .accessibilityLabel(isRefreshing ? "正在刷新" : "刷新车况")
         }
         .padding(.horizontal, 20)
     }

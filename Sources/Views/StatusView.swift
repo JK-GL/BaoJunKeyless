@@ -57,8 +57,7 @@ struct StatusView: View {
                                     }
                                 )
                             } else {
-                                // 弹窗出现动画放轻，避免 spring 与整页状态刷新抢主线程。
-                                withAnimation(PopupMotion.contentEase) {
+                                withAnimation(PopupMotion.presentSpring) {
                                     activeCommand = command
                                 }
                             }
@@ -258,13 +257,19 @@ struct StatusView: View {
         withAnimation { statusToastText = "正在刷新车况与钥匙…" }
         mqttStore?.refreshNow(userInitiated: true) { _, message in
             withAnimation { statusToastText = message }
-            isRefreshing = false
+            withAnimation(PopupMotion.contentEase) {
+                isRefreshing = false
+                refreshScale = 1.0
+            }
         }
 
-        // 兜底：网络卡住时也不让转圈无限挂起
+        // 兜底：网络卡住时也不让沙漏无限挂起
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
             if isRefreshing {
-                isRefreshing = false
+                withAnimation(PopupMotion.contentEase) {
+                    isRefreshing = false
+                    refreshScale = 1.0
+                }
             }
         }
     }

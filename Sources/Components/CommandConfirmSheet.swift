@@ -246,8 +246,7 @@ struct CommandConfirmPopup: View {
             title: commandTitle,
             subtitle: resultSubtitle,
             contentScrollEnabled: false,
-            // 快捷操作弹窗高频开关：纯色底板比毛玻璃轻，点击更跟手。
-            usesBlurMaterial: false
+            usesBlurMaterial: true
         ) {
             VStack(spacing: 12) {
                 PopupStatusSummaryView(items: statusItemsForCurrentAction)

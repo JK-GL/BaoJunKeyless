@@ -9,27 +9,14 @@ struct ContentView: View {
         ZStack(alignment: .top) {
             AppBackgroundView()
 
-            // 状态页常驻：官方 App 同类做法，避免每次点导航都销毁/重建整页导致迟钝。
-            // 其它页按需创建，节省内存。
-            StatusView()
+            // 单页切换：避免状态页常驻后台继续重绘，导致整 App 发黏。
+            tabContent(for: selectedTab)
                 .environmentObject(scrollState)
-                .opacity(selectedTab == .status ? 1 : 0)
-                .allowsHitTesting(selectedTab == .status)
-                .zIndex(selectedTab == .status ? 1 : 0)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-
-            if selectedTab != .status {
-                secondaryTabContent(for: selectedTab)
-                    .environmentObject(scrollState)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .zIndex(2)
-            }
+                .id(selectedTab)
         }
         .appOnChange(of: selectedTab) {
-            // 离开状态页时重置滚动跟踪；状态页本身保留，不重建。
-            if selectedTab != .status {
-                scrollState.reset()
-            }
+            scrollState.reset()
         }
         .safeAreaInset(edge: .bottom) {
             MenuBarView(
@@ -43,10 +30,10 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private func secondaryTabContent(for tab: AppTab) -> some View {
+    private func tabContent(for tab: AppTab) -> some View {
         switch tab {
         case .status:
-            EmptyView()
+            StatusView()
         case .keyless:
             KeylessView()
         case .logs:
