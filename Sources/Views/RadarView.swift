@@ -663,8 +663,8 @@ struct RadarCardView: View {
     private var isLargeCarMode: Bool { showLargeCarImage && !showRadar }
 
     var body: some View {
-        // 大车图模式：上下再收 30%（相对 v726 的 4/2/6 → 约 3/1/4）
-        VStack(spacing: isLargeCarMode ? 3 : 12) {
+        // 大车图模式：间距压到最小；真正“贴”靠裁透明边，不是只改 spacing。
+        VStack(spacing: isLargeCarMode ? 0 : 12) {
             // 上半区：雷达 / 大车图 互斥；都关时不占位，只留距离地址。
             if showRadar {
                 ZStack {
@@ -701,7 +701,7 @@ struct RadarCardView: View {
                     .frame(maxWidth: .infinity)
             }
 
-            VStack(spacing: isLargeCarMode ? 1 : 5) {
+            VStack(spacing: isLargeCarMode ? 0 : 5) {
                 // 已连上车机 BLE 时优先用 RSSI 估距；地库 GPS 经纬度常漂，不能当真
                 if let bleDistanceText {
                     Text(bleDistanceText)
@@ -744,7 +744,8 @@ struct RadarCardView: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.vertical, isLargeCarMode ? 4 : 16)
+        .padding(.top, isLargeCarMode ? 0 : 16)
+        .padding(.bottom, isLargeCarMode ? 2 : 16)
         .padding(.horizontal, 16)
         .onAppear { syncBLEDistanceOverride() }
         .onChange(of: diagnostics.debugSmoothedRSSI) { _ in syncBLEDistanceOverride() }
@@ -793,43 +794,49 @@ struct RadarCardView: View {
 }
 
 // MARK: - 状态页大车图（与雷达共用 sharedCarImages；不跑雷达动画）
+/// 关键原则（对齐 v724 流畅原因）：
+/// - 布局宽高固定，绝不随 UIImage.size / 加载完成变化，避免 ScrollView 重排
+/// - 官方车图四周大块透明边是上下收不窄的主因，显示前裁透明边
+/// - 再放大 10%（相对 v727 的 0.92 到 1.01）
 private struct StatusLargeCarImageView: View {
     let carImageURL: String
-    @State private var image: UIImage?
+    /// 显示用图（已裁透明边）；与雷达原图缓存分离，避免污染雷达小车标。
+    @State private var displayImage: UIImage?
     @State private var loadToken = 0
+
+    /// 相对卡片可用宽：v727=0.92，再 +10% → 1.012（≈铺满卡片宽）。
+    private let widthRatio: CGFloat = 1.01
+    /// 固定布局高宽比（宽/高）。不读图片尺寸，保证高度恒定。
+    /// 官方侧视车图裁边后大约 1.9~2.1；取 1.95 偏扁，上下更贴。
+    private let layoutAspect: CGFloat = 1.95
 
     init(carImageURL: String) {
         self.carImageURL = carImageURL
-        // 首帧就读共享缓存，避免先闪 SF 默认车。
-        _image = State(initialValue: RadarUIView.cachedCarImage(for: carImageURL))
+        // 首帧尽量同步出图：雷达缓存 → 裁边；失败再异步。
+        if let raw = RadarUIView.cachedCarImage(for: carImageURL) {
+            _displayImage = State(initialValue: Self.trimmedDisplayImage(from: raw, cacheKey: carImageURL))
+        } else {
+            _displayImage = State(initialValue: nil)
+        }
     }
 
-    /// v726 为 0.80；再放大 15% → 0.92。不用 GeometryReader，避免状态页滚动卡顿。
-    private let widthRatio: CGFloat = 0.92
-
-    /// 用屏宽估算一次目标宽（卡片左右约 16+16）。稳定布局，不在 ScrollView 里反复测。
+    /// 固定宽：只依赖屏宽，不依赖图片。
     private var targetWidth: CGFloat {
         let screen = UIScreen.main.bounds.width
-        let cardInset: CGFloat = 32
+        let cardInset: CGFloat = 32 // RadarCard 左右 padding 16+16
         return max(screen - cardInset, 200) * widthRatio
     }
 
-    private var aspect: CGFloat {
-        if let image, image.size.width > 1, image.size.height > 1 {
-            return image.size.width / image.size.height
-        }
-        return 16.0 / 9.0
-    }
-
+    /// 固定高：只依赖 targetWidth × 固定比例，加载前后完全一致。
     private var targetHeight: CGFloat {
-        targetWidth / max(aspect, 0.01)
+        targetWidth / layoutAspect
     }
 
     var body: some View {
-        // 固定宽高测一次即可（像 v724 那样稳），但按真实比例，不套雷达 280 框。
-        Group {
-            if let image {
-                Image(uiImage: image)
+        // 固定框（像 v724 的 420 一样稳）+ 裁边后 fit；无 GeometryReader、无 image-size 驱动高度。
+        ZStack {
+            if let displayImage {
+                Image(uiImage: displayImage)
                     .resizable()
                     .scaledToFit()
             } else {
@@ -839,18 +846,20 @@ private struct StatusLargeCarImageView: View {
             }
         }
         .frame(width: targetWidth, height: targetHeight)
-        .frame(maxWidth: .infinity) // 水平居中
+        .frame(maxWidth: .infinity)
+        // 再往距离文案收一点（透明边已裁，这里是真正的视觉贴紧）。
+        .padding(.bottom, -6)
         .onAppear { applyCacheOrLoad() }
         .onChange(of: carImageURL) { _ in
+            displayImage = nil
             applyCacheOrLoad()
         }
     }
 
     private func applyCacheOrLoad() {
         let key = RadarUIView.normalizedCarImageKey(carImageURL)
-        // 先同步读雷达共享缓存，避免切模式时闪默认图标。
         if let cached = RadarUIView.cachedCarImage(for: key) {
-            image = cached
+            displayImage = Self.trimmedDisplayImage(from: cached, cacheKey: key)
             return
         }
         loadIfNeeded(key: key)
@@ -859,13 +868,12 @@ private struct StatusLargeCarImageView: View {
     private func loadIfNeeded(key: String) {
         guard let url = URL(string: key) else { return }
         if RadarUIView.sharedCarImageLoadInFlight.contains(key) {
-            // 雷达已在加载：短轮询共享缓存，避免再发一次请求。
             let token = loadToken + 1
             loadToken = token
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 guard token == loadToken else { return }
                 if let cached = RadarUIView.cachedCarImage(for: key) {
-                    image = cached
+                    displayImage = Self.trimmedDisplayImage(from: cached, cacheKey: key)
                 } else {
                     loadIfNeeded(key: key)
                 }
@@ -883,9 +891,91 @@ private struct StatusLargeCarImageView: View {
             }
             guard let data, let img = UIImage(data: data) else { return }
             RadarUIView.storeCarImage(img, for: key)
+            let trimmed = Self.trimmedDisplayImage(from: img, cacheKey: key)
             DispatchQueue.main.async {
-                self.image = img
+                self.displayImage = trimmed
             }
         }.resume()
+    }
+
+    /// 裁透明边缓存：同一 URL 只裁一次。
+    private static var trimmedCache: [String: UIImage] = [:]
+
+    private static func trimmedDisplayImage(from image: UIImage, cacheKey: String) -> UIImage {
+        let key = RadarUIView.normalizedCarImageKey(cacheKey)
+        if let hit = trimmedCache[key] { return hit }
+        let trimmed = image.bjk_trimmedTransparentPixels(alphaThreshold: 10) ?? image
+        trimmedCache[key] = trimmed
+        return trimmed
+    }
+}
+
+// MARK: - 裁掉官方车图四周透明边（否则“收窄上下”几乎无效）
+private extension UIImage {
+    /// 返回去掉四周近透明像素后的图；失败返回 nil。
+    func bjk_trimmedTransparentPixels(alphaThreshold: UInt8 = 10) -> UIImage? {
+        guard let cgImage = self.cgImage else { return nil }
+        let width = cgImage.width
+        let height = cgImage.height
+        guard width > 2, height > 2 else { return nil }
+
+        let bytesPerPixel = 4
+        let bytesPerRow = bytesPerPixel * width
+        let bitsPerComponent = 8
+        var pixels = [UInt8](repeating: 0, count: height * bytesPerRow)
+        guard let ctx = CGContext(
+            data: &pixels,
+            width: width,
+            height: height,
+            bitsPerComponent: bitsPerComponent,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        var minX = width
+        var minY = height
+        var maxX = 0
+        var maxY = 0
+        var found = false
+
+        // 步进采样：大图裁边足够准，比逐像素快。
+        let step = max(1, min(width, height) / 400)
+        var y = 0
+        while y < height {
+            var x = 0
+            while x < width {
+                let a = pixels[y * bytesPerRow + x * bytesPerPixel + 3]
+                if a > alphaThreshold {
+                    found = true
+                    if x < minX { minX = x }
+                    if x > maxX { maxX = x }
+                    if y < minY { minY = y }
+                    if y > maxY { maxY = y }
+                }
+                x += step
+            }
+            y += step
+        }
+        guard found else { return nil }
+
+        // 外扩一点，避免裁到车身边缘锯齿。
+        let pad = max(2, step * 2)
+        minX = max(0, minX - pad)
+        minY = max(0, minY - pad)
+        maxX = min(width - 1, maxX + pad)
+        maxY = min(height - 1, maxY + pad)
+
+        let cropW = maxX - minX + 1
+        let cropH = maxY - minY + 1
+        guard cropW > 8, cropH > 8 else { return nil }
+        // 几乎无透明边则不裁，省一次拷贝。
+        if cropW >= width - 2, cropH >= height - 2 { return self }
+
+        let cropRect = CGRect(x: minX, y: minY, width: cropW, height: cropH)
+        guard let cropped = cgImage.cropping(to: cropRect) else { return nil }
+        return UIImage(cgImage: cropped, scale: scale, orientation: imageOrientation)
     }
 }
