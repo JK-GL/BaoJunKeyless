@@ -76,10 +76,10 @@ final class RadarUIView: UIView {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window == nil {
-            stopMarkerDisplayLink()
-            releaseHeavyResources()
+            // 停动画，但保留共享底图/车图，避免切回状态页重建圆盘。
+            releaseHeavyResources(clearImages: false)
         } else {
-            // 重新入屏时强制恢复圆圈背景 + 扫描环 + 车图
+            // 重新入屏：缓存命中则只恢复扫描环，无需重绘底图。
             restoreDynamicResourcesIfNeeded()
             resumeScanRingAnimationsIfNeeded()
             setNeedsLayout()
@@ -144,9 +144,12 @@ final class RadarUIView: UIView {
                 self.rebuildStaticBackground(self.bounds.size)
                 self.resumeScanRingAnimationsIfNeeded()
             } else {
-                self.releaseHeavyResources()
+                self.releaseHeavyResources(clearImages: true)
             }
         }
+
+        // 首次创建预热 280 静态底图到共享缓存，后续切页直接复用。
+        rebuildStaticBackground(CGSize(width: sz, height: sz))
     }
 
     private func configureScanRing(_ ring: CAShapeLayer, delay: Double) {
@@ -206,34 +209,49 @@ final class RadarUIView: UIView {
     }
 
     func updatePosition(force: Bool = false) {
-        restoreDynamicResourcesIfNeeded()
+        // heading 高频时只更新车标；资源齐全时不要每次 restore。
+        if backgroundImageView.image == nil || carImageView.image == nil {
+            restoreDynamicResourcesIfNeeded()
+        }
         updateMarker(force: force)
     }
 
     func clearTransientCache() {
-        releaseHeavyResources()
+        releaseHeavyResources(clearImages: true)
     }
 
-    func releaseHeavyResources() {
-        backgroundImageView.image = nil
+    /// 离屏释放动画；默认保留共享缓存中的底图/车图引用，切回状态页秒开。
+    func releaseHeavyResources(clearImages: Bool = false) {
+        stopMarkerDisplayLink()
         scanRing1.removeAllAnimations()
         scanRing2.removeAllAnimations()
         carImageView.layer.removeAllAnimations()
-        lastBackgroundSize = .zero
         lastDisplayLinkTimestamp = 0
+        if clearImages {
+            backgroundImageView.image = nil
+            carImageView.image = nil
+            lastBackgroundSize = .zero
+        }
     }
 
     private func restoreDynamicResourcesIfNeeded() {
-        // 圆圈/刻度背景与车图要一起恢复；之前只恢复了车图，会出现“只有车、没有圈线”
+        // 圆圈/刻度背景与车图要一起恢复；优先命中共享缓存，避免重绘。
         if bounds.width > 1, bounds.height > 1 {
             if backgroundImageView.image == nil || lastBackgroundSize != bounds.size {
                 rebuildStaticBackground(bounds.size)
             }
         } else {
+            // 尺寸未定时先用固定雷达尺寸预热共享底图。
+            let warmSize = CGSize(width: sz, height: sz)
+            if backgroundImageView.image == nil {
+                rebuildStaticBackground(warmSize)
+            }
             setNeedsLayout()
         }
 
-        resumeScanRingAnimationsIfNeeded()
+        if window != nil {
+            resumeScanRingAnimationsIfNeeded()
+        }
         let key = normalizedCarImageCacheKey
         if let shared = Self.sharedCarImages[key] {
             isUsingSFSymbolCar = false
@@ -292,7 +310,8 @@ final class RadarUIView: UIView {
     private func startMarkerDisplayLinkIfNeeded() {
         guard window != nil, markerDisplayLink == nil else { return }
         let displayLink = CADisplayLink(target: self, selector: #selector(stepMarkerSmoothing(_:)))
-        displayLink.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        // 指南针节流后 60fps 足够平滑，120 成本偏高。
+        displayLink.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
         displayLink.add(to: .main, forMode: .common)
         markerDisplayLink = displayLink
     }
@@ -545,7 +564,8 @@ struct RadarRepresentable: UIViewRepresentable {
     static func dismantleUIView(_ uiView: RadarUIView, coordinator: Coordinator) {
         coordinator.locationManager?.radarPositionHandler = nil
         coordinator.boundView = nil
-        uiView.releaseHeavyResources()
+        // 视图将销毁：动画停掉即可，共享缓存继续留给下次创建复用。
+        uiView.releaseHeavyResources(clearImages: false)
     }
 }
 

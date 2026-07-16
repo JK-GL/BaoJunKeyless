@@ -33,6 +33,13 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private var lastRadarDistance: CLLocationDistance = -1
     private var lastRadarRelativeAngle: CLLocationDirection = -1
     private var lastPublishedDistance: CLLocationDistance = -1
+    /// 指南针节流：过密 heading 会拖主线程，雷达跟手转不需要逐度刷新。
+    private var lastAcceptedHeading: CLLocationDirection = -1
+    private var lastHeadingAcceptedAt: CFTimeInterval = 0
+    private let headingMinDeltaDegrees: CLLocationDirection = 1.2
+    private let headingMinInterval: CFTimeInterval = 1.0 / 24.0
+    private let radarAnglePushMinDegrees: CLLocationDirection = 1.0
+    private let radarDistancePushMinMeters: CLLocationDistance = 0.35
 
     init(
         addressSettings: AddressServiceSettings = .shared,
@@ -44,7 +51,8 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
         manager.distanceFilter = 1
-        manager.headingFilter = kCLHeadingFilterNone
+        // 系统先滤掉 <1.5° 的抖动；业务侧再做时间/角度节流。
+        manager.headingFilter = 1.5
         manager.requestWhenInUseAuthorization()
         manager.startUpdatingLocation()
         manager.startUpdatingHeading()
@@ -87,7 +95,28 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
-        heading = newHeading.magneticHeading
+        // 雷达只靠指南针航向；陀螺仪不参与。这里做角度+时间节流，避免高频 recalculate。
+        let nextHeading = newHeading.magneticHeading
+        guard nextHeading >= 0 else { return }
+
+        let now = CFAbsoluteTimeGetCurrent()
+        let delta: CLLocationDirection
+        if lastAcceptedHeading < 0 {
+            delta = .greatestFiniteMagnitude
+        } else {
+            delta = angleDelta(nextHeading, lastAcceptedHeading)
+        }
+
+        // 大转向立即跟；小抖动需间隔足够才更新。
+        let intervalOK = (now - lastHeadingAcceptedAt) >= headingMinInterval
+        let significantTurn = delta >= headingMinDeltaDegrees
+        guard lastAcceptedHeading < 0 || significantTurn || (intervalOK && delta >= 0.6) else {
+            return
+        }
+
+        heading = nextHeading
+        lastAcceptedHeading = nextHeading
+        lastHeadingAcceptedAt = now
         recalculate()
     }
 
@@ -159,13 +188,14 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         let nextDistance = bleDistanceOverrideMeters ?? gpsDistance
 
         var radarChanged = false
-        if lastRadarDistance < 0 || abs(nextDistance - lastRadarDistance) >= 0.25 {
+        if lastRadarDistance < 0 || abs(nextDistance - lastRadarDistance) >= radarDistancePushMinMeters {
             radarDistance = nextDistance
             lastRadarDistance = nextDistance
             radarChanged = true
         }
 
-        if lastRadarRelativeAngle < 0 || angleDelta(nextRelativeAngle, lastRadarRelativeAngle) >= 0.25 {
+        // 角度推送阈值略放宽：1° 内肉眼难辨，却会触发车标 displayLink。
+        if lastRadarRelativeAngle < 0 || angleDelta(nextRelativeAngle, lastRadarRelativeAngle) >= radarAnglePushMinDegrees {
             radarRelativeAngle = nextRelativeAngle
             lastRadarRelativeAngle = nextRelativeAngle
             radarChanged = true
