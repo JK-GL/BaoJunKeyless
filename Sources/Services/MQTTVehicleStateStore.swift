@@ -196,8 +196,6 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     static let explicitPowerStateHoldSeconds: TimeInterval = 180
     /// BLE 本地锁/解锁保护截止时间
     var localDoorLockHoldUntil: Date?
-    /// HTTP 控制空调成功后的本地乐观更新保护窗，避免旧快照瞬间冲回。
-    var localClimateHoldUntil: Date?
     var httpTimer: Timer?
     /// HTTP 全量车况是状态页权威源；防止 3 秒轮询发生并发覆盖。
     var isHTTPPollInFlight = false
@@ -435,17 +433,14 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         vehicleEventLogStore.add(.action, "车辆电源已确认", detail: "\(source) · \(power.title)")
     }
 
-    /// 空调开关/设定温度本地即时回写。
-    /// 用于：
-    /// 1) HTTP 控制成功后的乐观更新（关 MQTT 时尤其重要）
-    /// 2) MQTT acStatus / 温度字段增量
-    /// 随后仍会触发 HTTP 全量确认，避免长期只信本地。
-    func applyLocalClimateState(
+    /// 空调真实字段回写（官方路径）。
+    /// 只接受 MQTT / HTTP 返回的 acStatus、accCntTemp，不根据控制命令本地假改 UI。
+    func applyAuthoritativeClimateState(
         acOn: Bool? = nil,
         temperature: Double? = nil,
-        source: String,
-        holdSeconds: TimeInterval = 12
+        source: String
     ) {
+        guard acOn != nil || temperature != nil else { return }
         let now = Date()
         var next = state
         var dash = dashboard
@@ -467,37 +462,32 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 changed = true
             }
         } else if let acOn {
-            // 没有新温度时，至少让文案反映开关。
+            // MQTT 只推开关、没推温度时，按真实开关态显示，不伪造温度。
             if acOn {
                 if let current = next.acTemperature {
                     dash.acTemperatureText = "\(Int(current.rounded()))°C"
                 } else if dash.acTemperatureText == "--" || dash.acTemperatureText == "关闭" {
                     dash.acTemperatureText = "开启"
                 }
-            } else {
+            } else if dash.acTemperatureText != "关闭" {
                 dash.acTemperatureText = "关闭"
             }
             changed = true
         }
 
-        guard changed || next.timestamp != now else { return }
+        guard changed else { return }
 
         next.timestamp = now
         next.online = true
         dash.updatedAt = now
         dash.updatedAtText = formatTime(now)
-
-        // 短保护窗：避免刚乐观更新就被旧 HTTP 快照冲回。
-        if holdSeconds > 0 {
-            localClimateHoldUntil = now.addingTimeInterval(holdSeconds)
-            if acOn != nil {
-                fieldCollectAt["acStatus"] = now
-                fieldSource["acStatus"] = source
-            }
-            if temperature != nil {
-                fieldCollectAt["accCntTemp"] = now
-                fieldSource["accCntTemp"] = source
-            }
+        if acOn != nil {
+            fieldCollectAt["acStatus"] = now
+            fieldSource["acStatus"] = source
+        }
+        if temperature != nil {
+            fieldCollectAt["accCntTemp"] = now
+            fieldSource["accCntTemp"] = source
         }
 
         bumpStatusRevision()
@@ -505,42 +495,11 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         applyDashboard(dash)
         vehicleEventLogStore.add(
             .action,
-            "本地空调已更新",
+            "空调状态已确认",
             detail: "\(source) · 开关=\(next.acOn.map { $0 ? "开" : "关" } ?? "--") · 设定=\(next.acTemperature.map { "\(Int($0.rounded()))°C" } ?? "--")"
         )
-        // 无论 MQTT 开或关，都立刻补一次 HTTP 权威确认。
-        scheduleHTTPRefreshFromRealtime(reason: "local-climate-update")
-    }
-
-    func applyLocalClimateFromCommand(_ command: VehicleCommand, source: String = "HTTP控制成功") {
-        switch command.kind {
-        case .acOn:
-            applyLocalClimateState(
-                acOn: true,
-                temperature: command.requestedTemperature,
-                source: source
-            )
-        case .acOff:
-            applyLocalClimateState(
-                acOn: false,
-                temperature: nil,
-                source: source
-            )
-        case .setTemperature:
-            applyLocalClimateState(
-                acOn: true,
-                temperature: command.requestedTemperature,
-                source: source
-            )
-        case .quickCool:
-            applyLocalClimateState(
-                acOn: true,
-                temperature: command.requestedTemperature ?? 17,
-                source: source
-            )
-        default:
-            break
-        }
+        // MQTT 已写实时空调后，再补一次 HTTP 全量，对齐其余字段。
+        scheduleHTTPRefreshFromRealtime(reason: "mqtt-climate-confirmed")
     }
 
     /// 网络权威车况确认“未锁→已锁”时，区分 App 自己的命令与外部/物理锁车。

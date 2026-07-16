@@ -240,8 +240,18 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
                         }
                         let timing = VehicleCommandTiming(requestBuildMillis: buildMillis, httpRoundTripMillis: Int(Date().timeIntervalSince(httpStart) * 1000))
                         completion(VehicleCommandExecutionResult(command: command, state: .sent, userMessage: message, shouldRefresh: true, refreshDelay: 0, timing: timing))
-                        // 上电/熄火后加快收敛：1.5s + 4s 各刷一次车况
-                        let refreshDelays: [TimeInterval] = (command.kind == .remoteStart || command.kind == .remoteStop) ? [1.5, 4.0] : [2.1]
+                        // 不本地假改 UI：只靠后续真实回写。
+                        // - 上电/熄火：1.5s + 4s
+                        // - 空调/设温/车窗/寻车：0.3s 起连续补刷，关 MQTT 时也能靠 HTTP 收敛
+                        let refreshDelays: [TimeInterval]
+                        switch command.kind {
+                        case .remoteStart, .remoteStop:
+                            refreshDelays = [1.5, 4.0]
+                        case .acOn, .acOff, .setTemperature, .quickCool, .openWindows, .closeWindows, .findCar:
+                            refreshDelays = [0.3, 1.2, 2.5, 4.5]
+                        default:
+                            refreshDelays = [2.1]
+                        }
                         for delay in refreshDelays {
                             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                                 refresher?.refreshNow()

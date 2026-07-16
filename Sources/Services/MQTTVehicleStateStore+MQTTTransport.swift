@@ -51,15 +51,15 @@ extension MQTTVehicleStateStore {
                 self.applyExplicitPowerState(power, source: "MQTT电源字段")
             }
 
-            // 空调开关/设定温度是单值字段，可安全即时更新；门窗仍只提示后走 HTTP。
+            // 空调开关/设定温度：官方路径是 MQTT 真实字段即时回写，不是控制成功后本地假改。
+            // 门窗仍只提示后走 HTTP，避免半包假开门。
             let climateAc = parseACStatus(fields["acStatus"])
             let climateTemp = parseDouble(fields["accCntTemp"])
             if climateAc != nil || climateTemp != nil {
-                self.applyLocalClimateState(
+                self.applyAuthoritativeClimateState(
                     acOn: climateAc,
                     temperature: climateTemp,
-                    source: "MQTT空调增量",
-                    holdSeconds: 8
+                    source: "MQTT空调推送"
                 )
             }
 
