@@ -659,8 +659,11 @@ struct RadarCardView: View {
         return AppTheme.red
     }
 
+    /// 大车图模式：不占雷达方框，上下更贴。
+    private var isLargeCarMode: Bool { showLargeCarImage && !showRadar }
+
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: isLargeCarMode ? 4 : 12) {
             // 上半区：雷达 / 大车图 互斥；都关时不占位，只留距离地址。
             if showRadar {
                 ZStack {
@@ -692,13 +695,12 @@ struct RadarCardView: View {
                     }
                 }
             } else if showLargeCarImage {
-                // 布局仍占原雷达位 280，不撑高整页；车图内容单独放大。
+                // 不用雷达 280 方框；按车图自身比例排高，再整体缩小 20%。
                 StatusLargeCarImageView(carImageURL: carImageURL)
-                    .frame(width: 280, height: 280)
                     .frame(maxWidth: .infinity)
             }
 
-            VStack(spacing: 5) {
+            VStack(spacing: isLargeCarMode ? 2 : 5) {
                 // 已连上车机 BLE 时优先用 RSSI 估距；地库 GPS 经纬度常漂，不能当真
                 if let bleDistanceText {
                     Text(bleDistanceText)
@@ -741,7 +743,7 @@ struct RadarCardView: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.vertical, 16)
+        .padding(.vertical, isLargeCarMode ? 6 : 16)
         .padding(.horizontal, 16)
         .onAppear { syncBLEDistanceOverride() }
         .onChange(of: diagnostics.debugSmoothedRSSI) { _ in syncBLEDistanceOverride() }
@@ -801,27 +803,41 @@ private struct StatusLargeCarImageView: View {
         _image = State(initialValue: RadarUIView.cachedCarImage(for: carImageURL))
     }
 
-    /// 布局框仍是 280，内容放大约 50%，避免整页被撑高。
-    private let contentScale: CGFloat = 1.5
+    /// 相对可用宽度再缩小 20%。
+    private let widthRatio: CGFloat = 0.80
+
+    private var aspect: CGFloat {
+        if let image, image.size.width > 1, image.size.height > 1 {
+            return image.size.width / image.size.height
+        }
+        return 16.0 / 9.0
+    }
 
     var body: some View {
-        ZStack {
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    // 官方车图四周透明/暗边较多；放大内容而不是放大外框。
-                    .scaleEffect(contentScale)
-            } else {
-                // 仅冷启动且缓存未命中时短暂占位；正常从雷达切过来应直接命中。
-                Image(systemName: "car.fill")
-                    .font(.system(size: 88, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.45))
+        // 彻底不用雷达 280 方框：
+        // - 图宽 = 父宽 × 0.8
+        // - 图高 = 图宽 / 真实比例
+        // - 外框高度 = 图高（上下贴近距离文案）
+        GeometryReader { geo in
+            let width = max(geo.size.width * widthRatio, 1)
+            let height = width / max(aspect, 0.01)
+            Group {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    Image(systemName: "car.fill")
+                        .font(.system(size: 48, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.45))
+                }
             }
+            .frame(width: width, height: height)
+            .position(x: geo.size.width / 2, y: height / 2)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // 裁掉放大后溢出，距离/地址不会被车图顶开。
-        .clipped()
+        // 外框高度 = 80% 宽对应的真实图高，而不是固定 280。
+        .aspectRatio(aspect / widthRatio, contentMode: .fit)
+        .frame(maxWidth: .infinity)
         .onAppear { applyCacheOrLoad() }
         .onChange(of: carImageURL) { _ in
             applyCacheOrLoad()
