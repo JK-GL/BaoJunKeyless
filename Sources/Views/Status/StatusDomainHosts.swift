@@ -7,11 +7,14 @@ struct CarLocationDisplaySnapshot: Equatable {
     let address: String
 }
 
-/// 只观察位置显示域 + 连接状态 BLE 态 + RSSI 诊断域，避免整页 StatusView 重算。
+/// 状态页雷达区：
+/// - 不在此观察 LocationManager（航向/距离高频会整段重绘，大车图会卡）
+/// - 位置显示域 / BLE 态仍由子块或本段轻量观察；雷达与距离块内部各自订阅高频源
 struct StatusRadarSection: View {
     @ObservedObject private var locationDisplayStore = VehicleLocationDisplayStore.shared
     @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
-    @ObservedObject var locationManager: LocationManager
+    /// 只传引用，不 @ObservedObject，避免 heading/distance 刷新整段 StatusRadarSection。
+    let locationManager: LocationManager
     let carImageURL: String
 
     var body: some View {
@@ -480,9 +483,9 @@ struct StatusCommandConfirmHost: View {
 }
 
 /// 首页主内容：显式观察 dashboard/state/metrics，确保门窗实时刷新。
+/// 注意：不要 @EnvironmentObject LocationManager —— distance 高频会拖整页卡顿。
 struct StatusMainDashboardHost: View {
     @EnvironmentObject var vehicleStore: VehicleStateStore
-    @EnvironmentObject var locationManager: LocationManager
     @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
     let onCommand: (CommandAction) -> Void
@@ -528,7 +531,7 @@ struct StatusMainDashboardHost: View {
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
                 }
-            } else {
+            } else if let locationManager = LocationManagerBridge.current {
                 StatusRadarSection(
                     locationManager: locationManager,
                     carImageURL: dashboard.vehicleImageURL

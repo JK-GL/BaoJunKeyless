@@ -8,10 +8,14 @@ struct BaoJunKeylessApp: App {
     @StateObject private var vehicleEventLogStore = VehicleEventLogStore.shared
     @StateObject private var addressSettings = AddressServiceSettings.shared
     @StateObject private var vehicleCredentials = VehicleCredentialsStore.shared
-    @StateObject private var locationManager = LocationManager(addressSettings: AddressServiceSettings.shared)
+    @StateObject private var locationManager: LocationManager
     @StateObject private var vehicleStore: VehicleStateStore
 
     init() {
+        let location = LocationManager(addressSettings: AddressServiceSettings.shared)
+        _locationManager = StateObject(wrappedValue: location)
+        // 供状态页子树按引用取用，避免 @EnvironmentObject 订阅高频 distance 导致整页重绘。
+        LocationManagerBridge.current = location
         _vehicleStore = StateObject(
             wrappedValue: MQTTVehicleStateStore(
                 addressSettings: AddressServiceSettings.shared,

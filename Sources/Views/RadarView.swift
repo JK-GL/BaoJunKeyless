@@ -596,7 +596,7 @@ struct RadarCardView: View {
     private var showLargeCarImage: Bool { keylessSettings.settings.statusLargeCarImageEnabled }
 
     var body: some View {
-        // 边距上次 12/16，本次一半 → 6/8
+        // 回退 v729 观感：车图 0.80 再放大 10%→0.88；上下边距相对 v729 减半（12/16→6/8）
         VStack(spacing: 6) {
             if showRadar {
                 RadarVisualBlock(
@@ -813,8 +813,8 @@ private struct RadarDistanceAddressBlock: View {
 // MARK: - 状态页大车图（与雷达共用 sharedCarImages；不跑雷达动画）
 /// 完全对齐 v724 流畅模型：
 /// - 外框固定宽高（像 420 框），ScrollView 永不因车图重排
-/// - 只缩小车图内容：上次 0.80，本次一半 → 0.40（边距也已减半）
-/// - 根卡片不再观察 RSSI；本视图 Equatable，仅 URL 变化换图
+/// - 车图：回退 v729 基准 0.80，再放大 10% → 0.88
+/// - 根卡片 / 状态区不再观察高频 RSSI·航向；本视图 Equatable，仅 URL 变化换图
 private struct StatusLargeCarImageView: View, Equatable {
     let carImageURL: String
     /// 显示用图（已裁透明边）；与雷达原图缓存分离。
@@ -825,8 +825,8 @@ private struct StatusLargeCarImageView: View, Equatable {
     private let frameWidthRatio: CGFloat = 1.0
     /// 固定外框高宽比。高度恒定 = 流畅根因。
     private let layoutAspect: CGFloat = 1.95
-    /// 只缩小车图内容：v729=0.80，本次一半 → 0.40。
-    private let contentScale: CGFloat = 0.40
+    /// v729=0.80，再放大 10% → 0.88。
+    private let contentScale: CGFloat = 0.88
 
     static func == (lhs: StatusLargeCarImageView, rhs: StatusLargeCarImageView) -> Bool {
         lhs.carImageURL == rhs.carImageURL

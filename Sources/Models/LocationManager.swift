@@ -1,6 +1,14 @@
 import Foundation
 import CoreLocation
 
+// MARK: - LocationManager 桥
+/// 状态页大列表不要用 @EnvironmentObject 订阅 LocationManager：
+/// distance / address 刷新会牵动整棵 StatusMainDashboardHost。
+/// 需要引用时从 bridge 取；需要 UI 刷新的子视图再局部 @ObservedObject。
+enum LocationManagerBridge {
+    static weak var current: LocationManager?
+}
+
 // MARK: - GPS + 磁力计管理器
 class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
