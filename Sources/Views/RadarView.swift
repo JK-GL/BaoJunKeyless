@@ -819,8 +819,9 @@ private struct RadarDistanceAddressBlock: View {
 }
 
 // MARK: - 人-信号-车 关系条（第三显示模式）
-/// 左人 · 中 GPS/RSSI · 右车；固定高度 120；人车间距随离车距离变化。
-/// 不做指南针转人。RSSI/距离只刷新本条，不拖整页。
+/// 左人 · 中 GPS/RSSI · 右车；固定高度 120。
+/// 间距按无感语义分段：1.5m / 8m / 25m；中间不显示中文 zone，只显示 GPS/dBm，颜色对齐 zone。
+/// 不做指南针转人。
 private struct StatusProximityStripView: View {
     @ObservedObject var locationManager: LocationManager
     @ObservedObject private var diagnostics = BLEDiagnosticsStore.shared
@@ -828,15 +829,20 @@ private struct StatusProximityStripView: View {
     var bleStatus: StatusBLEState
     var carImageURL: String
 
-    @State private var carImage: UIImage?
+    /// 已裁透明边的显示图；与雷达原图缓存分离。
+    @State private var displayCarImage: UIImage?
 
-    /// 固定条带高度（用户选矮一点 ~120）。
+    /// 固定条带高度。
     private let stripHeight: CGFloat = 120
-    /// 人车间距：近 12m 内收紧，200m 外最疏。
-    private let nearMeters: CGFloat = 12
-    private let farMeters: CGFloat = 200
-    private let minGap: CGFloat = 10
-    private let maxGap: CGFloat = 52
+    /// 无感距离锚点（与 BLEProximityDistanceEstimator / 阈值语义对齐）。
+    private let unlockMeters: CGFloat = 1.5
+    private let lockMeters: CGFloat = 8
+    private let bleTrustMeters: CGFloat = 25
+    /// gap：贴车最紧 → 离开最疏。
+    private let gapNear: CGFloat = 8
+    private let gapGray: CGFloat = 22
+    private let gapFar: CGFloat = 38
+    private let gapGPS: CGFloat = 52
 
     private var hasActiveBLESession: Bool {
         bleStatus == .connecting || bleStatus == .connected || bleStatus == .authenticating || bleStatus == .authenticated
@@ -857,6 +863,7 @@ private struct StatusProximityStripView: View {
         diagnostics.debugSmoothedRSSI ?? diagnostics.debugRawRSSI
     }
 
+    /// 中间只显示 GPS / dBm，不显示近场/灰区/离开中文。
     private var centerText: String {
         if hasActiveBLESession {
             if let displayRSSI { return "\(displayRSSI) dBm" }
@@ -865,46 +872,107 @@ private struct StatusProximityStripView: View {
         return "GPS"
     }
 
+    /// 颜色对齐 zone，文案仍只有 GPS/dBm。
     private var centerColor: Color {
         if !hasActiveBLESession {
-            return Color.green.opacity(0.9)
+            return Color.green.opacity(0.85)
         }
-        guard let displayRSSI else { return Color.white.opacity(0.55) }
-        if !isLiveAuthenticatedRSSI { return Color.white.opacity(0.55) }
-        if displayRSSI >= -55 { return AppTheme.green }
-        if displayRSSI >= -70 { return AppTheme.orange }
-        return AppTheme.red
+        guard displayRSSI != nil else { return Color.white.opacity(0.55) }
+        // 预填/未鉴权：灰色，别当真。
+        if !isLiveAuthenticatedRSSI {
+            return Color.white.opacity(0.55)
+        }
+        switch proximityZone {
+        case .near: return AppTheme.green
+        case .gray: return AppTheme.orange
+        case .far: return AppTheme.red
+        case .gps: return Color.green.opacity(0.85)
+        }
     }
 
-    private var distanceMeters: CGFloat {
-        if prefersBLEDistance, let rssi = displayRSSI,
-           let meters = BLEProximityDistanceEstimator.meters(fromRSSI: rssi) {
-            return CGFloat(meters)
+    private enum ProximityZone {
+        case near, gray, far, gps
+    }
+
+    /// BLE 估距（米）；无可信 BLE 时 nil。
+    private var bleMeters: CGFloat? {
+        guard prefersBLEDistance, let rssi = displayRSSI,
+              let meters = BLEProximityDistanceEstimator.meters(fromRSSI: rssi) else {
+            return nil
         }
+        return CGFloat(meters)
+    }
+
+    private var gpsOrCachedMeters: CGFloat? {
         if locationManager.distance > 0 {
             return CGFloat(locationManager.distance)
         }
         let cached = displayCacheStore.loadSnapshot().distanceMeters
         if cached > 0 { return CGFloat(cached) }
-        return farMeters
+        return nil
     }
 
-    /// 距离越近 gap 越小（二期动态间距）。
+    /// 用于 gap 的有效距离与 zone。
+    private var proximityZone: ProximityZone {
+        if let ble = bleMeters {
+            if ble <= unlockMeters { return .near }
+            if ble <= lockMeters { return .gray }
+            return .far
+        }
+        return .gps
+    }
+
+    private var distanceMetersForGap: CGFloat {
+        if let ble = bleMeters {
+            return min(ble, bleTrustMeters)
+        }
+        // GPS/缓存：直接当远场，不再用 200m 线性假装精度。
+        return bleTrustMeters
+    }
+
+    /// 分段非线性 gap：1.5m 内最紧，1.5~8 灰区，8~25 离开，GPS 顶满。
     private var dynamicGap: CGFloat {
-        let d = min(max(distanceMeters, nearMeters), farMeters)
-        let t = (d - nearMeters) / (farMeters - nearMeters)
-        return minGap + (maxGap - minGap) * t
+        switch proximityZone {
+        case .gps:
+            return gapGPS
+        case .near:
+            // 0.3~1.5m → gapNear~gapGray*0.55
+            let t = min(max(distanceMetersForGap / unlockMeters, 0), 1)
+            return gapNear + (gapGray * 0.55 - gapNear) * t
+        case .gray:
+            // 1.5~8m → 中等拉开
+            let t = min(max((distanceMetersForGap - unlockMeters) / (lockMeters - unlockMeters), 0), 1)
+            // easeOut：前段变化更明显
+            let eased = 1 - pow(1 - t, 2)
+            return (gapGray * 0.55) + (gapFar - gapGray * 0.55) * eased
+        case .far:
+            // 8~25m → 明显疏到接近 GPS
+            let t = min(max((distanceMetersForGap - lockMeters) / (bleTrustMeters - lockMeters), 0), 1)
+            let eased = 1 - pow(1 - t, 1.6)
+            return gapFar + (gapGPS - gapFar) * eased
+        }
+    }
+
+    /// gap 量化到 1pt，减少无意义动画抖动。
+    private var quantizedGap: CGFloat {
+        (dynamicGap * 2).rounded() / 2
     }
 
     var body: some View {
-        HStack(spacing: dynamicGap) {
-            // 左：人（不跟指南针转）
-            Image(systemName: "figure.stand")
-                .font(.system(size: 34, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.78))
-                .frame(width: 44, height: stripHeight)
+        // 中心胶囊视觉居中：左右等宽槽，人/车分别贴左右；gap 用左右 padding 表达。
+        HStack(spacing: 0) {
+            // 左槽：人靠右贴向中心
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                Image(systemName: "figure.stand")
+                    .font(.system(size: 34, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.80))
+                    .frame(width: 40, height: stripHeight)
+                    .padding(.trailing, quantizedGap / 2)
+            }
+            .frame(maxWidth: .infinity)
 
-            // 中：GPS / RSSI 胶囊
+            // 中：只 GPS / dBm
             Text(centerText)
                 .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .foregroundStyle(centerColor)
@@ -915,29 +983,33 @@ private struct StatusProximityStripView: View {
                         .fill(centerColor.opacity(0.12))
                         .overlay(Capsule().stroke(centerColor.opacity(0.28), lineWidth: 0.5))
                 )
-                .frame(minWidth: 72)
+                .frame(minWidth: 76)
 
-            // 右：车图
-            Group {
-                if let carImage {
-                    Image(uiImage: carImage)
-                        .resizable()
-                        .scaledToFit()
-                } else {
-                    Image(systemName: "car.fill")
-                        .font(.system(size: 36, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.55))
+            // 右槽：车靠左贴向中心；裁透明边后更贴
+            HStack(spacing: 0) {
+                Group {
+                    if let displayCarImage {
+                        Image(uiImage: displayCarImage)
+                            .resizable()
+                            .scaledToFit()
+                    } else {
+                        Image(systemName: "car.fill")
+                            .font(.system(size: 34, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.55))
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: stripHeight - 20, alignment: .leading)
+                .padding(.leading, quantizedGap / 2)
+                Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: stripHeight - 16)
         }
         .frame(height: stripHeight)
         .frame(maxWidth: .infinity)
-        .animation(.easeInOut(duration: 0.25), value: dynamicGap)
+        .animation(.easeInOut(duration: 0.20), value: quantizedGap)
         .onAppear { loadCarImageIfNeeded() }
         .onChange(of: carImageURL) { _ in
-            carImage = nil
+            displayCarImage = nil
             loadCarImageIfNeeded()
         }
     }
@@ -945,14 +1017,14 @@ private struct StatusProximityStripView: View {
     private func loadCarImageIfNeeded() {
         let key = RadarUIView.normalizedCarImageKey(carImageURL)
         if let cached = RadarUIView.cachedCarImage(for: key) {
-            carImage = cached
+            displayCarImage = Self.trimmedDisplayImage(from: cached, cacheKey: key)
             return
         }
         guard let url = URL(string: key) else { return }
         if RadarUIView.sharedCarImageLoadInFlight.contains(key) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 if let cached = RadarUIView.cachedCarImage(for: key) {
-                    carImage = cached
+                    displayCarImage = Self.trimmedDisplayImage(from: cached, cacheKey: key)
                 } else {
                     loadCarImageIfNeeded()
                 }
@@ -969,10 +1041,17 @@ private struct StatusProximityStripView: View {
             }
             guard let data, let img = UIImage(data: data) else { return }
             RadarUIView.storeCarImage(img, for: key)
+            let trimmed = Self.trimmedDisplayImage(from: img, cacheKey: key)
             DispatchQueue.main.async {
-                self.carImage = img
+                self.displayCarImage = trimmed
             }
         }.resume()
+    }
+
+    /// 与大车图共用裁边缓存逻辑（同文件 private extension）。
+    private static func trimmedDisplayImage(from image: UIImage, cacheKey: String) -> UIImage {
+        // 直接复用 UIImage 扩展；关系条也需要去掉官方车图透明边。
+        image.bjk_trimmedTransparentPixels(alphaThreshold: 10) ?? image
     }
 }
 
