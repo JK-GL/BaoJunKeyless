@@ -55,17 +55,23 @@ extension MQTTVehicleStateStore {
             // 门窗仍只提示后走 HTTP，避免半包假开门。
             let climateAc = parseACStatus(fields["acStatus"])
             let climateTemp = parseDouble(fields["accCntTemp"])
+            let climateObservedAt = parseTimestamp(fields["collectTime"]) ?? Date()
             if climateAc != nil || climateTemp != nil {
-                self.applyAuthoritativeClimateState(
+                // 同值重复推送不会再次刷 UI；只有真实变化才补 HTTP。
+                _ = self.applyAuthoritativeClimateState(
                     acOn: climateAc,
                     temperature: climateTemp,
-                    source: "MQTT空调推送"
+                    source: "MQTT空调推送",
+                    observedAt: climateObservedAt,
+                    scheduleHTTPConfirm: true
                 )
             }
 
             // 其他 MQTT 半包不直接写车辆状态；只提示变化并唤醒 HTTP 完整快照。
-            guard !changes.isEmpty else { return }
-            let summary = Array(changes.prefix(8)).joined(separator: ", ")
+            // 空调字段已在上面单独处理，避免再因 acStatus 重复触发额外 HTTP 冲刷。
+            let nonClimateChanges = changes.filter { !$0.hasPrefix("acStatus:") && !$0.hasPrefix("accCntTemp:") }
+            guard !nonClimateChanges.isEmpty else { return }
+            let summary = Array(nonClimateChanges.prefix(8)).joined(separator: ", ")
             self.vehicleEventLogStore.addCoalesced(
                 .action,
                 "MQTT 状态提示",

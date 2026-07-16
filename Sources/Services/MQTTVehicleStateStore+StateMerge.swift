@@ -123,10 +123,28 @@ extension MQTTVehicleStateStore {
             dash.steeringAngleText = takeText(dash.steeringAngleText, newDashboard.steeringAngleText)
             dash.throttlePercentText = takeText(dash.throttlePercentText, newDashboard.throttlePercentText)
             dash.brakePercentText = takeText(dash.brakePercentText, newDashboard.brakePercentText)
-            // 空调：按官方策略，只写 HTTP/MQTT 真实字段，不做本地假 UI 保护。
-            dash.acTemperatureText = takeText(dash.acTemperatureText, newDashboard.acTemperatureText)
-            if let ac = newState.acOn, st.acOn != ac { st.acOn = ac; changed = true }
-            if let t = newState.acTemperature, st.acTemperature != t { st.acTemperature = t; changed = true }
+            // 空调：
+            // - 开关：若 MQTT 更新且比本包 HTTP collect 新，不让旧 HTTP 把开关冲回（避免连跳）
+            // - 温度：始终接受 HTTP accCntTemp（当前 MQTT protobuf 通常不带温度）
+            let mqttClimateFresher = lastMQTTClimateAt.map { $0 > collectAt } ?? false
+            if !mqttClimateFresher, let ac = newState.acOn, st.acOn != ac {
+                st.acOn = ac
+                changed = true
+            }
+            if let t = newState.acTemperature, st.acTemperature != t {
+                st.acTemperature = t
+                changed = true
+            }
+            // 文案优先用温度；没有温度时再跟开关态
+            if let t = st.acTemperature {
+                let text = "\(Int(t.rounded()))°C"
+                if dash.acTemperatureText != text {
+                    dash.acTemperatureText = text
+                    changed = true
+                }
+            } else if !mqttClimateFresher {
+                dash.acTemperatureText = takeText(dash.acTemperatureText, newDashboard.acTemperatureText)
+            }
 
             dash.leftFrontTirePressureText = takeOptText(dash.leftFrontTirePressureText, newDashboard.leftFrontTirePressureText)
             dash.rightFrontTirePressureText = takeOptText(dash.rightFrontTirePressureText, newDashboard.rightFrontTirePressureText)
@@ -192,11 +210,23 @@ extension MQTTVehicleStateStore {
         dash.doorStatusText = VehicleStatusMapper.recomputeDoorStatusText(from: dash)
         dash.windowStatusText = VehicleStatusMapper.recomputeWindowStatusText(from: dash)
 
-        // BLE 本地锁保护窗内，不覆盖门锁。空调不做本地假 UI 保护。
+        // BLE 本地锁保护窗内，不覆盖门锁。
+        // 空调开关：MQTT 更新时不被更旧 HTTP 冲回；温度始终允许 HTTP 更新。
         var mergedState = newState
         if let until = localDoorLockHoldUntil, now < until {
             mergedState.locked = state.locked
             dash.lockStatusText = dashboard.lockStatusText
+        }
+        let mqttClimateFresher = lastMQTTClimateAt.map { $0 > collectAt } ?? false
+        if mqttClimateFresher {
+            mergedState.acOn = state.acOn
+            // 若本包 HTTP 没带有效温度，才保留当前温度；有 accCntTemp 则用 HTTP。
+            if newState.acTemperature == nil {
+                mergedState.acTemperature = state.acTemperature
+                dash.acTemperatureText = dashboard.acTemperatureText
+            } else if let t = newState.acTemperature {
+                dash.acTemperatureText = "\(Int(t.rounded()))°C"
+            }
         }
 
         // HTTP 若带明确电源字段则直接确认；若本车型 HTTP 不带，则短时保留最近的
