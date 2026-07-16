@@ -14,6 +14,8 @@ struct SettingsConnectionConfirmationSection: View {
             visual = "雷达"
         } else if keylessSettings.settings.statusLargeCarImageEnabled {
             visual = "大车图"
+        } else if keylessSettings.settings.statusProximityStripEnabled {
+            visual = "关系条"
         } else {
             visual = "极简"
         }
@@ -64,8 +66,8 @@ struct SettingsConnectionConfirmationSection: View {
                 settingToggle(
                     icon: "dot.radiowaves.left.and.right",
                     title: "显示雷达",
-                    subtitle: "开启后状态页显示雷达圆盘与车标。与「显示大车图」互斥；关闭后可只留距离和地址。",
-                    isOn: exclusiveBinding(enableRadar: true, title: "显示雷达")
+                    subtitle: "开启后状态页显示雷达圆盘与车标。与大车图、关系条互斥；关闭后可只留距离和地址。",
+                    isOn: visualBinding(.radar, title: "显示雷达")
                 )
 
                 Divider().background(Color.white.opacity(0.08))
@@ -73,11 +75,24 @@ struct SettingsConnectionConfirmationSection: View {
                 settingToggle(
                     icon: "car.fill",
                     title: "显示大车图",
-                    subtitle: "开启后在原雷达位置显示车辆大图。与「显示雷达」互斥；两者都关时仅保留距离和地址。",
-                    isOn: exclusiveBinding(enableRadar: false, title: "显示大车图")
+                    subtitle: "开启后显示车辆大图。与雷达、关系条互斥；都关时仅保留距离和地址。",
+                    isOn: visualBinding(.largeCar, title: "显示大车图")
+                )
+
+                Divider().background(Color.white.opacity(0.08))
+
+                settingToggle(
+                    icon: "figure.stand",
+                    title: "显示关系条",
+                    subtitle: "开启后显示「人 — 信号 — 车」横排：间距随离车距离变化，中间为 GPS/RSSI。与雷达、大车图互斥。",
+                    isOn: visualBinding(.proximityStrip, title: "显示关系条")
                 )
             }
         }
+    }
+
+    private enum VisualMode {
+        case radar, largeCar, proximityStrip
     }
 
     private func binding(_ keyPath: WritableKeyPath<KeylessSettings, Bool>, title: String) -> Binding<Bool> {
@@ -90,29 +105,26 @@ struct SettingsConnectionConfirmationSection: View {
         )
     }
 
-    /// 雷达 / 大车图互斥绑定：开一侧自动关另一侧；关一侧不自动打开另一侧。
-    private func exclusiveBinding(enableRadar: Bool, title: String) -> Binding<Bool> {
+    /// 三选一视觉模式：开一个自动关另外两个；关一个不自动打开别的。
+    private func visualBinding(_ mode: VisualMode, title: String) -> Binding<Bool> {
         Binding(
             get: {
-                if enableRadar {
-                    return keylessSettings.settings.statusRadarEnabled
+                switch mode {
+                case .radar: return keylessSettings.settings.statusRadarEnabled
+                case .largeCar: return keylessSettings.settings.statusLargeCarImageEnabled
+                case .proximityStrip: return keylessSettings.settings.statusProximityStripEnabled
                 }
-                return keylessSettings.settings.statusLargeCarImageEnabled
             },
             set: { value in
-                if enableRadar {
-                    if value {
-                        keylessSettings.settings.statusLargeCarImageEnabled = false
-                        keylessSettings.settings.statusRadarEnabled = true
-                    } else {
-                        keylessSettings.settings.statusRadarEnabled = false
-                    }
+                if value {
+                    keylessSettings.settings.statusRadarEnabled = (mode == .radar)
+                    keylessSettings.settings.statusLargeCarImageEnabled = (mode == .largeCar)
+                    keylessSettings.settings.statusProximityStripEnabled = (mode == .proximityStrip)
                 } else {
-                    if value {
-                        keylessSettings.settings.statusRadarEnabled = false
-                        keylessSettings.settings.statusLargeCarImageEnabled = true
-                    } else {
-                        keylessSettings.settings.statusLargeCarImageEnabled = false
+                    switch mode {
+                    case .radar: keylessSettings.settings.statusRadarEnabled = false
+                    case .largeCar: keylessSettings.settings.statusLargeCarImageEnabled = false
+                    case .proximityStrip: keylessSettings.settings.statusProximityStripEnabled = false
                     }
                 }
                 VehicleEventLogStore.shared.add(.system, value ? "开启\(title)" : "关闭\(title)")

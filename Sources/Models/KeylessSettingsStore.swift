@@ -18,10 +18,12 @@ struct KeylessSettings: Codable {
     var lockUnlockConfirmationEnabled: Bool = true
     /// 熄火后监测门/窗/尾门；有未关立即推送，之后每 10 分钟一次直到全关。默认关。
     var powerOffBodyMonitorEnabled: Bool = false
-    /// 状态页显示雷达圆盘。与大车图互斥；默认真。
+    /// 状态页显示雷达圆盘。与大车图/关系条互斥；默认真。
     var statusRadarEnabled: Bool = true
-    /// 状态页在原雷达位显示大车图。与雷达互斥；默认假。
+    /// 状态页显示大车图。与雷达/关系条互斥；默认假。
     var statusLargeCarImageEnabled: Bool = false
+    /// 状态页显示人-信号-车关系条。与雷达/大车图互斥；默认假。
+    var statusProximityStripEnabled: Bool = false
 
     // 解锁
     var unlockEnabled: Bool = true
@@ -74,7 +76,7 @@ struct KeylessSettings: Codable {
 
     private enum CodingKeys: String, CodingKey {
         case keylessEnabled, pluginTakeover, smartSwitch, appManual, cmdInterval
-        case mqttEnabled, lockUnlockConfirmationEnabled, powerOffBodyMonitorEnabled, statusRadarEnabled, statusLargeCarImageEnabled
+        case mqttEnabled, lockUnlockConfirmationEnabled, powerOffBodyMonitorEnabled, statusRadarEnabled, statusLargeCarImageEnabled, statusProximityStripEnabled
         case unlockEnabled, powerStartEnabled, unlockThreshold, unlockApproachDuration, unlockPopup, unlockVibrate, unlockVibPreset, unlockVibCustomID, unlockVibStrength
         case lockEnabled, lockRequireClosedBody, lockThreshold, lockDelay, lockPopup, lockVibrate, lockVibPreset, lockVibCustomID, lockVibStrength
         case bleScanDuration, bleScanInterval
@@ -96,9 +98,16 @@ struct KeylessSettings: Codable {
         powerOffBodyMonitorEnabled = try c.decodeIfPresent(Bool.self, forKey: .powerOffBodyMonitorEnabled) ?? false
         statusRadarEnabled = try c.decodeIfPresent(Bool.self, forKey: .statusRadarEnabled) ?? true
         statusLargeCarImageEnabled = try c.decodeIfPresent(Bool.self, forKey: .statusLargeCarImageEnabled) ?? false
-        // 互斥兜底：旧脏数据若双开，优先雷达。
-        if statusRadarEnabled && statusLargeCarImageEnabled {
-            statusLargeCarImageEnabled = false
+        statusProximityStripEnabled = try c.decodeIfPresent(Bool.self, forKey: .statusProximityStripEnabled) ?? false
+        // 互斥兜底：最多开一个视觉模式，优先雷达 > 大车图 > 关系条。
+        let visualCount = [statusRadarEnabled, statusLargeCarImageEnabled, statusProximityStripEnabled].filter { $0 }.count
+        if visualCount > 1 {
+            if statusRadarEnabled {
+                statusLargeCarImageEnabled = false
+                statusProximityStripEnabled = false
+            } else if statusLargeCarImageEnabled {
+                statusProximityStripEnabled = false
+            }
         }
 
         unlockEnabled = try c.decodeIfPresent(Bool.self, forKey: .unlockEnabled) ?? true
@@ -183,21 +192,34 @@ class KeylessSettingsStore: ObservableObject {
                 settings.geofenceRadiusMeters = clamped
                 return
             }
-            // 雷达 / 大车图互斥：允许都关，不允许双开。
-            if settings.statusRadarEnabled && settings.statusLargeCarImageEnabled {
-                // 后写字段优先：比较旧值决定保留哪边。
+            // 雷达 / 大车图 / 关系条互斥：允许都关，不允许多开。
+            let radar = settings.statusRadarEnabled
+            let large = settings.statusLargeCarImageEnabled
+            let strip = settings.statusProximityStripEnabled
+            let onCount = [radar, large, strip].filter { $0 }.count
+            if onCount > 1 {
                 let oldRadar = oldValue.statusRadarEnabled
                 let oldLarge = oldValue.statusLargeCarImageEnabled
-                if !oldRadar && settings.statusRadarEnabled {
+                let oldStrip = oldValue.statusProximityStripEnabled
+                // 后开优先
+                if !oldRadar && radar {
+                    settings.statusLargeCarImageEnabled = false
+                    settings.statusProximityStripEnabled = false
+                    return
+                }
+                if !oldLarge && large {
+                    settings.statusRadarEnabled = false
+                    settings.statusProximityStripEnabled = false
+                    return
+                }
+                if !oldStrip && strip {
+                    settings.statusRadarEnabled = false
                     settings.statusLargeCarImageEnabled = false
                     return
                 }
-                if !oldLarge && settings.statusLargeCarImageEnabled {
-                    settings.statusRadarEnabled = false
-                    return
-                }
-                // 兜底：优先雷达
+                // 兜底优先雷达
                 settings.statusLargeCarImageEnabled = false
+                settings.statusProximityStripEnabled = false
                 return
             }
             save()

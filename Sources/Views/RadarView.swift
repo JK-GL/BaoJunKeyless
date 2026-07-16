@@ -594,9 +594,10 @@ struct RadarCardView: View {
 
     private var showRadar: Bool { keylessSettings.settings.statusRadarEnabled }
     private var showLargeCarImage: Bool { keylessSettings.settings.statusLargeCarImageEnabled }
+    private var showProximityStrip: Bool { keylessSettings.settings.statusProximityStripEnabled }
 
     var body: some View {
-        // 回退 v729 观感：车图 0.80 再放大 10%→0.88；上下边距相对 v729 减半（12/16→6/8）
+        // 三模式互斥；上下边距保持 v731 的一半量级。
         VStack(spacing: 6) {
             if showRadar {
                 RadarVisualBlock(
@@ -609,6 +610,13 @@ struct RadarCardView: View {
                 StatusLargeCarImageView(carImageURL: carImageURL)
                     .equatable()
                     .frame(maxWidth: .infinity)
+            } else if showProximityStrip {
+                // 人 — GPS/RSSI — 车；间距随距离；固定高度 120。
+                StatusProximityStripView(
+                    locationManager: locationManager,
+                    bleStatus: bleStatus,
+                    carImageURL: carImageURL
+                )
             }
 
             RadarDistanceAddressBlock(
@@ -807,6 +815,164 @@ private struct RadarDistanceAddressBlock: View {
         } else {
             locationManager.setBLEDistanceOverride(nil)
         }
+    }
+}
+
+// MARK: - 人-信号-车 关系条（第三显示模式）
+/// 左人 · 中 GPS/RSSI · 右车；固定高度 120；人车间距随离车距离变化。
+/// 不做指南针转人。RSSI/距离只刷新本条，不拖整页。
+private struct StatusProximityStripView: View {
+    @ObservedObject var locationManager: LocationManager
+    @ObservedObject private var diagnostics = BLEDiagnosticsStore.shared
+    private let displayCacheStore = VehicleDisplayCacheStore()
+    var bleStatus: StatusBLEState
+    var carImageURL: String
+
+    @State private var carImage: UIImage?
+
+    /// 固定条带高度（用户选矮一点 ~120）。
+    private let stripHeight: CGFloat = 120
+    /// 人车间距：近 12m 内收紧，200m 外最疏。
+    private let nearMeters: CGFloat = 12
+    private let farMeters: CGFloat = 200
+    private let minGap: CGFloat = 10
+    private let maxGap: CGFloat = 52
+
+    private var hasActiveBLESession: Bool {
+        bleStatus == .connecting || bleStatus == .connected || bleStatus == .authenticating || bleStatus == .authenticated
+    }
+
+    private var prefersBLEDistance: Bool {
+        switch bleStatus {
+        case .connected, .authenticating, .authenticated: return true
+        default: return false
+        }
+    }
+
+    private var isLiveAuthenticatedRSSI: Bool {
+        bleStatus == .authenticated && !diagnostics.isPreviewRSSI
+    }
+
+    private var displayRSSI: Int? {
+        diagnostics.debugSmoothedRSSI ?? diagnostics.debugRawRSSI
+    }
+
+    private var centerText: String {
+        if hasActiveBLESession {
+            if let displayRSSI { return "\(displayRSSI) dBm" }
+            return "-- dBm"
+        }
+        return "GPS"
+    }
+
+    private var centerColor: Color {
+        if !hasActiveBLESession {
+            return Color.green.opacity(0.9)
+        }
+        guard let displayRSSI else { return Color.white.opacity(0.55) }
+        if !isLiveAuthenticatedRSSI { return Color.white.opacity(0.55) }
+        if displayRSSI >= -55 { return AppTheme.green }
+        if displayRSSI >= -70 { return AppTheme.orange }
+        return AppTheme.red
+    }
+
+    private var distanceMeters: CGFloat {
+        if prefersBLEDistance, let rssi = displayRSSI,
+           let meters = BLEProximityDistanceEstimator.meters(fromRSSI: rssi) {
+            return CGFloat(meters)
+        }
+        if locationManager.distance > 0 {
+            return CGFloat(locationManager.distance)
+        }
+        let cached = displayCacheStore.loadSnapshot().distanceMeters
+        if cached > 0 { return CGFloat(cached) }
+        return farMeters
+    }
+
+    /// 距离越近 gap 越小（二期动态间距）。
+    private var dynamicGap: CGFloat {
+        let d = min(max(distanceMeters, nearMeters), farMeters)
+        let t = (d - nearMeters) / (farMeters - nearMeters)
+        return minGap + (maxGap - minGap) * t
+    }
+
+    var body: some View {
+        HStack(spacing: dynamicGap) {
+            // 左：人（不跟指南针转）
+            Image(systemName: "figure.stand")
+                .font(.system(size: 34, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.78))
+                .frame(width: 44, height: stripHeight)
+
+            // 中：GPS / RSSI 胶囊
+            Text(centerText)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundStyle(centerColor)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(centerColor.opacity(0.12))
+                        .overlay(Capsule().stroke(centerColor.opacity(0.28), lineWidth: 0.5))
+                )
+                .frame(minWidth: 72)
+
+            // 右：车图
+            Group {
+                if let carImage {
+                    Image(uiImage: carImage)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    Image(systemName: "car.fill")
+                        .font(.system(size: 36, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.55))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: stripHeight - 16)
+        }
+        .frame(height: stripHeight)
+        .frame(maxWidth: .infinity)
+        .animation(.easeInOut(duration: 0.25), value: dynamicGap)
+        .onAppear { loadCarImageIfNeeded() }
+        .onChange(of: carImageURL) { _ in
+            carImage = nil
+            loadCarImageIfNeeded()
+        }
+    }
+
+    private func loadCarImageIfNeeded() {
+        let key = RadarUIView.normalizedCarImageKey(carImageURL)
+        if let cached = RadarUIView.cachedCarImage(for: key) {
+            carImage = cached
+            return
+        }
+        guard let url = URL(string: key) else { return }
+        if RadarUIView.sharedCarImageLoadInFlight.contains(key) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                if let cached = RadarUIView.cachedCarImage(for: key) {
+                    carImage = cached
+                } else {
+                    loadCarImageIfNeeded()
+                }
+            }
+            return
+        }
+        RadarUIView.sharedCarImageLoadInFlight.insert(key)
+        let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            defer {
+                DispatchQueue.main.async {
+                    RadarUIView.sharedCarImageLoadInFlight.remove(key)
+                }
+            }
+            guard let data, let img = UIImage(data: data) else { return }
+            RadarUIView.storeCarImage(img, for: key)
+            DispatchQueue.main.async {
+                self.carImage = img
+            }
+        }.resume()
     }
 }
 
