@@ -692,9 +692,9 @@ struct RadarCardView: View {
                     }
                 }
             } else if showLargeCarImage {
-                // 原雷达位 280，放大约 50% → 420；无边框，减少四周留白。
+                // 布局仍占原雷达位 280，不撑高整页；车图内容单独放大。
                 StatusLargeCarImageView(carImageURL: carImageURL)
-                    .frame(width: 420, height: 420)
+                    .frame(width: 280, height: 280)
                     .frame(maxWidth: .infinity)
             }
 
@@ -801,12 +801,17 @@ private struct StatusLargeCarImageView: View {
         _image = State(initialValue: RadarUIView.cachedCarImage(for: carImageURL))
     }
 
+    /// 布局框仍是 280，内容放大约 50%，避免整页被撑高。
+    private let contentScale: CGFloat = 1.5
+
     var body: some View {
-        Group {
+        ZStack {
             if let image {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
+                    // 官方车图四周透明/暗边较多；放大内容而不是放大外框。
+                    .scaleEffect(contentScale)
             } else {
                 // 仅冷启动且缓存未命中时短暂占位；正常从雷达切过来应直接命中。
                 Image(systemName: "car.fill")
@@ -815,6 +820,8 @@ private struct StatusLargeCarImageView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // 裁掉放大后溢出，距离/地址不会被车图顶开。
+        .clipped()
         .onAppear { applyCacheOrLoad() }
         .onChange(of: carImageURL) { _ in
             applyCacheOrLoad()
