@@ -17,6 +17,11 @@ extension MQTTVehicleStateStore {
         userManuallyStoppedBLE = false
         didLogManualForegroundSkip = false
         lastBLEWaitCommandKind = nil
+        keylessRejectedActionUntilExit = nil
+        externalLockRequiresExit = false
+        externalLockExitObserved = false
+        expectedAppLockState = nil
+        expectedAppLockStateUntil = nil
         resetBLEDiagnosticCycle()
         resetNearbyBLEDevices()
         bleSignalLossWorkItem?.cancel()
@@ -202,6 +207,11 @@ extension MQTTVehicleStateStore {
         let rssi = Double(smoothedRSSI)
 
         if nearby || rssi >= unlockTh {
+            if externalLockRequiresExit && externalLockExitObserved {
+                externalLockRequiresExit = false
+                externalLockExitObserved = false
+                vehicleEventLogStore.add(.keyless, "外部锁车保护解除", detail: "已确认离开后重新靠近，恢复自动解锁")
+            }
             if !hasEnteredVehicleZone {
                 hasEnteredVehicleZone = true
                 vehicleEventLogStore.addThrottled(
@@ -218,6 +228,14 @@ extension MQTTVehicleStateStore {
 
         // 明确弱于上锁阈值：累计离开
         if rssi <= lockTh {
+            if externalLockRequiresExit {
+                externalLockExitObserved = true
+            }
+            if keylessRejectedActionUntilExit != nil {
+                // 负回包后的重新尝试必须经历真实离开；信号丢失不计入。
+                keylessRejectedActionUntilExit = nil
+                vehicleEventLogStore.add(.keyless, "无感拒绝保护解除", detail: "已确认离开，允许下次重新靠近时再尝试")
+            }
             if continuousWeakSince == nil {
                 continuousWeakSince = Date()
             }
@@ -420,6 +438,26 @@ extension MQTTVehicleStateStore {
            Date().timeIntervalSince(lastAutoCommandAt) < settings.cmdInterval {
             return
         }
+        if action == .unlock && externalLockRequiresExit {
+            vehicleEventLogStore.addThrottled(
+                .keyless,
+                "无感被外部锁车保护",
+                detail: externalLockExitObserved ? "等待重新靠近" : "检测到外部锁车，需先离开后重新靠近",
+                identity: "external-lock-protect",
+                minimumInterval: 5
+            )
+            return
+        }
+        if keylessRejectedActionUntilExit == action {
+            vehicleEventLogStore.addThrottled(
+                .keyless,
+                "无感被车辆拒绝保护",
+                detail: "\(action.title)已被车辆拒绝；需先离开后重新靠近",
+                identity: "keyless-rejected-protect|\(action.rawValue)",
+                minimumInterval: 5
+            )
+            return
+        }
         // 手动锁/解锁后，短时间禁止无感反向动作（日志里：刚手动锁车立刻被无感解锁）
         if let until = keylessManualSuppressUntil,
            Date() < until,
@@ -486,6 +524,15 @@ extension MQTTVehicleStateStore {
                     category = .keyless
                 }
                 let detail = result.userMessage.isEmpty ? result.command.title : "\(result.command.title)：\(result.userMessage)"
+                if case .failed(let reason) = result.state,
+                   reason.contains("车辆未接受") || result.userMessage.contains("被车辆拒绝") {
+                    self.keylessRejectedActionUntilExit = action
+                    self.vehicleEventLogStore.add(
+                        .keyless,
+                        "无感车辆拒绝保护",
+                        detail: "\(action.title)被车辆拒绝；本次靠近不再重试，需先离开后重新靠近"
+                    )
+                }
                 self.vehicleEventLogStore.add(category, "无感命令结果", detail: detail)
                 self.postKeylessNotificationIfNeeded(for: action, result: result)
                 if case .sent = result.state {

@@ -153,14 +153,19 @@ struct BLEVehicleControlTransport: VehicleCommandAsyncTransport {
                 finish(VehicleCommandExecutionResult(command: command, state: .completed, userMessage: message, shouldRefresh: false, refreshDelay: 0))
             case .failure(let error):
                 let state: VehicleCommandExecutionState
+                let message: String
                 switch error {
                 case .receiptTimeout:
                     state = .timedOut(error.localizedDescription)
+                    message = "蓝牙控制等待回包超时。请检查蓝牙连接后重试"
+                case .controlRejected(let detail):
+                    state = .failed(error.localizedDescription)
+                    message = "\(command.title)被车辆拒绝（\(detail)）"
                 default:
                     state = .failed(error.localizedDescription)
+                    message = error.localizedDescription + "。请检查蓝牙连接后重试"
                 }
-                let hint = "。请检查蓝牙连接后重试"
-                finish(VehicleCommandExecutionResult(command: command, state: state, userMessage: error.localizedDescription + hint, shouldRefresh: false, refreshDelay: 0))
+                finish(VehicleCommandExecutionResult(command: command, state: state, userMessage: message, shouldRefresh: false, refreshDelay: 0))
             }
         }
     }

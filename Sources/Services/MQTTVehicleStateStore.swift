@@ -261,6 +261,14 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     /// 手动锁/解锁后，短时间抑制无感反向动作，避免“刚锁上又被无感解开”
     var keylessManualSuppressUntil: Date?
     var keylessManualSuppressAction: KeylessAction?
+    /// 车端明确拒绝自动命令后，必须完成一次离开→再靠近才允许同类无感重试。
+    var keylessRejectedActionUntilExit: KeylessAction?
+    /// 检测到非本地 BLE 回写的外部锁态跃迁后，禁止车旁立即自动解锁。
+    var externalLockRequiresExit = false
+    var externalLockExitObserved = false
+    /// 应用刚发起的锁态命令；网络车况在短窗口内回报同方向变化时不视作外部锁车。
+    var expectedAppLockState: Bool?
+    var expectedAppLockStateUntil: Date?
     /// 钥匙材料可用时，离线/短时间不重复打 ble/key/query
     var lastBleKeyFetchAttemptAt: Date?
     var isFetchingBleKeyInfo = false
@@ -338,7 +346,16 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         canUseBLEForVehicleControl
     }
 
+    /// 记录 App 已下发锁/解锁请求，供随后 HTTP/MQTT 状态回报做来源判定。
+    func noteAppDoorLockCommand(_ locked: Bool) {
+        expectedAppLockState = locked
+        expectedAppLockStateUntil = Date().addingTimeInterval(25)
+    }
+
     func sendCommandViaBLE(command: VehicleCommand, completion: @escaping (Result<Void, VehicleBLEManager.BLEControlError>) -> Void) {
+        if command.kind == .lock || command.kind == .unlock {
+            noteAppDoorLockCommand(command.kind == .lock)
+        }
         switch command.kind {
         case .lock:
             bleManager.sendDoorLockCommand(lock: true) { [weak self] result in
@@ -404,6 +421,24 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         apply(next)
         evaluateKeylessAutomation(for: next)
         vehicleEventLogStore.add(.action, "车辆电源已确认", detail: "\(source) · \(power.title)")
+    }
+
+    /// 网络权威车况确认“未锁→已锁”时，区分 App 自己的命令与外部/物理锁车。
+    func observeAuthoritativeLockState(_ locked: Bool?) {
+        guard locked == true, state.locked == false else { return }
+        let now = Date()
+        let expectedByApp = expectedAppLockState == true && (expectedAppLockStateUntil.map { now <= $0 } ?? false)
+        expectedAppLockState = nil
+        expectedAppLockStateUntil = nil
+        guard !expectedByApp else { return }
+
+        externalLockRequiresExit = true
+        externalLockExitObserved = false
+        vehicleEventLogStore.add(
+            .keyless,
+            "外部锁车保护开启",
+            detail: "检测到非 App 锁车；需先离开后重新靠近，期间不自动解锁"
+        )
     }
 
     /// BLE 门锁成功后立即回写本地车锁，驱动快捷按钮与无感决策。

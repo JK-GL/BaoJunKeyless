@@ -1174,15 +1174,26 @@ final class VehicleBLEManager: NSObject {
             return
         }
 
+        let randomMatchesRequest = parsed.randomDataHex?.uppercased() == pending.randomDataHex.uppercased()
         let responseMatchesRequest =
             parsed.serviceId == 0xA956 &&
             parsed.subfunction == 0x0001 &&
-            parsed.randomDataHex?.uppercased() == pending.randomDataHex.uppercased()
+            randomMatchesRequest
+        // 实车负 ACK：FFFF / 原请求 serviceId（如 39D6）/ 同一 random。
+        // 这已是车端明确答复，绝不能继续等到 receiptTimeout。
+        let negativeResponseMatchesRequest =
+            parsed.serviceId == 0xFFFF &&
+            parsed.subfunction == pending.serviceId &&
+            randomMatchesRequest
 
         let crcOK = parsed.crcCheckPassed != false
         let errorOK = parsed.errorCodeHex == "00000000"
 
-        if responseMatchesRequest && crcOK && errorOK {
+        if negativeResponseMatchesRequest {
+            let code = parsed.errorCodeHex ?? "--"
+            onLog?("BLE", "E300 control rejected by vehicle random=\(parsed.randomDataHex ?? "--") errorCode=\(code) crc=\(parsed.crcCheckPassed.map { $0 ? "1" : "0" } ?? "--")")
+            completePendingControl(.failure(.controlRejected("车辆拒绝控制（\(code)）")))
+        } else if responseMatchesRequest && crcOK && errorOK {
             let serviceText = parsed.serviceId.map { String(format: "%04X", $0) } ?? "--"
             onLog?(
                 "BLE",

@@ -34,6 +34,11 @@ extension MQTTVehicleStateStore {
             return "丢弃旧HTTP"
         }
 
+        // HTTP 完整快照带来的未锁→已锁，若不是本 App 近期命令，视为外部/物理锁车。
+        if sourceFields["doorLockStatus"] != nil {
+            observeAuthoritativeLockState(newState.locked)
+        }
+
         // MQTT 在线新鲜：HTTP 不冲门窗/锁等实时车身，但补齐 MQTT Protobuf 常缺的字段
         // （电量/续航/充电/电源/档位/胎压/温度等）——对齐 Wuling：MQTT 主实时 + HTTP 补全
         if mode == .pollMeta {
@@ -255,6 +260,10 @@ extension MQTTVehicleStateStore {
         // 若 MQTT collectTime 明显旧于当前模型，丢弃（防止旧半包回放）
         if let current = bodyCollectTime, at + 0.5 < current {
             return
+        }
+
+        if sourceFields["doorLockStatus"] != nil {
+            observeAuthoritativeLockState(newState.locked)
         }
 
         var safeState = newState

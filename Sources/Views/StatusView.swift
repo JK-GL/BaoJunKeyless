@@ -404,6 +404,9 @@ struct StatusView: View {
 
                 switch patchedResult.state {
                 case .sent, .completed:
+                    if !willUseBLE, (command.kind == .lock || command.kind == .unlock) {
+                        mqttStore?.noteAppDoorLockCommand(command.kind == .lock)
+                    }
                     if !willUseBLE, mqttReceiptEnabled {
                         pendingControlSentAt = Date()
                         beginControlReceiptWaitIfNeeded()
