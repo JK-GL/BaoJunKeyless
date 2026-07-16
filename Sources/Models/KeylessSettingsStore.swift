@@ -18,6 +18,10 @@ struct KeylessSettings: Codable {
     var lockUnlockConfirmationEnabled: Bool = true
     /// 熄火后监测门/窗/尾门；有未关立即推送，之后每 10 分钟一次直到全关。默认关。
     var powerOffBodyMonitorEnabled: Bool = false
+    /// 状态页显示雷达圆盘。与大车图互斥；默认真。
+    var statusRadarEnabled: Bool = true
+    /// 状态页在原雷达位显示大车图。与雷达互斥；默认假。
+    var statusLargeCarImageEnabled: Bool = false
 
     // 解锁
     var unlockEnabled: Bool = true
@@ -70,7 +74,7 @@ struct KeylessSettings: Codable {
 
     private enum CodingKeys: String, CodingKey {
         case keylessEnabled, pluginTakeover, smartSwitch, appManual, cmdInterval
-        case mqttEnabled, lockUnlockConfirmationEnabled, powerOffBodyMonitorEnabled
+        case mqttEnabled, lockUnlockConfirmationEnabled, powerOffBodyMonitorEnabled, statusRadarEnabled, statusLargeCarImageEnabled
         case unlockEnabled, powerStartEnabled, unlockThreshold, unlockApproachDuration, unlockPopup, unlockVibrate, unlockVibPreset, unlockVibCustomID, unlockVibStrength
         case lockEnabled, lockRequireClosedBody, lockThreshold, lockDelay, lockPopup, lockVibrate, lockVibPreset, lockVibCustomID, lockVibStrength
         case bleScanDuration, bleScanInterval
@@ -90,6 +94,12 @@ struct KeylessSettings: Codable {
         mqttEnabled = try c.decodeIfPresent(Bool.self, forKey: .mqttEnabled) ?? true
         lockUnlockConfirmationEnabled = try c.decodeIfPresent(Bool.self, forKey: .lockUnlockConfirmationEnabled) ?? true
         powerOffBodyMonitorEnabled = try c.decodeIfPresent(Bool.self, forKey: .powerOffBodyMonitorEnabled) ?? false
+        statusRadarEnabled = try c.decodeIfPresent(Bool.self, forKey: .statusRadarEnabled) ?? true
+        statusLargeCarImageEnabled = try c.decodeIfPresent(Bool.self, forKey: .statusLargeCarImageEnabled) ?? false
+        // 互斥兜底：旧脏数据若双开，优先雷达。
+        if statusRadarEnabled && statusLargeCarImageEnabled {
+            statusLargeCarImageEnabled = false
+        }
 
         unlockEnabled = try c.decodeIfPresent(Bool.self, forKey: .unlockEnabled) ?? true
         powerStartEnabled = try c.decodeIfPresent(Bool.self, forKey: .powerStartEnabled) ?? false
@@ -171,6 +181,23 @@ class KeylessSettingsStore: ObservableObject {
             let clamped = KeylessSettings.clampedGeofenceRadius(settings.geofenceRadiusMeters)
             if settings.geofenceRadiusMeters != clamped {
                 settings.geofenceRadiusMeters = clamped
+                return
+            }
+            // 雷达 / 大车图互斥：允许都关，不允许双开。
+            if settings.statusRadarEnabled && settings.statusLargeCarImageEnabled {
+                // 后写字段优先：比较旧值决定保留哪边。
+                let oldRadar = oldValue.statusRadarEnabled
+                let oldLarge = oldValue.statusLargeCarImageEnabled
+                if !oldRadar && settings.statusRadarEnabled {
+                    settings.statusLargeCarImageEnabled = false
+                    return
+                }
+                if !oldLarge && settings.statusLargeCarImageEnabled {
+                    settings.statusRadarEnabled = false
+                    return
+                }
+                // 兜底：优先雷达
+                settings.statusLargeCarImageEnabled = false
                 return
             }
             save()

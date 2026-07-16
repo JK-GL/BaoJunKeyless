@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 连接通道、快捷确认与熄火提醒。MQTT/二次确认默认开；熄火监测默认关。
+/// 连接通道、快捷确认、熄火提醒与状态页展示。
 struct SettingsConnectionConfirmationSection: View {
     @EnvironmentObject var keylessSettings: KeylessSettingsStore
     @AppStorage("Settings.connectionConfirmationSectionExpanded") private var isExpanded = false
@@ -9,7 +9,15 @@ struct SettingsConnectionConfirmationSection: View {
         let mqtt = keylessSettings.settings.mqttEnabled ? "MQTT开" : "MQTT关"
         let confirm = keylessSettings.settings.lockUnlockConfirmationEnabled ? "确认开" : "确认关"
         let monitor = keylessSettings.settings.powerOffBodyMonitorEnabled ? "熄火监测开" : "熄火监测关"
-        return "\(mqtt) · \(confirm) · \(monitor)"
+        let visual: String
+        if keylessSettings.settings.statusRadarEnabled {
+            visual = "雷达"
+        } else if keylessSettings.settings.statusLargeCarImageEnabled {
+            visual = "大车图"
+        } else {
+            visual = "极简"
+        }
+        return "\(mqtt) · \(confirm) · \(monitor) · \(visual)"
     }
 
     var body: some View {
@@ -50,6 +58,24 @@ struct SettingsConnectionConfirmationSection: View {
                     subtitle: "开启后：车辆熄火且门/窗/尾门未关时立刻推送，之后每 10 分钟一次，直到全部关闭。关闭后不监测。",
                     isOn: binding(\.powerOffBodyMonitorEnabled, title: "熄火监测门窗")
                 )
+
+                Divider().background(Color.white.opacity(0.08))
+
+                settingToggle(
+                    icon: "dot.radiowaves.left.and.right",
+                    title: "显示雷达",
+                    subtitle: "开启后状态页显示雷达圆盘与车标。与「显示大车图」互斥；关闭后可只留距离和地址。",
+                    isOn: exclusiveBinding(enableRadar: true, title: "显示雷达")
+                )
+
+                Divider().background(Color.white.opacity(0.08))
+
+                settingToggle(
+                    icon: "car.fill",
+                    title: "显示大车图",
+                    subtitle: "开启后在原雷达位置显示车辆大图。与「显示雷达」互斥；两者都关时仅保留距离和地址。",
+                    isOn: exclusiveBinding(enableRadar: false, title: "显示大车图")
+                )
             }
         }
     }
@@ -59,6 +85,36 @@ struct SettingsConnectionConfirmationSection: View {
             get: { keylessSettings.settings[keyPath: keyPath] },
             set: { value in
                 keylessSettings.settings[keyPath: keyPath] = value
+                VehicleEventLogStore.shared.add(.system, value ? "开启\(title)" : "关闭\(title)")
+            }
+        )
+    }
+
+    /// 雷达 / 大车图互斥绑定：开一侧自动关另一侧；关一侧不自动打开另一侧。
+    private func exclusiveBinding(enableRadar: Bool, title: String) -> Binding<Bool> {
+        Binding(
+            get: {
+                if enableRadar {
+                    return keylessSettings.settings.statusRadarEnabled
+                }
+                return keylessSettings.settings.statusLargeCarImageEnabled
+            },
+            set: { value in
+                if enableRadar {
+                    if value {
+                        keylessSettings.settings.statusLargeCarImageEnabled = false
+                        keylessSettings.settings.statusRadarEnabled = true
+                    } else {
+                        keylessSettings.settings.statusRadarEnabled = false
+                    }
+                } else {
+                    if value {
+                        keylessSettings.settings.statusRadarEnabled = false
+                        keylessSettings.settings.statusLargeCarImageEnabled = true
+                    } else {
+                        keylessSettings.settings.statusLargeCarImageEnabled = false
+                    }
+                }
                 VehicleEventLogStore.shared.add(.system, value ? "开启\(title)" : "关闭\(title)")
             }
         )

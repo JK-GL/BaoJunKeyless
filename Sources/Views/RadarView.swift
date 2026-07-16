@@ -569,12 +569,16 @@ struct RadarRepresentable: UIViewRepresentable {
 struct RadarCardView: View {
     @ObservedObject var locationManager: LocationManager
     @ObservedObject private var diagnostics = BLEDiagnosticsStore.shared
+    @ObservedObject private var keylessSettings = KeylessSettingsStore.shared
     private let displayCacheStore = VehicleDisplayCacheStore()
     var bleStatus: StatusBLEState = .disconnected
     var carLat: Double = 0
     var carLng: Double = 0
     var carAddress: String = ""
     var carImageURL: String = ""
+
+    private var showRadar: Bool { keylessSettings.settings.statusRadarEnabled }
+    private var showLargeCarImage: Bool { keylessSettings.settings.statusLargeCarImageEnabled }
 
     private var cachedDistanceMeters: Double {
         displayCacheStore.loadSnapshot().distanceMeters
@@ -643,33 +647,39 @@ struct RadarCardView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            ZStack {
-                RadarRepresentable(locationManager: locationManager, carImageURL: carImageURL)
-                    .frame(width: 280, height: 280)
+            // 上半区：雷达 / 大车图 互斥；都关时不占位，只留距离地址。
+            if showRadar {
+                ZStack {
+                    RadarRepresentable(locationManager: locationManager, carImageURL: carImageURL)
+                        .frame(width: 280, height: 280)
 
-                if hasActiveBLESession {
-                    Text(rssiCenterText)
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .foregroundStyle(rssiSignalColor)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule()
-                                .fill(rssiSignalColor.opacity(0.12))
-                                .overlay(Capsule().stroke(rssiSignalColor.opacity(0.28), lineWidth: 0.5))
-                        )
-                } else {
-                    Text("GPS")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color.green.opacity(0.9))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(
-                            Capsule()
-                                .fill(Color.green.opacity(0.12))
-                                .overlay(Capsule().stroke(Color.green.opacity(0.25), lineWidth: 0.5))
-                        )
+                    if hasActiveBLESession {
+                        Text(rssiCenterText)
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundStyle(rssiSignalColor)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(rssiSignalColor.opacity(0.12))
+                                    .overlay(Capsule().stroke(rssiSignalColor.opacity(0.28), lineWidth: 0.5))
+                            )
+                    } else {
+                        Text("GPS")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Color.green.opacity(0.9))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(
+                                Capsule()
+                                    .fill(Color.green.opacity(0.12))
+                                    .overlay(Capsule().stroke(Color.green.opacity(0.25), lineWidth: 0.5))
+                            )
+                    }
                 }
+            } else if showLargeCarImage {
+                StatusLargeCarImageView(carImageURL: carImageURL)
+                    .frame(width: 280, height: 280)
             }
 
             VStack(spacing: 5) {
@@ -760,5 +770,53 @@ struct RadarCardView: View {
     @ViewBuilder
     private func addressSettingsFloatingSheet() -> some View {
         VStack {}
+    }
+}
+
+// MARK: - 状态页大车图（占原雷达位；不跑雷达动画）
+private struct StatusLargeCarImageView: View {
+    let carImageURL: String
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(18)
+            } else {
+                Image(systemName: "car.fill")
+                    .font(.system(size: 64, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.55))
+            }
+        }
+        .onAppear { loadIfNeeded() }
+        .onChange(of: carImageURL) { _ in
+            image = nil
+            loadIfNeeded()
+        }
+    }
+
+    private func loadIfNeeded() {
+        let trimmed = carImageURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let url = URL(string: trimmed) else {
+            image = nil
+            return
+        }
+        // 与雷达车标共享 URLSession 内存缓存；失败保持 SF 占位。
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            guard let data, let img = UIImage(data: data) else { return }
+            DispatchQueue.main.async {
+                self.image = img
+            }
+        }.resume()
     }
 }
