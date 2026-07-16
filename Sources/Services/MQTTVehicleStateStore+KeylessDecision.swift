@@ -602,6 +602,92 @@ extension MQTTVehicleStateStore {
         }
     }
 
+    /// 熄火监测门窗（独立开关）：
+    /// - 开关开 + 明确熄火 + 门/窗/尾门有明确未关 → 立刻推 1 次
+    /// - 之后每 10 分钟最多 1 次，直到全关 / 再次上电 / 开关关闭
+    /// - 全关后不额外推“已处理”（无感上锁链路已有结果通知）
+    func evaluatePowerOffBodyMonitorIfNeeded(fromHTTP raw: [String: String]) {
+        // 同一次 HTTP generation 不重复评估。
+        if lastPowerOffBodyEvalGeneration == lastHTTPRawGeneration, lastHTTPRawGeneration > 0 {
+            return
+        }
+        lastPowerOffBodyEvalGeneration = lastHTTPRawGeneration
+
+        let enabled = keylessSettingsStore.settings.powerOffBodyMonitorEnabled
+        if !enabled {
+            if powerOffBodyMonitorActive || lastPowerOffBodyNotifyAt != nil || !lastPowerOffOpenPartsSignature.isEmpty {
+                powerOffBodyMonitorActive = false
+                lastPowerOffBodyNotifyAt = nil
+                lastPowerOffOpenPartsSignature = ""
+            }
+            return
+        }
+
+        // 电源以 HTTP 映射为准；unknown 不监测。
+        let power = mapHTTPToVehicleState(raw).power
+        let isPowerOff = (power == .off)
+        let openParts = keylessOpenBodyParts(fromHTTP: raw)
+        let hasOpen = !openParts.isEmpty
+        let signature = openParts.joined(separator: "|")
+
+        // 非熄火：停止周期。
+        guard isPowerOff else {
+            if powerOffBodyMonitorActive {
+                vehicleEventLogStore.add(
+                    .keyless,
+                    "熄火监测停止",
+                    detail: "电源=\(power.title) · 退出熄火态"
+                )
+            }
+            powerOffBodyMonitorActive = false
+            lastPowerOffBodyNotifyAt = nil
+            lastPowerOffOpenPartsSignature = ""
+            return
+        }
+
+        // 熄火但全关：静默停止，不推“已全部关闭”。
+        guard hasOpen else {
+            if powerOffBodyMonitorActive {
+                vehicleEventLogStore.add(
+                    .keyless,
+                    "熄火监测停止",
+                    detail: "门窗尾门已全部关闭"
+                )
+            }
+            powerOffBodyMonitorActive = false
+            lastPowerOffBodyNotifyAt = nil
+            lastPowerOffOpenPartsSignature = ""
+            return
+        }
+
+        let now = Date()
+        let bodyDetail = openParts.joined(separator: "、")
+        let isFirst = !powerOffBodyMonitorActive
+        let partsChanged = !lastPowerOffOpenPartsSignature.isEmpty && lastPowerOffOpenPartsSignature != signature
+        let intervalOK: Bool = {
+            guard let last = lastPowerOffBodyNotifyAt else { return true }
+            return now.timeIntervalSince(last) >= Self.powerOffBodyNotifyInterval
+        }()
+
+        // 首次发现立刻推；之后每 10 分钟；未关部位变化也立刻补一次。
+        let shouldNotify = isFirst || intervalOK || partsChanged
+        powerOffBodyMonitorActive = true
+        lastPowerOffOpenPartsSignature = signature
+
+        guard shouldNotify else { return }
+
+        lastPowerOffBodyNotifyAt = now
+        vehicleEventLogStore.add(
+            .keyless,
+            "熄火监测提醒",
+            detail: bodyDetail + (isFirst ? " · 首次" : (partsChanged ? " · 部位变化" : " · 周期10分钟"))
+        )
+        AppNotificationManager.shared.postKeylessNotification(
+            title: "车辆熄火未关提醒",
+            body: "HTTP 完整车况：\(bodyDetail)。请检查车辆。"
+        )
+    }
+
     /// 未关不自动上锁：先拦锁，再 HTTP。
     /// - HTTP 已锁：自动补锁（同步车辆/本地），最终通知走上锁确认链路
     /// - HTTP 未锁：推送「车辆无感未上锁」并点名未关部位

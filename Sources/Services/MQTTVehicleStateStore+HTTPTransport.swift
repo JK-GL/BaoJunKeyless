@@ -232,6 +232,8 @@ extension MQTTVehicleStateStore {
                     if mergeNote != "丢弃旧HTTP" {
                         self.lastHTTPBodyCollectAt = httpCollect
                         self.rememberHTTPDoorWindowAuthority(from: refreshResult.carStatus, at: httpCollect)
+                        // 熄火监测门窗：每次拿到非旧 HTTP 权威快照后评估。
+                        self.evaluatePowerOffBodyMonitorIfNeeded(fromHTTP: refreshResult.carStatus)
                     }
                     // 成功轮询只进控制台事件日志，不写错误日志
 

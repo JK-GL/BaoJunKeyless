@@ -11,11 +11,13 @@ struct KeylessSettings: Codable {
     var appManual: Bool = false
     var cmdInterval: Double = 5
 
-    // 连接与操作确认
+    // 连接 / 确认 / 提醒
     /// MQTT 可选增强通道：关后不连接、不接收，状态胶囊隐藏。默认开。
     var mqttEnabled: Bool = true
     /// 快捷锁车/解锁是否显示二次确认。默认开；其他车控确认不受影响。
     var lockUnlockConfirmationEnabled: Bool = true
+    /// 熄火后监测门/窗/尾门；有未关立即推送，之后每 10 分钟一次直到全关。默认关。
+    var powerOffBodyMonitorEnabled: Bool = false
 
     // 解锁
     var unlockEnabled: Bool = true
@@ -68,7 +70,7 @@ struct KeylessSettings: Codable {
 
     private enum CodingKeys: String, CodingKey {
         case keylessEnabled, pluginTakeover, smartSwitch, appManual, cmdInterval
-        case mqttEnabled, lockUnlockConfirmationEnabled
+        case mqttEnabled, lockUnlockConfirmationEnabled, powerOffBodyMonitorEnabled
         case unlockEnabled, powerStartEnabled, unlockThreshold, unlockApproachDuration, unlockPopup, unlockVibrate, unlockVibPreset, unlockVibCustomID, unlockVibStrength
         case lockEnabled, lockRequireClosedBody, lockThreshold, lockDelay, lockPopup, lockVibrate, lockVibPreset, lockVibCustomID, lockVibStrength
         case bleScanDuration, bleScanInterval
@@ -87,6 +89,7 @@ struct KeylessSettings: Codable {
         cmdInterval = try c.decodeIfPresent(Double.self, forKey: .cmdInterval) ?? 5
         mqttEnabled = try c.decodeIfPresent(Bool.self, forKey: .mqttEnabled) ?? true
         lockUnlockConfirmationEnabled = try c.decodeIfPresent(Bool.self, forKey: .lockUnlockConfirmationEnabled) ?? true
+        powerOffBodyMonitorEnabled = try c.decodeIfPresent(Bool.self, forKey: .powerOffBodyMonitorEnabled) ?? false
 
         unlockEnabled = try c.decodeIfPresent(Bool.self, forKey: .unlockEnabled) ?? true
         powerStartEnabled = try c.decodeIfPresent(Bool.self, forKey: .powerStartEnabled) ?? false

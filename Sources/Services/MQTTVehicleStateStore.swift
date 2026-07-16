@@ -278,6 +278,13 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     /// 检测到非本地 BLE 回写的外部锁态跃迁后，禁止车旁立即自动解锁。
     var externalLockRequiresExit = false
     var externalLockExitObserved = false
+    /// 熄火监测门窗：是否处于提醒周期、上次推送时间、未关清单签名。
+    var powerOffBodyMonitorActive = false
+    var lastPowerOffBodyNotifyAt: Date?
+    var lastPowerOffOpenPartsSignature = ""
+    static let powerOffBodyNotifyInterval: TimeInterval = 10 * 60
+    /// 熄火监测节流：避免同一次 HTTP 成功回调重复评估。
+    var lastPowerOffBodyEvalGeneration: UInt64 = 0
     /// 应用刚发起的锁态命令；网络车况在短窗口内回报同方向变化时不视作外部锁车。
     var expectedAppLockState: Bool?
     var expectedAppLockStateUntil: Date?

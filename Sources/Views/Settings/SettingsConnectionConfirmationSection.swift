@@ -1,18 +1,21 @@
 import SwiftUI
 
-/// 可选连接通道与快捷锁解确认。两项均默认开启。
+/// 连接通道、快捷确认与熄火提醒。MQTT/二次确认默认开；熄火监测默认关。
 struct SettingsConnectionConfirmationSection: View {
     @EnvironmentObject var keylessSettings: KeylessSettingsStore
     @AppStorage("Settings.connectionConfirmationSectionExpanded") private var isExpanded = false
 
     private var summaryText: String {
-        "MQTT\(keylessSettings.settings.mqttEnabled ? "开" : "关") · 确认\(keylessSettings.settings.lockUnlockConfirmationEnabled ? "开" : "关")"
+        let mqtt = keylessSettings.settings.mqttEnabled ? "MQTT开" : "MQTT关"
+        let confirm = keylessSettings.settings.lockUnlockConfirmationEnabled ? "确认开" : "确认关"
+        let monitor = keylessSettings.settings.powerOffBodyMonitorEnabled ? "熄火监测开" : "熄火监测关"
+        return "\(mqtt) · \(confirm) · \(monitor)"
     }
 
     var body: some View {
         CollapsibleCard(
-            title: "连接与确认",
-            icon: "link.circle.fill",
+            title: "连接与提醒",
+            icon: "bell.badge.fill",
             iconColor: AppTheme.accent,
             isExpanded: $isExpanded,
             headerExtra: {
@@ -37,6 +40,15 @@ struct SettingsConnectionConfirmationSection: View {
                     title: "锁车/解锁二次确认",
                     subtitle: "开启后点击锁车或解锁需要再次确认；关闭后直接执行。其他车控确认不受影响。",
                     isOn: binding(\.lockUnlockConfirmationEnabled, title: "锁车/解锁二次确认")
+                )
+
+                Divider().background(Color.white.opacity(0.08))
+
+                settingToggle(
+                    icon: "exclamationmark.triangle.fill",
+                    title: "熄火监测门窗",
+                    subtitle: "开启后：车辆熄火且门/窗/尾门未关时立刻推送，之后每 10 分钟一次，直到全部关闭。关闭后不监测。",
+                    isOn: binding(\.powerOffBodyMonitorEnabled, title: "熄火监测门窗")
                 )
             }
         }
