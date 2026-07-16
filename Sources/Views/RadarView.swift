@@ -39,10 +39,25 @@ final class RadarUIView: UIView {
     }
     private var currentCarImageCacheKey: String = ""
 
-    private static let defaultCarImageURLString = "https://cdn-df.00bang.cn/images/T1Dw_TBTEv1RCvBVdK.png"
-    private static var sharedCarImages: [String: UIImage] = [:]
-    private static var sharedCarImageLoadInFlight = Set<String>()
+    static let defaultCarImageURLString = "https://cdn-df.00bang.cn/images/T1Dw_TBTEv1RCvBVdK.png"
+    fileprivate static var sharedCarImages: [String: UIImage] = [:]
+    fileprivate static var sharedCarImageLoadInFlight = Set<String>()
     private static var staticBackgroundCache: [String: UIImage] = [:]
+
+    /// 归一化缓存 key：空 URL 时与雷达一致走默认车图。
+    static func normalizedCarImageKey(_ urlString: String) -> String {
+        let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? defaultCarImageURLString : trimmed
+    }
+
+    /// 大车图 / 雷达共用内存缓存；命中则不应再闪 SF 占位。
+    static func cachedCarImage(for urlString: String) -> UIImage? {
+        sharedCarImages[normalizedCarImageKey(urlString)]
+    }
+
+    static func storeCarImage(_ image: UIImage, for urlString: String) {
+        sharedCarImages[normalizedCarImageKey(urlString)] = image
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -265,8 +280,7 @@ final class RadarUIView: UIView {
     }
 
     private var normalizedCarImageCacheKey: String {
-        let trimmed = carImageURLString.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? Self.defaultCarImageURLString : trimmed
+        Self.normalizedCarImageKey(carImageURLString)
     }
 
     private func updateMarker(force: Bool) {
@@ -678,8 +692,10 @@ struct RadarCardView: View {
                     }
                 }
             } else if showLargeCarImage {
+                // 原雷达位 280，放大约 50% → 420；无边框，减少四周留白。
                 StatusLargeCarImageView(carImageURL: carImageURL)
-                    .frame(width: 280, height: 280)
+                    .frame(width: 420, height: 420)
+                    .frame(maxWidth: .infinity)
             }
 
             VStack(spacing: 5) {
@@ -773,47 +789,75 @@ struct RadarCardView: View {
     }
 }
 
-// MARK: - 状态页大车图（占原雷达位；不跑雷达动画）
+// MARK: - 状态页大车图（与雷达共用 sharedCarImages；不跑雷达动画）
 private struct StatusLargeCarImageView: View {
     let carImageURL: String
     @State private var image: UIImage?
+    @State private var loadToken = 0
+
+    init(carImageURL: String) {
+        self.carImageURL = carImageURL
+        // 首帧就读共享缓存，避免先闪 SF 默认车。
+        _image = State(initialValue: RadarUIView.cachedCarImage(for: carImageURL))
+    }
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(Color.white.opacity(0.04))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
-
+        Group {
             if let image {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
-                    .padding(18)
             } else {
+                // 仅冷启动且缓存未命中时短暂占位；正常从雷达切过来应直接命中。
                 Image(systemName: "car.fill")
-                    .font(.system(size: 64, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.55))
+                    .font(.system(size: 88, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.45))
             }
         }
-        .onAppear { loadIfNeeded() }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { applyCacheOrLoad() }
         .onChange(of: carImageURL) { _ in
-            image = nil
-            loadIfNeeded()
+            applyCacheOrLoad()
         }
     }
 
-    private func loadIfNeeded() {
-        let trimmed = carImageURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let url = URL(string: trimmed) else {
-            image = nil
+    private func applyCacheOrLoad() {
+        let key = RadarUIView.normalizedCarImageKey(carImageURL)
+        // 先同步读雷达共享缓存，避免切模式时闪默认图标。
+        if let cached = RadarUIView.cachedCarImage(for: key) {
+            image = cached
             return
         }
-        // 与雷达车标共享 URLSession 内存缓存；失败保持 SF 占位。
-        URLSession.shared.dataTask(with: url) { data, _, _ in
+        loadIfNeeded(key: key)
+    }
+
+    private func loadIfNeeded(key: String) {
+        guard let url = URL(string: key) else { return }
+        if RadarUIView.sharedCarImageLoadInFlight.contains(key) {
+            // 雷达已在加载：短轮询共享缓存，避免再发一次请求。
+            let token = loadToken + 1
+            loadToken = token
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                guard token == loadToken else { return }
+                if let cached = RadarUIView.cachedCarImage(for: key) {
+                    image = cached
+                } else {
+                    loadIfNeeded(key: key)
+                }
+            }
+            return
+        }
+
+        RadarUIView.sharedCarImageLoadInFlight.insert(key)
+        let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            defer {
+                DispatchQueue.main.async {
+                    RadarUIView.sharedCarImageLoadInFlight.remove(key)
+                }
+            }
             guard let data, let img = UIImage(data: data) else { return }
+            RadarUIView.storeCarImage(img, for: key)
             DispatchQueue.main.async {
                 self.image = img
             }
