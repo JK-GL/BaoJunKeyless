@@ -152,20 +152,6 @@ struct LockSettingsSection: View {
                         VehicleEventLogStore.shared.add(.keyless, "修改上锁延迟", detail: "\(Int(value))s")
                     }
 
-                    ToggleRow(icon: "door.left.hand.closed", label: "上锁前检查门尾", isOn: Binding(
-                        get: { settingsStore.settings.lockRequireClosedBody },
-                        set: { enabled in
-                            settingsStore.settings.lockRequireClosedBody = enabled
-                            VehicleEventLogStore.shared.add(.keyless, enabled ? "开启上锁前门尾检查" : "关闭上锁前门尾检查", detail: enabled ? "门或尾门未关时不发送无感上锁" : "不预检门尾，锁后以 HTTP 完整车况核验")
-                        }
-                    ))
-                    Text(settingsStore.settings.lockRequireClosedBody
-                         ? "默认开启。门或尾门未关时不发送无感上锁；车窗不阻断锁车。"
-                         : "已关闭。离开后直接尝试锁车，随后通过 HTTP 完整车况确认锁态，并提示未关闭的门、尾门或车窗。")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
                     ToggleRow(icon: "iphone.radiowaves.left.and.right", label: "震动反馈", isOn: Binding(
                         get: { settingsStore.settings.lockVibrate },
                         set: { enabled in
@@ -185,7 +171,48 @@ struct LockSettingsSection: View {
                         )
                     }
 
-                    ToggleRow(icon: "bell.fill", label: "上锁弹窗", isOn: $settingsStore.settings.lockPopup)
+                    // 上锁弹窗在前；未关不自动上锁依赖它，必须先开弹窗。
+                    ToggleRow(icon: "bell.fill", label: "上锁弹窗", isOn: Binding(
+                        get: { settingsStore.settings.lockPopup },
+                        set: { enabled in
+                            settingsStore.settings.lockPopup = enabled
+                            if !enabled {
+                                settingsStore.settings.lockRequireClosedBody = false
+                            }
+                            VehicleEventLogStore.shared.add(
+                                .keyless,
+                                enabled ? "开启上锁弹窗" : "关闭上锁弹窗",
+                                detail: enabled ? "允许无感上锁结果与未关提醒推送" : "同时关闭「未关不自动上锁」"
+                            )
+                        }
+                    ))
+
+                    if settingsStore.settings.lockPopup {
+                        ToggleRow(icon: "exclamationmark.shield.fill", label: "未关不自动上锁", isOn: Binding(
+                            get: { settingsStore.settings.lockRequireClosedBody },
+                            set: { enabled in
+                                settingsStore.settings.lockRequireClosedBody = enabled
+                                VehicleEventLogStore.shared.add(
+                                    .keyless,
+                                    enabled ? "开启未关不自动上锁" : "关闭未关不自动上锁",
+                                    detail: enabled
+                                        ? "门或尾门未关时先拦截上锁，再 HTTP 点名推送；车窗只提醒不拦锁"
+                                        : "离开后直接尝试上锁，锁后 HTTP 检查并推送未关部位"
+                                )
+                            }
+                        ))
+                        Text(settingsStore.settings.lockRequireClosedBody
+                             ? "开启后：门或尾门未关时不执行无感上锁，并推送具体未关部位。车窗不阻断上锁，只提醒。"
+                             : "关闭后：离开后仍会尝试无感上锁；锁后通过 HTTP 检查，并推送未关的门、车窗或尾门。")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        Text("开启「上锁弹窗」后，可设置是否在门/尾门未关时拦截无感上锁，并接收未关部位推送。")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }

@@ -602,15 +602,42 @@ extension MQTTVehicleStateStore {
         }
     }
 
-    /// 门尾预检拒绝属于安全提醒，独立于“上锁弹窗”开关；只在决策变化时触发，避免弱 RSSI 循环刷屏。
+    /// 未关不自动上锁：先拦锁，再 HTTP 点名推送。依赖「上锁弹窗」；只在决策变化时触发，避免弱 RSSI 刷屏。
     func postKeylessBodyOpenReminderIfNeeded(for decision: KeylessDecision, settings: KeylessSettings) {
-        guard settings.lockRequireClosedBody else { return }
+        guard settings.lockPopup, settings.lockRequireClosedBody else { return }
         let reason = decision.reason
-        guard reason == "车门未关闭" || reason == "主驾门未关闭" || reason == "后备箱未关闭" else { return }
-        AppNotificationManager.shared.postKeylessNotification(title: "未执行无感上锁", body: "\(reason)，请检查车辆。")
+        guard reason == "车门未关闭" || reason == "主驾门未关闭" || reason == "尾门未关闭" || reason == "后备箱未关闭" else { return }
+
+        vehicleEventLogStore.add(
+            .keyless,
+            "未关不自动上锁",
+            detail: "已拦截本次上锁 · \(reason) · 正在 HTTP 点名未关部位"
+        )
+
+        // A 方案：先拦，再补一次 HTTP 完整车况做点名；HTTP 失败则回落本地拒绝原因。
+        pollHTTPOnce(userInitiated: false) { [weak self] ok, message in
+            guard let self else { return }
+            let openParts: [String]
+            if ok {
+                openParts = self.keylessOpenBodyParts(fromHTTP: self.lastHTTPRawCarStatus)
+            } else {
+                openParts = [reason]
+            }
+            let named = openParts.isEmpty ? [reason] : openParts
+            let bodyDetail = named.joined(separator: "、")
+            self.vehicleEventLogStore.add(
+                .keyless,
+                "未执行无感上锁",
+                detail: ok ? bodyDetail : "\(bodyDetail) · HTTP失败:\(message)"
+            )
+            AppNotificationManager.shared.postKeylessNotification(
+                title: "未执行无感上锁",
+                body: "检测到 \(bodyDetail)，已取消本次上锁。"
+            )
+        }
     }
 
-    /// HTTP 完整快照中明确未关闭的部位；未知状态不当作异常。
+    /// 现有状态快照中明确未关闭的部位；未知状态不当作异常。
     func keylessOpenBodyParts(from snapshot: VehicleState) -> [String] {
         var parts: [String] = []
         if snapshot.driverDoorOpen == true {
@@ -619,7 +646,7 @@ extension MQTTVehicleStateStore {
             parts.append("车门未关闭")
         }
         if snapshot.trunkOpen == true {
-            parts.append("后备箱未关闭")
+            parts.append("尾门未关闭")
         }
         if snapshot.windowsClosed == false {
             parts.append("车窗未关闭")
@@ -627,10 +654,51 @@ extension MQTTVehicleStateStore {
         return parts
     }
 
-    /// 从 HTTP 原始回包识别明确未关闭的部位；不读取受本地保护的 UI/state。
+    /// 从 HTTP 原始回包点名未关部位；优先四门四窗明细，未知不报。
     func keylessOpenBodyParts(fromHTTP raw: [String: String]) -> [String] {
-        let mapped = VehicleStatusMapper.httpState(from: raw, base: .placeholder)
-        return keylessOpenBodyParts(from: mapped)
+        var parts: [String] = []
+
+        let doorLabels = [
+            ("door1OpenStatus", "主驾门未关闭"),
+            ("door2OpenStatus", "副驾门未关闭"),
+            ("door3OpenStatus", "左后门未关闭"),
+            ("door4OpenStatus", "右后门未关闭")
+        ]
+        for (key, label) in doorLabels {
+            if parseOpen(raw[key]) == true {
+                parts.append(label)
+            }
+        }
+        if parts.isEmpty, parseDoorClosed(raw) == false {
+            parts.append("车门未关闭")
+        }
+
+        if parseOpen(raw["tailDoorOpenStatus"]) == true {
+            parts.append("尾门未关闭")
+        }
+
+        let windowChecks: [(status: String?, degree: String?, half: String?, label: String)] = [
+            (raw["window1Status"], raw["window1OpenDegree"], raw["window1HalfOpenStatus"], "主驾车窗未关闭"),
+            (raw["window2Status"], raw["window2OpenDegree"], raw["window2HalfOpenStatus"], "副驾车窗未关闭"),
+            (raw["window3Status"], raw["window3OpenDegree"], raw["window3HalfOpenStatus"], "左后车窗未关闭"),
+            (raw["window4Status"], raw["window4OpenDegree"], raw["window4HalfOpenStatus"], "右后车窗未关闭")
+        ]
+        var windowParts: [String] = []
+        for item in windowChecks {
+            let openByStatus = parseOpen(item.status) == true
+            let openByDegree = (parseDouble(item.degree) ?? 0) > 0
+            let openByHalf = parseOpen(item.half) == true
+            if openByStatus || openByDegree || openByHalf {
+                windowParts.append(item.label)
+            }
+        }
+        if windowParts.isEmpty, parseWindowsClosed(raw) == false {
+            parts.append("车窗未关闭")
+        } else {
+            parts.append(contentsOf: windowParts)
+        }
+
+        return parts
     }
 
     /// 解锁 BLE ACK 后本地即时显示；最终仍记录新的 HTTP 原始 doorLockStatus 确认。
@@ -689,10 +757,19 @@ extension MQTTVehicleStateStore {
                     if ok, isNewHTTP, httpLocked == true {
                         self.vehicleEventLogStore.add(.keyless, "无感上锁 HTTP 已确认", detail: "锁=已锁 · \(bodyDetail)")
                         if self.keylessSettingsStore.settings.lockPopup {
-                            AppNotificationManager.shared.postKeylessNotification(title: "无感上锁已确认", body: "HTTP 完整车况确认车辆已上锁。\(bodyOpen ? "但\(bodyDetail)，请检查车辆。" : "")")
-                        }
-                        if bodyOpen {
-                            AppNotificationManager.shared.postKeylessNotification(title: "车辆有未关闭部位", body: "HTTP 完整车况：\(bodyDetail)。请检查车辆。")
+                            AppNotificationManager.shared.postKeylessNotification(
+                                title: "无感上锁已确认",
+                                body: bodyOpen
+                                    ? "车辆已上锁，但仍检测到 \(bodyDetail)，请检查车辆。"
+                                    : "HTTP 完整车况确认车辆已上锁。"
+                            )
+                            // 有未关部位时再补一条点名提醒，便于通知中心快速识别。
+                            if bodyOpen {
+                                AppNotificationManager.shared.postKeylessNotification(
+                                    title: "车辆有未关闭部位",
+                                    body: "HTTP 完整车况：\(bodyDetail)。请检查车辆。"
+                                )
+                            }
                         }
                     } else if ok {
                         let detail: String
@@ -704,10 +781,20 @@ extension MQTTVehicleStateStore {
                             detail = "HTTP 原始回包未提供可确认的锁态"
                         }
                         self.vehicleEventLogStore.add(.warning, "无感上锁 HTTP 未确认", detail: "\(detail) · \(bodyDetail)")
-                        AppNotificationManager.shared.postKeylessNotification(title: "无感上锁未确认", body: "\(detail)。\(bodyOpen ? "\(bodyDetail)，请检查车辆。" : "")")
+                        if self.keylessSettingsStore.settings.lockPopup {
+                            AppNotificationManager.shared.postKeylessNotification(
+                                title: "无感上锁未确认",
+                                body: bodyOpen ? "\(detail)。同时检测到 \(bodyDetail)。" : "\(detail)。"
+                            )
+                        }
                     } else {
                         self.vehicleEventLogStore.add(.warning, "无感上锁 HTTP 确认失败", detail: message)
-                        AppNotificationManager.shared.postKeylessNotification(title: "无感上锁待确认", body: "BLE 指令已发送，但 HTTP 完整车况刷新失败，未将本地 UI 状态作为成功依据。")
+                        if self.keylessSettingsStore.settings.lockPopup {
+                            AppNotificationManager.shared.postKeylessNotification(
+                                title: "无感上锁待确认",
+                                body: "BLE 指令已发送，但 HTTP 完整车况刷新失败，未将本地 UI 状态作为成功依据。"
+                            )
+                        }
                     }
                 }
             }

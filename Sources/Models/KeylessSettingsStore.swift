@@ -31,10 +31,11 @@ struct KeylessSettings: Codable {
 
     // 上锁
     var lockEnabled: Bool = true
-    /// 默认开启：无感上锁前确认四门与尾门关闭；关闭后按 BLE 离开逻辑直接尝试锁车，锁后仍由 HTTP 完整快照核验。
+    /// 未关不自动上锁：门/尾门明确未关时拦截无感上锁；车窗不拦。依赖 lockPopup；关弹窗时一并关闭。
     var lockRequireClosedBody: Bool = true
     var lockThreshold: Double = -90
     var lockDelay: Double = 0
+    /// 上锁结果/未关提醒推送总开关；关闭时「未关不自动上锁」不可用。
     var lockPopup: Bool = true
     var lockVibrate: Bool = true
     var lockVibPreset: String = "shortSingle"
@@ -102,6 +103,10 @@ struct KeylessSettings: Codable {
         lockThreshold = try c.decodeIfPresent(Double.self, forKey: .lockThreshold) ?? -90
         lockDelay = try c.decodeIfPresent(Double.self, forKey: .lockDelay) ?? 0
         lockPopup = try c.decodeIfPresent(Bool.self, forKey: .lockPopup) ?? true
+        // 「未关不自动上锁」依赖上锁弹窗；旧存档若弹窗已关则一并关闭。
+        if !lockPopup {
+            lockRequireClosedBody = false
+        }
         lockVibrate = try c.decodeIfPresent(Bool.self, forKey: .lockVibrate) ?? true
         lockVibPreset = try c.decodeIfPresent(String.self, forKey: .lockVibPreset) ?? "shortSingle"
         lockVibCustomID = try c.decodeIfPresent(String.self, forKey: .lockVibCustomID)

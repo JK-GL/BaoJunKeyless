@@ -238,11 +238,11 @@ struct KeylessDecisionEngine {
             return .deny(action: .lock, reason: "车锁状态未知且 BLE 未鉴权")
         }
 
-        // 6/7. 门/尾门预检（默认开启）：
-        //    - 仅明确“未关”才拒绝；状态未知不会把 BLE 无感锁车卡死。
-        //    - 关闭开关时模仿第三方策略：不以前置门尾状态阻断，锁后改由 HTTP 完整快照核验。
-        //    - 车窗不参与预检：不同车型的锁车自动关窗能力不同，锁后统一由 HTTP 检查并提醒。
-        if settings.lockRequireClosedBody {
+        // 6/7. 未关不自动上锁（依赖上锁弹窗）：
+        //    - 仅在 lockPopup + lockRequireClosedBody 同时开启时生效。
+        //    - 仅明确“门/尾门未关”才拒绝；状态未知不卡死 BLE 无感上锁。
+        //    - 车窗不参与预检：只提醒不拦锁；点名推送在拒绝后走 HTTP。
+        if settings.lockPopup && settings.lockRequireClosedBody {
             if state.doorsClosed == false {
                 return .deny(action: .lock, reason: "车门未关闭")
             }
@@ -250,7 +250,7 @@ struct KeylessDecisionEngine {
                 return .deny(action: .lock, reason: "主驾门未关闭")
             }
             if state.trunkOpen == true {
-                return .deny(action: .lock, reason: "后备箱未关闭")
+                return .deny(action: .lock, reason: "尾门未关闭")
             }
         }
         // 8. 车速 = 0
