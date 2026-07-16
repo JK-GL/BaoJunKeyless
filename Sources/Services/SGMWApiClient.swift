@@ -157,17 +157,21 @@ final class SGMWApiClient {
         case .remoteStop:
             return VehicleControlRequestPlan(command: .remoteStop, endpointCandidates: ["remote/V3/safety/sendVhlCtl"], bodyKeys: ["vin", "qgRemoteStopExtendedObjects"], note: "HTTP_BLE_CONTROL_DIG_RESULT：BLE 未连接时尝试 QG sendVhlCtl 一键关上电+关闭发动机")
         case .findCar:
-            return VehicleControlRequestPlan(command: .findCar, endpointCandidates: ["car/control/searchCar"], bodyKeys: ["vin", "status"], note: "BLE_SPEC v7.1：寻车 status=0 双闪鸣笛")
+            // 安卓开源 WulingAPI.searchCar：只传 vin，不传 status。
+            return VehicleControlRequestPlan(command: .findCar, endpointCandidates: ["car/control/searchCar"], bodyKeys: ["vin"], note: "Android open-source：searchCar 仅 vin")
         case .acOn:
-            return VehicleControlRequestPlan(command: .acOn, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature"], note: "BLE_SPEC v7.1：空调 status=6 开空调，温度下限按快冷 17°C")
+            // 安卓开源 AppState.CLIMATE_ON：status/accOnOff 为 1，并带 temperature/blowerLvl/duration。
+            return VehicleControlRequestPlan(command: .acOn, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature", "blowerLvl", "duration"], note: "Android open-source：开空调 status=1 accOnOff=1")
         case .acOff:
-            return VehicleControlRequestPlan(command: .acOff, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status"], note: "BLE_SPEC v7.1：空调 status=7 关空调")
+            // 安卓开源 AppState.CLIMATE_OFF：status/accOnOff 为 0。
+            return VehicleControlRequestPlan(command: .acOff, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status"], note: "Android open-source：关空调 status=0 accOnOff=0")
         case .openWindows:
-            return VehicleControlRequestPlan(command: .openWindows, endpointCandidates: ["car/control/window"], bodyKeys: ["vin", "status"], note: "BLE_SPEC v7.1：车窗 status=0 开车窗")
+            return VehicleControlRequestPlan(command: .openWindows, endpointCandidates: ["car/control/window"], bodyKeys: ["vin", "status"], note: "Android open-source / BLE_SPEC：车窗 status=0 开窗")
         case .closeWindows:
-            return VehicleControlRequestPlan(command: .closeWindows, endpointCandidates: ["car/control/window"], bodyKeys: ["vin", "status"], note: "BLE_SPEC v7.1：车窗 status=1 关车窗")
+            return VehicleControlRequestPlan(command: .closeWindows, endpointCandidates: ["car/control/window"], bodyKeys: ["vin", "status"], note: "Android open-source / BLE_SPEC：车窗 status=1 关窗")
         case .quickCool:
-            return VehicleControlRequestPlan(command: .quickCool, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature", "blowerLvl", "duration"], note: "BLE_SPEC v7.1：快速降温 status=4，temperature=目标温度，blowerLvl=7，duration=5~20")
+            // 安卓开源 AppState.executeQuickCool：status=1 + 17°C + blowerLvl=7 + duration=20。
+            return VehicleControlRequestPlan(command: .quickCool, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature", "blowerLvl", "duration"], note: "Android open-source：快冷 status=1 temperature=17 blowerLvl=7 duration=20")
         }
     }
 
@@ -187,14 +191,13 @@ final class SGMWApiClient {
             switch command.kind {
             case .lock, .closeWindows:
                 body["status"] = 1
-            case .unlock, .findCar, .openWindows:
+            case .unlock, .openWindows:
                 body["status"] = 0
-            case .quickCool:
-                body["status"] = 4
-            case .acOn:
-                body["status"] = 6
+            case .acOn, .quickCool:
+                // 安卓开源：开空调/快冷都用 status=1，不是 BLE_SPEC 的 6/4。
+                body["status"] = 1
             case .acOff:
-                body["status"] = 7
+                body["status"] = 0
             default:
                 break
             }
@@ -210,14 +213,19 @@ final class SGMWApiClient {
             }
         }
         if plan.bodyKeys.contains("temperature") {
-            let defaultTemperature = command.kind == .quickCool ? 17 : 22
+            let defaultTemperature = command.kind == .quickCool ? 17 : 24
             let rawTemperature = Int(command.requestedTemperature ?? Double(defaultTemperature))
-            body["temperature"] = max(17, min(33, rawTemperature))
+            // 安卓开源把温度/风速/时长当字符串提交。
+            body["temperature"] = String(max(17, min(33, rawTemperature)))
         }
-        if plan.bodyKeys.contains("blowerLvl") { body["blowerLvl"] = 7 }
+        if plan.bodyKeys.contains("blowerLvl") {
+            let rawLevel = command.kind == .quickCool ? 7 : 3
+            body["blowerLvl"] = String(rawLevel)
+        }
         if plan.bodyKeys.contains("duration") {
-            let rawDuration = command.requestedDurationMinutes ?? 10
-            body["duration"] = max(5, min(20, rawDuration))
+            let defaultDuration = command.kind == .quickCool ? 20 : 10
+            let rawDuration = command.requestedDurationMinutes ?? defaultDuration
+            body["duration"] = String(max(5, min(20, rawDuration)))
         }
         if plan.bodyKeys.contains("qgRemoteStopExtendedObjects") {
             body["remoteControlExtendedObjectList"] = [
@@ -272,21 +280,12 @@ final class SGMWApiClient {
                 completion(.failure(.parseFailed(preview)))
                 return
             }
-            if let result = json["result"] as? Bool, result == true {
+            if self.isSuccessfulBusinessResponse(json) {
                 completion(.success(json))
                 return
             }
-            if let code = (json["code"] as? String) ?? (json["statusCode"] as? String),
-               ["0", "1", "200", "2000"].contains(code) {
-                completion(.success(json))
-                return
-            }
-            if let errorFlag = json["errorFlag"] as? Int, errorFlag == 0 {
-                completion(.success(json))
-                return
-            }
-            let msg = (json["msg"] as? String) ?? (json["message"] as? String) ?? "未知错误"
-            if msg.contains("token") || msg.contains("Token") || json["code"] as? String == "2002" {
+            let msg = self.businessErrorMessage(from: json)
+            if self.isTokenInvalidMessage(msg, json: json) {
                 completion(.failure(.invalidToken))
             } else {
                 completion(.failure(.serverMessage(msg)))
@@ -413,13 +412,13 @@ final class SGMWApiClient {
                 completion(.failure(.parseFailed(preview)))
                 return
             }
-            if let result = json["result"] as? Bool, result == true {
+            if self.isSuccessfulBusinessResponse(json) {
                 completion(.success(json))
                 return
             }
-            // 业务错误
-            let msg = (json["msg"] as? String) ?? (json["message"] as? String) ?? "未知错误"
-            if msg.contains("token") || msg.contains("Token") || json["code"] as? String == "2002" {
+            // 业务错误：优先 errorMessage/errorCode，避免只剩“未知错误”。
+            let msg = self.businessErrorMessage(from: json)
+            if self.isTokenInvalidMessage(msg, json: json) {
                 completion(.failure(.invalidToken))
             } else {
                 completion(.failure(.serverMessage(msg)))
@@ -443,6 +442,74 @@ final class SGMWApiClient {
         formatter.timeZone = TimeZone.current
         formatter.dateFormat = "yyyyMMddHHmmss"
         return formatter.string(from: Date())
+    }
+
+    /// 与安卓开源 APIResponse.isSuccess 对齐：result/success/errorCode/notSuccess。
+    private func isSuccessfulBusinessResponse(_ json: [String: Any]) -> Bool {
+        if let result = json["result"] as? Bool, result == true { return true }
+        if let success = json["success"] as? Bool, success == true { return true }
+        if let notSuccess = json["notSuccess"] as? Bool, notSuccess == false,
+           json["result"] == nil, json["success"] == nil {
+            return true
+        }
+        if let errorCode = stringValue(json["errorCode"]), errorCode == "0" {
+            return true
+        }
+        if let code = stringValue(json["code"]) ?? stringValue(json["statusCode"]),
+           ["0", "1", "200", "2000"].contains(code) {
+            return true
+        }
+        if let errorFlag = json["errorFlag"] as? Int, errorFlag == 0 {
+            return true
+        }
+        return false
+    }
+
+    private func businessErrorMessage(from json: [String: Any]) -> String {
+        let preferred = [
+            stringValue(json["errorMessage"]),
+            stringValue(json["errorMsg"]),
+            stringValue(json["msg"]),
+            stringValue(json["message"]),
+            stringValue(json["statusToast"]),
+            stringValue(json["statusName"])
+        ].compactMap { $0 }.first { !$0.isEmpty }
+
+        var parts: [String] = []
+        if let preferred, !preferred.isEmpty {
+            parts.append(preferred)
+        }
+        if let errorCode = stringValue(json["errorCode"]), !errorCode.isEmpty, errorCode != "0" {
+            parts.append("errorCode=\(errorCode)")
+        }
+        if let code = stringValue(json["code"]) ?? stringValue(json["statusCode"]),
+           !code.isEmpty, !["0", "1", "200", "2000"].contains(code) {
+            parts.append("code=\(code)")
+        }
+        if let notSuccess = json["notSuccess"] as? Bool {
+            parts.append("notSuccess=\(notSuccess)")
+        }
+        if let result = json["result"] as? Bool {
+            parts.append("result=\(result)")
+        }
+        if let success = json["success"] as? Bool {
+            parts.append("success=\(success)")
+        }
+        if let traceId = stringValue(json["traceId"]), !traceId.isEmpty {
+            parts.append("traceId=\(traceId.prefix(12))…")
+        }
+        if parts.isEmpty {
+            let keys = json.keys.sorted().joined(separator: ",")
+            return keys.isEmpty ? "未知错误" : "未知错误 keys=\(keys)"
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func isTokenInvalidMessage(_ message: String, json: [String: Any]) -> Bool {
+        if message.localizedCaseInsensitiveContains("token") { return true }
+        if stringValue(json["code"]) == "2002" { return true }
+        if stringValue(json["errorCode"]) == "500009" { return true }
+        return false
     }
 
     private func buildSignedHeaders(accessToken: String) -> [String: String] {
