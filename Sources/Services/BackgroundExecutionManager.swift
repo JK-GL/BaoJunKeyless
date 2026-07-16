@@ -22,6 +22,22 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         case degraded = "后台受限"
     }
 
+    private struct PersistedParkingWake: Codable {
+        var latitude: Double
+        var longitude: Double
+        var radius: Double
+        var createdAt: Date
+        var wasOutside: Bool
+        var source: String
+    }
+
+    private struct PersistedPendingConnect: Codable {
+        var reason: String
+        var createdAt: Date
+        var lastStage: String
+        var attempts: Int
+    }
+
     @Published private(set) var phase: RuntimePhase = .idleDisabled
     @Published private(set) var isInGeofence = false
     @Published private(set) var isKeepAliveActive = false
@@ -35,6 +51,8 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     /// 圆心地址；空则 UI 隐藏地址行
     @Published private(set) var geofenceCenterAddress: String = ""
     @Published private(set) var distanceToFenceCenterMeters: CLLocationDistance?
+    /// 设置页显示真实定位能力：后台围栏/显著位置变化必须“始终允许”。
+    @Published private(set) var locationCapabilityText: String = "定位权限未确定"
 
     private let locationManager = CLLocationManager()
     private let regionIdentifier = "com.sgmw.key.vehicle.geofence"
@@ -43,6 +61,11 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     private let locationDisplayStore = VehicleLocationDisplayStore.shared
     private let connectionStatusStore = VehicleConnectionStatusStore.shared
     private let eventLog = VehicleEventLogStore.shared
+    private let persistence = UserDefaults.standard
+    private let parkingWakeStoreKey = "BackgroundParkingWake.v1"
+    private let pendingConnectStoreKey = "BackgroundPendingConnect.v1"
+    private let parkingWakeTTL: TimeInterval = 24 * 60 * 60
+    private let pendingConnectTTL: TimeInterval = 15 * 60
 
     private var cancellables = Set<AnyCancellable>()
     private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
@@ -53,10 +76,14 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     private var monitoredRegion: CLCircularRegion?
     private var monitoredParkingRegion: CLCircularRegion?
     private var parkingLocation: CLLocation?
+    private var parkingLocationCreatedAt: Date?
     /// 只有先离开停车区域，再重新进入，显著位置变化才触发预唤醒。
     private var parkingFallbackWasOutside = false
+    private var parkingLocationSource = "unknown"
     private var pendingConnectStartedAt: Date?
     private var pendingConnectLastStage: String?
+    private var pendingConnectReason: String?
+    private var pendingConnectAttempts = 0
     private var lastFenceCenter: CLLocationCoordinate2D?
     private var lastFenceRadius: CLLocationDistance = 0
     private var lastPhoneLocation: CLLocation?
@@ -69,6 +96,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
     private override init() {
         super.init()
+        isAppInForeground = UIApplication.shared.applicationState == .active
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         locationManager.distanceFilter = 40
@@ -78,6 +106,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             locationManager.showsBackgroundLocationIndicator = false
         }
 
+        restorePersistedBackgroundState()
         observeInputs()
         applySettings(settingsStore.settings, reason: "init")
         // 启动时请求一次定位，便于摘要显示距圆心
@@ -86,6 +115,120 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             locationManager.requestLocation()
         }
         refreshGeofenceSummary()
+    }
+
+    // MARK: - Persistence
+
+    private func restorePersistedBackgroundState(now: Date = Date()) {
+        updateLocationCapabilityText()
+
+        if let data = persistence.data(forKey: parkingWakeStoreKey),
+           let saved = try? JSONDecoder().decode(PersistedParkingWake.self, from: data),
+           now.timeIntervalSince(saved.createdAt) <= parkingWakeTTL,
+           settingsStore.settings.keylessEnabled,
+           settingsStore.settings.parkingFallbackWakeEnabled {
+            let location = CLLocation(latitude: saved.latitude, longitude: saved.longitude)
+            parkingLocation = location
+            parkingLocationCreatedAt = saved.createdAt
+            parkingLocationSource = saved.source
+            parkingFallbackWasOutside = saved.wasOutside
+            let region = CLCircularRegion(
+                center: location.coordinate,
+                radius: max(100, KeylessSettings.clampedGeofenceRadius(saved.radius)),
+                identifier: parkingRegionIdentifier
+            )
+            region.notifyOnEntry = true
+            region.notifyOnExit = true
+            monitoredParkingRegion = region
+            if locationManager.authorizationStatus == .authorizedAlways {
+                let alreadyMonitored = locationManager.monitoredRegions.contains { $0.identifier == parkingRegionIdentifier }
+                if !alreadyMonitored { locationManager.startMonitoring(for: region) }
+                locationManager.startMonitoringSignificantLocationChanges()
+            }
+            logInfo("停车位置备用状态已恢复", detail: "来源=\(saved.source) · age=\(Int(now.timeIntervalSince(saved.createdAt)))s · 已离开=\(saved.wasOutside ? 1 : 0)", identity: "parking-fallback-restored")
+        } else {
+            persistence.removeObject(forKey: parkingWakeStoreKey)
+            for old in locationManager.monitoredRegions where old.identifier == parkingRegionIdentifier {
+                locationManager.stopMonitoring(for: old)
+            }
+        }
+
+        if let data = persistence.data(forKey: pendingConnectStoreKey),
+           let saved = try? JSONDecoder().decode(PersistedPendingConnect.self, from: data),
+           now.timeIntervalSince(saved.createdAt) <= pendingConnectTTL,
+           settingsStore.settings.keylessEnabled {
+            pendingConnectStartedAt = saved.createdAt
+            pendingConnectLastStage = saved.lastStage
+            pendingConnectReason = saved.reason
+            pendingConnectAttempts = saved.attempts
+            logInfo("后台待连接已恢复", detail: "\(saved.lastStage) · 原因=\(saved.reason) · 尝试=\(saved.attempts)", identity: "pending-connect-restored")
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.pendingConnectAttempts < 5 else {
+                    self?.clearPersistedPendingConnect(reason: "恢复尝试次数已达上限")
+                    return
+                }
+                self.requestBLESession(forceRestart: false, detail: "恢复未完成的后台待连接")
+            }
+        } else {
+            persistence.removeObject(forKey: pendingConnectStoreKey)
+        }
+    }
+
+    private func persistParkingWake(createdAt: Date? = nil) {
+        guard let parkingLocation, let monitoredParkingRegion else { return }
+        let value = PersistedParkingWake(
+            latitude: parkingLocation.coordinate.latitude,
+            longitude: parkingLocation.coordinate.longitude,
+            radius: monitoredParkingRegion.radius,
+            createdAt: parkingLocationCreatedAt ?? createdAt ?? Date(),
+            wasOutside: parkingFallbackWasOutside,
+            source: parkingLocationSource
+        )
+        if let data = try? JSONEncoder().encode(value) {
+            persistence.set(data, forKey: parkingWakeStoreKey)
+        }
+    }
+
+    private func persistPendingConnect() {
+        guard let createdAt = pendingConnectStartedAt else {
+            persistence.removeObject(forKey: pendingConnectStoreKey)
+            return
+        }
+        let value = PersistedPendingConnect(
+            reason: pendingConnectReason ?? "unknown",
+            createdAt: createdAt,
+            lastStage: pendingConnectLastStage ?? "已创建",
+            attempts: pendingConnectAttempts
+        )
+        if let data = try? JSONEncoder().encode(value) {
+            persistence.set(data, forKey: pendingConnectStoreKey)
+        }
+    }
+
+    private func clearPersistedPendingConnect(reason: String) {
+        pendingConnectStartedAt = nil
+        pendingConnectLastStage = nil
+        pendingConnectReason = nil
+        pendingConnectAttempts = 0
+        persistence.removeObject(forKey: pendingConnectStoreKey)
+        logInfo("后台待连接已清理", detail: reason, identity: "pending-connect-clear|\(reason)", mergeWindow: 30)
+    }
+
+    private func updateLocationCapabilityText() {
+        switch locationManager.authorizationStatus {
+        case .authorizedAlways:
+            locationCapabilityText = "始终允许 · 后台围栏/显著位置可用"
+        case .authorizedWhenInUse:
+            locationCapabilityText = "使用期间 · 前台定位可用，后台围栏受限"
+        case .denied:
+            locationCapabilityText = "已拒绝 · 后台定位不可用"
+        case .restricted:
+            locationCapabilityText = "系统限制 · 后台定位不可用"
+        case .notDetermined:
+            locationCapabilityText = "未授权 · 需要始终允许"
+        @unknown default:
+            locationCapabilityText = "未知权限状态"
+        }
     }
 
     // MARK: - Public API
@@ -194,11 +337,14 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         }
         guard stage != pendingConnectLastStage else { return }
         pendingConnectLastStage = stage
+        persistPendingConnect()
         let elapsed = String(format: "%.1fs", Date().timeIntervalSince(started))
         logInfo("后台待连接", detail: "\(stage) · 已用时 \(elapsed)", identity: "pending-connect|\(stage)", mergeWindow: 30)
-        if status == .authenticated || status == .error {
-            pendingConnectStartedAt = nil
-            pendingConnectLastStage = nil
+        if status == .authenticated {
+            clearPersistedPendingConnect(reason: "BLE 已完成安全鉴权")
+        } else if status == .error {
+            pendingConnectLastStage = "失败，等待系统机会"
+            persistPendingConnect()
         }
     }
 
@@ -215,8 +361,8 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         let bleBusy = isBLEBusy
         let auth = connectionStatusStore.bleStatus == .authenticated
 
-        // 权限不足 → 受限（错误类）
-        if (settings.geofenceWakeEnabled || settings.locationKeepAliveEnabled),
+        // 权限不足 → 受限（后台围栏/停车备用/定位保活都需要 Always）
+        if (settings.geofenceWakeEnabled || settings.parkingFallbackWakeEnabled || settings.locationKeepAliveEnabled),
            !hasSufficientLocationPermission(for: settings) {
             enterDegraded(reason: "定位权限不足，后台预唤醒/保活受限")
         }
@@ -374,8 +520,11 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         locationManager.startMonitoringSignificantLocationChanges()
         monitoredParkingRegion = region
         parkingLocation = location
+        parkingLocationCreatedAt = Date()
+        parkingLocationSource = vehicleLocation != nil ? "vehicle-http" : "phone-ble-auth"
         parkingFallbackWasOutside = false
-        logInfo("停车位置备用唤醒已就绪", detail: "半径 \(Int(radius)) 米 · 显著位置变化已监听 · \(reasonText(reason))", identity: "parking-fallback-ready")
+        persistParkingWake()
+        logInfo("停车位置备用唤醒已就绪", detail: "半径 \(Int(radius)) 米 · 来源=\(parkingLocationSource) · 显著位置变化已监听 · \(reasonText(reason))", identity: "parking-fallback-ready")
     }
 
     private func removeParkingFallback(reason: String) {
@@ -383,7 +532,10 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         if monitoredParkingRegion != nil { logInfo("停车位置备用唤醒已移除", detail: reason, identity: "parking-fallback-remove") }
         monitoredParkingRegion = nil
         parkingLocation = nil
+        parkingLocationCreatedAt = nil
+        parkingLocationSource = "unknown"
         parkingFallbackWasOutside = false
+        persistence.removeObject(forKey: parkingWakeStoreKey)
         locationManager.stopMonitoringSignificantLocationChanges()
     }
 
@@ -649,11 +801,8 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
     private func hasSufficientLocationPermission(for settings: KeylessSettings) -> Bool {
         let status = locationManager.authorizationStatus
-        if settings.parkingFallbackWakeEnabled {
+        if settings.geofenceWakeEnabled || settings.parkingFallbackWakeEnabled || settings.locationKeepAliveEnabled {
             return status == .authorizedAlways
-        }
-        if settings.geofenceWakeEnabled || settings.locationKeepAliveEnabled {
-            return status == .authorizedAlways || status == .authorizedWhenInUse
         }
         return true
     }
@@ -680,13 +829,33 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
     private func requestBLESession(forceRestart: Bool, detail: String) {
         guard let store = VehicleStateStoreBridge.current as? MQTTVehicleStateStore else { return }
+        if connectionStatusStore.bleStatus == .authenticated {
+            if pendingConnectStartedAt != nil {
+                clearPersistedPendingConnect(reason: "BLE 已处于鉴权完成状态")
+            }
+            return
+        }
         // 进圈/后台续命：允许扫描。ensure 内部会再判「仅围栏内扫描」；
         // 但进圈时 isInGeofence 已 true，不会被抑制。
         if pendingConnectStartedAt == nil {
             pendingConnectStartedAt = Date()
             pendingConnectLastStage = "已创建"
+            pendingConnectReason = detail
+            pendingConnectAttempts = 1
             logInfo("后台待连接", detail: "已创建 · 原因：\(detail)", identity: "pending-connect|created", mergeWindow: 30)
+        } else if pendingConnectLastStage == "失败，等待系统机会" || pendingConnectLastStage == "等待系统机会" {
+            pendingConnectAttempts += 1
+            pendingConnectLastStage = "已创建"
+            pendingConnectReason = detail
+        } else {
+            // 同一轮扫描/连接中的重复唤醒只更新原因，不重复计次。
+            pendingConnectReason = detail
         }
+        if pendingConnectAttempts > 5 {
+            clearPersistedPendingConnect(reason: "后台接力尝试次数已达上限")
+            return
+        }
+        persistPendingConnect()
         store.ensureBLESession(forceRestart: forceRestart, optimisticScanning: true, userInitiated: false)
         logInfo("后台唤醒 BLE", detail: "\(detail) · 等待扫描/连接/重鉴权", identity: "bg-wake-ble|\(detail)")
     }
@@ -748,6 +917,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
                 return
             }
             parkingFallbackWasOutside = false
+            persistParkingWake()
             wakeFromParkingFallback("离开后重新进入停车位置备用围栏")
             return
         }
@@ -771,6 +941,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
         if region.identifier == parkingRegionIdentifier {
             parkingFallbackWasOutside = true
+            persistParkingWake()
             logInfo("离开停车位置备用围栏", detail: "已武装下次重新进入预唤醒", identity: "parking-fallback-exit")
             return
         }
@@ -818,6 +989,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        updateLocationCapabilityText()
         let settings = settingsStore.settings
         switch manager.authorizationStatus {
         case .authorizedAlways:
@@ -852,10 +1024,14 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             if let parking = parkingLocation, !isAppInForeground {
                 let distance = last.distance(from: parking)
                 let previousDistance = previousPhone?.distance(from: parking)
-                if distance > 120 { parkingFallbackWasOutside = true }
+                if distance > 120, !parkingFallbackWasOutside {
+                    parkingFallbackWasOutside = true
+                    persistParkingWake()
+                }
                 // 显著位置回调只有“由远到近”才预唤醒；远离时只武装，不唤醒。
                 if parkingFallbackWasOutside, distance <= 120, (previousDistance ?? .greatestFiniteMagnitude) > 120 {
                     parkingFallbackWasOutside = false
+                    persistParkingWake()
                     wakeFromParkingFallback("显著位置变化由远到近，距停车点约 \(Int(distance)) 米")
                 }
             }

@@ -3,6 +3,7 @@ import SwiftUI
 /// 设置页「后台增强」折叠组：默认折叠，点击标题展开；开关持久化并接线 BackgroundExecutionManager。
 struct SettingsBackgroundEnhancementSection: View {
     @EnvironmentObject var keylessSettings: KeylessSettingsStore
+    @ObservedObject private var backgroundExecution = BackgroundExecutionManager.shared
 
     private var keylessOn: Bool { keylessSettings.settings.keylessEnabled }
     private var controlsEnabled: Bool { keylessOn }
@@ -34,6 +35,15 @@ struct SettingsBackgroundEnhancementSection: View {
                     .foregroundStyle(Color.white.opacity(0.55))
                     .fixedSize(horizontal: false, vertical: true)
 
+                HStack(spacing: 7) {
+                    Image(systemName: "location.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(backgroundExecution.locationCapabilityText.hasPrefix("始终允许") ? AppTheme.green : AppTheme.orange)
+                    Text(backgroundExecution.locationCapabilityText)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.68))
+                }
+
                 if !keylessOn {
                     Text("无感关闭时，本组功能暂停生效；已选设置会保留。")
                         .font(.system(size: 12))
@@ -43,9 +53,9 @@ struct SettingsBackgroundEnhancementSection: View {
 
                 backgroundToggle(
                     icon: "bolt.horizontal.circle",
-                    title: "增强后台执行",
-                    subtitle: "锁屏或切到后台后，继续执行无感相关任务",
-                    isOn: binding(\.backgroundEnhancedEnabled, log: "增强后台执行"),
+                    title: "短时后台任务",
+                    subtitle: "锁屏或切后台时申请系统短时执行机会；不是后台增强总开关",
+                    isOn: binding(\.backgroundEnhancedEnabled, log: "短时后台任务"),
                     enabled: controlsEnabled
                 )
 
@@ -124,9 +134,9 @@ struct SettingsBackgroundEnhancementSection: View {
 
                 backgroundToggle(
                     icon: "arrow.triangle.2.circlepath",
-                    title: "后台状态同步",
-                    subtitle: "后台保持车况同步，并为省电自动降频",
-                    isOn: binding(\.backgroundStateSyncEnabled, log: "后台状态同步"),
+                    title: "后台状态同步增强",
+                    subtitle: "开启时后台活跃约 3 秒、空闲约 25 秒；关闭后保留 25/60 秒低频兜底",
+                    isOn: binding(\.backgroundStateSyncEnabled, log: "后台状态同步增强"),
                     enabled: controlsEnabled
                 )
 

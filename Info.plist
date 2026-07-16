@@ -50,9 +50,9 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>用于雷达定位显示车辆位置，并在无感警戒时辅助预唤醒</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>用于电子围栏预唤醒与无感后台保活：靠近车辆区域时启动蓝牙警戒，远离后降低功耗。不会单独解锁或上锁。</string>
+	<string>用于电子围栏、停车位置备用唤醒和无感后台保活：接近车辆区域时预启动蓝牙警戒，显著位置变化仅用于恢复 BLE 扫描。不会单独解锁或上锁。</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>用于电子围栏预唤醒与无感后台保活：靠近车辆区域时启动蓝牙警戒，远离后降低功耗。不会单独解锁或上锁。</string>
+	<string>用于电子围栏、停车位置备用唤醒和无感后台保活：接近车辆区域时预启动蓝牙警戒，显著位置变化仅用于恢复 BLE 扫描。不会单独解锁或上锁。</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>
