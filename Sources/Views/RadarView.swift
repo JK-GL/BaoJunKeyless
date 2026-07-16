@@ -204,10 +204,6 @@ final class RadarUIView: UIView {
         ring.cornerRadius = 12
     }
 
-    func updateGyro(pitch: Double, roll: Double) {
-        // 当前雷达样式中未直接使用陀螺仪角，但保留接口以兼容上层调用。
-    }
-
     func updatePosition(force: Bool = false) {
         // heading 高频时只更新车标；资源齐全时不要每次 restore。
         if backgroundImageView.image == nil || carImageView.image == nil {
@@ -310,8 +306,8 @@ final class RadarUIView: UIView {
     private func startMarkerDisplayLinkIfNeeded() {
         guard window != nil, markerDisplayLink == nil else { return }
         let displayLink = CADisplayLink(target: self, selector: #selector(stepMarkerSmoothing(_:)))
-        // 指南针节流后 60fps 足够平滑，120 成本偏高。
-        displayLink.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+        // 车标跟手平滑恢复 120fps；heading 已在 LocationManager 侧节流。
+        displayLink.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
         displayLink.add(to: .main, forMode: .common)
         markerDisplayLink = displayLink
     }
