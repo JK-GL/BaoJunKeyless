@@ -152,7 +152,7 @@ struct VehicleDashboardState: Equatable {
     var frontFogText: String = "--"
 }
 
-struct VehicleDashboardMetrics {
+struct VehicleDashboardMetrics: Equatable {
     let battery: [PopupStatusItem]
     let temperature: [PopupStatusItem]
     let charging: [PopupStatusItem]

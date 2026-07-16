@@ -57,16 +57,17 @@ struct StatusView: View {
                                     }
                                 )
                             } else {
-                                withAnimation(PopupMotion.presentSpring) {
+                                // 弹窗出现动画放轻，避免 spring 与整页状态刷新抢主线程。
+                                withAnimation(PopupMotion.contentEase) {
                                     activeCommand = command
                                 }
                             }
                         },
                         onOpenVehicleInfo: {
-                            withAnimation(PopupMotion.presentSpring) { isVehicleInfoFloatingPresented = true }
+                            withAnimation(PopupMotion.contentEase) { isVehicleInfoFloatingPresented = true }
                         },
                         onOpenMQTT: {
-                            withAnimation(PopupMotion.presentSpring) { isMQTTFloatingPresented = true }
+                            withAnimation(PopupMotion.contentEase) { isMQTTFloatingPresented = true }
                         }
                     )
                 }

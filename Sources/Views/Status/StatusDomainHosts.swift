@@ -448,20 +448,34 @@ struct StatusAddressFloatingHost: View {
     }
 }
 
-/// 快捷命令弹窗宿主：自己观察 vehicle state，根视图只保留 presented 绑定。
+/// 快捷命令弹窗宿主：打开时固定状态快照，避免车况刷新牵动弹窗重绘导致点击发黏。
 struct StatusCommandConfirmHost: View {
     @EnvironmentObject var vehicleStore: VehicleStateStore
     let action: CommandAction
     @Binding var isPresented: Bool
     let onConfirm: (CommandAction, Double?, Int?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
+    @State private var snapshotState: VehicleState?
 
     var body: some View {
         CommandConfirmPopup(
             action: action,
-            vehicleState: vehicleStore.state,
+            vehicleState: snapshotState ?? vehicleStore.state,
             isPresented: $isPresented,
             onConfirm: onConfirm
         )
+        .onAppear {
+            // 弹窗生命周期内使用打开瞬间的快照；实时状态变化不应打断确认交互。
+            if snapshotState == nil {
+                snapshotState = vehicleStore.state
+            }
+        }
+        .onChange(of: isPresented) { presented in
+            if presented {
+                snapshotState = vehicleStore.state
+            } else {
+                snapshotState = nil
+            }
+        }
     }
 }
 
@@ -474,7 +488,7 @@ struct StatusMainDashboardHost: View {
     let onOpenVehicleInfo: () -> Void
     let onOpenMQTT: () -> Void
 
-    // 直接读 @Published，避免 body 里 let 快照导致漏刷
+    // 直接读 store 属性；store 在内容真变时才 objectWillChange。
     private var dashboard: VehicleDashboardState { vehicleStore.dashboard }
     private var metrics: VehicleDashboardMetrics { vehicleStore.cachedDashboardMetrics }
     private var state: VehicleState { vehicleStore.state }

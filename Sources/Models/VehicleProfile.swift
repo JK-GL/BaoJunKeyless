@@ -22,14 +22,14 @@ enum FuelBarMode: String, CaseIterable {
     }
 }
 
-struct VehicleCapabilities {
+struct VehicleCapabilities: Equatable {
     var hasFuel: Bool? = nil
     var supportHybridMileage: Bool = false
     var supportBatteryIndicate: Bool = false
     var supportChargePower: Bool = false
 }
 
-struct VehicleProfile {
+struct VehicleProfile: Equatable {
     var vin: String = ""
     var modelName: String = ""
     var carTypeName: String = ""
