@@ -757,19 +757,13 @@ extension MQTTVehicleStateStore {
                     if ok, isNewHTTP, httpLocked == true {
                         self.vehicleEventLogStore.add(.keyless, "无感上锁 HTTP 已确认", detail: "锁=已锁 · \(bodyDetail)")
                         if self.keylessSettingsStore.settings.lockPopup {
+                            // 只弹一条：全关 / 有未关 都用「无感上锁已确认」标题。
                             AppNotificationManager.shared.postKeylessNotification(
                                 title: "无感上锁已确认",
                                 body: bodyOpen
-                                    ? "车辆已上锁，但仍检测到 \(bodyDetail)，请检查车辆。"
+                                    ? "但仍检测到 \(bodyDetail)，请检查车辆。"
                                     : "HTTP 完整车况确认车辆已上锁。"
                             )
-                            // 有未关部位时再补一条点名提醒，便于通知中心快速识别。
-                            if bodyOpen {
-                                AppNotificationManager.shared.postKeylessNotification(
-                                    title: "车辆有未关闭部位",
-                                    body: "HTTP 完整车况：\(bodyDetail)。请检查车辆。"
-                                )
-                            }
                         }
                     } else if ok {
                         let detail: String
