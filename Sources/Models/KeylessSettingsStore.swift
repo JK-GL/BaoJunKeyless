@@ -184,44 +184,56 @@ struct KeylessSettings: Codable {
 class KeylessSettingsStore: ObservableObject {
     static let shared = KeylessSettingsStore()
 
+    /// 防止 didSet 互斥修正时嵌套写回再入。
+    private var isApplyingSettingsSideEffects = false
+
     @Published var settings = KeylessSettings() {
         didSet {
+            guard !isApplyingSettingsSideEffects else { return }
+
             // 半径硬裁剪
             let clamped = KeylessSettings.clampedGeofenceRadius(settings.geofenceRadiusMeters)
             if settings.geofenceRadiusMeters != clamped {
+                isApplyingSettingsSideEffects = true
                 settings.geofenceRadiusMeters = clamped
-                return
+                isApplyingSettingsSideEffects = false
             }
-            // 雷达 / 大车图 / 关系条互斥：允许都关，不允许多开。
+
+            // 雷达 / 大车图 / 关系条互斥兜底：允许都关，不允许多开。
+            // 正常路径应走 setStatusVisual(...)，这里只防脏写。
             let radar = settings.statusRadarEnabled
             let large = settings.statusLargeCarImageEnabled
             let strip = settings.statusProximityStripEnabled
             let onCount = [radar, large, strip].filter { $0 }.count
             if onCount > 1 {
+                var fixed = settings
                 let oldRadar = oldValue.statusRadarEnabled
                 let oldLarge = oldValue.statusLargeCarImageEnabled
                 let oldStrip = oldValue.statusProximityStripEnabled
-                // 后开优先
+                // 后开优先；否则优先雷达 > 大车图 > 关系条
                 if !oldRadar && radar {
-                    settings.statusLargeCarImageEnabled = false
-                    settings.statusProximityStripEnabled = false
-                    return
+                    fixed.statusLargeCarImageEnabled = false
+                    fixed.statusProximityStripEnabled = false
+                } else if !oldLarge && large {
+                    fixed.statusRadarEnabled = false
+                    fixed.statusProximityStripEnabled = false
+                } else if !oldStrip && strip {
+                    fixed.statusRadarEnabled = false
+                    fixed.statusLargeCarImageEnabled = false
+                } else if radar {
+                    fixed.statusLargeCarImageEnabled = false
+                    fixed.statusProximityStripEnabled = false
+                } else if large {
+                    fixed.statusProximityStripEnabled = false
+                } else {
+                    fixed.statusRadarEnabled = false
+                    fixed.statusLargeCarImageEnabled = false
                 }
-                if !oldLarge && large {
-                    settings.statusRadarEnabled = false
-                    settings.statusProximityStripEnabled = false
-                    return
-                }
-                if !oldStrip && strip {
-                    settings.statusRadarEnabled = false
-                    settings.statusLargeCarImageEnabled = false
-                    return
-                }
-                // 兜底优先雷达
-                settings.statusLargeCarImageEnabled = false
-                settings.statusProximityStripEnabled = false
-                return
+                isApplyingSettingsSideEffects = true
+                settings = fixed
+                isApplyingSettingsSideEffects = false
             }
+
             save()
             // BackgroundExecutionManager 自行观察 $settings 并即时应用
         }
@@ -231,6 +243,42 @@ class KeylessSettingsStore: ObservableObject {
 
     init() {
         load()
+    }
+
+    /// 状态页视觉三选一：一次写完，避免 Toggle 连写三个字段触发中间态 didSet 误关。
+    enum StatusVisualMode {
+        case none
+        case radar
+        case largeCar
+        case proximityStrip
+    }
+
+    func setStatusVisual(_ mode: StatusVisualMode) {
+        var next = settings
+        next.statusRadarEnabled = (mode == .radar)
+        next.statusLargeCarImageEnabled = (mode == .largeCar)
+        next.statusProximityStripEnabled = (mode == .proximityStrip)
+        settings = next
+    }
+
+    func setStatusVisualEnabled(_ mode: StatusVisualMode, enabled: Bool) {
+        if enabled {
+            setStatusVisual(mode)
+        } else {
+            // 只关当前模式，不自动打开别的
+            var next = settings
+            switch mode {
+            case .none:
+                break
+            case .radar:
+                next.statusRadarEnabled = false
+            case .largeCar:
+                next.statusLargeCarImageEnabled = false
+            case .proximityStrip:
+                next.statusProximityStripEnabled = false
+            }
+            settings = next
+        }
     }
 
     // MARK: - 震动选择便捷方法

@@ -106,6 +106,7 @@ struct SettingsConnectionConfirmationSection: View {
     }
 
     /// 三选一视觉模式：开一个自动关另外两个；关一个不自动打开别的。
+    /// 必须一次写入 settings 整包，不能连写三个 Bool（会触发中间态 didSet 把目标也关掉）。
     private func visualBinding(_ mode: VisualMode, title: String) -> Binding<Bool> {
         Binding(
             get: {
@@ -116,17 +117,13 @@ struct SettingsConnectionConfirmationSection: View {
                 }
             },
             set: { value in
-                if value {
-                    keylessSettings.settings.statusRadarEnabled = (mode == .radar)
-                    keylessSettings.settings.statusLargeCarImageEnabled = (mode == .largeCar)
-                    keylessSettings.settings.statusProximityStripEnabled = (mode == .proximityStrip)
-                } else {
-                    switch mode {
-                    case .radar: keylessSettings.settings.statusRadarEnabled = false
-                    case .largeCar: keylessSettings.settings.statusLargeCarImageEnabled = false
-                    case .proximityStrip: keylessSettings.settings.statusProximityStripEnabled = false
-                    }
+                let storeMode: KeylessSettingsStore.StatusVisualMode
+                switch mode {
+                case .radar: storeMode = .radar
+                case .largeCar: storeMode = .largeCar
+                case .proximityStrip: storeMode = .proximityStrip
                 }
+                keylessSettings.setStatusVisualEnabled(storeMode, enabled: value)
                 VehicleEventLogStore.shared.add(.system, value ? "开启\(title)" : "关闭\(title)")
             }
         )
