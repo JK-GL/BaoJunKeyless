@@ -381,6 +381,7 @@ extension MQTTVehicleStateStore {
                 vehicleEventLogStore.add(.keyless, "上锁允许", detail: detail)
             case .deny:
                 vehicleEventLogStore.add(.keyless, "上锁拒绝", detail: detail)
+                postKeylessBodyOpenReminderIfNeeded(for: lockDecision, settings: settings)
             case .wait:
                 vehicleEventLogStore.add(.keyless, "上锁等待", detail: detail)
             }
@@ -534,7 +535,11 @@ extension MQTTVehicleStateStore {
                     )
                 }
                 self.vehicleEventLogStore.add(category, "无感命令结果", detail: detail)
-                self.postKeylessNotificationIfNeeded(for: action, result: result)
+                if action == .lock {
+                    self.confirmKeylessLockViaHTTP(after: result)
+                } else {
+                    self.postKeylessNotificationIfNeeded(for: action, result: result)
+                }
                 if case .sent = result.state {
                     self.playKeylessVibrationIfNeeded(for: action)
                 }
@@ -542,6 +547,69 @@ extension MQTTVehicleStateStore {
                     self.playKeylessVibrationIfNeeded(for: action)
                 }
             }
+        }
+    }
+
+    /// 门尾预检拒绝属于安全提醒，独立于“上锁弹窗”开关；只在决策变化时触发，避免弱 RSSI 循环刷屏。
+    func postKeylessBodyOpenReminderIfNeeded(for decision: KeylessDecision, settings: KeylessSettings) {
+        guard settings.lockRequireClosedBody else { return }
+        let reason = decision.reason
+        guard reason == "车门未关闭" || reason == "主驾门未关闭" || reason == "后备箱未关闭" else { return }
+        AppNotificationManager.shared.postKeylessNotification(title: "未执行无感上锁", body: "\(reason)，请检查车辆。")
+    }
+
+    /// HTTP 完整快照中明确未关闭的部位；未知状态不当作异常。
+    func keylessOpenBodyParts(from snapshot: VehicleState) -> [String] {
+        var parts: [String] = []
+        if snapshot.driverDoorOpen == true {
+            parts.append("主驾门未关闭")
+        } else if snapshot.doorsClosed == false {
+            parts.append("车门未关闭")
+        }
+        if snapshot.trunkOpen == true {
+            parts.append("后备箱未关闭")
+        }
+        if snapshot.windowsClosed == false {
+            parts.append("车窗未关闭")
+        }
+        return parts
+    }
+
+    /// 锁车 BLE 回包只说明指令被接收；最终结果必须等 HTTP 完整快照合并后确认，不能以 UI/本地回写锁态为准。
+    func confirmKeylessLockViaHTTP(after result: VehicleCommandExecutionResult) {
+        switch result.state {
+        case .sent, .completed:
+            vehicleEventLogStore.add(.keyless, "无感上锁等待 HTTP 确认", detail: "BLE 指令已发送，2 秒后请求 HTTP 完整车况")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.1) { [weak self] in
+                self?.pollHTTPOnce(userInitiated: false) { [weak self] ok, message in
+                    guard let self else { return }
+                    let snapshot = self.state
+                    let openParts = self.keylessOpenBodyParts(from: snapshot)
+                    let bodyOpen = !openParts.isEmpty
+                    let bodyDetail = bodyOpen ? openParts.joined(separator: "、") : "门窗与尾门状态正常"
+
+                    if ok, snapshot.locked == true {
+                        self.vehicleEventLogStore.add(.keyless, "无感上锁 HTTP 已确认", detail: "锁=已锁 · \(bodyDetail)")
+                        if self.keylessSettingsStore.settings.lockPopup {
+                            AppNotificationManager.shared.postKeylessNotification(title: "无感上锁已确认", body: "HTTP 完整车况确认车辆已上锁。\(bodyOpen ? "但\(bodyDetail)，请检查车辆。" : "")")
+                        }
+                        if bodyOpen {
+                            AppNotificationManager.shared.postKeylessNotification(title: "车辆有未关闭部位", body: "HTTP 完整车况：\(bodyDetail)。请检查车辆。")
+                        }
+                    } else if ok {
+                        let detail = snapshot.locked == false ? "HTTP 返回车辆仍未上锁" : "HTTP 回包未提供可确认的锁态"
+                        self.vehicleEventLogStore.add(.warning, "无感上锁 HTTP 未确认", detail: "\(detail) · \(bodyDetail)")
+                        AppNotificationManager.shared.postKeylessNotification(title: "无感上锁未确认", body: "\(detail)。\(bodyOpen ? "\(bodyDetail)，请检查车辆。" : "")")
+                    } else {
+                        self.vehicleEventLogStore.add(.warning, "无感上锁 HTTP 确认失败", detail: message)
+                        AppNotificationManager.shared.postKeylessNotification(title: "无感上锁待确认", body: "BLE 指令已发送，但 HTTP 完整车况刷新失败，未将本地 UI 状态作为成功依据。")
+                    }
+                }
+            }
+        case .failed(_), .timedOut(_):
+            postKeylessNotificationIfNeeded(for: .lock, result: result)
+        case .feedbackOnly, .planned:
+            break
         }
     }
 

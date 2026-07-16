@@ -152,6 +152,20 @@ struct LockSettingsSection: View {
                         VehicleEventLogStore.shared.add(.keyless, "修改上锁延迟", detail: "\(Int(value))s")
                     }
 
+                    ToggleRow(icon: "door.left.hand.closed", label: "上锁前检查门尾", isOn: Binding(
+                        get: { settingsStore.settings.lockRequireClosedBody },
+                        set: { enabled in
+                            settingsStore.settings.lockRequireClosedBody = enabled
+                            VehicleEventLogStore.shared.add(.keyless, enabled ? "开启上锁前门尾检查" : "关闭上锁前门尾检查", detail: enabled ? "门或尾门未关时不发送无感上锁" : "不预检门尾，锁后以 HTTP 完整车况核验")
+                        }
+                    ))
+                    Text(settingsStore.settings.lockRequireClosedBody
+                         ? "默认开启。门或尾门未关时不发送无感上锁；车窗不阻断锁车。"
+                         : "已关闭。离开后直接尝试锁车，随后通过 HTTP 完整车况确认锁态，并提示未关闭的门、尾门或车窗。")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
                     ToggleRow(icon: "iphone.radiowaves.left.and.right", label: "震动反馈", isOn: Binding(
                         get: { settingsStore.settings.lockVibrate },
                         set: { enabled in

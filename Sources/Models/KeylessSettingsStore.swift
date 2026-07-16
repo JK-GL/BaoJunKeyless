@@ -31,6 +31,8 @@ struct KeylessSettings: Codable {
 
     // 上锁
     var lockEnabled: Bool = true
+    /// 默认开启：无感上锁前确认四门与尾门关闭；关闭后按 BLE 离开逻辑直接尝试锁车，锁后仍由 HTTP 完整快照核验。
+    var lockRequireClosedBody: Bool = true
     var lockThreshold: Double = -90
     var lockDelay: Double = 0
     var lockPopup: Bool = true
@@ -65,7 +67,7 @@ struct KeylessSettings: Codable {
         case keylessEnabled, pluginTakeover, smartSwitch, appManual, cmdInterval
         case mqttEnabled, lockUnlockConfirmationEnabled
         case unlockEnabled, powerStartEnabled, unlockThreshold, unlockApproachDuration, unlockPopup, unlockVibrate, unlockVibPreset, unlockVibCustomID, unlockVibStrength
-        case lockEnabled, lockThreshold, lockDelay, lockPopup, lockVibrate, lockVibPreset, lockVibCustomID, lockVibStrength
+        case lockEnabled, lockRequireClosedBody, lockThreshold, lockDelay, lockPopup, lockVibrate, lockVibPreset, lockVibCustomID, lockVibStrength
         case bleScanDuration, bleScanInterval
         case backgroundSectionExpanded
         case backgroundEnhancedEnabled, geofenceWakeEnabled, geofenceRadiusMeters
@@ -94,6 +96,7 @@ struct KeylessSettings: Codable {
         unlockVibStrength = try c.decodeIfPresent(Double.self, forKey: .unlockVibStrength) ?? 60
 
         lockEnabled = try c.decodeIfPresent(Bool.self, forKey: .lockEnabled) ?? true
+        lockRequireClosedBody = try c.decodeIfPresent(Bool.self, forKey: .lockRequireClosedBody) ?? true
         lockThreshold = try c.decodeIfPresent(Double.self, forKey: .lockThreshold) ?? -90
         lockDelay = try c.decodeIfPresent(Double.self, forKey: .lockDelay) ?? 0
         lockPopup = try c.decodeIfPresent(Bool.self, forKey: .lockPopup) ?? true

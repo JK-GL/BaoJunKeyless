@@ -238,23 +238,11 @@ struct KeylessDecisionEngine {
             return .deny(action: .lock, reason: "车锁状态未知且 BLE 未鉴权")
         }
 
-        // 6/7. 门/尾门：
-        //    - 在线且新鲜：明确打开才拒绝
-        //    - 离线或过期：陈旧“门开着”不当真，避免缓存把门窗卡死无感
-        let trustBodyOpenState = state.online && state.isFresh(maxAge: context.freshnessMaxAge)
-        if trustBodyOpenState {
-            if state.doorsClosed == false {
-                return .deny(action: .lock, reason: "车门未关闭")
-            }
-            if state.driverDoorOpen == true {
-                return .deny(action: .lock, reason: "主驾门未关闭")
-            }
-            if state.trunkOpen == true {
-                return .deny(action: .lock, reason: "后备箱未关闭")
-            }
-        } else if context.bleAuthenticated {
-            // 离线 BLE 会话：忽略陈旧门窗开闭
-        } else {
+        // 6/7. 门/尾门预检（默认开启）：
+        //    - 仅明确“未关”才拒绝；状态未知不会把 BLE 无感锁车卡死。
+        //    - 关闭开关时模仿第三方策略：不以前置门尾状态阻断，锁后改由 HTTP 完整快照核验。
+        //    - 车窗不参与预检：不同车型的锁车自动关窗能力不同，锁后统一由 HTTP 检查并提醒。
+        if settings.lockRequireClosedBody {
             if state.doorsClosed == false {
                 return .deny(action: .lock, reason: "车门未关闭")
             }
