@@ -27,13 +27,11 @@ final class RadarUIView: UIView {
     private var lastBackgroundSize: CGSize = .zero
     private var carOnlineImage: UIImage?
     private var isUsingSFSymbolCar = false
-    /// 状态页离开时只冻结动画，不释放背景/车图，切回时才能秒开。
-    private var isRenderingActive = true
     var carImageURLString: String = "" {
         didSet {
             guard oldValue != carImageURLString else { return }
             currentCarImageCacheKey = ""
-            if window != nil, isRenderingActive {
+            if window != nil {
                 restoreDynamicResourcesIfNeeded()
                 updateMarker(force: true)
             }
@@ -80,29 +78,11 @@ final class RadarUIView: UIView {
         if window == nil {
             stopMarkerDisplayLink()
             releaseHeavyResources()
-        } else if isRenderingActive {
+        } else {
             // 重新入屏时强制恢复圆圈背景 + 扫描环 + 车图
             restoreDynamicResourcesIfNeeded()
             resumeScanRingAnimationsIfNeeded()
             setNeedsLayout()
-        }
-    }
-
-    /// 冻结/恢复雷达动画：离开状态页时调用，避免后台 CADisplayLink/扫描环抢主线程。
-    func setRenderingActive(_ active: Bool) {
-        guard isRenderingActive != active else { return }
-        isRenderingActive = active
-        if active {
-            guard window != nil else { return }
-            restoreDynamicResourcesIfNeeded()
-            resumeScanRingAnimationsIfNeeded()
-            updateMarker(force: true)
-        } else {
-            stopMarkerDisplayLink()
-            scanRing1.removeAllAnimations()
-            scanRing2.removeAllAnimations()
-            carImageView.layer.removeAllAnimations()
-            // 刻意不 releaseHeavyResources：保留背景与车图，切回状态页无需重建。
         }
     }
 
@@ -226,8 +206,6 @@ final class RadarUIView: UIView {
     }
 
     func updatePosition(force: Bool = false) {
-        // 冻结时只保留最新 distance/angle 值，不触发重建与动画。
-        guard isRenderingActive else { return }
         restoreDynamicResourcesIfNeeded()
         updateMarker(force: force)
     }
@@ -312,10 +290,9 @@ final class RadarUIView: UIView {
     }
 
     private func startMarkerDisplayLinkIfNeeded() {
-        guard isRenderingActive, window != nil, markerDisplayLink == nil else { return }
+        guard window != nil, markerDisplayLink == nil else { return }
         let displayLink = CADisplayLink(target: self, selector: #selector(stepMarkerSmoothing(_:)))
-        // 60fps 足够平滑；120 在状态页常驻时后台成本偏高。
-        displayLink.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+        displayLink.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
         displayLink.add(to: .main, forMode: .common)
         markerDisplayLink = displayLink
     }
@@ -510,8 +487,6 @@ final class RadarUIView: UIView {
 struct RadarRepresentable: UIViewRepresentable {
     let locationManager: LocationManager
     var carImageURL: String = ""
-    /// 状态页可见时 true；离开状态页 false，仅冻结动画不销毁。
-    var isActive: Bool = true
 
     func makeCoordinator() -> Coordinator {
         Coordinator(locationManager: locationManager)
@@ -543,10 +518,7 @@ struct RadarRepresentable: UIViewRepresentable {
         context.coordinator.bindIfNeeded(to: view)
         view.distance = locationManager.radarDistance
         view.relativeAngle = locationManager.radarRelativeAngle
-        view.setRenderingActive(isActive)
-        if isActive {
-            view.updatePosition(force: true)
-        }
+        view.updatePosition(force: true)
         return view
     }
 
@@ -559,9 +531,6 @@ struct RadarRepresentable: UIViewRepresentable {
         view.carImageURLString = carImageURL
         view.distance = locationManager.radarDistance
         view.relativeAngle = locationManager.radarRelativeAngle
-        view.setRenderingActive(isActive)
-
-        guard isActive else { return }
 
         let shouldForce = previousImageURL != carImageURL
         let shouldUpdatePosition = shouldForce
@@ -590,7 +559,6 @@ struct RadarCardView: View {
     var carLng: Double = 0
     var carAddress: String = ""
     var carImageURL: String = ""
-    var isActive: Bool = true
 
     private var cachedDistanceMeters: Double {
         displayCacheStore.loadSnapshot().distanceMeters
@@ -660,7 +628,7 @@ struct RadarCardView: View {
     var body: some View {
         VStack(spacing: 12) {
             ZStack {
-                RadarRepresentable(locationManager: locationManager, carImageURL: carImageURL, isActive: isActive)
+                RadarRepresentable(locationManager: locationManager, carImageURL: carImageURL)
                     .frame(width: 280, height: 280)
 
                 if hasActiveBLESession {

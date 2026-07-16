@@ -13,7 +13,6 @@ struct StatusRadarSection: View {
     @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
     @ObservedObject var locationManager: LocationManager
     let carImageURL: String
-    var isActive: Bool = true
 
     var body: some View {
         RadarCardView(
@@ -22,8 +21,7 @@ struct StatusRadarSection: View {
             carLat: locationDisplayStore.displayLatitudeGcj,
             carLng: locationDisplayStore.displayLongitudeGcj,
             carAddress: locationDisplayStore.displayAddress,
-            carImageURL: carImageURL,
-            isActive: isActive
+            carImageURL: carImageURL
         )
     }
 }
@@ -487,7 +485,6 @@ struct StatusMainDashboardHost: View {
     @EnvironmentObject var locationManager: LocationManager
     @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
     @AppStorage(AppDiagnosticsSettings.disableRadarKey) private var disableRadar = false
-    var isPageVisible: Bool = true
     let onCommand: (CommandAction) -> Void
     let onOpenVehicleInfo: () -> Void
     let onOpenMQTT: () -> Void
@@ -534,8 +531,7 @@ struct StatusMainDashboardHost: View {
             } else {
                 StatusRadarSection(
                     locationManager: locationManager,
-                    carImageURL: dashboard.vehicleImageURL,
-                    isActive: isPageVisible
+                    carImageURL: dashboard.vehicleImageURL
                 )
             }
 
