@@ -86,6 +86,9 @@ struct LogView: View {
                     Spacer(minLength: 0)
                 }
 
+                // 推送收集：在 BLE 围栏条上方，默认折叠显示今日数量+最新一条。
+                PushCollectionStripView()
+
                 bleDiagnosticStrip(diagnostics: diagnostics)
 
                 VehicleLogFilterBar(selectedFilter: $selectedFilter)
@@ -300,8 +303,157 @@ struct LogView: View {
     private func bleDiagnosticStrip(diagnostics: BLEDiagnosticsStore) -> some View {
         BLEDiagnosticStripView(diagnostics: diagnostics)
     }
+}
 
-    private func consoleBadge(text: String, color: Color) -> some View {
+// MARK: - 推送收集（默认折叠：今日数量 + 最新一条）
+private struct PushCollectionStripView: View {
+    @ObservedObject private var history = NotificationHistoryStore.shared
+    @State private var isExpanded = false
+    @State private var localToast: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "bell.badge.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AppTheme.orange)
+
+                    Text("推送收集")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.white)
+
+                    Text("今日 \(history.todayCount)")
+                        .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.55))
+
+                    Spacer(minLength: 0)
+
+                    if let latest = history.latest {
+                        Text(latest.title)
+                            .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Color.white.opacity(0.62))
+                            .lineLimit(1)
+                    } else {
+                        Text("暂无")
+                            .font(.system(size: 10.5, design: .monospaced))
+                            .foregroundStyle(Color.white.opacity(0.42))
+                    }
+
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.45))
+                }
+            }
+            .buttonStyle(.plain)
+
+            if !isExpanded, let latest = history.latest {
+                Text("\(latest.timeText) · \(latest.body)")
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.55))
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if isExpanded {
+                if history.entries.isEmpty {
+                    Text("暂无推送记录。系统通知发出后会显示在这里（权限拒绝也会记录）。")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.50))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(history.entries.prefix(20)) { item in
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text(item.timeText)
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundStyle(Color.white.opacity(0.42))
+                                    Text(item.sourceTitle)
+                                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(AppTheme.orange)
+                                    if !item.delivered {
+                                        Text("未发出")
+                                            .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                                            .foregroundStyle(AppTheme.red.opacity(0.9))
+                                    }
+                                    Spacer(minLength: 0)
+                                }
+                                Text(item.title)
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                if !item.body.isEmpty {
+                                    Text(item.body)
+                                        .font(.system(size: 10.5, design: .monospaced))
+                                        .foregroundStyle(Color.white.opacity(0.62))
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+
+                    HStack(spacing: 10) {
+                        Button {
+                            UIPasteboard.general.string = history.exportText()
+                            localToast = "已复制推送记录"
+                        } label: {
+                            Text("复制")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(AppTheme.accent)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            history.clear()
+                            localToast = "已清空推送记录"
+                        } label: {
+                            Text("清空")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(AppTheme.red.opacity(0.9))
+                        }
+                        .buttonStyle(.plain)
+
+                        Spacer()
+                        Text("最多保留 \(NotificationHistoryStore.maxEntries) 条")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(Color.white.opacity(0.40))
+                    }
+                    .padding(.top, 2)
+                }
+            }
+
+            if let localToast {
+                Text(localToast)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.55))
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                            self.localToast = nil
+                        }
+                    }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.035))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+}
+
+private extension LogView {
+    func consoleBadge(text: String, color: Color) -> some View {
         Text(text)
             .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
             .foregroundStyle(color)
@@ -312,7 +464,7 @@ struct LogView: View {
             )
     }
 
-    private func copyFilteredLogs() {
+    func copyFilteredLogs() {
         guard !filteredLogs.isEmpty else {
             withAnimation { toastText = "暂无可复制日志" }
             return
@@ -331,7 +483,7 @@ struct LogView: View {
         }
     }
 
-    private func exportFilteredLogs() {
+    func exportFilteredLogs() {
         guard !filteredLogs.isEmpty else {
             withAnimation { toastText = "暂无日志可导出" }
             return

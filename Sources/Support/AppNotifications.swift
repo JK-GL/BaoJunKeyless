@@ -23,24 +23,42 @@ final class AppNotificationManager: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    func postKeylessNotification(title: String, body: String) {
+    /// - Parameters:
+    ///   - source: keyless / powerOff / background / other；nil 时按标题推断
+    func postKeylessNotification(title: String, body: String, source: String? = nil) {
         configure()
+        let resolvedSource = source ?? NotificationHistoryStore.inferSource(title: title)
+
         center.getNotificationSettings { [weak self] settings in
             guard let self else { return }
             switch settings.authorizationStatus {
             case .authorized, .provisional, .ephemeral:
+                self.record(title: title, body: body, source: resolvedSource, delivered: true)
                 self.enqueueNotification(title: title, body: body)
             case .notDetermined:
                 self.center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                    // 权限拒绝也记录，便于日志页对照“App 想推什么”。
+                    self.record(title: title, body: body, source: resolvedSource, delivered: granted)
                     if granted {
                         self.enqueueNotification(title: title, body: body)
                     }
                 }
             case .denied:
-                break
+                self.record(title: title, body: body, source: resolvedSource, delivered: false)
             @unknown default:
-                break
+                self.record(title: title, body: body, source: resolvedSource, delivered: false)
             }
+        }
+    }
+
+    private func record(title: String, body: String, source: String, delivered: Bool) {
+        Task { @MainActor in
+            NotificationHistoryStore.shared.add(
+                title: title,
+                body: body,
+                source: source,
+                delivered: delivered
+            )
         }
     }
 
@@ -51,7 +69,11 @@ final class AppNotificationManager: NSObject, UNUserNotificationCenterDelegate {
         content.sound = .default
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
-        let request = UNNotificationRequest(identifier: "BaoJunKeyless.keyless.\(UUID().uuidString)", content: content, trigger: trigger)
+        let request = UNNotificationRequest(
+            identifier: "BaoJunKeyless.keyless.\(UUID().uuidString)",
+            content: content,
+            trigger: trigger
+        )
         center.add(request, withCompletionHandler: nil)
     }
 

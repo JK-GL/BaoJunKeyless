@@ -684,7 +684,8 @@ extension MQTTVehicleStateStore {
         )
         AppNotificationManager.shared.postKeylessNotification(
             title: "车辆熄火未关提醒",
-            body: "HTTP 完整车况：\(bodyDetail)。请检查车辆。"
+            body: "HTTP 完整车况：\(bodyDetail)。请检查车辆。",
+            source: "powerOff"
         )
     }
 

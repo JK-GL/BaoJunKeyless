@@ -823,7 +823,8 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         lastLimitationNotifyAt = now
         AppNotificationManager.shared.postKeylessNotification(
             title: "无感后台受限",
-            body: reason
+            body: reason,
+            source: "background"
         )
     }
 
