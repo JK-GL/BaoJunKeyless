@@ -579,12 +579,13 @@ struct RadarRepresentable: UIViewRepresentable {
     }
 }
 
-// MARK: - Radar Card（文字全部用 SwiftUI Text）
+// MARK: - Radar Card
+/// 根卡片只观察设置开关（雷达/大车图模式）。
+/// locationManager / diagnostics 下沉到子视图：大车图模式时 RSSI 刷新不再整卡重绘。
 struct RadarCardView: View {
-    @ObservedObject var locationManager: LocationManager
-    @ObservedObject private var diagnostics = BLEDiagnosticsStore.shared
+    /// 不在此 @ObservedObject，避免距离/航向刷新整卡 body。
+    let locationManager: LocationManager
     @ObservedObject private var keylessSettings = KeylessSettingsStore.shared
-    private let displayCacheStore = VehicleDisplayCacheStore()
     var bleStatus: StatusBLEState = .disconnected
     var carLat: Double = 0
     var carLng: Double = 0
@@ -594,15 +595,117 @@ struct RadarCardView: View {
     private var showRadar: Bool { keylessSettings.settings.statusRadarEnabled }
     private var showLargeCarImage: Bool { keylessSettings.settings.statusLargeCarImageEnabled }
 
-    private var cachedDistanceMeters: Double {
-        displayCacheStore.loadSnapshot().distanceMeters
+    var body: some View {
+        // 边距上次 12/16，本次一半 → 6/8
+        VStack(spacing: 6) {
+            if showRadar {
+                RadarVisualBlock(
+                    locationManager: locationManager,
+                    bleStatus: bleStatus,
+                    carImageURL: carImageURL
+                )
+            } else if showLargeCarImage {
+                // 完全不观察 RSSI/定位；仅 carImageURL 变化才换图
+                StatusLargeCarImageView(carImageURL: carImageURL)
+                    .equatable()
+                    .frame(maxWidth: .infinity)
+            }
+
+            RadarDistanceAddressBlock(
+                locationManager: locationManager,
+                bleStatus: bleStatus,
+                carLat: carLat,
+                carLng: carLng
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 16)
     }
+
+    static func amapSearchURL(for keyword: String) -> URL? {
+        var components = URLComponents()
+        components.scheme = "amap"
+        components.host = "search"
+        components.queryItems = [URLQueryItem(name: "keyword", value: keyword)]
+        return components.url
+    }
+}
+
+// MARK: - 雷达视觉块（仅雷达模式观察 RSSI/定位）
+private struct RadarVisualBlock: View {
+    @ObservedObject var locationManager: LocationManager
+    @ObservedObject private var diagnostics = BLEDiagnosticsStore.shared
+    var bleStatus: StatusBLEState
+    var carImageURL: String
 
     private var hasActiveBLESession: Bool {
         bleStatus == .connecting || bleStatus == .connected || bleStatus == .authenticating || bleStatus == .authenticated
     }
 
-    /// 已真正连上车机（鉴权中/已鉴权/已连接）才信 BLE 距离；纯扫描不算
+    private var isLiveAuthenticatedRSSI: Bool {
+        bleStatus == .authenticated && !diagnostics.isPreviewRSSI
+    }
+
+    private var displayRSSI: Int? {
+        diagnostics.debugSmoothedRSSI ?? diagnostics.debugRawRSSI
+    }
+
+    private var rssiCenterText: String {
+        if let displayRSSI { return "\(displayRSSI) dBm" }
+        return "-- dBm"
+    }
+
+    private var rssiSignalColor: Color {
+        guard displayRSSI != nil else { return Color.white.opacity(0.55) }
+        if !isLiveAuthenticatedRSSI { return Color.white.opacity(0.55) }
+        guard let displayRSSI else { return Color.white.opacity(0.55) }
+        if displayRSSI >= -55 { return AppTheme.green }
+        if displayRSSI >= -70 { return AppTheme.orange }
+        return AppTheme.red
+    }
+
+    var body: some View {
+        ZStack {
+            RadarRepresentable(locationManager: locationManager, carImageURL: carImageURL)
+                .frame(width: 280, height: 280)
+
+            if hasActiveBLESession {
+                Text(rssiCenterText)
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundStyle(rssiSignalColor)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(rssiSignalColor.opacity(0.12))
+                            .overlay(Capsule().stroke(rssiSignalColor.opacity(0.28), lineWidth: 0.5))
+                    )
+            } else {
+                Text("GPS")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.green.opacity(0.9))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule()
+                            .fill(Color.green.opacity(0.12))
+                            .overlay(Capsule().stroke(Color.green.opacity(0.25), lineWidth: 0.5))
+                    )
+            }
+        }
+    }
+}
+
+// MARK: - 距离/地址块（单独观察；不牵连大车图）
+private struct RadarDistanceAddressBlock: View {
+    @ObservedObject var locationManager: LocationManager
+    @ObservedObject private var diagnostics = BLEDiagnosticsStore.shared
+    private let displayCacheStore = VehicleDisplayCacheStore()
+    var bleStatus: StatusBLEState
+    var carLat: Double
+    var carLng: Double
+
     private var prefersBLEDistance: Bool {
         switch bleStatus {
         case .connected, .authenticating, .authenticated:
@@ -620,10 +723,8 @@ struct RadarCardView: View {
         diagnostics.debugSmoothedRSSI ?? diagnostics.debugRawRSSI
     }
 
-    /// 连接上车机后的离车距离：优先 BLE RSSI 估算
     private var bleEstimatedMeters: Double? {
         guard prefersBLEDistance, let rssi = displayRSSI else { return nil }
-        // 广播预填 RSSI 也可估距，但 live 鉴权后更准
         return BLEProximityDistanceEstimator.meters(fromRSSI: rssi)
     }
 
@@ -633,117 +734,66 @@ struct RadarCardView: View {
     }
 
     private var bleDistanceColor: Color {
-        // live 鉴权后用信号色；连接中/鉴权中用中性色
         if isLiveAuthenticatedRSSI {
             return rssiSignalColor.opacity(0.95)
         }
         return Color.white.opacity(0.55)
     }
 
-    private var rssiCenterText: String {
-        if let displayRSSI {
-            return "\(displayRSSI) dBm"
-        }
-        return "-- dBm"
-    }
-
-    /// 广播预填：灰色；鉴权后 live：按强弱分色
     private var rssiSignalColor: Color {
         guard displayRSSI != nil else { return Color.white.opacity(0.55) }
-        if !isLiveAuthenticatedRSSI {
-            return Color.white.opacity(0.55)
-        }
+        if !isLiveAuthenticatedRSSI { return Color.white.opacity(0.55) }
         guard let displayRSSI else { return Color.white.opacity(0.55) }
         if displayRSSI >= -55 { return AppTheme.green }
         if displayRSSI >= -70 { return AppTheme.orange }
         return AppTheme.red
     }
 
+    private var cachedDistanceMeters: Double {
+        displayCacheStore.loadSnapshot().distanceMeters
+    }
+
     var body: some View {
-        // 大车图：布局框固定（学 v724），车图单独缩小；间距恢复宽松。
-        VStack(spacing: 12) {
-            // 上半区：雷达 / 大车图 互斥；都关时不占位，只留距离地址。
-            if showRadar {
-                ZStack {
-                    RadarRepresentable(locationManager: locationManager, carImageURL: carImageURL)
-                        .frame(width: 280, height: 280)
-
-                    if hasActiveBLESession {
-                        Text(rssiCenterText)
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .foregroundStyle(rssiSignalColor)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(
-                                Capsule()
-                                    .fill(rssiSignalColor.opacity(0.12))
-                                    .overlay(Capsule().stroke(rssiSignalColor.opacity(0.28), lineWidth: 0.5))
-                            )
-                    } else {
-                        Text("GPS")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(Color.green.opacity(0.9))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(
-                                Capsule()
-                                    .fill(Color.green.opacity(0.12))
-                                    .overlay(Capsule().stroke(Color.green.opacity(0.25), lineWidth: 0.5))
-                            )
-                    }
-                }
-            } else if showLargeCarImage {
-                // equatable：RSSI/距离高频刷新时不重绘大车图（v724 顺的关键之一是布局稳定 + 少无效重绘）
-                StatusLargeCarImageView(carImageURL: carImageURL)
-                    .equatable()
-                    .frame(maxWidth: .infinity)
+        VStack(spacing: 2) {
+            if let bleDistanceText {
+                Text(bleDistanceText)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(bleDistanceColor)
+            } else if locationManager.distance > 0 {
+                Text(String(format: "距车辆 %.0f 米", locationManager.distance))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.5))
+            } else if cachedDistanceMeters > 0 {
+                Text(String(format: "距车辆 %.0f 米", cachedDistanceMeters))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.42))
+            } else if carLat != 0 && carLng != 0 {
+                Text("距离定位中…")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.42))
             }
 
-            VStack(spacing: 5) {
-                // 已连上车机 BLE 时优先用 RSSI 估距；地库 GPS 经纬度常漂，不能当真
-                if let bleDistanceText {
-                    Text(bleDistanceText)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(bleDistanceColor)
-                } else if locationManager.distance > 0 {
-                    Text(String(format: "距车辆 %.0f 米", locationManager.distance))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.5))
-                } else if cachedDistanceMeters > 0 {
-                    Text(String(format: "距车辆 %.0f 米", cachedDistanceMeters))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.42))
-                } else if carLat != 0 && carLng != 0 {
-                    Text("距离定位中…")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.42))
-                }
-
-                if !locationManager.vehicleAddress.isEmpty {
-                    Button {
-                        NotificationCenter.default.post(name: .openAddressFloatingWindow, object: nil)
-                    } label: {
-                        (Text(Image(systemName: "mappin.and.ellipse")) + Text(" \(locationManager.vehicleAddress)"))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color.white.opacity(0.42))
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.65)
-                            .layoutPriority(1)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                    }
-                    .buttonStyle(.plain)
-                } else if carLat != 0 && carLng != 0 {
-                    Text("地址解析中…")
+            if !locationManager.vehicleAddress.isEmpty {
+                Button {
+                    NotificationCenter.default.post(name: .openAddressFloatingWindow, object: nil)
+                } label: {
+                    (Text(Image(systemName: "mappin.and.ellipse")) + Text(" \(locationManager.vehicleAddress)"))
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.36))
+                        .foregroundStyle(Color.white.opacity(0.42))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.65)
+                        .layoutPriority(1)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
+                .buttonStyle(.plain)
+            } else if carLat != 0 && carLng != 0 {
+                Text("地址解析中…")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.36))
             }
-            .frame(maxWidth: .infinity, alignment: .center)
         }
         .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.vertical, 16)
-        .padding(.horizontal, 16)
         .onAppear { syncBLEDistanceOverride() }
         .onChange(of: diagnostics.debugSmoothedRSSI) { _ in syncBLEDistanceOverride() }
         .onChange(of: diagnostics.debugRawRSSI) { _ in syncBLEDistanceOverride() }
@@ -758,43 +808,13 @@ struct RadarCardView: View {
             locationManager.setBLEDistanceOverride(nil)
         }
     }
-
-    private func currentSearchedAddress() -> String {
-        let address = locationManager.vehicleAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !address.isEmpty { return address }
-        guard carLat != 0, carLng != 0 else { return "" }
-        return String(format: "%.5f, %.5f", carLat, carLng)
-    }
-
-    private func openAmapSearch() {
-        guard let url = Self.amapSearchURL(for: currentSearchedAddress()) else { return }
-        UIApplication.shared.open(url, options: [:], completionHandler: nil)
-    }
-
-    private func refreshAddress() {
-        guard carLat != 0, carLng != 0 else { return }
-        locationManager.setCarLocation(lat: carLat, lng: carLng)
-    }
-
-    static func amapSearchURL(for keyword: String) -> URL? {
-        var components = URLComponents()
-        components.scheme = "amap"
-        components.host = "search"
-        components.queryItems = [URLQueryItem(name: "keyword", value: keyword)]
-        return components.url
-    }
-
-    @ViewBuilder
-    private func addressSettingsFloatingSheet() -> some View {
-        VStack {}
-    }
 }
 
 // MARK: - 状态页大车图（与雷达共用 sharedCarImages；不跑雷达动画）
 /// 完全对齐 v724 流畅模型：
 /// - 外框固定宽高（像 420 框），ScrollView 永不因车图重排
-/// - 只缩小车图内容 20%（scale 0.8），外框不动 → 上下间隙自然变宽
-/// - Equatable：父视图 RSSI/距离刷新时跳过 body
+/// - 只缩小车图内容：上次 0.80，本次一半 → 0.40（边距也已减半）
+/// - 根卡片不再观察 RSSI；本视图 Equatable，仅 URL 变化换图
 private struct StatusLargeCarImageView: View, Equatable {
     let carImageURL: String
     /// 显示用图（已裁透明边）；与雷达原图缓存分离。
@@ -805,8 +825,8 @@ private struct StatusLargeCarImageView: View, Equatable {
     private let frameWidthRatio: CGFloat = 1.0
     /// 固定外框高宽比。高度恒定 = 流畅根因。
     private let layoutAspect: CGFloat = 1.95
-    /// 只缩小车图内容 20%，外框不变 → 上下自然留白变宽。
-    private let contentScale: CGFloat = 0.80
+    /// 只缩小车图内容：v729=0.80，本次一半 → 0.40。
+    private let contentScale: CGFloat = 0.40
 
     static func == (lhs: StatusLargeCarImageView, rhs: StatusLargeCarImageView) -> Bool {
         lhs.carImageURL == rhs.carImageURL
