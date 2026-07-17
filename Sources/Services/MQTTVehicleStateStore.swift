@@ -299,6 +299,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var liveBLELastSeenAt: Date?
     var bleSignalLossWorkItem: DispatchWorkItem?
     var isExecutingKeylessCommand = false
+    /// 无感上锁/解锁 HTTP 多轮确认序号；新命令会作废旧确认，避免串台推送。
+    var keylessHTTPConfirmToken: UInt64 = 0
     var isAppInForeground = true
     var didLogManualForegroundSkip = false
     var foregroundObserver: NSObjectProtocol?
