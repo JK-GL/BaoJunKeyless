@@ -187,6 +187,9 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var credentialsStore: VehicleCredentialsStore
 
     var lastMqttFields: [String: String] = [:]
+    /// MQTT 旁观最近一次成功即时写锁的目标与时间（防半包连抖）
+    var lastMQTTDoorLockInstantAt: Date?
+    var lastMQTTDoorLockInstantValue: Bool?
     /// 当前车身模型权威 collectTime
     var bodyCollectTime: Date?
     /// 字段最近变化时间（仅日志/诊断，不再卡 HTTP）
