@@ -1,7 +1,7 @@
 import Foundation
 
-// MARK: - 官方 App 本地缓存读取器
-// 只读取本机官方 App（com.cloudy.LingLingBang）的本地数据：
+// MARK: - 五菱 App 本地缓存读取器
+// 只读取五菱 app（com.cloudy.LingLingBang）的本地数据：
 // - AppGroup/SavedOAuthModel（token）
 // - Preferences/com.cloudy.LingLingBang.plist（状态缓存/地址缓存）
 final class WulingAppCacheReader {
@@ -46,7 +46,7 @@ final class WulingAppCacheReader {
         return nil
     }
 
-    // MARK: - 官方 App 状态缓存
+    // MARK: - 五菱状态缓存
 
     func readStatusCache() -> CacheSnapshot? {
         for path in plistCandidates {

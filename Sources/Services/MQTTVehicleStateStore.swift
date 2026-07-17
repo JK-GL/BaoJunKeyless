@@ -628,7 +628,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     func applyCachedSnapshotIfAvailable() {
-        // 只拿位置/地址兜底，不再把官方 App 本地旧车身状态当实时状态写入。
+        // 只拿位置/地址兜底，不再把五菱 App 旧车身状态当实时状态写入。
         // 门/窗/锁/空调/电量等必须等 HTTP/MQTT 实时链路。
         guard let snapshot = WulingAppCacheReader.shared.readStatusCache() else { return }
 

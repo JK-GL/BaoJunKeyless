@@ -82,7 +82,7 @@ final class SGMWApiClient {
 
     /// 从本地读取 access_token
     /// 主路径：/var/mobile/SavedOAuthModel（用户复制后最稳）
-    /// 兜底：本机已安装官方 App 的本地 plist
+    /// 兜底：五菱/宝骏 App 本地 plist
     func readLocalToken() -> String? {
         if let tokenInfo = WulingAppCacheReader.shared.readTokenInfo() {
             // token 命中是正常路径，不写错误日志
