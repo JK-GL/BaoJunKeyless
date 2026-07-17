@@ -82,7 +82,7 @@ final class SGMWApiClient {
 
     /// 从本地读取 access_token
     /// 主路径：/var/mobile/SavedOAuthModel（用户复制后最稳）
-    /// 兜底：宝骏 app plist
+    /// 兜底：本机已安装官方 App 的本地 plist
     func readLocalToken() -> String? {
         if let tokenInfo = WulingAppCacheReader.shared.readTokenInfo() {
             // token 命中是正常路径，不写错误日志
@@ -157,23 +157,23 @@ final class SGMWApiClient {
         case .remoteStop:
             return VehicleControlRequestPlan(command: .remoteStop, endpointCandidates: ["remote/V3/safety/sendVhlCtl"], bodyKeys: ["vin", "qgRemoteStopExtendedObjects"], note: "HTTP_BLE_CONTROL_DIG_RESULT：BLE 未连接时尝试 QG sendVhlCtl 一键关上电+关闭发动机")
         case .findCar:
-            // 安卓开源 WulingAPI.searchCar：只传 vin，不传 status。
+            // 寻车：只传 vin，不传 status。
             return VehicleControlRequestPlan(command: .findCar, endpointCandidates: ["car/control/searchCar"], bodyKeys: ["vin"], note: "Android open-source：searchCar 仅 vin")
         case .acOn:
-            // 安卓开源 AppState.CLIMATE_ON：status/accOnOff 为 1，并带 temperature/blowerLvl/duration。
+            // 开空调：status/accOnOff=1，并带 temperature/blowerLvl/duration。
             return VehicleControlRequestPlan(command: .acOn, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature", "blowerLvl", "duration"], note: "Android open-source：开空调 status=1 accOnOff=1")
         case .acOff:
-            // 安卓开源 AppState.CLIMATE_OFF：status/accOnOff 为 0。
+            // 关空调：status/accOnOff=0。
             return VehicleControlRequestPlan(command: .acOff, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status"], note: "Android open-source：关空调 status=0 accOnOff=0")
         case .setTemperature:
-            // 安卓开源自定义温度：空调已开时仍走 status=1 + temperature（本车 status=1 已验证可用）。
+            // 自定义温度：空调已开时仍走 status=1 + temperature（本车 status=1 已验证可用）。
             return VehicleControlRequestPlan(command: .setTemperature, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature", "blowerLvl", "duration"], note: "Android open-source：设温度 status=1 + temperature")
         case .openWindows:
             return VehicleControlRequestPlan(command: .openWindows, endpointCandidates: ["car/control/window"], bodyKeys: ["vin", "status"], note: "Android open-source / BLE_SPEC：车窗 status=0 开窗")
         case .closeWindows:
             return VehicleControlRequestPlan(command: .closeWindows, endpointCandidates: ["car/control/window"], bodyKeys: ["vin", "status"], note: "Android open-source / BLE_SPEC：车窗 status=1 关窗")
         case .quickCool:
-            // 安卓开源 AppState.executeQuickCool：status=1 + 17°C + blowerLvl=7 + duration=20。
+            // 快冷：status=1 + 17°C + blowerLvl=7 + duration=20。
             return VehicleControlRequestPlan(command: .quickCool, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature", "blowerLvl", "duration"], note: "Android open-source：快冷 status=1 temperature=17 blowerLvl=7 duration=20")
         }
     }
@@ -197,7 +197,7 @@ final class SGMWApiClient {
             case .unlock, .openWindows:
                 body["status"] = 0
             case .acOn, .quickCool, .setTemperature:
-                // 安卓开源：开空调/快冷/设温度都用 status=1；本车 status=1 已验证可用。
+                // 开空调/快冷/设温度都用 status=1；本车 status=1 已验证可用。
                 body["status"] = 1
             case .acOff:
                 body["status"] = 0
@@ -226,7 +226,7 @@ final class SGMWApiClient {
                 defaultTemperature = 24
             }
             let rawTemperature = Int(command.requestedTemperature ?? Double(defaultTemperature))
-            // 安卓开源把温度/风速/时长当字符串提交。
+            // 温度/风速/时长按字符串提交。
             body["temperature"] = String(max(17, min(33, rawTemperature)))
         }
         if plan.bodyKeys.contains("blowerLvl") {
@@ -455,7 +455,7 @@ final class SGMWApiClient {
         return formatter.string(from: Date())
     }
 
-    /// 与安卓开源 APIResponse.isSuccess 对齐：result/success/errorCode/notSuccess。
+    /// 成功判定：兼容 result/success/errorCode/notSuccess。
     private func isSuccessfulBusinessResponse(_ json: [String: Any]) -> Bool {
         if let result = json["result"] as? Bool, result == true { return true }
         if let success = json["success"] as? Bool, success == true { return true }

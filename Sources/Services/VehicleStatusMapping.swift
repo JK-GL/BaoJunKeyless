@@ -271,7 +271,7 @@ func parseGear(_ raw: String?) -> VehicleGear? {
 }
 
 func parsePowerState(_ s: [String: String]) -> VehiclePowerState? {
-    // 上电/电源主字段（Wuling/官方对齐）：
+    // 上电/电源主字段：
     // - engineStatus: 0关 1开（最常见）
     // - powerStatus/vehPowerMode/...: 兼容电源模式
     // 优先 engineStatus，避免被无关 acc 字段误伤

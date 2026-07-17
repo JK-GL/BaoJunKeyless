@@ -1,13 +1,13 @@
 import Foundation
 
 extension MQTTVehicleStateStore {
-    /// 官方车况策略：queryDefaultCarStatus 为完整权威快照，车辆下发 conditionPollTime（实车为 3 秒）。
+    /// 车况策略：queryDefaultCarStatus 为完整权威快照，车辆下发 conditionPollTime（实车为 3 秒）。
     static let backgroundActiveHTTPPollInterval: TimeInterval = 3
     static let backgroundIdleHTTPPollInterval: TimeInterval = 25
     static let backgroundSyncOffHTTPPollInterval: TimeInterval = 60
     static let tirePressureRefreshInterval: TimeInterval = 60
 
-    /// 前台始终按官方车况周期；后台仅在近车/未锁/门窗打开等活跃期保持快刷。
+    /// 前台始终按车端车况周期；后台仅在近车/未锁/门窗打开等活跃期保持快刷。
     func currentHTTPPollInterval(now: Date = Date()) -> TimeInterval {
         let officialInterval = min(max(vehicleHTTPPollInterval, 2), 10)
         if isAppInForeground { return officialInterval }
@@ -51,7 +51,7 @@ extension MQTTVehicleStateStore {
             mergeWindow: 180
         )
 
-        // 始终用当前策略重挂 HTTP 定时器：前台按官方 conditionPollTime，后台按活跃度降频。
+        // 始终用当前策略重挂 HTTP 定时器：前台按 conditionPollTime，后台按活跃度降频。
         if credentialsStore.accessToken.isEmpty {
             httpTimer?.invalidate()
             httpTimer = nil
@@ -89,7 +89,7 @@ extension MQTTVehicleStateStore {
 
     func startHTTPPolling(immediate: Bool) {
         httpTimer?.invalidate()
-        // 官方同款：前台完整车况约 3s；MQTT 不再让 HTTP 降频，后台按车辆活跃度自动降频。
+        // 前台完整车况约 3s；MQTT 不再让 HTTP 降频，后台按车辆活跃度自动降频。
         let interval = currentHTTPPollInterval()
         let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             guard let self else { return }
@@ -199,7 +199,7 @@ extension MQTTVehicleStateStore {
                     self.lastHTTPRawGeneration &+= 1
                     let httpCollect = parseTimestamp(refreshResult.carStatus["collectTime"]) ?? refreshResult.fetchedAt
 
-                    // 车辆配置下发官方轮询秒数；异常值仍限制在 2...10 秒。
+                    // 车辆配置下发轮询秒数；异常值仍限制在 2...10 秒。
                     if let configured = parseDouble(refreshResult.carInfo["conditionPollTime"]), configured > 0 {
                         let nextInterval = min(max(configured, 2), 10)
                         if abs(self.vehicleHTTPPollInterval - nextInterval) > 0.1 {

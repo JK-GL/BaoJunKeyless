@@ -1,7 +1,7 @@
 import Foundation
 
 // MARK: - 车辆配置 / 能源检测
-// 与灵宝win.js 逻辑对齐：capabilities → 文本关键词 → 油量信号 → 默认插混
+// 能源类型检测顺序：capabilities → 文本关键词 → 油量信号 → 默认插混
 
 enum DetectedEnergyType {
     case pureElectric
@@ -45,7 +45,7 @@ struct VehicleProfile: Equatable {
     // 能力字段
     var capabilities: VehicleCapabilities = VehicleCapabilities()
 
-    // MARK: - 能源类型检测（与灵宝win.js detectFuelSupport 逻辑一致）
+    // MARK: - 能源类型检测
 
     /// 检测是否为纯电：false = 纯电，true = 有油（插混/燃油）
     func detectHasFuel(fuelBarMode: FuelBarMode = .auto, status: VehicleState = .placeholder) -> Bool {

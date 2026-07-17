@@ -1,7 +1,7 @@
 import Foundation
 
 /// 缓存最近一次 ble/key/query 返回的 BLE 钥匙材料，支持离线 BLE。
-/// 对齐官方：
+/// 缓存策略：
 /// 1. 不做 7 天 TTL 自动过期；
 /// 2. 按 userId(phone) + vin 隔离；
 /// 3. 主体放 Keychain，避免凭证类材料明文落 UserDefaults；

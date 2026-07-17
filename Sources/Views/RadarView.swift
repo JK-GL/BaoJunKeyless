@@ -1109,7 +1109,7 @@ private struct ProximityStripCarImageView: View, Equatable {
 }
 
 // MARK: - 状态页大车图（与雷达共用 sharedCarImages；不跑雷达动画）
-/// 完全对齐 v724 流畅模型：
+/// 固定外框流畅模型：
 /// - 外框固定宽高（像 420 框），ScrollView 永不因车图重排
 /// - 车图：回退 v729 基准 0.80，再放大 10% → 0.88
 /// - 根卡片 / 状态区不再观察高频 RSSI·航向；本视图 Equatable，仅 URL 变化换图
@@ -1230,7 +1230,7 @@ private struct StatusLargeCarImageView: View, Equatable {
     }
 }
 
-// MARK: - 裁掉官方车图四周透明边（否则“收窄上下”几乎无效）
+// MARK: - 裁掉车辆图片四周透明边（否则“收窄上下”几乎无效）
 private extension UIImage {
     /// 返回去掉四周近透明像素后的图；失败返回 nil。
     func bjk_trimmedTransparentPixels(alphaThreshold: UInt8 = 10) -> UIImage? {

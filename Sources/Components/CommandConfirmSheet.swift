@@ -113,7 +113,7 @@ enum CommandAction: String, Identifiable, Equatable {
         }
     }
 
-    /// 确认弹窗标题（官方风格）
+    /// 确认弹窗标题
     func confirmTitle(state: VehicleState) -> String {
         switch self {
         case .lockUnlock:
@@ -129,7 +129,7 @@ enum CommandAction: String, Identifiable, Equatable {
         }
     }
 
-    /// 确认弹窗副标题（官方风格）
+    /// 确认弹窗副标题
     func confirmMessage(state: VehicleState) -> String {
         switch self {
         case .lockUnlock:

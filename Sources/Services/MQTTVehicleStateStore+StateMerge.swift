@@ -13,7 +13,7 @@ extension MQTTVehicleStateStore {
     /// BLE 本地锁/解锁后，网络门锁短保护
     static let localLockHoldSeconds: TimeInterval = 15
 
-    /// 官方同款状态主链：
+    /// 状态主链：
     /// - HTTP：完整权威快照，自动/手动刷新都全量落地
     /// - MQTT：仅提示变化并唤醒 HTTP，不参与本函数覆盖
     /// - HTTP 只与上一次 HTTP collectTime 比较，避免 MQTT 半包卡住完整快照
@@ -40,7 +40,7 @@ extension MQTTVehicleStateStore {
         }
 
         // MQTT 在线新鲜：HTTP 不冲门窗/锁等实时车身，但补齐 MQTT Protobuf 常缺的字段
-        // （电量/续航/充电/电源/档位/胎压/温度等）——对齐 Wuling：MQTT 主实时 + HTTP 补全
+        // （电量/续航/充电/电源/档位/胎压/温度等）——MQTT 主实时 + HTTP 补全
         if mode == .pollMeta {
             lastHTTPBodyCollectAt = collectAt
             var dash = dashboard

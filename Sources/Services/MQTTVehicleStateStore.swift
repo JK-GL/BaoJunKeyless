@@ -184,7 +184,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var credentialsStore: VehicleCredentialsStore
 
     var lastMqttFields: [String: String] = [:]
-    /// 当前车身模型权威 collectTime（官方 setCarStatusModel 同款）
+    /// 当前车身模型权威 collectTime
     var bodyCollectTime: Date?
     /// 字段最近变化时间（仅日志/诊断，不再卡 HTTP）
     var fieldCollectAt: [String: Date] = [:]
@@ -208,7 +208,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var lastHTTPWakeRefreshAt: Date?
     /// 胎压独立接口低频拉取，避免每 3 秒额外请求一次。
     var lastTirePressureUpdate: Date?
-    /// 官方 carInfo.conditionPollTime；实车日志为 3 秒。
+    /// 车端 carInfo.conditionPollTime；实车日志为 3 秒。
     var vehicleHTTPPollInterval: TimeInterval = 3
     var lastMQTTUpdate: Date?
     /// MQTT 车身字段最近 collectTime
@@ -446,7 +446,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         }
     }
 
-    /// 空调真实字段回写（官方路径）。
+    /// 空调真实字段回写。
     /// 只接受 MQTT / HTTP 返回的 acStatus、accCntTemp，不根据控制命令本地假改 UI。
     /// 相同值重复推送不会再次刷 UI，避免“开→开→开”连跳。
     @discardableResult
@@ -628,7 +628,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     func applyCachedSnapshotIfAvailable() {
-        // 只拿位置/地址兜底，不再把五菱 App 旧车身状态当实时状态写入。
+        // 只拿位置/地址兜底，不再把官方 App 本地旧车身状态当实时状态写入。
         // 门/窗/锁/空调/电量等必须等 HTTP/MQTT 实时链路。
         guard let snapshot = WulingAppCacheReader.shared.readStatusCache() else { return }
 

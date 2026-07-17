@@ -1258,7 +1258,7 @@ final class VehicleBLEManager: NSObject {
         let randomDataHex = data.subdata(in: 4..<8).hexString
         let payloadLength = data[8]
 
-        // A956/0001 官方实车规格：
+        // A956/0001 实车帧规格：
         // byte[0..<2]  = serviceId
         // byte[2..<4]  = subfunction
         // byte[4..<8]  = randomData，必须回显本次控制帧 random

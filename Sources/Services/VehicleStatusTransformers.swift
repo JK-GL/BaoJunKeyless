@@ -162,7 +162,7 @@ enum VehicleStatusMapper {
         d.averageFuelConsumptionText = displayValue(s["avgFuel"], suffix: "L/100km")
         d.averagePowerConsumptionText = displayPowerConsumption(s, fallback: "--")
 
-        // Android 开源项目 UI 已验证：dipHeadLight=远光，lowBeamLight=近光。
+        // 灯光字段：dipHeadLight=远光，lowBeamLight=近光。
         d.lowBeamText = displayBool(s["lowBeamLight"])
         d.highBeamText = displayBool(s["dipHeadLight"])
         d.leftTurnText = displayBool(s["leftTurnLight"])

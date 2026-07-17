@@ -51,7 +51,7 @@ extension MQTTVehicleStateStore {
                 self.applyExplicitPowerState(power, source: "MQTT电源字段")
             }
 
-            // 空调开关/设定温度：官方路径是 MQTT 真实字段即时回写。
+            // 空调开关/设定温度：MQTT 真实字段即时回写。
             // 同值重复推送不会写 UI；仅真实变化才补 HTTP。
             let climateAc = parseACStatus(fields["acStatus"])
             let climateTemp = parseDouble(fields["accCntTemp"])
@@ -229,7 +229,7 @@ extension MQTTVehicleStateStore {
     }
 
     private func decodeMQTTFields(_ data: Data) -> [String: String] {
-        // 1) Protobuf（官方主格式）
+        // 1) Protobuf（主格式）
         let decoded = ProtobufDecoder.decode(data)
         let nameMap: [Int: String] = [
             1: "collectTime", 2: "acStatus", 3: "doorLockStatus",
