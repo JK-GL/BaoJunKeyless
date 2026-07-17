@@ -615,8 +615,8 @@ struct RadarCardView: View {
                     .frame(maxWidth: .infinity)
             } else if showProximityStrip {
                 // 人 — GPS/RSSI — 车；不走雷达背景/280 框。
+                // 第三刀：不观察 LocationManager（间距只吃 BLE zone / GPS 远场常量）。
                 StatusProximityStripView(
-                    locationManager: locationManager,
                     bleStatus: bleStatus,
                     carImageURL: carImageURL
                 )
@@ -822,27 +822,23 @@ private struct RadarDistanceAddressBlock: View {
     }
 }
 
-// MARK: - 人-信号-车 关系条（第三显示模式）
-/// 参考大车图：不占雷达 280 背景框，不做大方框布局。
-/// 紧凑横条：左人 · 中 GPS/dBm · 右车；高度跟内容，不再固定 120 大空。
-/// 间距仍按 1.5/8/25m 无感语义；不做指南针转人。
+// MARK: - 人-信号-车 关系条（第三显示模式 · 第三刀性能）
+/// 参考大车图：不占雷达框。
+/// 第三刀：
+/// 1) 不观察 LocationManager（避免 GPS distance 高频重绘整条）
+/// 2) 车图独立 Equatable 子视图（RSSI 刷新不重载车图）
+/// 3) gap 量化到 2pt，变化小不动画
+/// 4) BLE 有估距才用米数；否则固定 GPS 远场 gap
 private struct StatusProximityStripView: View {
-    @ObservedObject var locationManager: LocationManager
     @ObservedObject private var diagnostics = BLEDiagnosticsStore.shared
-    private let displayCacheStore = VehicleDisplayCacheStore()
     var bleStatus: StatusBLEState
     var carImageURL: String
 
-    /// 已裁透明边的显示图。
-    @State private var displayCarImage: UIImage?
-
-    /// 紧凑高度（参考大车图“内容定高”，不是雷达大方框）。
+    /// 紧凑高度（内容定高）。
     private let stripHeight: CGFloat = 72
-    /// 右侧车图显示宽：比人更突出，但仍受槽宽限制防偏右。
     private let carDisplayWidth: CGFloat = 108
     private let personWidth: CGFloat = 36
 
-    /// 无感距离锚点。
     private let unlockMeters: CGFloat = 1.5
     private let lockMeters: CGFloat = 8
     private let bleTrustMeters: CGFloat = 25
@@ -890,8 +886,9 @@ private struct StatusProximityStripView: View {
         }
     }
 
-    private enum ProximityZone { case near, gray, far, gps }
+    private enum ProximityZone: Equatable { case near, gray, far, gps }
 
+    /// 单一距离源：仅 BLE 可信时用估距；否则 GPS 远场常量（不读 LocationManager）。
     private var bleMeters: CGFloat? {
         guard prefersBLEDistance, let rssi = displayRSSI,
               let meters = BLEProximityDistanceEstimator.meters(fromRSSI: rssi) else {
@@ -901,12 +898,10 @@ private struct StatusProximityStripView: View {
     }
 
     private var proximityZone: ProximityZone {
-        if let ble = bleMeters {
-            if ble <= unlockMeters { return .near }
-            if ble <= lockMeters { return .gray }
-            return .far
-        }
-        return .gps
+        guard let ble = bleMeters else { return .gps }
+        if ble <= unlockMeters { return .near }
+        if ble <= lockMeters { return .gray }
+        return .far
     }
 
     private var distanceMetersForGap: CGFloat {
@@ -914,7 +909,7 @@ private struct StatusProximityStripView: View {
         return bleTrustMeters
     }
 
-    private var dynamicGap: CGFloat {
+    private var rawGap: CGFloat {
         switch proximityZone {
         case .gps:
             return gapGPS
@@ -932,7 +927,10 @@ private struct StatusProximityStripView: View {
         }
     }
 
-    private var quantizedGap: CGFloat { (dynamicGap * 2).rounded() / 2 }
+    /// 量化到 2pt：变化 <2pt 不触发动画/布局抖。
+    private var quantizedGap: CGFloat {
+        (rawGap / 2).rounded() * 2
+    }
 
     private var proximityScale: CGFloat {
         switch proximityZone {
@@ -947,17 +945,8 @@ private struct StatusProximityStripView: View {
         centerColor.opacity(proximityZone == .near ? 0.40 : (proximityZone == .gray ? 0.28 : 0.16))
     }
 
-    private var linkStyle: StrokeStyle {
-        switch proximityZone {
-        case .near: return StrokeStyle(lineWidth: 1.4, lineCap: .round)
-        case .gray: return StrokeStyle(lineWidth: 1.1, lineCap: .round, dash: [4, 4])
-        case .far, .gps: return StrokeStyle(lineWidth: 1.0, lineCap: .round, dash: [2, 5])
-        }
-    }
-
     var body: some View {
-        // 参考大车图：内容定高，不用 GeometryReader 撑布局。
-        // 结构：左人 | 中胶囊 | 右车，整行紧凑居中。
+        // 仅 anim gap / scale；车图在独立子视图，RSSI 刷新不重载。
         HStack(spacing: quantizedGap) {
             Image(systemName: "figure.stand")
                 .font(.system(size: 30, weight: .medium))
@@ -965,9 +954,7 @@ private struct StatusProximityStripView: View {
                 .frame(width: personWidth, height: stripHeight)
                 .scaleEffect(proximityScale)
 
-            // 中：GPS/dBm + 连线由两侧 gap 承担
             ZStack {
-                // 极短辅助线，仅胶囊两侧一点点，不制造大空白
                 HStack(spacing: 0) {
                     Rectangle()
                         .fill(linkColor)
@@ -993,45 +980,61 @@ private struct StatusProximityStripView: View {
             }
             .frame(minWidth: 76)
 
-            Group {
-                if let displayCarImage {
-                    Image(uiImage: displayCarImage)
-                        .resizable()
-                        .scaledToFit()
-                } else {
-                    Image(systemName: "car.fill")
-                        .font(.system(size: 30, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.55))
-                }
-            }
-            .scaleEffect(proximityScale)
-            .frame(width: carDisplayWidth, height: stripHeight - 8)
+            ProximityStripCarImageView(carImageURL: carImageURL)
+                .equatable()
+                .scaleEffect(proximityScale)
+                .frame(width: carDisplayWidth, height: stripHeight - 8)
         }
         .frame(height: stripHeight)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 2)
+        // 只对量化后的 gap 做动画，避免 RSSI 每个采样都 ease。
         .animation(.easeInOut(duration: 0.18), value: quantizedGap)
-        .animation(.easeInOut(duration: 0.18), value: proximityScale)
-        .onAppear { loadCarImageIfNeeded() }
+        .animation(.easeInOut(duration: 0.18), value: proximityZone)
+    }
+}
+
+// MARK: - 关系条车图（隔离 RSSI 刷新）
+private struct ProximityStripCarImageView: View, Equatable {
+    let carImageURL: String
+    @State private var displayCarImage: UIImage?
+
+    static func == (lhs: ProximityStripCarImageView, rhs: ProximityStripCarImageView) -> Bool {
+        lhs.carImageURL == rhs.carImageURL
+    }
+
+    var body: some View {
+        Group {
+            if let displayCarImage {
+                Image(uiImage: displayCarImage)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: "car.fill")
+                    .font(.system(size: 30, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.55))
+            }
+        }
+        .onAppear { loadIfNeeded() }
         .onChange(of: carImageURL) { _ in
             displayCarImage = nil
-            loadCarImageIfNeeded()
+            loadIfNeeded()
         }
     }
 
-    private func loadCarImageIfNeeded() {
+    private func loadIfNeeded() {
         let key = RadarUIView.normalizedCarImageKey(carImageURL)
         if let cached = RadarUIView.cachedCarImage(for: key) {
-            displayCarImage = Self.trimmedDisplayImage(from: cached, cacheKey: key)
+            displayCarImage = cached.bjk_trimmedTransparentPixels(alphaThreshold: 10) ?? cached
             return
         }
         guard let url = URL(string: key) else { return }
         if RadarUIView.sharedCarImageLoadInFlight.contains(key) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 if let cached = RadarUIView.cachedCarImage(for: key) {
-                    displayCarImage = Self.trimmedDisplayImage(from: cached, cacheKey: key)
+                    displayCarImage = cached.bjk_trimmedTransparentPixels(alphaThreshold: 10) ?? cached
                 } else {
-                    loadCarImageIfNeeded()
+                    loadIfNeeded()
                 }
             }
             return
@@ -1046,15 +1049,11 @@ private struct StatusProximityStripView: View {
             }
             guard let data, let img = UIImage(data: data) else { return }
             RadarUIView.storeCarImage(img, for: key)
-            let trimmed = Self.trimmedDisplayImage(from: img, cacheKey: key)
+            let trimmed = img.bjk_trimmedTransparentPixels(alphaThreshold: 10) ?? img
             DispatchQueue.main.async {
                 self.displayCarImage = trimmed
             }
         }.resume()
-    }
-
-    private static func trimmedDisplayImage(from image: UIImage, cacheKey: String) -> UIImage {
-        image.bjk_trimmedTransparentPixels(alphaThreshold: 10) ?? image
     }
 }
 
