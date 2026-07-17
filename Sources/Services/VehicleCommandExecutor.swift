@@ -71,55 +71,6 @@ struct FeedbackOnlyTransport: VehicleCommandTransport {
     }
 }
 
-struct PlaceholderControlTransport: VehicleCommandTransport {
-    let apiClient: SGMWApiClient
-    weak var credentials: VehicleCommandCredentialProviding?
-
-    init(apiClient: SGMWApiClient = .shared, credentials: VehicleCommandCredentialProviding?) {
-        self.apiClient = apiClient
-        self.credentials = credentials
-    }
-
-    func execute(_ command: VehicleCommand, refresher: VehicleCommandRefreshing?) -> VehicleCommandExecutionResult {
-        guard let credentials else {
-            return VehicleCommandExecutionResult(
-                command: command,
-                state: .failed("缺少车辆凭证提供者"),
-                userMessage: "未配置车辆凭证，无法生成控制请求",
-                shouldRefresh: false,
-                refreshDelay: 0
-            )
-        }
-        guard !credentials.accessToken.isEmpty, !credentials.vin.isEmpty else {
-            return VehicleCommandExecutionResult(
-                command: command,
-                state: .failed("缺少 accessToken 或 VIN"),
-                userMessage: "缺少 accessToken 或 VIN，无法生成控制请求",
-                shouldRefresh: false,
-                refreshDelay: 0
-            )
-        }
-        switch apiClient.makeVehicleControlRequestDraft(accessToken: credentials.accessToken, vin: credentials.vin, command: command) {
-        case .failure(let error):
-            return VehicleCommandExecutionResult(
-                command: command,
-                state: .failed(error.localizedDescription),
-                userMessage: error.localizedDescription,
-                shouldRefresh: false,
-                refreshDelay: 0
-            )
-        case .success(let draft):
-            return VehicleCommandExecutionResult(
-                command: command,
-                state: .planned,
-                userMessage: "控制请求已准备就绪",
-                shouldRefresh: false,
-                refreshDelay: 0
-            )
-        }
-    }
-}
-
 struct BLEVehicleControlTransport: VehicleCommandAsyncTransport {
     weak var bleController: VehicleBLEControlling?
 

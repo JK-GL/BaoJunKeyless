@@ -637,14 +637,6 @@ struct RadarCardView: View {
         .padding(.bottom, showProximityStrip ? 2 : (isMinimalMode ? 4 : 8))
         .padding(.horizontal, 16)
     }
-
-    static func amapSearchURL(for keyword: String) -> URL? {
-        var components = URLComponents()
-        components.scheme = "amap"
-        components.host = "search"
-        components.queryItems = [URLQueryItem(name: "keyword", value: keyword)]
-        return components.url
-    }
 }
 
 // MARK: - 雷达视觉块（仅雷达模式观察 RSSI/定位）
