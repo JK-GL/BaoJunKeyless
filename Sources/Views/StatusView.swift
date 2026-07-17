@@ -403,7 +403,7 @@ struct StatusView: View {
                     if !willUseBLE, (command.kind == .lock || command.kind == .unlock) {
                         mqttStore?.noteAppDoorLockCommand(command.kind == .lock)
                     }
-                    // 不本地假改空调 UI：开 MQTT 等真实推送；关 MQTT 等 HTTP 回写。
+                    // HTTP 路径：锁/空调等已在 HTTPControlTransport 受理成功时即时回写；此处仍可等 MQTT 回执与后续权威收敛。
                     if !willUseBLE, mqttReceiptEnabled {
                         pendingControlSentAt = Date()
                         beginControlReceiptWaitIfNeeded()

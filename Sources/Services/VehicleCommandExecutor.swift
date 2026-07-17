@@ -29,6 +29,13 @@ struct VehicleCommandExecutionResult: Equatable {
 
 protocol VehicleCommandRefreshing: AnyObject {
     func refreshNow()
+    /// HTTP 车控接口返回成功（指令已受理）后，立刻回写可预期的本地状态，避免只等轮询/MQTT。
+    /// 默认空实现；MQTTVehicleStateStore 覆盖。
+    func applyAcceptedHTTPControlIfPossible(_ command: VehicleCommand)
+}
+
+extension VehicleCommandRefreshing {
+    func applyAcceptedHTTPControlIfPossible(_ command: VehicleCommand) {}
 }
 
 protocol VehicleCommandCredentialProviding: AnyObject {
@@ -181,27 +188,33 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
                 switch result {
                 case .success:
                     DispatchQueue.main.async {
+                        // HTTP 受理成功：先本地即时回写可预期状态（锁/电源/空调/车窗），再弹结果与补刷。
+                        refresher?.applyAcceptedHTTPControlIfPossible(command)
+
                         let message: String
                         if command.kind == .remoteStart {
                             message = "启动授权已发送。请在约 30 秒内解锁上车，踩下刹车仪表亮Ready。"
                         } else if command.kind == .remoteStop {
                             message = "熄火指令已发送，等待车辆状态更新。"
                         } else {
-                            message = "\(command.title) 指令已发送，等待车辆状态更新。"
+                            message = "\(command.title) 指令已发送，状态已即时更新，正在与车辆确认。"
                         }
                         let timing = VehicleCommandTiming(requestBuildMillis: buildMillis, httpRoundTripMillis: Int(Date().timeIntervalSince(httpStart) * 1000))
                         completion(VehicleCommandExecutionResult(command: command, state: .sent, userMessage: message, shouldRefresh: true, refreshDelay: 0, timing: timing))
-                        // 不本地假改 UI：只靠后续真实回写。
+                        // 本地已即时回写；仍用短间隔 HTTP 权威收敛（防车端拒绝/半成功）。
+                        // - 锁/解：0.4s 起补刷（不再干等 2.1s）
                         // - 上电/熄火：1.5s + 4s
-                        // - 空调/设温/车窗/寻车：0.3s 起连续补刷，关 MQTT 时也能靠 HTTP 收敛
+                        // - 空调/设温/车窗/寻车：0.3s 起连续补刷
                         let refreshDelays: [TimeInterval]
                         switch command.kind {
                         case .remoteStart, .remoteStop:
                             refreshDelays = [1.5, 4.0]
+                        case .lock, .unlock:
+                            refreshDelays = [0.4, 1.2, 2.5, 4.5]
                         case .acOn, .acOff, .setTemperature, .quickCool, .openWindows, .closeWindows, .findCar:
                             refreshDelays = [0.3, 1.2, 2.5, 4.5]
                         default:
-                            refreshDelays = [2.1]
+                            refreshDelays = [0.5, 2.0]
                         }
                         for delay in refreshDelays {
                             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
