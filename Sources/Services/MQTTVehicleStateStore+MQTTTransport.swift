@@ -70,15 +70,14 @@ extension MQTTVehicleStateStore {
                 )
             }
 
-            // C-lite：干净 doorLockStatus 变化立刻写锁（像空调）；门窗仍不信半包。
-            // 脏半包（锁变夹带多门窗假开等）跳过即时写，只靠下方 HTTP 确认。
+            // doorLockStatus 变化：立刻写锁（像空调）；门窗永不从 MQTT 半包上屏。
             var lockInstantApplied = false
             if let locked = lockInstant {
                 lockInstantApplied = self.applyMQTTDoorLockInstantIfAllowed(locked)
             }
 
             // 其他 MQTT 半包不直接写车辆状态；只提示变化并唤醒 HTTP 完整快照。
-            // 空调/干净锁已单独处理；其余字段仍只提示 + HTTP 权威补齐。
+            // 空调/门锁总态已单独处理；门窗等仍只提示 + HTTP 权威补齐。
             let nonClimateChanges = changes.filter {
                 !$0.hasPrefix("acStatus:") && !$0.hasPrefix("accCntTemp:")
             }
@@ -94,15 +93,23 @@ extension MQTTVehicleStateStore {
                     mergeWindow: 60
                 )
             }
-            // 空调/锁即时写后仍拉 HTTP：补门窗明细与权威收敛。
-            if !climateChanged || !nonClimateChanges.isEmpty || lockInstantApplied {
-                self.scheduleHTTPRefreshFromRealtime(reason: lockInstantApplied ? "mqtt-door-lock-instant" : "mqtt-status")
+            // 锁变化：立刻 poll 一次（别只靠 0.8s 防抖），再 schedule 补刀；补门窗与权威。
+            if lockInstantApplied {
+                self.pollHTTPOnce(userInitiated: false, completion: nil)
+                self.scheduleHTTPRefreshFromRealtime(reason: "mqtt-door-lock-instant")
+            } else if !climateChanged || !nonClimateChanges.isEmpty {
+                self.scheduleHTTPRefreshFromRealtime(reason: "mqtt-status")
             }
         }
     }
 
-    /// 合并前判定：本包是否带来「可即时上屏」的干净门锁变化。
-    /// - 返回 `nil`：无干净锁变化（含脏半包、无 doorLock、同值）
+    /// 合并前判定：本包 `doorLockStatus` 是否相对上次变化、可否即时上屏。
+    ///
+    /// 实车/官方 App：锁变化几乎总是夹带多门窗假开半包。
+    /// 策略：**只信门锁总状态即时写 UI；门窗字段永不因本包上屏**（假开靠不写门窗 + HTTP 权威）。
+    /// 不再因「夹带变开」整包跳过写锁——那会让旁观官方操作永远等 HTTP，体感比旧版更差。
+    ///
+    /// - 返回 `nil`：无 doorLock / 解析失败 / 与上次 MQTT 同值
     /// - 返回 Bool：应对 UI 即时写入的目标锁态
     private func evaluateMQTTDoorLockInstant(_ fields: [String: String]) -> Bool? {
         let lockNext = parseLocked(fields["doorLockStatus"])
@@ -132,37 +139,15 @@ extension MQTTVehicleStateStore {
             if next > 0 && prev <= 0 { openTrueChanges += 1 }
         }
 
-        // 与 sanitize 同哲学：锁变瞬间夹带 ≥2 个“变开”→ 典型假半包，不即时写锁
+        // 仅打日志说明半包脏，**仍返回 lockNext 写锁**；门窗不会被本函数写入。
         if openTrueChanges >= 2 {
             vehicleEventLogStore.addCoalesced(
                 .action,
-                "MQTT 门锁跳过即时写",
-                detail: "锁变化夹带 \(openTrueChanges) 处门窗变开 · 等 HTTP 权威",
-                identity: "mqtt-lock-skip-dirty",
+                "MQTT 门锁半包注记",
+                detail: "锁变化夹带 \(openTrueChanges) 处门窗变开 · 仅即时写锁、门窗等 HTTP",
+                identity: "mqtt-lock-dirty-note",
                 mergeWindow: 30
             )
-            return nil
-        }
-
-        // 与 90s HTTP 门窗权威冲突的“突然开”过多时也偏保守（复用权威快照若存在）
-        if let http = lastHTTPDoorWindowAuthority, Date().timeIntervalSince(http.at) <= 90 {
-            var conflictOpen = 0
-            for key in openKeys {
-                guard let next = parseOpen(fields[key]), next == true else { continue }
-                if let trusted = parseOpen(http.fields[key]), trusted == false {
-                    conflictOpen += 1
-                }
-            }
-            if conflictOpen >= 2 {
-                vehicleEventLogStore.addCoalesced(
-                    .action,
-                    "MQTT 门锁跳过即时写",
-                    detail: "与 HTTP 门窗权威冲突 \(conflictOpen) 项 · 等 HTTP",
-                    identity: "mqtt-lock-skip-http-conflict",
-                    mergeWindow: 30
-                )
-                return nil
-            }
         }
 
         return lockNext
