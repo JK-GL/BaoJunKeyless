@@ -222,7 +222,8 @@ extension MQTTVehicleStateStore {
                     newDashboard = Self.stripDashboardBodyCacheSuffix(newDashboard)
 
                     let mergeMode: VehicleHTTPMergeMode = userInitiated ? .full : .pollFull
-                    let mergeNote = self.mergeHTTPBaseState(
+                    // 水管1：HTTP 权威进总表（语义同 mergeHTTPBaseState）
+                    let mergeNote = self.ingestHTTPAuthority(
                         newState: newState,
                         dashboard: newDashboard,
                         mode: mergeMode,

@@ -48,7 +48,7 @@ extension MQTTVehicleStateStore {
                 || fields["sysPowerMode"] != nil
                 || fields["ignitionStatus"] != nil,
                let power = parsePowerState(fields) {
-                self.applyExplicitPowerState(power, source: "MQTT电源字段")
+                self.ingestExplicitPowerLocal(power, source: "MQTT电源字段")
             }
 
             // 空调开关/设定温度：MQTT 真实字段即时回写。
@@ -307,7 +307,8 @@ extension MQTTVehicleStateStore {
         guard mqtt === sourceClient, keylessSettingsStore.settings.mqttEnabled else { return }
         let payload = Data(message.payload)
         if message.topic.hasSuffix("/vehicle/app/status") {
-            handleVehicleStatus(payload)
+            // 水管2：MQTT 状态进水（语义同 handleVehicleStatus）
+            ingestMQTTStatusPayload(payload)
         } else if message.topic.hasSuffix("/vehicle/control") {
             handleVehicleControlResult(payload)
         }

@@ -384,7 +384,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
                 if case .success = result {
                     // 手动/快捷锁车：抑制无感立刻反向解锁
                     let isKeyless = command.source == .keyless
-                    self?.applyLocalDoorLockState(
+                    // 水管3：BLE 门锁本地短回写
+                    self?.ingestBLEDoorLockLocal(
                         locked: true,
                         source: isKeyless ? "无感锁车回包" : "BLE锁车回包",
                         suppressOppositeKeyless: !isKeyless
@@ -396,7 +397,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             bleManager.sendDoorLockCommand(lock: false) { [weak self] result in
                 if case .success = result {
                     let isKeyless = command.source == .keyless
-                    self?.applyLocalDoorLockState(
+                    self?.ingestBLEDoorLockLocal(
                         locked: false,
                         source: isKeyless ? "无感解锁回包" : "BLE解锁回包",
                         suppressOppositeKeyless: !isKeyless
@@ -407,7 +408,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         case .remoteStart:
             bleManager.sendPowerOnReadyCommand { [weak self] result in
                 if case .success = result {
-                    self?.applyExplicitPowerState(.on, source: "BLE上电回包")
+                    self?.ingestExplicitPowerLocal(.on, source: "BLE上电回包")
                     self?.scheduleHTTPRefreshFromRealtime(reason: "ble-power-on-result")
                 }
                 completion(result)
@@ -415,7 +416,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         case .remoteStop:
             bleManager.sendPowerOffCommand { [weak self] result in
                 if case .success = result {
-                    self?.applyExplicitPowerState(.off, source: "BLE熄火回包")
+                    self?.ingestExplicitPowerLocal(.off, source: "BLE熄火回包")
                     self?.scheduleHTTPRefreshFromRealtime(reason: "ble-power-off-result")
                 }
                 completion(result)

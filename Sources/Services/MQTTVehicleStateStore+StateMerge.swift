@@ -13,11 +13,12 @@ extension MQTTVehicleStateStore {
     /// BLE 本地锁/解锁后，网络门锁短保护
     static let localLockHoldSeconds: TimeInterval = 15
 
-    /// 状态主链：
+    /// 状态主链（实现体；对外进水请优先 `ingestHTTPAuthority`）：
     /// - HTTP：完整权威快照，自动/手动刷新都全量落地
     /// - MQTT：仅提示变化并唤醒 HTTP，不参与本函数覆盖
     /// - HTTP 只与上一次 HTTP collectTime 比较，避免 MQTT 半包卡住完整快照
     /// - 总览由四门四窗明细重算
+    /// - 算法冻结：R1 阶段只搬家/命名，不改分支语义
     @discardableResult
     func mergeHTTPBaseState(
         newState: VehicleState,
