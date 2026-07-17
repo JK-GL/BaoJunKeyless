@@ -5,9 +5,6 @@ struct ImportGuideSheet: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var vehicleCredentials: VehicleCredentialsStore
     let onImported: () -> Void
-    @State private var tokenDraft = ""
-    @State private var vinDraft = ""
-    @State private var phoneDraft = ""
 
     var body: some View {
         NavigationView {
@@ -24,37 +21,10 @@ struct ImportGuideSheet: View {
                         guideStep(num: 4, title: "无需手动复制到 /var/mobile", detail: "现在优先尝试五菱 AppGroup 原路径，不再要求你手动拷贝")
                     }
 
-                    Divider().background(Color.white.opacity(0.1))
-
-                    Text("如果自动读取失败，请手动填入：")
-                        .font(.subheadline)
-                        .foregroundStyle(Color.white.opacity(0.6))
-
-                    VStack(spacing: 10) {
-                        HStack {
-                            Text("access_token:").font(.caption).foregroundStyle(.secondary)
-                            TextField("粘贴 token", text: $tokenDraft)
-                                .textFieldStyle(.plain)
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.white)
-                        }
-                        HStack {
-                            Text("VIN:").font(.caption).foregroundStyle(.secondary)
-                            TextField("LK6ADAH92RB765125", text: $vinDraft)
-                                .textFieldStyle(.plain)
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.white)
-                        }
-                        HStack {
-                            Text("手机号:").font(.caption).foregroundStyle(.secondary)
-                            TextField("13800138000", text: $phoneDraft)
-                                .textFieldStyle(.plain)
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.white)
-                        }
-                    }
-                    .padding(12)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.06)))
+                    Text("Token / VIN / 手机号请在车辆配置页直接填写或保存。")
+                        .font(.caption)
+                        .foregroundStyle(Color.white.opacity(0.45))
+                        .padding(.top, 4)
                 }
                 .padding()
             }
