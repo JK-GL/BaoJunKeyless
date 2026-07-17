@@ -30,9 +30,6 @@ extension MQTTVehicleStateStore {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.keylessSettingsStore.settings.mqttEnabled else { return }
 
-            // 合并 lastMqtt 之前先判定：干净门锁变化 / 门窗脏半包（须用合并前基线）
-            let lockInstant = self.evaluateMQTTDoorLockInstant(fields)
-
             var changes: [String] = []
             for (key, value) in fields where key != "collectTime" && self.lastMqttFields[key] != value {
                 changes.append("\(key):\(self.lastMqttFields[key] ?? "?")→\(value)")
@@ -70,177 +67,24 @@ extension MQTTVehicleStateStore {
                 )
             }
 
-            // doorLockStatus 变化：立刻写锁（像空调）；门窗永不从 MQTT 半包上屏。
-            var lockInstantApplied = false
-            if let locked = lockInstant {
-                lockInstantApplied = self.applyMQTTDoorLockInstantIfAllowed(locked)
-            }
-
-            // 其他 MQTT 半包不直接写车辆状态；只提示变化并唤醒 HTTP 完整快照。
-            // 空调/门锁总态已单独处理；门窗等仍只提示 + HTTP 权威补齐。
+            // 门锁/门窗等半包：不直接写 UI（v743 稳策略，避免官方操作半包连闪）。
+            // 只提示变化并唤醒 HTTP 完整快照作权威收敛。
             let nonClimateChanges = changes.filter {
                 !$0.hasPrefix("acStatus:") && !$0.hasPrefix("accCntTemp:")
             }
-            guard !nonClimateChanges.isEmpty || lockInstantApplied else { return }
-            if !nonClimateChanges.isEmpty {
-                let summary = Array(nonClimateChanges.prefix(8)).joined(separator: ", ")
-                let lockNote = lockInstantApplied ? " · 门锁已即时更新" : ""
-                self.vehicleEventLogStore.addCoalesced(
-                    .action,
-                    "MQTT 状态提示",
-                    detail: "检测到增量变化 · \(summary)\(lockNote) · 正在触发 HTTP 确认",
-                    identity: "mqtt-hint|\(summary)",
-                    mergeWindow: 60
-                )
-            }
-            // 锁变化：立刻 poll 一次（别只靠 0.8s 防抖），再 schedule 补刀；补门窗与权威。
-            if lockInstantApplied {
-                self.pollHTTPOnce(userInitiated: false, completion: nil)
-                self.scheduleHTTPRefreshFromRealtime(reason: "mqtt-door-lock-instant")
-            } else if !climateChanged || !nonClimateChanges.isEmpty {
+            guard !nonClimateChanges.isEmpty else { return }
+            let summary = Array(nonClimateChanges.prefix(8)).joined(separator: ", ")
+            self.vehicleEventLogStore.addCoalesced(
+                .action,
+                "MQTT 状态提示",
+                detail: "检测到增量变化 · \(summary) · 正在触发 HTTP 确认",
+                identity: "mqtt-hint|\(summary)",
+                mergeWindow: 60
+            )
+            if !climateChanged || !nonClimateChanges.isEmpty {
                 self.scheduleHTTPRefreshFromRealtime(reason: "mqtt-status")
             }
         }
-    }
-
-    /// 合并前判定：本包是否带来可即时上屏的锁态。
-    ///
-    /// 1) **总锁 `doorLockStatus` 优先且足够**（相对 lastMqtt 有变化）→ 直接用
-    /// 2) 仅当本包**没有**总锁字段时，才用分门锁推断（官方上锁常见）
-    ///    - 本包至少 2 个分门锁字段，且聚合后全为「已锁」才推断已锁
-    ///    - **禁止**用「单个 door4LockStatus」把整车打成已锁（开锁半包会抖）
-    ///    - 分锁路径**只用于 →已锁**，不用于 →未锁（开锁必须有总锁 0→1）
-    /// 3) 门窗开闭永不在此上屏
-    ///
-    /// - 返回 `nil`：无可用锁变化
-    /// - 返回 Bool：目标锁态（true=已锁）
-    private func evaluateMQTTDoorLockInstant(_ fields: [String: String]) -> Bool? {
-        let openKeys = [
-            "doorOpenStatus",
-            "door1OpenStatus", "door2OpenStatus", "door3OpenStatus", "door4OpenStatus",
-            "tailDoorOpenStatus",
-            "windowStatus",
-            "window1Status", "window2Status", "window3Status", "window4Status"
-        ]
-        let degreeKeys = [
-            "window1OpenDegree", "window2OpenDegree", "window3OpenDegree", "window4OpenDegree"
-        ]
-        // 仅车身四门锁参与「整车已锁」推断；尾门锁单独变化不代表整车已锁
-        let perDoorLockKeys = [
-            "door1LockStatus", "door2LockStatus", "door3LockStatus", "door4LockStatus"
-        ]
-
-        var openTrueChanges = 0
-        for key in openKeys {
-            guard let next = parseOpen(fields[key]) else { continue }
-            let prev = parseOpen(lastMqttFields[key])
-            if prev != next, next { openTrueChanges += 1 }
-        }
-        for key in degreeKeys {
-            let next = parseDouble(fields[key]) ?? 0
-            let prev = parseDouble(lastMqttFields[key]) ?? 0
-            if next > 0 && prev <= 0 { openTrueChanges += 1 }
-        }
-        if openTrueChanges >= 2 {
-            vehicleEventLogStore.addCoalesced(
-                .action,
-                "MQTT 门锁半包注记",
-                detail: "锁相关包夹带 \(openTrueChanges) 处门窗变开 · 仅即时写锁、门窗等 HTTP",
-                identity: "mqtt-lock-dirty-note",
-                mergeWindow: 30
-            )
-        }
-
-        // 1) 总锁字段：权威即时信号（开锁/关锁都认）
-        if fields["doorLockStatus"] != nil, let lockNext = parseLocked(fields["doorLockStatus"]) {
-            let lockPrev = parseLocked(lastMqttFields["doorLockStatus"])
-            if lockPrev != lockNext {
-                return lockNext
-            }
-            // 总锁在包里且未变：不要再用分锁去改结论（避免 总锁=未锁 时 door4=锁 把 UI 打成已锁）
-            return nil
-        }
-
-        // 2) 无总锁字段：仅推断「→已锁」（官方上锁）；开锁必须走总锁
-        var changedLockedDoors = 0
-        var parsedLocked: [Bool] = []
-        for key in perDoorLockKeys {
-            guard let next = parseLocked(fields[key]) else { continue }
-            parsedLocked.append(next)
-            let prev = parseLocked(lastMqttFields[key])
-            if prev != next, next == true {
-                changedLockedDoors += 1
-            }
-        }
-        // 至少 2 扇分门锁在本包变为「锁」，且本包出现的分锁全为已锁
-        guard changedLockedDoors >= 2, !parsedLocked.isEmpty, parsedLocked.allSatisfy({ $0 }) else {
-            return nil
-        }
-        if state.locked == true { return nil }
-
-        vehicleEventLogStore.addCoalesced(
-            .action,
-            "MQTT 分门锁推断",
-            detail: "无总锁 · \(changedLockedDoors)扇分锁变锁 → 已锁",
-            identity: "mqtt-lock-per-door",
-            mergeWindow: 15
-        )
-        return true
-    }
-
-    /// MQTT 旁观写锁：改 UI，**不**开 15s 网络保护（否则解锁后官方再上锁会被 HTTP 卡住）。
-    /// 本机 BLE/HTTP 操作的保护窗仍会挡住「反向」MQTT，避免刚本地操作被半包撕掉。
-    /// 另：2.5s 内不接受「反向」MQTT 锁（防开锁过程中分锁/总锁半包连闪）。
-    @discardableResult
-    private func applyMQTTDoorLockInstantIfAllowed(_ locked: Bool) -> Bool {
-        if let current = state.locked, current == locked {
-            return false
-        }
-        // 旁观防抖：刚写过反向锁，短时间忽略对面（半包连推）
-        if let at = lastMQTTDoorLockInstantAt,
-           let prev = lastMQTTDoorLockInstantValue,
-           prev != locked,
-           Date().timeIntervalSince(at) < 2.5 {
-            vehicleEventLogStore.addCoalesced(
-                .action,
-                "MQTT 门锁跳过即时写",
-                detail: "防抖 \(String(format: "%.1f", Date().timeIntervalSince(at)))s 内不反向 · 保持 \(prev ? "已锁" : "未锁")",
-                identity: "mqtt-lock-skip-debounce",
-                mergeWindow: 5
-            )
-            return false
-        }
-        // 仅当「本机操作保护窗」仍在时，拒绝 MQTT 反向；旁观写锁本身不再延长该窗
-        if let holdUntil = localDoorLockHoldUntil, Date() < holdUntil,
-           let current = state.locked, current != locked {
-            let src = fieldSource["doorLockStatus"] ?? "本地"
-            // 只有 BLE/HTTP 本机来源才挡；若来源已是 MQTT 则允许覆盖
-            if src == "BLE" || src == "HTTP" {
-                vehicleEventLogStore.addCoalesced(
-                    .action,
-                    "MQTT 门锁跳过即时写",
-                    detail: "本机锁保护中(\(src)) · 保持 \(current ? "已锁" : "未锁")",
-                    identity: "mqtt-lock-skip-hold",
-                    mergeWindow: 15
-                )
-                return false
-            }
-        }
-
-        // 外部/官方上锁：在写入前识别（observe 要求当前仍为未锁）
-        if locked == true {
-            observeAuthoritativeLockState(true)
-        }
-
-        ingestBLEDoorLockLocal(
-            locked: locked,
-            source: "MQTT门锁推送",
-            suppressOppositeKeyless: false,
-            protectAgainstNetworkOverride: false
-        )
-        lastMQTTDoorLockInstantAt = Date()
-        lastMQTTDoorLockInstantValue = locked
-        return true
     }
 
     /// 过滤车端半包常见噪声：
