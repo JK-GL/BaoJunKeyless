@@ -598,10 +598,12 @@ struct RadarCardView: View {
 
     /// 关系条/大车图都不走雷达 280 方框；关系条再更贴距离文案。
     private var isCompactVisualMode: Bool { showLargeCarImage || showProximityStrip }
+    /// 三模式都关：极简模式，距离行附加 GPS/dBm。
+    private var isMinimalMode: Bool { !showRadar && !showLargeCarImage && !showProximityStrip }
 
     var body: some View {
         // 三模式互斥。关系条参考大车图：不占雷达大方框，上下贴紧。
-        VStack(spacing: showProximityStrip ? 4 : 6) {
+        VStack(spacing: showProximityStrip ? 4 : (isMinimalMode ? 4 : 6)) {
             if showRadar {
                 RadarVisualBlock(
                     locationManager: locationManager,
@@ -626,12 +628,13 @@ struct RadarCardView: View {
                 locationManager: locationManager,
                 bleStatus: bleStatus,
                 carLat: carLat,
-                carLng: carLng
+                carLng: carLng,
+                showsSignalSuffix: isMinimalMode
             )
         }
         .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.top, showProximityStrip ? 2 : (isCompactVisualMode ? 8 : 8))
-        .padding(.bottom, showProximityStrip ? 2 : 8)
+        .padding(.top, showProximityStrip ? 2 : (isMinimalMode ? 4 : 8))
+        .padding(.bottom, showProximityStrip ? 2 : (isMinimalMode ? 4 : 8))
         .padding(.horizontal, 16)
     }
 
@@ -709,7 +712,7 @@ private struct RadarVisualBlock: View {
     }
 }
 
-// MARK: - 距离/地址块（单独观察；不牵连大车图）
+// MARK: - 距离/地址块（单独观察；不牵连大车图/关系条车图）
 private struct RadarDistanceAddressBlock: View {
     @ObservedObject var locationManager: LocationManager
     @ObservedObject private var diagnostics = BLEDiagnosticsStore.shared
@@ -717,6 +720,8 @@ private struct RadarDistanceAddressBlock: View {
     var bleStatus: StatusBLEState
     var carLat: Double
     var carLng: Double
+    /// 仅“三模式都关”的极简模式为 true：主行附加 · GPS / · -xx dBm。
+    var showsSignalSuffix: Bool = false
 
     private var prefersBLEDistance: Bool {
         switch bleStatus {
@@ -765,24 +770,64 @@ private struct RadarDistanceAddressBlock: View {
         displayCacheStore.loadSnapshot().distanceMeters
     }
 
+    /// 极简模式后缀：有 BLE 会话显示 dBm，否则 GPS。不写近场中文。
+    private var signalSuffixText: String {
+        if prefersBLEDistance {
+            if let displayRSSI { return "\(displayRSSI) dBm" }
+            return "-- dBm"
+        }
+        return "GPS"
+    }
+
+    private var signalSuffixColor: Color {
+        if prefersBLEDistance {
+            if isLiveAuthenticatedRSSI { return rssiSignalColor.opacity(0.90) }
+            return Color.white.opacity(0.50)
+        }
+        return Color.green.opacity(0.80)
+    }
+
+    private var primaryDistanceText: String? {
+        if let bleDistanceText { return bleDistanceText }
+        if locationManager.distance > 0 {
+            return String(format: "距车辆 %.0f 米", locationManager.distance)
+        }
+        if cachedDistanceMeters > 0 {
+            return String(format: "距车辆 %.0f 米", cachedDistanceMeters)
+        }
+        if carLat != 0 && carLng != 0 {
+            return "距离定位中…"
+        }
+        return nil
+    }
+
+    private var primaryDistanceColor: Color {
+        if bleDistanceText != nil { return bleDistanceColor }
+        if locationManager.distance > 0 { return Color.white.opacity(0.50) }
+        return Color.white.opacity(0.42)
+    }
+
     var body: some View {
         VStack(spacing: 2) {
-            if let bleDistanceText {
-                Text(bleDistanceText)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(bleDistanceColor)
-            } else if locationManager.distance > 0 {
-                Text(String(format: "距车辆 %.0f 米", locationManager.distance))
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.5))
-            } else if cachedDistanceMeters > 0 {
-                Text(String(format: "距车辆 %.0f 米", cachedDistanceMeters))
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.42))
-            } else if carLat != 0 && carLng != 0 {
-                Text("距离定位中…")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.42))
+            if let primaryDistanceText {
+                if showsSignalSuffix {
+                    // 极简：距车辆 12 米 · -68 dBm / · GPS
+                    HStack(spacing: 6) {
+                        Text(primaryDistanceText)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(primaryDistanceColor)
+                        Text("·")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.28))
+                        Text(signalSuffixText)
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(signalSuffixColor)
+                    }
+                } else {
+                    Text(primaryDistanceText)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(primaryDistanceColor)
+                }
             }
 
             if !locationManager.vehicleAddress.isEmpty {
