@@ -638,7 +638,9 @@ final class VehicleBLEManager: NSObject {
                 self.onLog?("BLE", "bound connect timeout, fallback wide scan")
                 self.fallbackToWideScanAfterBoundFailure()
             } else {
+                // 非绑定连接超时后必须回到可重试路径；后台仅靠 idle 不会自动再扫
                 self.state = .idle
+                self.scheduleScanRetryIfNeeded()
             }
         }
         connectionTimeoutWorkItem = work

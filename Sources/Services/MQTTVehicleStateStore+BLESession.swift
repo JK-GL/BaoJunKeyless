@@ -39,7 +39,8 @@ extension MQTTVehicleStateStore {
                 if self.bleStatus == .scanning {
                     self.consecutiveScanTimeouts += 1
                     let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
-                    if self.bleDidSeeDeviceThisCycle {
+                    let sawDevice = self.bleDidSeeDeviceThisCycle
+                    if sawDevice {
                         self.vehicleEventLogStore.addCoalesced(.warning, "BLE 扫描结束", detail: "\(self.bleDiagnosticCurrentCandidateText) · 已扫描 \(duration)，发现设备但未连上", identity: "scan-end-seen|\(macSuffix)")
                         self.noteBLEFoundButNotConnected("\(self.bleDiagnosticCurrentCandidateText) · 已扫描 \(duration)", reason: "看到目标设备，但本轮未建立连接")
                     } else {
@@ -47,12 +48,39 @@ extension MQTTVehicleStateStore {
                         self.noteBLENoDeviceFound(duration: duration)
                     }
                     self.resetBLEDiagnosticCycle()
+                    // 后台：扫到车却连不上时，短延迟强制再开一轮（底层 retry 在系统挂起时经常跑不起来）
+                    if sawDevice,
+                       !self.isAppInForeground,
+                       self.keylessSettingsStore.settings.keylessEnabled,
+                       !self.userManuallyStoppedBLE,
+                       !self.shouldSuppressAutomaticBLEScan {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                            guard let self else { return }
+                            guard !self.isAppInForeground else { return }
+                            guard self.keylessSettingsStore.settings.keylessEnabled else { return }
+                            guard !self.userManuallyStoppedBLE else { return }
+                            guard !self.isBLESessionActive else { return }
+                            guard !self.shouldSuppressAutomaticBLEScan else { return }
+                            self.vehicleEventLogStore.addCoalesced(
+                                .system,
+                                "后台 BLE 见车重连",
+                                detail: "上一轮发现设备未连上 · 再开扫描",
+                                identity: "bg-ble-rescan-seen",
+                                mergeWindow: 20
+                            )
+                            self.ensureBLESession(forceRestart: true, optimisticScanning: true, userInitiated: false)
+                        }
+                    }
                 } else if self.bleStatus == .connecting || self.bleStatus == .authenticating || self.bleStatus == .authenticated {
                     let duration = self.formatElapsedSince(self.bleScanStartedAt ?? Date())
                     self.logVehicleEvent(.action, "BLE 已断开", detail: "\(macSuffix) · 扫描耗时 \(duration)", identity: "disconnect|\(macSuffix)", minimumInterval: 4)
                     self.setBLEDiagnosticPhase("已断开", detail: "\(macSuffix) · 扫描耗时 \(duration)")
                     self.resetBLEDiagnosticCycle()
                 }
+                let wasSessionLike =
+                    self.bleStatus == .connecting
+                    || self.bleStatus == .authenticating
+                    || self.bleStatus == .authenticated
                 // 连接中预填阶段：若已有 preview RSSI，断链前不要无意义清成 -- dBm
                 // 真正断开后才清空
                 let keepPreview = self.bleDiagnosticsStore.isPreviewRSSI
@@ -69,6 +97,29 @@ extension MQTTVehicleStateStore {
                 self.hasCompletedBLEAuth = false
                 if !keepPreview {
                     self.applyLiveBLERSSI(nil)
+                }
+                // 后台无感：鉴权/连接中断后立刻再推一把会话（日志「发现设备但未连上」后常卡死在等待系统机会）
+                if wasSessionLike,
+                   !self.isAppInForeground,
+                   self.keylessSettingsStore.settings.keylessEnabled,
+                   !self.userManuallyStoppedBLE,
+                   !self.shouldSuppressAutomaticBLEScan {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                        guard let self else { return }
+                        guard !self.isAppInForeground else { return }
+                        guard self.keylessSettingsStore.settings.keylessEnabled else { return }
+                        guard !self.userManuallyStoppedBLE else { return }
+                        guard !self.isBLESessionActive else { return }
+                        guard !self.shouldSuppressAutomaticBLEScan else { return }
+                        self.vehicleEventLogStore.addCoalesced(
+                            .system,
+                            "后台 BLE 断线重连",
+                            detail: "鉴权/连接中断后自动重启扫描",
+                            identity: "bg-ble-reconnect",
+                            mergeWindow: 15
+                        )
+                        self.ensureBLESession(forceRestart: true, optimisticScanning: true, userInitiated: false)
+                    }
                 }
             case .unsupported, .bluetoothOff:
                 self.ignoreNextBLEIdleCallback = false

@@ -163,11 +163,11 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             pendingConnectAttempts = saved.attempts
             logInfo("后台待连接已恢复", detail: "\(saved.lastStage) · 原因=\(saved.reason) · 尝试=\(saved.attempts)", identity: "pending-connect-restored")
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.pendingConnectAttempts < 5 else {
+                guard let self, self.pendingConnectAttempts < 12 else {
                     self?.clearPersistedPendingConnect(reason: "恢复尝试次数已达上限")
                     return
                 }
-                self.requestBLESession(forceRestart: false, detail: "恢复未完成的后台待连接")
+                self.requestBLESession(forceRestart: true, detail: "恢复未完成的后台待连接")
             }
         } else {
             persistence.removeObject(forKey: pendingConnectStoreKey)
@@ -247,7 +247,9 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         configureParkingFallbackIfNeeded(settings: settings, reason: "enter-background")
         reevaluate(reason: "enter-background")
         if settings.keylessEnabled {
-            requestBLESession(forceRestart: false, detail: "进入后台")
+            // 未鉴权时 forceRestart，避免卡在半连接/空闲却不扫
+            let force = connectionStatusStore.bleStatus != .authenticated
+            requestBLESession(forceRestart: force, detail: "进入后台")
         }
     }
 
@@ -674,10 +676,20 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
 
     private func beginBackgroundTask(reason: String) {
         guard settingsStore.settings.backgroundEnhancedEnabled else { return }
-        if backgroundTaskID != .invalid { return }
+        // 已有有效任务时：只更新 reason，不重复 begin（iOS 不支持真正延长同一 ID）
+        if backgroundTaskID != .invalid {
+            backgroundTaskReason = reason
+            return
+        }
         backgroundTaskReason = reason
         backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "SGMWKey.\(reason)") { [weak self] in
             self?.handleBackgroundTaskExpired()
+        }
+        // 系统若立刻返回 invalid，不要当成成功
+        if backgroundTaskID == .invalid {
+            backgroundTaskReason = nil
+            logInfo("增强后台执行失败", detail: "系统未批准 · \(reasonText(reason))", identity: "bg-task-denied|\(reason)", mergeWindow: 60)
+            return
         }
         logInfo("增强后台执行", detail: reasonText(reason), identity: "bg-task-begin|\(reason)")
         // 开始后台任务已写事件日志；错误日志只记异常到期
@@ -686,6 +698,7 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
     /// 系统回收短时后台任务：
     /// - 圈外/围栏休眠等省电路径 → 系统信息（正常挂起，不标错误）
     /// - 圈内警戒 / BLE 活跃 / 鉴权中 → 仍记错误（真异常）
+    /// - 若仍需无感：立刻申请下一段短时任务并接力 BLE（日志里「等待系统机会」常因到期后没人再推一把）
     private func handleBackgroundTaskExpired() {
         let reason = backgroundTaskReason ?? "unknown"
         let detailPrefix = expirationDetail(for: reason)
@@ -712,6 +725,43 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         isEndingBackgroundTaskFromExpiration = true
         endBackgroundTask()
         isEndingBackgroundTaskFromExpiration = false
+
+        // 接力：鉴权中/圈内/还在连 → 再申请一段窗口，避免锁屏走几步进程就冻住
+        relayBackgroundWorkIfNeeded(trigger: "task-expired|\(reason)")
+    }
+
+    /// 后台仍需要无感时，再开一段 background task，并在未鉴权时推 BLE 重连。
+    private func relayBackgroundWorkIfNeeded(trigger: String) {
+        guard !isAppInForeground else { return }
+        let settings = settingsStore.settings
+        guard settings.keylessEnabled, settings.backgroundEnhancedEnabled else { return }
+
+        let auth = connectionStatusStore.bleStatus == .authenticated
+        let busy = isBLEBusy
+        // 圈内，或 BLE 还在忙/已鉴权，或仍有未完成的待连接 → 值得再续一段
+        let shouldRelay =
+            isInGeofence
+            || auth
+            || busy
+            || pendingConnectStartedAt != nil
+            || keepAliveDesired
+
+        guard shouldRelay else { return }
+
+        beginBackgroundTask(reason: "keyless-relay")
+        logInfo(
+            "后台无感接力",
+            detail: "\(trigger) · phase=\(phase.rawValue) · fence=\(isInGeofence ? 1 : 0) · ble=\(bleStatusText(connectionStatusStore.bleStatus))",
+            identity: "bg-keyless-relay|\(trigger)",
+            mergeWindow: 20
+        )
+
+        if auth {
+            // 已鉴权：只续命，让 RSSI/无感判定继续跑
+            return
+        }
+        // 未鉴权：强制推一把扫描/连接（比 enter-background 的 forceRestart:false 更积极）
+        requestBLESession(forceRestart: true, detail: "后台接力·\(trigger)")
     }
 
     /// 仅在「确实在干活」时把到期标错误：保活中 / 圈内警戒 / BLE 活跃 / 鉴权中。
@@ -852,13 +902,14 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             // 同一轮扫描/连接中的重复唤醒只更新原因，不重复计次。
             pendingConnectReason = detail
         }
-        if pendingConnectAttempts > 5 {
+        // 后台断连/连不上时需要多试几次；日志里 5 次很快耗尽后只剩「等待系统机会」
+        if pendingConnectAttempts > 12 {
             clearPersistedPendingConnect(reason: "后台接力尝试次数已达上限")
             return
         }
         persistPendingConnect()
         store.ensureBLESession(forceRestart: forceRestart, optimisticScanning: true, userInitiated: false)
-        logInfo("后台唤醒 BLE", detail: "\(detail) · 等待扫描/连接/重鉴权", identity: "bg-wake-ble|\(detail)")
+        logInfo("后台唤醒 BLE", detail: "\(detail) · 等待扫描/连接/重鉴权 · 尝试\(pendingConnectAttempts)", identity: "bg-wake-ble|\(detail)")
     }
 
     /// 设置变化或出圈后，让 Store 重新评估是否应停扫
@@ -890,9 +941,23 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         )
     }
 
+    private func bleStatusText(_ status: VehicleConnectionStatusStore.LiveBLEStatus) -> String {
+        switch status {
+        case .disconnected: return "未连接"
+        case .scanning: return "扫描中"
+        case .pausedOutsideFence: return "围栏外休眠"
+        case .connecting: return "连接中"
+        case .connected: return "已连接"
+        case .authenticating: return "鉴权中"
+        case .authenticated: return "已鉴权"
+        case .error: return "错误"
+        }
+    }
+
     private func reasonText(_ reason: String) -> String {
         switch reason {
         case "keyless-background": return "锁屏/切后台续命"
+        case "keyless-relay": return "无感后台接力续命"
         case "approach-arming": return "围栏内警戒"
         case "geofence-enter": return "进入围栏"
         case "location-keepalive": return "定位保活续命"
@@ -1039,9 +1104,14 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             // 更新手机距圆心，方便 UI 校验围栏（无新鲜度字段）
             refreshGeofenceSummary()
         }
-        // 保活用途：不驱动无感决策，仅维持进程；不写用户日志（太吵）
+        // 保活用途：维持进程；同时若无感未鉴权且在圈内，顺手再推 BLE（显著位置/定位回调是后台少数窗口）
         if keepAliveDesired, settingsStore.settings.backgroundEnhancedEnabled, !isAppInForeground {
             beginBackgroundTask(reason: "location-keepalive")
+            if settingsStore.settings.keylessEnabled,
+               connectionStatusStore.bleStatus != .authenticated,
+               isInGeofence || isBLEBusy || pendingConnectStartedAt != nil {
+                requestBLESession(forceRestart: false, detail: "定位保活窗口")
+            }
         }
     }
 
