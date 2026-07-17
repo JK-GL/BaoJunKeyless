@@ -38,17 +38,19 @@ extension MQTTVehicleStateStore {
         handleVehicleStatus(data)
     }
 
-    /// 水管3：BLE 门锁成功后的本地短回写（约 15s 保护 + 唤醒 HTTP）。
-    /// - 语义同 `applyLocalDoorLockState`。
+    /// 水管3：门锁本地回写。
+    /// - protectAgainstNetworkOverride: BLE/本机 HTTP 受理默认 true；MQTT 旁观应 false。
     func ingestBLEDoorLockLocal(
         locked: Bool,
         source: String,
-        suppressOppositeKeyless: Bool = false
+        suppressOppositeKeyless: Bool = false,
+        protectAgainstNetworkOverride: Bool = true
     ) {
         applyLocalDoorLockState(
             locked: locked,
             source: source,
-            suppressOppositeKeyless: suppressOppositeKeyless
+            suppressOppositeKeyless: suppressOppositeKeyless,
+            protectAgainstNetworkOverride: protectAgainstNetworkOverride
         )
     }
 

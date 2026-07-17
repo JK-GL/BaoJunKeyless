@@ -103,19 +103,16 @@ extension MQTTVehicleStateStore {
         }
     }
 
-    /// 合并前判定：本包 `doorLockStatus` 是否相对上次变化、可否即时上屏。
+    /// 合并前判定：本包是否带来可即时上屏的锁态。
     ///
-    /// 实车/官方 App：锁变化几乎总是夹带多门窗假开半包。
-    /// 策略：**只信门锁总状态即时写 UI；门窗字段永不因本包上屏**（假开靠不写门窗 + HTTP 权威）。
-    /// 不再因「夹带变开」整包跳过写锁——那会让旁观官方操作永远等 HTTP，体感比旧版更差。
+    /// 1) 优先总锁 `doorLockStatus`（相对 lastMqtt 有变化）
+    /// 2) 官方上锁常**不带**总锁，只推 `door1~4LockStatus` / `tailDoorLockStatus`：
+    ///    用本包出现的分门锁聚合（全锁→已锁；任一分锁开→未锁），且须相对 lastMqtt 有变化
+    /// 3) 门窗开闭字段永不在此上屏；脏半包仅注记
     ///
-    /// - 返回 `nil`：无 doorLock / 解析失败 / 与上次 MQTT 同值
-    /// - 返回 Bool：应对 UI 即时写入的目标锁态
+    /// - 返回 `nil`：无可用锁变化
+    /// - 返回 Bool：目标锁态（true=已锁）
     private func evaluateMQTTDoorLockInstant(_ fields: [String: String]) -> Bool? {
-        let lockNext = parseLocked(fields["doorLockStatus"])
-        let lockPrev = parseLocked(lastMqttFields["doorLockStatus"])
-        guard let lockNext, lockNext != lockPrev else { return nil }
-
         let openKeys = [
             "doorOpenStatus",
             "door1OpenStatus", "door2OpenStatus", "door3OpenStatus", "door4OpenStatus",
@@ -125,6 +122,10 @@ extension MQTTVehicleStateStore {
         ]
         let degreeKeys = [
             "window1OpenDegree", "window2OpenDegree", "window3OpenDegree", "window4OpenDegree"
+        ]
+        let perDoorLockKeys = [
+            "door1LockStatus", "door2LockStatus", "door3LockStatus", "door4LockStatus",
+            "tailDoorLockStatus"
         ]
 
         var openTrueChanges = 0
@@ -138,38 +139,72 @@ extension MQTTVehicleStateStore {
             let prev = parseDouble(lastMqttFields[key]) ?? 0
             if next > 0 && prev <= 0 { openTrueChanges += 1 }
         }
-
-        // 仅打日志说明半包脏，**仍返回 lockNext 写锁**；门窗不会被本函数写入。
         if openTrueChanges >= 2 {
             vehicleEventLogStore.addCoalesced(
                 .action,
                 "MQTT 门锁半包注记",
-                detail: "锁变化夹带 \(openTrueChanges) 处门窗变开 · 仅即时写锁、门窗等 HTTP",
+                detail: "锁相关包夹带 \(openTrueChanges) 处门窗变开 · 仅即时写锁、门窗等 HTTP",
                 identity: "mqtt-lock-dirty-note",
                 mergeWindow: 30
             )
         }
 
-        return lockNext
+        // 1) 总锁字段
+        if let lockNext = parseLocked(fields["doorLockStatus"]) {
+            let lockPrev = parseLocked(lastMqttFields["doorLockStatus"])
+            if lockPrev != lockNext {
+                return lockNext
+            }
+        }
+
+        // 2) 仅有分门锁：聚合推断（实车官方上锁常见）
+        var anyPerDoorChanged = false
+        var parsed: [Bool] = []
+        for key in perDoorLockKeys {
+            guard let next = parseLocked(fields[key]) else { continue }
+            parsed.append(next)
+            let prev = parseLocked(lastMqttFields[key])
+            if prev != next { anyPerDoorChanged = true }
+        }
+        guard anyPerDoorChanged, !parsed.isEmpty else { return nil }
+
+        // 任一分锁为未锁 → 整车按未锁；全为已锁 → 已锁
+        let aggregatedLocked = parsed.allSatisfy { $0 }
+        if let current = state.locked, current == aggregatedLocked {
+            return nil
+        }
+        vehicleEventLogStore.addCoalesced(
+            .action,
+            "MQTT 分门锁推断",
+            detail: "无总锁字段 · 分锁\(parsed.map { $0 ? "锁" : "开" }.joined(separator: "/")) → \(aggregatedLocked ? "已锁" : "未锁")",
+            identity: "mqtt-lock-per-door",
+            mergeWindow: 15
+        )
+        return aggregatedLocked
     }
 
-    /// 将干净 MQTT 门锁写入总表（复用 15s 短保护 + 出水）；hold 窗内不接受反向冲刷。
+    /// MQTT 旁观写锁：改 UI，**不**开 15s 网络保护（否则解锁后官方再上锁会被 HTTP 卡住）。
+    /// 本机 BLE/HTTP 操作的保护窗仍会挡住「反向」MQTT，避免刚本地操作被半包撕掉。
     @discardableResult
     private func applyMQTTDoorLockInstantIfAllowed(_ locked: Bool) -> Bool {
         if let current = state.locked, current == locked {
             return false
         }
-        // 本地 BLE/HTTP 刚写过锁：保护窗内不让 MQTT 反向撕
+        // 仅当「本机操作保护窗」仍在时，拒绝 MQTT 反向；旁观写锁本身不再延长该窗
         if let holdUntil = localDoorLockHoldUntil, Date() < holdUntil,
            let current = state.locked, current != locked {
-            vehicleEventLogStore.addCoalesced(
-                .action,
-                "MQTT 门锁跳过即时写",
-                detail: "本地锁保护中 · 保持 \(current ? "已锁" : "未锁")",
-                identity: "mqtt-lock-skip-hold",
-                mergeWindow: 15
-            )
-            return false
+            let src = fieldSource["doorLockStatus"] ?? "本地"
+            // 只有 BLE/HTTP 本机来源才挡；若来源已是 MQTT 则允许覆盖
+            if src == "BLE" || src == "HTTP" {
+                vehicleEventLogStore.addCoalesced(
+                    .action,
+                    "MQTT 门锁跳过即时写",
+                    detail: "本机锁保护中(\(src)) · 保持 \(current ? "已锁" : "未锁")",
+                    identity: "mqtt-lock-skip-hold",
+                    mergeWindow: 15
+                )
+                return false
+            }
         }
 
         // 外部/官方上锁：在写入前识别（observe 要求当前仍为未锁）
@@ -180,7 +215,8 @@ extension MQTTVehicleStateStore {
         ingestBLEDoorLockLocal(
             locked: locked,
             source: "MQTT门锁推送",
-            suppressOppositeKeyless: false
+            suppressOppositeKeyless: false,
+            protectAgainstNetworkOverride: false
         )
         return true
     }
