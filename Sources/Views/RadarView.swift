@@ -811,17 +811,23 @@ private struct RadarDistanceAddressBlock: View {
         VStack(spacing: 2) {
             if let primaryDistanceText {
                 if showsSignalSuffix {
-                    // 极简：距车辆 12 米 · -68 dBm / · GPS
-                    HStack(spacing: 6) {
+                    // 极简：距车辆 12 米 + 小描边胶囊（GPS / -xx dBm）
+                    HStack(spacing: 8) {
                         Text(primaryDistanceText)
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(primaryDistanceColor)
-                        Text("·")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color.white.opacity(0.28))
                         Text(signalSuffixText)
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .font(.system(size: 10.5, weight: .bold, design: .monospaced))
                             .foregroundStyle(signalSuffixColor)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(
+                                Capsule()
+                                    .fill(signalSuffixColor.opacity(0.10))
+                                    .overlay(
+                                        Capsule().stroke(signalSuffixColor.opacity(0.30), lineWidth: 0.5)
+                                    )
+                            )
                     }
                 } else {
                     Text(primaryDistanceText)
