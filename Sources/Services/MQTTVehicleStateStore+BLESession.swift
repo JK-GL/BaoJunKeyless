@@ -136,6 +136,8 @@ extension MQTTVehicleStateStore {
                 self.logVehicleEvent(.action, "BLE 鉴权成功", detail: "可发送控车命令", identity: "authenticated", minimumInterval: 3)
                 self.connectionStatusStore.isSystemBLEConnected = true
                 self.bleStatus = .authenticated
+                // C-lite：鉴权成功立刻拉一次 HTTP 权威（近车快照）；schedule 再防抖补一刀
+                self.pollHTTPOnce(userInitiated: false, completion: nil)
                 self.scheduleHTTPRefreshFromRealtime(reason: "ble-authenticated")
                 if !self.isAppInForeground {
                     self.startHTTPPolling(immediate: false)

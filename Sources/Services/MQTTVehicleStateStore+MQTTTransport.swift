@@ -30,6 +30,9 @@ extension MQTTVehicleStateStore {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.keylessSettingsStore.settings.mqttEnabled else { return }
 
+            // 合并 lastMqtt 之前先判定：干净门锁变化 / 门窗脏半包（须用合并前基线）
+            let lockInstant = self.evaluateMQTTDoorLockInstant(fields)
+
             var changes: [String] = []
             for (key, value) in fields where key != "collectTime" && self.lastMqttFields[key] != value {
                 changes.append("\(key):\(self.lastMqttFields[key] ?? "?")→\(value)")
@@ -67,23 +70,134 @@ extension MQTTVehicleStateStore {
                 )
             }
 
+            // C-lite：干净 doorLockStatus 变化立刻写锁（像空调）；门窗仍不信半包。
+            // 脏半包（锁变夹带多门窗假开等）跳过即时写，只靠下方 HTTP 确认。
+            var lockInstantApplied = false
+            if let locked = lockInstant {
+                lockInstantApplied = self.applyMQTTDoorLockInstantIfAllowed(locked)
+            }
+
             // 其他 MQTT 半包不直接写车辆状态；只提示变化并唤醒 HTTP 完整快照。
-            // 空调字段已在上面单独处理，避免再因 acStatus 重复触发额外 HTTP 冲刷。
-            let nonClimateChanges = changes.filter { !$0.hasPrefix("acStatus:") && !$0.hasPrefix("accCntTemp:") }
-            guard !nonClimateChanges.isEmpty else { return }
-            let summary = Array(nonClimateChanges.prefix(8)).joined(separator: ", ")
-            self.vehicleEventLogStore.addCoalesced(
-                .action,
-                "MQTT 状态提示",
-                detail: "检测到增量变化 · \(summary) · 正在触发 HTTP 确认",
-                identity: "mqtt-hint|\(summary)",
-                mergeWindow: 60
-            )
-            // 空调刚变化时已单独补过 HTTP；其它字段变化再补一次。
-            if !climateChanged || !nonClimateChanges.isEmpty {
-                self.scheduleHTTPRefreshFromRealtime(reason: "mqtt-status")
+            // 空调/干净锁已单独处理；其余字段仍只提示 + HTTP 权威补齐。
+            let nonClimateChanges = changes.filter {
+                !$0.hasPrefix("acStatus:") && !$0.hasPrefix("accCntTemp:")
+            }
+            guard !nonClimateChanges.isEmpty || lockInstantApplied else { return }
+            if !nonClimateChanges.isEmpty {
+                let summary = Array(nonClimateChanges.prefix(8)).joined(separator: ", ")
+                let lockNote = lockInstantApplied ? " · 门锁已即时更新" : ""
+                self.vehicleEventLogStore.addCoalesced(
+                    .action,
+                    "MQTT 状态提示",
+                    detail: "检测到增量变化 · \(summary)\(lockNote) · 正在触发 HTTP 确认",
+                    identity: "mqtt-hint|\(summary)",
+                    mergeWindow: 60
+                )
+            }
+            // 空调/锁即时写后仍拉 HTTP：补门窗明细与权威收敛。
+            if !climateChanged || !nonClimateChanges.isEmpty || lockInstantApplied {
+                self.scheduleHTTPRefreshFromRealtime(reason: lockInstantApplied ? "mqtt-door-lock-instant" : "mqtt-status")
             }
         }
+    }
+
+    /// 合并前判定：本包是否带来「可即时上屏」的干净门锁变化。
+    /// - 返回 `nil`：无干净锁变化（含脏半包、无 doorLock、同值）
+    /// - 返回 Bool：应对 UI 即时写入的目标锁态
+    private func evaluateMQTTDoorLockInstant(_ fields: [String: String]) -> Bool? {
+        let lockNext = parseLocked(fields["doorLockStatus"])
+        let lockPrev = parseLocked(lastMqttFields["doorLockStatus"])
+        guard let lockNext, lockNext != lockPrev else { return nil }
+
+        let openKeys = [
+            "doorOpenStatus",
+            "door1OpenStatus", "door2OpenStatus", "door3OpenStatus", "door4OpenStatus",
+            "tailDoorOpenStatus",
+            "windowStatus",
+            "window1Status", "window2Status", "window3Status", "window4Status"
+        ]
+        let degreeKeys = [
+            "window1OpenDegree", "window2OpenDegree", "window3OpenDegree", "window4OpenDegree"
+        ]
+
+        var openTrueChanges = 0
+        for key in openKeys {
+            guard let next = parseOpen(fields[key]) else { continue }
+            let prev = parseOpen(lastMqttFields[key])
+            if prev != next, next { openTrueChanges += 1 }
+        }
+        for key in degreeKeys {
+            let next = parseDouble(fields[key]) ?? 0
+            let prev = parseDouble(lastMqttFields[key]) ?? 0
+            if next > 0 && prev <= 0 { openTrueChanges += 1 }
+        }
+
+        // 与 sanitize 同哲学：锁变瞬间夹带 ≥2 个“变开”→ 典型假半包，不即时写锁
+        if openTrueChanges >= 2 {
+            vehicleEventLogStore.addCoalesced(
+                .action,
+                "MQTT 门锁跳过即时写",
+                detail: "锁变化夹带 \(openTrueChanges) 处门窗变开 · 等 HTTP 权威",
+                identity: "mqtt-lock-skip-dirty",
+                mergeWindow: 30
+            )
+            return nil
+        }
+
+        // 与 90s HTTP 门窗权威冲突的“突然开”过多时也偏保守（复用权威快照若存在）
+        if let http = lastHTTPDoorWindowAuthority, Date().timeIntervalSince(http.at) <= 90 {
+            var conflictOpen = 0
+            for key in openKeys {
+                guard let next = parseOpen(fields[key]), next == true else { continue }
+                if let trusted = parseOpen(http.fields[key]), trusted == false {
+                    conflictOpen += 1
+                }
+            }
+            if conflictOpen >= 2 {
+                vehicleEventLogStore.addCoalesced(
+                    .action,
+                    "MQTT 门锁跳过即时写",
+                    detail: "与 HTTP 门窗权威冲突 \(conflictOpen) 项 · 等 HTTP",
+                    identity: "mqtt-lock-skip-http-conflict",
+                    mergeWindow: 30
+                )
+                return nil
+            }
+        }
+
+        return lockNext
+    }
+
+    /// 将干净 MQTT 门锁写入总表（复用 15s 短保护 + 出水）；hold 窗内不接受反向冲刷。
+    @discardableResult
+    private func applyMQTTDoorLockInstantIfAllowed(_ locked: Bool) -> Bool {
+        if let current = state.locked, current == locked {
+            return false
+        }
+        // 本地 BLE/HTTP 刚写过锁：保护窗内不让 MQTT 反向撕
+        if let holdUntil = localDoorLockHoldUntil, Date() < holdUntil,
+           let current = state.locked, current != locked {
+            vehicleEventLogStore.addCoalesced(
+                .action,
+                "MQTT 门锁跳过即时写",
+                detail: "本地锁保护中 · 保持 \(current ? "已锁" : "未锁")",
+                identity: "mqtt-lock-skip-hold",
+                mergeWindow: 15
+            )
+            return false
+        }
+
+        // 外部/官方上锁：在写入前识别（observe 要求当前仍为未锁）
+        if locked == true {
+            observeAuthoritativeLockState(true)
+        }
+
+        ingestBLEDoorLockLocal(
+            locked: locked,
+            source: "MQTT门锁推送",
+            suppressOppositeKeyless: false
+        )
+        return true
     }
 
     /// 过滤车端半包常见噪声：

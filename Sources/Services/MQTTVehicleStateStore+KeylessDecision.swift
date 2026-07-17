@@ -186,6 +186,11 @@ extension MQTTVehicleStateStore {
             next.bleRssi = smoothedRSSI
             next.phoneNearby = nextNearby
             apply(next)
+            // C-lite：近场/离开/灰区变化或首次 live RSSI → 立刻 HTTP + 防抖补刷（已有 schedule）
+            // 近场变化比纯 schedule 更勤：先 poll 一次权威，避免只等 0.8s 防抖窗
+            if proximityChanged || zoneChanged {
+                pollHTTPOnce(userInitiated: false, completion: nil)
+            }
             scheduleHTTPRefreshFromRealtime(reason: "ble-proximity-change")
             if !isAppInForeground {
                 startHTTPPolling(immediate: false)
