@@ -820,7 +820,8 @@ private struct RadarDistanceAddressBlock: View {
 
 // MARK: - 人-信号-车 关系条（第三显示模式）
 /// 左人 · 中 GPS/RSSI · 右车；固定高度 120。
-/// 间距按无感语义分段：1.5m / 8m / 25m；中间不显示中文 zone，只显示 GPS/dBm，颜色对齐 zone。
+/// 第一刀：1.5/8/25m 分段 gap；中间只 GPS/dBm。
+/// 第二刀：胶囊绝对居中、左右等宽槽纠偏右、底层连线、近远轻微缩放。
 /// 不做指南针转人。
 private struct StatusProximityStripView: View {
     @ObservedObject var locationManager: LocationManager
@@ -953,60 +954,128 @@ private struct StatusProximityStripView: View {
         }
     }
 
-    /// gap 量化到 1pt，减少无意义动画抖动。
+    /// gap 量化到 0.5pt，减少无意义动画抖动。
     private var quantizedGap: CGFloat {
         (dynamicGap * 2).rounded() / 2
     }
 
+    /// 近场略放大、远场略缩小（克制 6%~8%）。
+    private var proximityScale: CGFloat {
+        switch proximityZone {
+        case .near: return 1.06
+        case .gray: return 1.0
+        case .far: return 0.94
+        case .gps: return 0.92
+        }
+    }
+
+    /// 连接线样式：近实线亮，远虚线淡。
+    private var linkColor: Color {
+        centerColor.opacity(proximityZone == .near ? 0.45 : (proximityZone == .gray ? 0.32 : 0.18))
+    }
+
+    private var linkStyle: StrokeStyle {
+        switch proximityZone {
+        case .near:
+            return StrokeStyle(lineWidth: 1.5, lineCap: .round)
+        case .gray:
+            return StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: [4, 4])
+        case .far, .gps:
+            return StrokeStyle(lineWidth: 1.0, lineCap: .round, dash: [2, 5])
+        }
+    }
+
+    /// 左右内容槽等宽，避免车图比人重导致整体偏右。
+    private let sideSlotWidth: CGFloat = 92
+    private let capsuleWidth: CGFloat = 84
+
     var body: some View {
-        // 中心胶囊视觉居中：左右等宽槽，人/车分别贴左右；gap 用左右 padding 表达。
-        HStack(spacing: 0) {
-            // 左槽：人靠右贴向中心
+        // 第二刀：
+        // 1) 胶囊绝对居中（ZStack 中心层）
+        // 2) 左右等宽槽，修正“车比人重→视觉偏右”
+        // 3) 底层人-车连线
+        // 4) 近/远轻微缩放
+        ZStack {
+            // 底层连线：只画在人-车之间，胶囊压在上面
+            GeometryReader { geo in
+                let midY = geo.size.height / 2
+                let centerX = geo.size.width / 2
+                // 人锚点：中心左侧（半胶囊 + gap + 半侧槽）
+                let personAnchorX = centerX - capsuleWidth / 2 - quantizedGap - sideSlotWidth * 0.22
+                let carAnchorX = centerX + capsuleWidth / 2 + quantizedGap + sideSlotWidth * 0.22
+                Path { path in
+                    path.move(to: CGPoint(x: personAnchorX, y: midY))
+                    path.addLine(to: CGPoint(x: carAnchorX, y: midY))
+                }
+                .stroke(linkColor, style: linkStyle)
+            }
+            .allowsHitTesting(false)
+
+            // 中层：人 / 空位 / 车 —— 左右槽严格等宽，整组水平居中
             HStack(spacing: 0) {
                 Spacer(minLength: 0)
-                Image(systemName: "figure.stand")
-                    .font(.system(size: 34, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.80))
-                    .frame(width: 40, height: stripHeight)
-                    .padding(.trailing, quantizedGap / 2)
-            }
-            .frame(maxWidth: .infinity)
 
-            // 中：只 GPS / dBm
+                // 左侧槽：人靠槽右侧（朝中心）
+                ZStack(alignment: .trailing) {
+                    Color.clear
+                    Image(systemName: "figure.stand")
+                        .font(.system(size: 34, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.82))
+                        .scaleEffect(proximityScale)
+                }
+                .frame(width: sideSlotWidth, height: stripHeight)
+                .padding(.trailing, quantizedGap)
+
+                // 中央占位：与胶囊同宽，保证几何中心 = 视觉中心
+                Color.clear
+                    .frame(width: capsuleWidth, height: 1)
+
+                // 右侧槽：车靠槽左侧（朝中心）；槽宽与左侧相同，消除偏右
+                ZStack(alignment: .leading) {
+                    Color.clear
+                    Group {
+                        if let displayCarImage {
+                            Image(uiImage: displayCarImage)
+                                .resizable()
+                                .scaledToFit()
+                        } else {
+                            Image(systemName: "car.fill")
+                                .font(.system(size: 32, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.55))
+                        }
+                    }
+                    .scaleEffect(proximityScale)
+                    .frame(width: sideSlotWidth - 8, height: stripHeight - 24, alignment: .leading)
+                }
+                .frame(width: sideSlotWidth, height: stripHeight)
+                .padding(.leading, quantizedGap)
+
+                Spacer(minLength: 0)
+            }
+
+            // 顶层：胶囊永远画在 ZStack 正中，不再被 HStack 间距推偏
             Text(centerText)
                 .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .foregroundStyle(centerColor)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
+                .frame(minWidth: 72)
                 .background(
                     Capsule()
-                        .fill(centerColor.opacity(0.12))
-                        .overlay(Capsule().stroke(centerColor.opacity(0.28), lineWidth: 0.5))
+                        .fill(Color.black.opacity(0.35))
+                        .overlay(
+                            Capsule()
+                                .fill(centerColor.opacity(0.14))
+                        )
+                        .overlay(
+                            Capsule().stroke(centerColor.opacity(0.30), lineWidth: 0.5)
+                        )
                 )
-                .frame(minWidth: 76)
-
-            // 右槽：车靠左贴向中心；裁透明边后更贴
-            HStack(spacing: 0) {
-                Group {
-                    if let displayCarImage {
-                        Image(uiImage: displayCarImage)
-                            .resizable()
-                            .scaledToFit()
-                    } else {
-                        Image(systemName: "car.fill")
-                            .font(.system(size: 34, weight: .medium))
-                            .foregroundStyle(Color.white.opacity(0.55))
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: stripHeight - 20, alignment: .leading)
-                .padding(.leading, quantizedGap / 2)
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity)
         }
         .frame(height: stripHeight)
         .frame(maxWidth: .infinity)
         .animation(.easeInOut(duration: 0.20), value: quantizedGap)
+        .animation(.easeInOut(duration: 0.20), value: proximityScale)
         .onAppear { loadCarImageIfNeeded() }
         .onChange(of: carImageURL) { _ in
             displayCarImage = nil
