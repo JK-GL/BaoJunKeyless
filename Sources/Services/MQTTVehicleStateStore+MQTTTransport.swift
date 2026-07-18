@@ -55,7 +55,10 @@ extension MQTTVehicleStateStore {
                 changedKeys: Set(changedKeys),
                 format: decoded.format,
                 payloadBytes: data.count,
-                rawJSON: decoded.rawJSONText
+                rawJSON: decoded.rawJSONText,
+                rawHex: decoded.rawHex,
+                pbWireDump: decoded.pbWireDump,
+                unmappedFieldNumbers: decoded.unmappedFieldNumbers
             )
             if changedKeys.isEmpty {
                 self.vehicleEventLogStore.addCoalesced(
@@ -119,22 +122,31 @@ extension MQTTVehicleStateStore {
         }
     }
 
-    /// 官方风格完整字段日志（中文注解 + 全键列表 / 原始 JSON）
+    /// 官方风格完整字段日志（中文注解 + 全键列表 / raw hex / PB 字段号）
     private func formatMQTTOfficialStyleLog(
         allFields: [String: String],
         previous: [String: String],
         changedKeys: Set<String>,
         format: String,
         payloadBytes: Int,
-        rawJSON: String?
+        rawJSON: String?,
+        rawHex: String?,
+        pbWireDump: String?,
+        unmappedFieldNumbers: [Int]
     ) -> String {
         let collect = allFields["collectTime"].flatMap { $0.isEmpty ? nil : $0 } ?? "无"
         let fieldCount = allFields.count
         let nonEmptyCount = allFields.values.filter { !$0.isEmpty }.count
 
         var parts: [String] = []
-        // 对齐官方三行语义
+        // 对齐官方三行语义 + 诊断元数据
         parts.append("格式=\(format) · payload=\(payloadBytes)B · 字段数=\(fieldCount)（非空\(nonEmptyCount)）")
+        if !unmappedFieldNumbers.isEmpty {
+            let nums = unmappedFieldNumbers.map(String.init).joined(separator: ",")
+            parts.append("未映射PB字段号=[\(nums)]（nameMap 仅 1…21，用于扩表）")
+        } else if format.contains("protobuf") {
+            parts.append("未映射PB字段号=[]（本包无 >21 或未识别号）")
+        }
         parts.append("车况时间-mqtt：\(collect)")
         if changedKeys.isEmpty {
             parts.append("车况通知：无字段变化（心跳/重复包）")
@@ -182,6 +194,16 @@ extension MQTTVehicleStateStore {
             return "\(star)\(label)(\(key))=\(show)"
         }.joined(separator: ", ")
         parts.append("全字段：\(dump)")
+
+        // PB wire 级字段号列表（扩 nameMap 用）
+        if let pbWireDump, !pbWireDump.isEmpty {
+            parts.append("PB字段：\(pbWireDump)")
+        }
+
+        // 原始 hex（140B 级完整保留；过大则截断）
+        if let rawHex, !rawHex.isEmpty {
+            parts.append("rawHex==\(rawHex)")
+        }
 
         // 若有原始 JSON，附上（截断防爆日志；完整可复制前 3500 字）
         if let raw = rawJSON, !raw.isEmpty {
@@ -483,7 +505,7 @@ extension MQTTVehicleStateStore {
         }
     }
 
-    /// MQTT 解码结果：业务用非空字段；日志用全字段 + 原始 JSON（对齐官方完整包）。
+    /// MQTT 解码结果：业务用非空字段；日志用全字段 + hex/PB 字段号（扩表诊断）。
     private struct MQTTDecodedPayload {
         /// protobuf / json / protobuf+json / empty
         let format: String
@@ -493,23 +515,38 @@ extension MQTTVehicleStateStore {
         let nonEmptyFields: [String: String]
         /// 若 payload 本身是 JSON 文本，保留原文
         let rawJSONText: String?
+        /// 原始 payload 十六进制（小包完整；大包截断并标注）
+        let rawHex: String?
+        /// PB wire 字段摘要：#号:wire=值
+        let pbWireDump: String?
+        /// nameMap 未覆盖的字段号（>21 或未知）
+        let unmappedFieldNumbers: [Int]
     }
 
+    /// SgmwAppCarStatus 已确认字段（BLE_SPEC §5.8.6 / §15.53）
+    private static let mqttProtobufNameMap: [Int: String] = [
+        1: "collectTime", 2: "acStatus", 3: "doorLockStatus",
+        4: "door1LockStatus", 5: "door2LockStatus", 6: "door3LockStatus", 7: "door4LockStatus", 8: "tailDoorLockStatus",
+        9: "door1OpenStatus", 10: "door2OpenStatus", 11: "door3OpenStatus", 12: "door4OpenStatus", 13: "tailDoorOpenStatus",
+        14: "window1Status", 15: "window2Status", 16: "window3Status", 17: "window4Status",
+        18: "window1OpenDegree", 19: "window2OpenDegree", 20: "window3OpenDegree", 21: "window4OpenDegree"
+    ]
+
     private func decodeMQTTPayload(_ data: Data) -> MQTTDecodedPayload {
-        let pb = decodeProtobufMQTTFields(data)
+        let pbDecoded = decodeProtobufMQTTDetailed(data)
         let (jsonAll, jsonRaw) = decodeJSONMQTTFieldsDetailed(data)
 
         // JSON 与 PB 都解：合并后 JSON 覆盖同名（更接近官方完整包）
-        var all: [String: String] = pb
+        var all: [String: String] = pbDecoded.namedFields
         for (k, v) in jsonAll {
             all[k] = v
         }
         let format: String = {
-            if jsonAll.isEmpty && pb.isEmpty { return "empty" }
-            if pb.isEmpty { return "json" }
+            if jsonAll.isEmpty && pbDecoded.namedFields.isEmpty { return "empty" }
+            if pbDecoded.namedFields.isEmpty { return "json" }
             if jsonAll.isEmpty { return "protobuf" }
-            if jsonAll.count > pb.count { return "json>protobuf" }
-            if pb.count > jsonAll.count { return "protobuf>json" }
+            if jsonAll.count > pbDecoded.namedFields.count { return "json>protobuf" }
+            if pbDecoded.namedFields.count > jsonAll.count { return "protobuf>json" }
             return "json+protobuf"
         }()
 
@@ -531,33 +568,91 @@ extension MQTTVehicleStateStore {
             format: format,
             allFields: all,
             nonEmptyFields: nonEmpty,
-            rawJSONText: raw
+            rawJSONText: raw,
+            rawHex: formatMQTTPayloadHex(data),
+            pbWireDump: pbDecoded.wireDump.isEmpty ? nil : pbDecoded.wireDump,
+            unmappedFieldNumbers: pbDecoded.unmappedFieldNumbers
         )
     }
 
-    private func decodeProtobufMQTTFields(_ data: Data) -> [String: String] {
+    private struct MQTTProtobufDecodeDetail {
+        let namedFields: [String: String]
+        let wireDump: String
+        let unmappedFieldNumbers: [Int]
+    }
+
+    private func decodeProtobufMQTTDetailed(_ data: Data) -> MQTTProtobufDecodeDetail {
         let decoded = ProtobufDecoder.decode(data)
-        // 历史 nameMap：车身核心；其余字段依赖 JSON 路径
-        let nameMap: [Int: String] = [
-            1: "collectTime", 2: "acStatus", 3: "doorLockStatus",
-            4: "door1LockStatus", 5: "door2LockStatus", 6: "door3LockStatus", 7: "door4LockStatus", 8: "tailDoorLockStatus",
-            9: "door1OpenStatus", 10: "door2OpenStatus", 11: "door3OpenStatus", 12: "door4OpenStatus", 13: "tailDoorOpenStatus",
-            14: "window1Status", 15: "window2Status", 16: "window3Status", 17: "window4Status",
-            18: "window1OpenDegree", 19: "window2OpenDegree", 20: "window3OpenDegree", 21: "window4OpenDegree"
-        ]
+        let nameMap = Self.mqttProtobufNameMap
         var result: [String: String] = [:]
+        var wireParts: [String] = []
+        var unmapped: [Int] = []
+        var seenUnmapped = Set<Int>()
+
         for field in decoded {
-            guard let name = nameMap[field.fieldNumber] else { continue }
-            switch field.wireType {
-            case .varint:
-                if let val = ProtobufDecoder.int64(field) { result[name] = String(val) }
-            case .lengthDelimited:
-                if let val = ProtobufDecoder.string(field) { result[name] = val }
-            case .fixed64, .fixed32:
-                continue
+            let preview = protobufFieldPreview(field)
+            if let name = nameMap[field.fieldNumber] {
+                wireParts.append("#\(field.fieldNumber)(\(name)):\(preview)")
+                switch field.wireType {
+                case .varint:
+                    if let val = ProtobufDecoder.int64(field) { result[name] = String(val) }
+                case .lengthDelimited:
+                    if let val = ProtobufDecoder.string(field) {
+                        result[name] = val
+                    } else {
+                        // 非 UTF-8 字符串：仍记 hex 片段，便于对照
+                        result[name] = "hex:\(field.data.map { String(format: "%02x", $0) }.joined())"
+                    }
+                case .fixed64, .fixed32:
+                    result[name] = preview
+                }
+            } else {
+                wireParts.append("#\(field.fieldNumber)(?):\(preview)")
+                if seenUnmapped.insert(field.fieldNumber).inserted {
+                    unmapped.append(field.fieldNumber)
+                }
             }
         }
-        return result
+        unmapped.sort()
+        return MQTTProtobufDecodeDetail(
+            namedFields: result,
+            wireDump: wireParts.joined(separator: " "),
+            unmappedFieldNumbers: unmapped
+        )
+    }
+
+    private func protobufFieldPreview(_ field: ProtobufField) -> String {
+        switch field.wireType {
+        case .varint:
+            if let val = ProtobufDecoder.int64(field) { return "varint=\(val)" }
+            return "varint=?"
+        case .lengthDelimited:
+            if let s = ProtobufDecoder.string(field) {
+                let shown = s.count > 48 ? String(s.prefix(48)) + "…" : s
+                return "str=\"\(shown)\""
+            }
+            let hex = field.data.prefix(24).map { String(format: "%02x", $0) }.joined()
+            let more = field.data.count > 24 ? "…" : ""
+            return "bytes[\(field.data.count)]=\(hex)\(more)"
+        case .fixed64:
+            return "fixed64"
+        case .fixed32:
+            return "fixed32"
+        }
+    }
+
+    /// 原始 payload hex：≤256B 全打；更大打前 256B 并标注总长
+    private func formatMQTTPayloadHex(_ data: Data) -> String {
+        let limit = 256
+        if data.count <= limit {
+            return data.map { String(format: "%02x", $0) }.joined()
+        }
+        let head = data.prefix(limit).map { String(format: "%02x", $0) }.joined()
+        return "\(head)…(total \(data.count)B)"
+    }
+
+    private func decodeProtobufMQTTFields(_ data: Data) -> [String: String] {
+        decodeProtobufMQTTDetailed(data).namedFields
     }
 
     /// 返回 (全字段含空串, 原始 JSON 文本)
