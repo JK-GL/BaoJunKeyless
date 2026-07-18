@@ -187,20 +187,24 @@ enum VehicleStatusMapper {
         next.timestamp = parseTimestamp(s["collectTime"]) ?? Date()
         next.online = true
         if let locked = parseLocked(s["doorLockStatus"]) { next.locked = locked }
-        // 单门增量：只更新对应字段
-        // doorsClosed / windowsClosed 最终以 merge 后明细重算为准；这里不因半包缺字段写死总览
+        // MQTT 官方字段有值即更新；缺字段/空串不覆盖。
+        if let doorsClosed = parseDoorClosed(s) { next.doorsClosed = doorsClosed }
+        if let windowsClosed = parseWindowsClosed(s) { next.windowsClosed = windowsClosed }
         if let driverOpen = parseOpen(s["door1OpenStatus"]) { next.driverDoorOpen = driverOpen }
         if let trunkOpen = parseOpen(s["tailDoorOpenStatus"]) { next.trunkOpen = trunkOpen }
         if let ac = parseACStatus(s["acStatus"]) { next.acOn = ac }
-        if let temp = parseDouble(s["accCntTemp"] ?? s["interiorTemperature"]) { next.acTemperature = temp }
+        // accCntTemp 是设定温度；interiorTemperature 是车内温度，不能混作空调设定。
+        if let temp = parseDouble(s["accCntTemp"]) { next.acTemperature = temp }
         if let gear = parseGear(s["autoGearStatus"]) { next.gear = gear }
         if let power = parsePowerState(s) { next.power = power }
         let keyPos = parsePhysicalKeyPosition(s["keyStatus"])
         if s["keyStatus"] != nil { next.physicalKeyPosition = keyPos }
-        if let batterySoc = parseDouble(s["batterySoc"]) { next.fuelLevel = batterySoc }
-        if let leftMileage = parseDouble(s["leftMileage"]) { next.fuelRange = leftMileage }
-        if let oilMileage = parseDouble(s["oilLeftMileage"]) { next.oilRange = oilMileage }
-        if let speed = parseDouble(s["speed"] ?? s["vehSpd"] ?? s["vehSpdAvgDrvn"]) { next.speed = speed }
+        if let fuel = parseDouble(s["leftFuel"] ?? s["fuelPercent"] ?? s["oilPercent"]) { next.fuelLevel = fuel }
+        if let oilMileage = parseDouble(s["oilLeftMileage"]) {
+            next.fuelRange = oilMileage
+            next.oilRange = oilMileage
+        }
+        if let speed = parseDouble(s["speed"] ?? s["vehSpd"]) { next.speed = speed }
         return next
     }
 
@@ -253,6 +257,14 @@ enum VehicleStatusMapper {
             d.batteryPercentValue = soc
             d.batteryRemainingText = displayBatteryRemaining(s, fallback: d.batteryRemainingText)
         }
+        if s["leftBatteryPower"] != nil {
+            d.batteryRemainingText = displayBatteryRemaining(s, fallback: d.batteryRemainingText)
+        }
+        if s["batSoh"] != nil || s["batSOH"] != nil || s["batHealth"] != nil {
+            d.batteryHealthPercentText = displayBatteryHealth(s, fallback: d.batteryHealthPercentText)
+        }
+        if let voltage = s["voltage"], !voltage.isEmpty { d.batteryVoltageText = displayValue(voltage, suffix: "V") }
+        if let lowBat = s["lowBatVol"], !lowBat.isEmpty { d.batteryAuxText = displayValue(lowBat, suffix: "V") }
         if let leftMileage = parseInt(s["leftMileage"]) {
             d.electricRangeKm = leftMileage
         }
@@ -263,10 +275,14 @@ enum VehicleStatusMapper {
             d.fuelPercentValue = fuelPercent
             d.fuelRemainingText = displayFuelRemaining(s, fallback: d.fuelRemainingText)
         }
-        if let chargingRaw = s["charging"] {
-            let charging = chargingRaw == "1"
-            d.isCharging = charging
-            d.chargingStatusText = charging ? "是" : "否"
+        if s["charging"] != nil || s["vecChrgingSts"] != nil || s["vecChrgStsIndOn"] != nil || s["wireConnect"] != nil || s["rechargeStatus"] != nil {
+            let charging = parseCharging(s)
+            if let charging {
+                d.isCharging = charging
+                d.chargingStatusText = charging ? "是" : "否"
+            }
+            let chargeState = displayChargingState(s, isCharging: charging)
+            if chargeState != "--" { d.chargingStateText = chargeState }
         }
         if let chargePower = s["chargePower"], !chargePower.isEmpty {
             d.chargingPowerText = displayValue(chargePower, suffix: " kW")
@@ -286,8 +302,8 @@ enum VehicleStatusMapper {
         }
         if let speed = s["speed"] ?? s["vehSpd"], !speed.isEmpty { d.speedText = "\(speed)km/h" }
         if let averageSpeed = s["vehSpdAvgDrvn"], !averageSpeed.isEmpty { d.averageSpeedText = "\(averageSpeed)km/h" }
-        if let lowBeam = s["dipHeadLight"] { d.lowBeamText = displayBool(lowBeam) }
-        if let highBeam = s["lowBeamLight"] { d.highBeamText = displayBool(highBeam) }
+        if let lowBeam = s["lowBeamLight"] { d.lowBeamText = displayBool(lowBeam) }
+        if let highBeam = s["dipHeadLight"] { d.highBeamText = displayBool(highBeam) }
         if let leftTurn = s["leftTurnLight"] { d.leftTurnText = displayBool(leftTurn) }
         if let rightTurn = s["rightTurnLight"] { d.rightTurnText = displayBool(rightTurn) }
         if let position = s["positionLight"] { d.positionLightText = displayBool(position) }
@@ -295,31 +311,13 @@ enum VehicleStatusMapper {
         d.updatedAt = parseTimestamp(s["collectTime"]) ?? Date()
         d.updatedAtText = formatTime(d.updatedAt)
         
-        // MQTT 增量补齐电量/充电/里程/温度（JSON 全量或后续扩展字段）
-        if let soc = parseInt(s["batterySoc"]) { d.batteryPercentValue = soc }
-        if s["batterySoc"] != nil || s["leftBatteryPower"] != nil {
-            d.batteryRemainingText = displayBatteryRemaining(s, fallback: d.batteryRemainingText)
-        }
-        if let left = parseInt(s["leftMileage"]) { d.electricRangeKm = left }
-        if let oil = parseInt(s["oilLeftMileage"]) { d.fuelRangeKm = oil }
-        if let mile = s["mileage"], !mile.isEmpty { d.totalMileageText = "\(mile) km" }
-        if s["charging"] != nil {
-            let charging = s["charging"] == "1" || s["charging"] == "true"
-            d.isCharging = charging
-            d.chargingStatusText = charging ? "是" : "否"
-        }
-        if let cp = s["chargePower"], !cp.isEmpty {
-            d.chargingPowerText = displayValue(cp, suffix: " kW")
-            d.chargingPowerValueText = displayValue(cp, suffix: " kW")
-        }
-        if let cabin = s["interiorTemperature"], !cabin.isEmpty {
-            d.cabinTemperatureText = displayValue(cabin, suffix: "°C")
-        }
         if let batT = s["batAvgTemp"] ?? s["batMinTemp"], !batT.isEmpty {
             d.batteryTemperatureText = displayValue(batT, suffix: "°C")
         }
+        if let motorT = s["tmActTemp"], !motorT.isEmpty { d.motorTemperatureText = displayValue(motorT, suffix: "°C") }
+        if let inverterT = s["invActTemp"], !inverterT.isEmpty { d.inverterTemperatureText = displayValue(inverterT, suffix: "°C") }
 
-return d
+        return d
     }
 
     static func recomputeDoorStatusText(from dashboard: VehicleDashboardState) -> String {

@@ -333,7 +333,7 @@ func displayBatteryRemaining(_ s: [String: String], fallback: String) -> String 
 }
 
 func displayBatteryHealth(_ s: [String: String], fallback: String) -> String {
-    if let soh = s["batSOH"] ?? s["batHealth"], !soh.isEmpty { return "\(soh)%" }
+    if let soh = s["batSoh"] ?? s["batSOH"] ?? s["batHealth"], !soh.isEmpty { return "\(soh)%" }
     return fallback
 }
 

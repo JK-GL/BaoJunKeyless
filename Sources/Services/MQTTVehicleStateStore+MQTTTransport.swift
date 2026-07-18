@@ -25,142 +25,89 @@ extension MQTTVehicleStateStore {
     func handleVehicleStatus(_ data: Data) {
         guard keylessSettingsStore.settings.mqttEnabled else { return }
         let decoded = decodeMQTTPayload(data)
-        // 原始包：日志诊断用（含假开门窗原值 + hex）
-        let rawFields = decoded.nonEmptyFields
-        let logFields = decoded.allFields
-        guard !logFields.isEmpty || !rawFields.isEmpty else { return }
+        // 业务只采纳非空字段：PB 稀疏包没带/空串都不覆盖现有好值；0/1 是有效枚举值。
+        let fields = decoded.nonEmptyFields
+        let logFields = decoded.allFields.isEmpty ? fields : decoded.allFields
+        guard !fields.isEmpty || !logFields.isEmpty else { return }
 
         DispatchQueue.main.async { [weak self] in
             guard let self, self.keylessSettingsStore.settings.mqttEnabled else { return }
 
-            // 业务路径：先消毒假开门窗，再做变化检测 / 缓存 / 拉 HTTP。
-            // UI 仍不直写门窗锁；消毒避免「解锁瞬间假开」刷提示、误伤后续判断。
-            let sanitized = self.sanitizeMQTTBodyFields(rawFields)
-            let droppedOpenKeys = rawFields.keys.filter { key in
-                Self.mqttDoorWindowOpenKeys.contains(key) && sanitized[key] == nil && rawFields[key] != nil
-            }.sorted()
-            let falseOpenStripped = !droppedOpenKeys.isEmpty
-
-            var changedKeys: [String] = []
-            var rawChanges: [String] = []
-            // 变化检测用消毒后字段，避免假开进入业务增量
-            for (key, value) in sanitized where key != "collectTime" && self.lastMqttFields[key] != value {
-                changedKeys.append(key)
-                rawChanges.append("\(key):\(self.lastMqttFields[key] ?? "?")→\(value)")
-            }
-            // 仅当消毒后仍带门窗开合变化时，才记门窗增量（假开已被剥掉）
             let previousFields = self.lastMqttFields
-            self.lastMqttFields.merge(sanitized) { _, new in new }
-            self.lastMQTTBodyCollectAt = parseTimestamp(sanitized["collectTime"] ?? logFields["collectTime"]) ?? Date()
+            let collectAt = parseTimestamp(fields["collectTime"] ?? logFields["collectTime"]) ?? Date()
+            var changedKeys: [String] = []
+            for (key, value) in fields where key != "collectTime" && previousFields[key] != value {
+                changedKeys.append(key)
+            }
+            let changedSet = Set(changedKeys)
+
+            self.lastMqttFields.merge(fields) { _, new in new }
+            self.lastMQTTBodyCollectAt = collectAt
             self.lastMQTTUpdate = Date()
             self.mqttStatus = .connected
 
-            // 对齐官方 receiveMQTTCarStatus 日志风格；raw 全量仍打印，并标注是否过滤假开
-            var officialStyle = self.formatMQTTOfficialStyleLog(
-                allFields: logFields.isEmpty ? rawFields : logFields,
+            let mqttState = VehicleStatusMapper.mqttState(from: fields, base: self.state)
+            let mqttDashboard = VehicleStatusMapper.mqttDashboard(from: fields, base: self.dashboard)
+            self.mergeRealtimeState(
+                newState: mqttState,
+                dashboard: mqttDashboard,
+                sourceFields: fields,
+                collectAt: collectAt,
+                changedKeys: changedSet
+            )
+            if fields.keys.contains(where: { ["engineStatus", "powerStatus", "vehPowerMode", "vehiclePowerStatus", "sysPowerMode", "ignitionStatus"].contains($0) }),
+               let power = parsePowerState(fields), power != .unknown {
+                self.lastExplicitPowerStateAt = collectAt
+                self.lastExplicitPowerStateSource = "MQTT电源字段"
+            }
+            if changedSet.contains("acStatus") || changedSet.contains("accCntTemp") {
+                self.lastMQTTClimateAt = max(self.lastMQTTClimateAt ?? .distantPast, collectAt)
+            }
+
+            if !decoded.unmappedFieldNumbers.isEmpty {
+                self.vehicleEventLogStore.add(
+                    .warning,
+                    "MQTT 未映射字段",
+                    detail: self.formatMQTTOfficialStyleLog(
+                        allFields: logFields,
+                        previous: previousFields,
+                        changedKeys: changedSet,
+                        format: decoded.format,
+                        payloadBytes: data.count,
+                        rawJSON: decoded.rawJSONText,
+                        rawHex: decoded.rawHex,
+                        pbWireDump: decoded.pbWireDump,
+                        unmappedFieldNumbers: decoded.unmappedFieldNumbers
+                    )
+                )
+            }
+
+            let shortDetail = self.formatMQTTStatusShortLog(
+                fields: fields,
                 previous: previousFields,
-                changedKeys: Set(changedKeys),
+                changedKeys: changedSet,
                 format: decoded.format,
                 payloadBytes: data.count,
-                rawJSON: decoded.rawJSONText,
-                rawHex: decoded.rawHex,
-                pbWireDump: decoded.pbWireDump,
                 unmappedFieldNumbers: decoded.unmappedFieldNumbers
             )
-            if falseOpenStripped {
-                officialStyle += " || 假开过滤：已丢弃门窗开合字段[\(droppedOpenKeys.joined(separator: ","))]（锁边沿/多门同开噪声，不进业务缓存）"
-            }
-            if changedKeys.isEmpty && !falseOpenStripped {
+            if changedKeys.isEmpty {
                 self.vehicleEventLogStore.addCoalesced(
                     .action,
-                    "MQTT 车况通知",
-                    detail: officialStyle,
-                    identity: "mqtt-status-full|\(decoded.format)",
-                    mergeWindow: 90
+                    "MQTT 车况同步",
+                    detail: shortDetail,
+                    identity: "mqtt-status-unchanged|\(decoded.format)",
+                    mergeWindow: 120
                 )
             } else {
-                // 有业务变化或发生假开过滤：单独一条，便于对照
                 self.vehicleEventLogStore.add(
                     .action,
-                    "MQTT 车况通知",
-                    detail: officialStyle
+                    "MQTT 车况同步",
+                    detail: shortDetail
                 )
-            }
-
-            // 唯一允许 MQTT 直接更新的车辆状态：明确的 engineStatus/电源字段。
-            if sanitized["engineStatus"] != nil
-                || sanitized["powerStatus"] != nil
-                || sanitized["vehPowerMode"] != nil
-                || sanitized["vehiclePowerStatus"] != nil
-                || sanitized["sysPowerMode"] != nil
-                || sanitized["ignitionStatus"] != nil,
-               let power = parsePowerState(sanitized) {
-                self.ingestExplicitPowerLocal(power, source: "MQTT电源字段")
-            }
-
-            // 空调开关/设定温度：MQTT 真实字段即时回写。
-            let climateAc = parseACStatus(sanitized["acStatus"])
-            let climateTemp = parseDouble(sanitized["accCntTemp"])
-            let climateObservedAt = parseTimestamp(sanitized["collectTime"]) ?? Date()
-            var climateChanged = false
-            if climateAc != nil || climateTemp != nil {
-                climateChanged = self.applyAuthoritativeClimateState(
-                    acOn: climateAc,
-                    temperature: climateTemp,
-                    source: "MQTT空调推送",
-                    observedAt: climateObservedAt,
-                    scheduleHTTPConfirm: true
-                )
-            }
-
-            // 门锁/门窗：仍不直写 UI。
-            // - 假开已剥离：不因假开门窗单独刷「状态提示」
-            // - 真实锁变化等：提示 + 拉 HTTP 确认
-            let nonClimateChanges = rawChanges.filter {
-                !$0.hasPrefix("acStatus:") && !$0.hasPrefix("accCntTemp:")
-            }
-            if falseOpenStripped {
-                self.vehicleEventLogStore.addCoalesced(
-                    .action,
-                    "MQTT 假开已过滤",
-                    detail: "丢弃 \(droppedOpenKeys.joined(separator: ", ")) · 保留锁/空调等 · 门窗尾以 HTTP 为准",
-                    identity: "mqtt-false-open|\(droppedOpenKeys.joined(separator: ","))",
-                    mergeWindow: 30
-                )
-            }
-            guard !nonClimateChanges.isEmpty else {
-                // 仅假开被剥掉、无其它业务变化：仍可轻量拉一次 HTTP 收敛（锁边沿）
-                if falseOpenStripped {
-                    self.scheduleHTTPRefreshFromRealtime(reason: "mqtt-false-open-stripped")
-                }
-                return
-            }
-            let summary = Array(nonClimateChanges.prefix(8)).joined(separator: ", ")
-            self.vehicleEventLogStore.addCoalesced(
-                .action,
-                "MQTT 状态提示",
-                detail: "检测到增量 · \(summary) · 触发 HTTP 确认 · 门窗锁未直写 UI"
-                    + (falseOpenStripped ? " · 本包已过滤假开门窗" : ""),
-                identity: "mqtt-hint|\(summary)",
-                mergeWindow: 60
-            )
-            if !climateChanged || !nonClimateChanges.isEmpty {
                 self.scheduleHTTPRefreshFromRealtime(reason: "mqtt-status")
             }
         }
     }
-
-    /// 门窗开合相关键（sanitize 剥离目标）
-    private static let mqttDoorWindowOpenKeys: Set<String> = [
-        "doorOpenStatus",
-        "door1OpenStatus", "door2OpenStatus", "door3OpenStatus", "door4OpenStatus",
-        "tailDoorOpenStatus",
-        "windowStatus",
-        "window1Status", "window2Status", "window3Status", "window4Status",
-        "window1OpenDegree", "window2OpenDegree", "window3OpenDegree", "window4OpenDegree",
-        "window1HalfOpenStatus", "window2HalfOpenStatus", "window3HalfOpenStatus", "window4HalfOpenStatus",
-        "windowHalfOpenStatus"
-    ]
 
     /// 官方风格完整字段日志（中文注解 + 全键列表 / raw hex / PB 字段号）
     private func formatMQTTOfficialStyleLog(
@@ -191,7 +138,7 @@ extension MQTTVehicleStateStore {
         if changedKeys.isEmpty {
             parts.append("车况通知：无字段变化（心跳/重复包）")
         } else {
-            parts.append("车况通知：有变化 · 对齐官方「更新所有状态」数据源（本 App 门窗锁仍走 HTTP 收敛）")
+            parts.append("车况通知：有变化 · 对齐官方「更新所有状态」数据源（MQTT已回写UI，HTTP补齐收敛）")
         }
 
         // 中文关键快照
@@ -399,77 +346,71 @@ extension MQTTVehicleStateStore {
             parts.append("变化★: 无（与上次相同）")
         }
 
-        parts.append("说明: 日志已打全字段；门窗锁 UI 仍不直写，仅提示并拉 HTTP")
+        parts.append("说明: MQTT 字段已回写 UI；HTTP 仅补齐/收敛")
         return parts.joined(separator: " | ")
     }
 
-    /// 过滤车端半包常见噪声：
-    /// 1) 锁变化时夹带多门/窗/尾门一起翻开
-    /// 2) 单包同时多个门窗“变开”
-    /// 3) 与 HTTP 权威全关快照冲突的假开门
-    private func sanitizeMQTTBodyFields(_ fields: [String: String]) -> [String: String] {
-        var out = fields
-        let openKeys = [
-            "doorOpenStatus",
-            "door1OpenStatus", "door2OpenStatus", "door3OpenStatus", "door4OpenStatus",
-            "tailDoorOpenStatus",
-            "windowStatus",
-            "window1Status", "window2Status", "window3Status", "window4Status"
-        ]
-        let degreeKeys = [
-            "window1OpenDegree", "window2OpenDegree", "window3OpenDegree", "window4OpenDegree"
-        ]
-
-        // 与 HTTP 权威快照冲突时，不采纳“突然开”
-        if let http = lastHTTPDoorWindowAuthority, Date().timeIntervalSince(http.at) <= 90 {
-            for key in openKeys {
-                guard let next = parseOpen(out[key]), next == true else { continue }
-                if let trusted = parseOpen(http.fields[key]), trusted == false {
-                    out.removeValue(forKey: key)
-                }
-            }
-            for key in degreeKeys {
-                guard let deg = parseDouble(out[key]), deg > 0 else { continue }
-                if let trusted = parseDouble(http.fields[key]), trusted <= 0 {
-                    out.removeValue(forKey: key)
-                }
-            }
+    /// 默认短日志：日常只看摘要与变化；全字段/PB/rawHex 保留在解码函数，后续需要可再挂详细开关。
+    private func formatMQTTStatusShortLog(
+        fields: [String: String],
+        previous: [String: String],
+        changedKeys: Set<String>,
+        format: String,
+        payloadBytes: Int,
+        unmappedFieldNumbers: [Int]
+    ) -> String {
+        func lockText(_ raw: String?) -> String {
+            guard let locked = parseLocked(raw) else { return raw?.isEmpty == false ? raw! : "--" }
+            return locked ? "已锁" : "未锁"
+        }
+        func openText(_ raw: String?, closed: String = "关", open: String = "开") -> String {
+            guard let isOpen = parseOpen(raw) else { return raw?.isEmpty == false ? raw! : "--" }
+            return isOpen ? open : closed
+        }
+        func windowsText() -> String {
+            if let closed = parseWindowsClosed(fields) { return closed ? "全关" : "未关" }
+            return openText(fields["windowStatus"], closed: "全关", open: "未关")
+        }
+        func doorsText() -> String {
+            if let closed = parseDoorClosed(fields) { return closed ? "全关" : "未关" }
+            return openText(fields["doorOpenStatus"], closed: "全关", open: "未关")
+        }
+        func label(_ key: String) -> String {
+            [
+                "doorLockStatus": "总锁", "door1LockStatus": "主驾锁", "door2LockStatus": "副驾锁",
+                "door3LockStatus": "左后锁", "door4LockStatus": "右后锁",
+                "doorOpenStatus": "总门", "door1OpenStatus": "主驾门", "door2OpenStatus": "副驾门",
+                "door3OpenStatus": "左后门", "door4OpenStatus": "右后门", "tailDoorOpenStatus": "尾门",
+                "windowStatus": "总窗", "window1Status": "主驾窗", "window2Status": "副驾窗",
+                "window3Status": "左后窗", "window4Status": "右后窗",
+                "acStatus": "空调", "accCntTemp": "设温", "lowBeamLight": "近光", "dipHeadLight": "远光",
+                "keyStatus": "钥匙", "batterySoc": "电量", "leftMileage": "电续航", "leftFuel": "燃油",
+                "charging": "充电", "wireConnect": "插枪", "vecChrgingSts": "充电状态"
+            ][key] ?? key
+        }
+        func pretty(_ key: String, _ raw: String?) -> String {
+            if key.contains("Lock") || key == "doorLockStatus" || key == "tailDoorLockStatus" { return lockText(raw) }
+            if key.contains("Open") || key.contains("window") || key == "doorOpenStatus" || key == "windowStatus" { return openText(raw) }
+            if key == "acStatus" { return parseACStatus(raw).map { $0 ? "开" : "关" } ?? (raw ?? "--") }
+            return raw?.isEmpty == false ? raw! : "--"
         }
 
-        // 本包相对 lastMqttFields 的变化
-        var openTrueChanges = 0
-        var openFalseChanges = 0
-        for key in openKeys {
-            guard let next = parseOpen(out[key]) else { continue }
-            let prev = parseOpen(lastMqttFields[key])
-            if prev != next {
-                if next { openTrueChanges += 1 } else { openFalseChanges += 1 }
-            }
+        let changed = changedKeys.sorted().prefix(10).map { key in
+            "\(label(key)):\(pretty(key, previous[key]))→\(pretty(key, fields[key]))"
+        }.joined(separator: ", ")
+        var parts: [String] = []
+        parts.append("格式=\(format) · payload=\(payloadBytes)B · 字段=\(fields.count)")
+        if !unmappedFieldNumbers.isEmpty {
+            parts.append("未映射=[\(unmappedFieldNumbers.map(String.init).joined(separator: ","))]")
         }
-        for key in degreeKeys {
-            let next = parseDouble(out[key]) ?? 0
-            let prev = parseDouble(lastMqttFields[key]) ?? 0
-            if next > 0 && prev <= 0 { openTrueChanges += 1 }
-            if next <= 0 && prev > 0 { openFalseChanges += 1 }
+        parts.append("锁=\(lockText(fields["doorLockStatus"])) 门=\(doorsText()) 窗=\(windowsText()) 尾=\(openText(fields["tailDoorOpenStatus"], closed: "已关", open: "已开"))")
+        if let temp = fields["accCntTemp"], !temp.isEmpty {
+            parts.append("空调=\(parseACStatus(fields["acStatus"]).map { $0 ? "开" : "关" } ?? "--")/\(temp)°C")
+        } else if fields["acStatus"] != nil {
+            parts.append("空调=\(parseACStatus(fields["acStatus"]).map { $0 ? "开" : "关" } ?? "--")")
         }
-
-        let lockNext = parseLocked(out["doorLockStatus"])
-        let lockPrev = parseLocked(lastMqttFields["doorLockStatus"])
-        let lockChanged = (lockNext != nil && lockNext != lockPrev)
-
-        // 锁变化瞬间夹带 ≥2 个“变开”：典型假半包，只保留锁/空调/电源等
-        if lockChanged && openTrueChanges >= 2 {
-            for key in openKeys + degreeKeys { out.removeValue(forKey: key) }
-            return out
-        }
-
-        // 没有锁变化时，单包同时 ≥3 个门窗“变开”也极不真实
-        if !lockChanged && openTrueChanges >= 3 && openFalseChanges == 0 {
-            for key in openKeys + degreeKeys { out.removeValue(forKey: key) }
-            return out
-        }
-
-        return out
+        parts.append(changed.isEmpty ? "变化=无（已回写UI）" : "变化=\(changed) · 已回写UI · HTTP补齐")
+        return parts.joined(separator: " · ")
     }
 
     func handleVehicleControlResult(_ data: Data) {

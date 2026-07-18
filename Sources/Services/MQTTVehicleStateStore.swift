@@ -26,9 +26,9 @@ struct VehicleControlMQTTResult: Equatable, Identifiable {
 
 // MARK: - MQTT + HTTP 车辆状态 Store
 // 状态通道：
-// - HTTP：完整车况权威快照（电量/续航/位置/档位/温度/门窗等），前台轮询收敛
-// - MQTT：实时增量提示，并触发 HTTP 补齐；半包不覆盖 HTTP 权威门窗
-// - BLE：锁/解/上电等近场控制与本地短回写，最终仍由新一代 HTTP 确认
+// - HTTP：完整车况快照，前台约 3s 补齐/收敛；关闭 MQTT 时作为唯一车况源
+// - MQTT：官方实时字段有值即回写 UI（空/缺不覆盖），并触发 HTTP 补齐
+// - BLE：锁/解/上电等近场控制与本地即时回写，最终仍由 MQTT/HTTP 收敛
 // - 无感：RSSI 边沿 + KeylessDecisionEngine 评估后走 BLE/HTTP 执行链路
 // - 控制路由：VehicleCommandExecutor（BLE 优先可用时走 BLE，否则/其余命令走 HTTP）
 // 说明：本文件及 extension 只编排状态与执行；不直接改 UI 布局。
@@ -197,7 +197,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var lastExplicitPowerStateAt: Date?
     var lastExplicitPowerStateSource: String?
     static let explicitPowerStateHoldSeconds: TimeInterval = 180
-    /// BLE 本地锁/解锁保护截止时间
+    /// 兼容旧字段；本机锁保护已关闭，保持 nil。
     var localDoorLockHoldUntil: Date?
     /// 最近一次 MQTT 真实空调字段时间；用于防止更旧的 HTTP 快照把空调状态冲回。
     var lastMQTTClimateAt: Date?
@@ -223,7 +223,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var lastHTTPRawGeneration: UInt64 = 0
     /// HTTP 车身字段最近 collectTime
     var lastHTTPBodyCollectAt: Date?
-    /// HTTP 门窗权威快照：用于过滤 MQTT 解锁时夹带的假开门/假开窗
+    /// HTTP 门窗快照：作为 MQTT/HTTP 对照基线，不再过滤 MQTT。
     var lastHTTPDoorWindowAuthority: (fields: [String: String], at: Date)?
     /// 自动轮询日志去重：状态指纹未变则不刷屏
     var lastHTTPPollLogFingerprint: String?
@@ -563,13 +563,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         if expectWindowActive, expectedAppLockState == false {
             return
         }
-        // BLE/本机刚写过未锁且保护窗内：同样视为本机操作后的云延迟
-        if let holdUntil = localDoorLockHoldUntil, now < holdUntil, state.locked == false {
-            let src = fieldSource["doorLockStatus"] ?? ""
-            if src.contains("解锁") || src.contains("BLE") || src.hasPrefix("无感") {
-                return
-            }
-        }
+        // 本机锁保护已关闭：这里不再用本地保护窗跳过外部锁判断。
         // 仅当本地也认为未锁时，才可能是「外部把车锁上了」
         guard state.locked == false else { return }
         // 已在保护中不重复刷日志
@@ -585,35 +579,29 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     /// 门锁本地回写（BLE 成功 / HTTP 受理 / MQTT 旁观等）。
-    /// - protectAgainstNetworkOverride: true（默认）开 15s 保护，防旧 HTTP 冲掉刚 BLE/本机操作；
-    ///   false 用于 MQTT 旁观写锁——只改 UI，**不**挡住随后 HTTP 权威收敛（否则官方上锁会被「解锁保护窗」卡住十几秒）。
+    /// 本机锁保护已关闭：本地、MQTT、HTTP 谁新谁写，不再 15s 互挡。
+    /// `protectAgainstNetworkOverride` 参数保留兼容调用点，当前不再开启保护窗。
     func applyLocalDoorLockState(
         locked: Bool,
         source: String,
         suppressOppositeKeyless: Bool = false,
         protectAgainstNetworkOverride: Bool = true
     ) {
+        _ = protectAgainstNetworkOverride
         var next = state
         let previous = next.locked
         next.locked = locked
         // 本地刚确认过的门锁，刷新时间戳；不依赖网络回报
         let now = Date()
         next.timestamp = now
-        if protectAgainstNetworkOverride {
-            // 保护窗：避免刚 BLE/本机锁解就被旧 HTTP/MQTT 冲回
-            localDoorLockHoldUntil = now.addingTimeInterval(Self.localLockHoldSeconds)
-            fieldSource["doorLockStatus"] = source.hasPrefix("MQTT") ? "MQTT" : "BLE"
-        } else {
-            // 旁观 MQTT：允许 HTTP 立刻纠正；清掉可能残留的保护窗
-            localDoorLockHoldUntil = nil
-            fieldSource["doorLockStatus"] = "MQTT"
-        }
+        localDoorLockHoldUntil = nil
         fieldCollectAt["doorLockStatus"] = now
-        // 兼容旧日志字段名：BLE 成功路径仍可显示 BLE
-        if protectAgainstNetworkOverride && !source.hasPrefix("MQTT") && !source.hasPrefix("HTTP") {
-            fieldSource["doorLockStatus"] = "BLE"
-        } else if protectAgainstNetworkOverride && source.hasPrefix("HTTP") {
+        if source.hasPrefix("MQTT") {
+            fieldSource["doorLockStatus"] = "MQTT"
+        } else if source.hasPrefix("HTTP") {
             fieldSource["doorLockStatus"] = "HTTP"
+        } else {
+            fieldSource["doorLockStatus"] = "BLE"
         }
 
         var dash = dashboard

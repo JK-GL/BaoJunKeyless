@@ -263,13 +263,13 @@ extension MQTTVehicleStateStore {
                 let now = Date()
                 let expectUnlock = expectedAppLockState == false
                     && (expectedAppLockStateUntil.map { now <= $0 } ?? false)
-                if expectUnlock || (state.locked == false && (localDoorLockHoldUntil.map { now < $0 } ?? false)) {
+                if expectUnlock {
                     externalLockRequiresExit = false
                     externalLockExitObserved = false
                     vehicleEventLogStore.add(
                         .keyless,
                         "外部锁车保护跳过",
-                        detail: "本 App 近期解锁/本地未锁保护中 · 不要求离开再靠近"
+                        detail: "本 App 近期解锁 · 不要求离开再靠近"
                     )
                 }
             }
@@ -996,8 +996,7 @@ extension MQTTVehicleStateStore {
         // 回滚：本地因 BLE 先写成未锁，但 HTTP 权威仍是已锁
         if state.locked == false {
             let src = fieldSource["doorLockStatus"] ?? ""
-            let holdActive = localDoorLockHoldUntil.map { Date() < $0 } ?? false
-            if src == "BLE" || holdActive {
+            if src == "BLE" {
                 applyLocalDoorLockState(
                     locked: true,
                     source: "无感解锁HTTP未确认回滚",
@@ -1183,8 +1182,7 @@ extension MQTTVehicleStateStore {
         // 回滚本地假已锁，避免 UI 显示已锁、通知却说未上锁
         if state.locked == true {
             let src = fieldSource["doorLockStatus"] ?? ""
-            let holdActive = localDoorLockHoldUntil.map { Date() < $0 } ?? false
-            if src == "BLE" || holdActive || src.contains("无感") {
+            if src == "BLE" || src.contains("无感") {
                 applyLocalDoorLockState(
                     locked: false,
                     source: "无感上锁HTTP未确认回滚",

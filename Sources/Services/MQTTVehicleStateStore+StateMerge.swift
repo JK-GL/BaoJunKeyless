@@ -10,8 +10,7 @@ enum VehicleHTTPMergeMode: String {
 }
 
 extension MQTTVehicleStateStore {
-    /// BLE 本地锁/解锁后，网络门锁短保护
-    static let localLockHoldSeconds: TimeInterval = 15
+    // 本机锁保护已按用户要求关闭：HTTP/MQTT/本地状态不再短窗互挡。
 
     /// 状态主链（实现体；对外进水请优先 `ingestHTTPAuthority`）：
     /// - HTTP：完整权威快照，自动/手动刷新都全量落地
@@ -161,9 +160,8 @@ extension MQTTVehicleStateStore {
             dash.positionLightText = takeText(dash.positionLightText, newDashboard.positionLightText)
             dash.frontFogText = takeText(dash.frontFogText, newDashboard.frontFogText)
 
-            // 门窗/尾门：MQTT 半包常在解锁时夹带假开门。
-            // HTTP 全量明细是权威；MQTT 新鲜时也允许 HTTP 纠正门窗开闭。
-            // 门锁：BLE 本地保护窗外，允许 HTTP 纠正。
+            // 门窗/尾门：HTTP 全量明细可纠正/补齐 MQTT 稀疏包。
+            // 门锁：不再有本机保护窗，HTTP 与 MQTT 都可按新状态落地。
             let bodyCorrected = applyHTTPDoorWindowAuthority(
                 onto: &dash,
                 state: &st,
@@ -173,8 +171,7 @@ extension MQTTVehicleStateStore {
             )
             if bodyCorrected { changed = true }
 
-            let lockProtected = localDoorLockHoldUntil.map { now < $0 } ?? false
-            if !lockProtected, sourceFields["doorLockStatus"] != nil {
+            if sourceFields["doorLockStatus"] != nil {
                 if let locked = newState.locked, st.locked != locked {
                     st.locked = locked
                     changed = true
@@ -211,13 +208,8 @@ extension MQTTVehicleStateStore {
         dash.doorStatusText = VehicleStatusMapper.recomputeDoorStatusText(from: dash)
         dash.windowStatusText = VehicleStatusMapper.recomputeWindowStatusText(from: dash)
 
-        // BLE 本地锁保护窗内，不覆盖门锁。
         // 空调开关：MQTT 更新时不被更旧 HTTP 冲回；温度始终允许 HTTP 更新。
         var mergedState = newState
-        if let until = localDoorLockHoldUntil, now < until {
-            mergedState.locked = state.locked
-            dash.lockStatusText = dashboard.lockStatusText
-        }
         let mqttClimateFresher = lastMQTTClimateAt.map { $0 > collectAt } ?? false
         if mqttClimateFresher {
             mergedState.acOn = state.acOn
@@ -259,11 +251,6 @@ extension MQTTVehicleStateStore {
         // 全量落地后，清理字段保护痕迹（不再用字段戳卡 HTTP）
         fieldCollectAt.removeAll()
         fieldSource.removeAll()
-        // 仅保留 BLE 本地锁戳
-        if let until = localDoorLockHoldUntil, now < until {
-            fieldCollectAt["doorLockStatus"] = now
-            fieldSource["doorLockStatus"] = "BLE"
-        }
 
         merged = applyLiveBLEOverlay(to: merged)
         // 同值 HTTP 全量不再 bump/整页刷新；仅时间戳推进。
@@ -273,15 +260,9 @@ extension MQTTVehicleStateStore {
         }
 
         if mode == .full {
-            if !changed {
-                return localDoorLockHoldUntil.map { now < $0 ? "手动全量无变化/本地锁保护中" : "手动全量无变化" } ?? "手动全量无变化"
-            }
-            return localDoorLockHoldUntil.map { now < $0 ? "手动全量/本地锁保护中" : "手动全量" } ?? "手动全量"
+            return changed ? "手动全量" : "手动全量无变化"
         }
-        if !changed {
-            return localDoorLockHoldUntil.map { now < $0 ? "轮询全量无变化/本地锁保护中" : "轮询全量无变化" } ?? "轮询全量无变化"
-        }
-        return localDoorLockHoldUntil.map { now < $0 ? "轮询全量/本地锁保护中" : "轮询全量" } ?? "轮询全量"
+        return changed ? "轮询全量" : "轮询全量无变化"
     }
 
     /// MQTT 半包：只更新本包出现的字段；总览由明细重算
@@ -304,16 +285,9 @@ extension MQTTVehicleStateStore {
             observeAuthoritativeLockState(newState.locked)
         }
 
-        var safeState = newState
-        var safeDash = newDashboard
-        if let until = localDoorLockHoldUntil, now < until {
-            safeState.locked = nil
-            safeDash.lockStatusText = "--"
-        }
-
         // mergeRealtime* 已是“有值才覆盖”
-        let mergedBase = VehicleStateMerger.mergeRealtime(current: state, newState: safeState)
-        var dash = VehicleStateMerger.mergeRealtimeDashboard(current: dashboard, newDashboard: safeDash)
+        let mergedBase = VehicleStateMerger.mergeRealtime(current: state, newState: newState)
+        var dash = VehicleStateMerger.mergeRealtimeDashboard(current: dashboard, newDashboard: newDashboard)
         dash = Self.stripDashboardBodyCacheSuffix(dash)
         // 关键：总览只由明细重算，绝不让半包总字段把门2/3/4刷开
         dash.doorStatusText = VehicleStatusMapper.recomputeDoorStatusText(from: dash)
@@ -414,7 +388,7 @@ extension MQTTVehicleStateStore {
             changed = true
         }
 
-        // 同步 lastMqttFields，避免后续半包继续用假开门做 diff
+        // 同步 lastMqttFields，作为后续 MQTT/HTTP 差异基线。
         for key in Self.doorWindowOpenFieldKeys {
             if let value = sourceFields[key], !value.isEmpty {
                 lastMqttFields[key] = value

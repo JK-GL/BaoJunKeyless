@@ -20,7 +20,6 @@ extension MQTTVehicleStateStore {
             || state.phoneNearby
             || state.locked == false
             || bodyOpen
-            || localDoorLockHoldUntil.map { now < $0 } == true
 
         if keylessSettingsStore.settings.backgroundStateSyncEnabled {
             return vehicleActive ? max(officialInterval, Self.backgroundActiveHTTPPollInterval) : Self.backgroundIdleHTTPPollInterval
@@ -291,7 +290,7 @@ extension MQTTVehicleStateStore {
         VehicleStatusMapper.httpDashboard(from: s, base: dashboard)
     }
 
-    /// 记住 HTTP 全量门窗明细，供 MQTT 半包假开门过滤
+    /// 记住 HTTP 全量门窗明细，用作后续 MQTT/HTTP 差异诊断基线（不再过滤 MQTT）。
     func rememberHTTPDoorWindowAuthority(from carStatus: [String: String], at: Date) {
         var snap: [String: String] = [:]
         for key in Self.doorWindowOpenFieldKeys {
@@ -314,7 +313,7 @@ extension MQTTVehicleStateStore {
     /// 车锁 `locked` 若刚被 BLE 本地回写（timestamp 很新）则保留。
     func markVehicleStatusOffline(reason: String, userInitiated: Bool) {
         let now = Date()
-        // MQTT 只负责提示/唤醒，不再作为车辆状态真值；HTTP 失败必须如实标记离线。
+        // MQTT 开启时可实时写 UI；HTTP 失败仍必须如实标记离线，由下一次 MQTT/HTTP 恢复在线。
         var next = state
         let previousOnline = next.online
         next.online = false

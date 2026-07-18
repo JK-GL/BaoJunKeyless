@@ -39,7 +39,7 @@ struct SettingsConnectionConfirmationSection: View {
                 settingToggle(
                     icon: "antenna.radiowaves.left.and.right",
                     title: "MQTT 实时辅助",
-                    subtitle: "开启后使用 MQTT 接收增量提示并触发 HTTP 刷新；关闭后不连接 MQTT，并隐藏状态胶囊。",
+                    subtitle: "开启后使用 MQTT 实时回写车况，并由 HTTP 约 3 秒补齐收敛；关闭后不连接 MQTT，仅用 HTTP 刷新。",
                     isOn: binding(\.mqttEnabled, title: "MQTT 实时辅助")
                 )
 

@@ -218,7 +218,7 @@ extension MQTTVehicleStateStore {
         lastMQTTBodyCollectAt = nil
         mqttStatus = .disconnected
 
-        // 仅重启 MQTT；HTTP 权威状态、BLE 本地锁保护和状态版本保持不动。
+        // 仅重启 MQTT；HTTP 权威状态和状态版本保持不动。
         startMQTTIfEnabled()
 
         // 给 UI 一个短等待结果：连接成功 / 失败 / 超时

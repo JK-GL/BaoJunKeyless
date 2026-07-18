@@ -2,11 +2,11 @@ import Foundation
 
 // MARK: - 多水管进水契约（R1 阶段1）
 //
-// 只做命名与唯一入口，不改变合并算法、轮询秒数、无感规则、UI。
+// 当前阶段：MQTT 对齐官方实时回写；HTTP 保持约 3s 补齐；无感主规则不变。
 //
 // Pipe HTTP  → ingestHTTPAuthority          → mergeHTTPBaseState → applyVehicleSnapshot
-// Pipe MQTT  → ingestMQTTStatusPayload      → 电源/空调即时 + 其余叫醒 HTTP
-// Pipe BLE   → ingestBLEDoorLockLocal 等    → 本地短回写 + 可叫醒 HTTP
+// Pipe MQTT  → ingestMQTTStatusPayload      → 字段级实时写 UI + HTTP 补齐
+// Pipe BLE   → ingestBLEDoorLockLocal 等    → 本地即时回写 + HTTP 补齐
 //
 // 禁止：旁路直接改 state/dashboard 绕过上述入口（阶段2收口检查）。
 // 详见 docs/R1_D1_architecture_freeze.md
@@ -14,7 +14,7 @@ import Foundation
 extension MQTTVehicleStateStore {
 
     /// 水管1：HTTP 完整权威快照进总表。
-    /// - 语义同 `mergeHTTPBaseState`（旧 collectTime 丢弃、锁保护窗、门窗权威等均不变）。
+    /// - 语义同 `mergeHTTPBaseState`（旧 collectTime 丢弃；HTTP 可按新状态补齐/纠正）。
     @discardableResult
     func ingestHTTPAuthority(
         newState: VehicleState,
@@ -33,13 +33,13 @@ extension MQTTVehicleStateStore {
     }
 
     /// 水管2：MQTT `/vehicle/app/status` 原始 payload。
-    /// - 语义同 `handleVehicleStatus`（半包不盖门窗；电源/空调可即时；其余 schedule HTTP）。
+    /// - 语义同 `handleVehicleStatus`（官方字段有值即回写 UI；空/缺不覆盖；HTTP 继续补齐）。
     func ingestMQTTStatusPayload(_ data: Data) {
         handleVehicleStatus(data)
     }
 
     /// 水管3：门锁本地回写。
-    /// - protectAgainstNetworkOverride: BLE/本机 HTTP 受理默认 true；MQTT 旁观应 false。
+    /// - protectAgainstNetworkOverride: 兼容旧调用参数；本机锁保护已关闭，不再阻挡 HTTP/MQTT。
     func ingestBLEDoorLockLocal(
         locked: Bool,
         source: String,
