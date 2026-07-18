@@ -292,6 +292,10 @@ final class VehicleBLEManager: NSObject {
         if self.config == config {
             switch state {
             case .scanning, .connecting, .connected, .authenticating, .authenticated:
+                // 扫描中也允许再试一次系统已连接接管（后台常卡在扫）
+                if case .scanning = state {
+                    _ = adoptSystemConnectedIfAvailable(reason: "same-config-scanning")
+                }
                 return
             case .idle, .unsupported, .bluetoothOff, .authFailed, .error:
                 // 允许从 idle/error 重启
@@ -299,7 +303,7 @@ final class VehicleBLEManager: NSObject {
             }
         }
 
-        let configChanged = self.config != config
+        let configChanged = self.config == nil ? false : (self.config != config)
         if configChanged {
             central.stopScan()
             if let discoveredPeripheral {
@@ -312,7 +316,10 @@ final class VehicleBLEManager: NSObject {
         let restartingFromStopped = self.config == nil
         self.config = config
         lastControlError = nil
-        clearSessionRuntime(cancelPendingControl: configChanged || restartingFromStopped)
+        if configChanged || restartingFromStopped {
+            // 清运行时但不要无故 cancel 系统层已连外设；下面会优先接管
+            clearSessionRuntime(cancelPendingControl: true)
+        }
 
         if foregroundObserver == nil {
             foregroundObserver = NotificationCenter.default.addObserver(
@@ -331,6 +338,19 @@ final class VehicleBLEManager: NSObject {
         } else {
             handleCentralState()
         }
+    }
+
+    /// 公开：优先接管系统已连接的钥匙 BLE（181A/182A），避免后台仍显示「扫描中」。
+    @discardableResult
+    func adoptSystemConnectedIfAvailable(reason: String = "adopt") -> Bool {
+        guard config != nil, central.state == .poweredOn else { return false }
+        switch state {
+        case .connecting, .connected, .authenticating, .authenticated:
+            return true
+        default:
+            break
+        }
+        return connectSystemConnectedPeripheralIfAvailable(reason: reason)
     }
 
     func stop() {
@@ -416,28 +436,51 @@ final class VehicleBLEManager: NSObject {
             state = .idle
             return
         }
+        // 已在连/已鉴权：不要回扫
+        switch state {
+        case .connecting, .connected, .authenticating, .authenticated:
+            return
+        default:
+            break
+        }
         guard discoveredPeripheral == nil else { return }
-        // 0) 系统已连接且带 181A/182A 的外设：接管（不依赖绑定 UUID）
-        if connectSystemConnectedPeripheralIfAvailable() {
+        // 0) 系统已连接且带 181A/182A 的外设：接管（最快）
+        if connectSystemConnectedPeripheralIfAvailable(reason: "start-flow") {
             return
         }
-        // 1) 始终宽扫匹配钥匙 MAC（不再绑定 UUID 直连，避免假「连接中」/后台卡死）
+        // 1) 软直连上次鉴权成功的 peripheral（无 UI 绑定；4s 超时失败立刻宽扫）
+        //    恢复「以前绑定很快」的体感，但不卡死在假连接中
+        if connectLastSuccessfulPeripheralIfAvailable() {
+            return
+        }
+        // 2) 宽扫匹配钥匙 MAC
         startScanning()
     }
 
     /// 优先接管系统已连接、且像本车钥匙模块的外设（181A/182A）
     /// 只有系统层真的 connected 才算“已连接”；否则回落扫描，避免 UI 假“连接中”。
-    private func connectSystemConnectedPeripheralIfAvailable() -> Bool {
+    private func connectSystemConnectedPeripheralIfAvailable(reason: String = "retrieve") -> Bool {
         guard config != nil else { return false }
-        // 用鉴权/控制服务筛系统已连接设备，避免乱接耳机等
-        let connected = central.retrieveConnectedPeripherals(withServices: [authService, controlService])
-            .filter { $0.state == .connected }
+        // 分别用 181A / 182A 查询再合并：部分机型对「多服务数组」返回不完整
+        var byId: [UUID: CBPeripheral] = [:]
+        for service in [authService, controlService] {
+            for p in central.retrieveConnectedPeripherals(withServices: [service]) where p.state == .connected {
+                byId[p.identifier] = p
+            }
+        }
+        // 再试：上次成功 UUID 若系统已连（服务 UUID 有时检索不到）
+        if let lastId = loadLastSuccessfulPeripheralUUID(),
+           let last = central.retrievePeripherals(withIdentifiers: [lastId]).first,
+           last.state == .connected {
+            byId[last.identifier] = last
+        }
+        let connected = Array(byId.values)
         guard !connected.isEmpty else {
-            onLog?("BLE", "system has no connected 181A/182A peripheral")
+            onLog?("BLE", "system has no connected 181A/182A peripheral reason=\(reason)")
             return false
         }
 
-        // 一车一账号：任一带 181A/182A 的已连接外设即可（不再读绑定 UUID）
+        // 一车一账号：任一带 181A/182A 的已连接外设即可
         if let peripheral = connected.first {
             isSystemConnectedSession = true
             connectScannedPeripheral(
@@ -445,12 +488,160 @@ final class VehicleBLEManager: NSObject {
                 localName: peripheral.name ?? "system-connected",
                 rssi: -50,
                 source: .manufacturer,
-                detail: "systemConnected serviceMatch id=\(peripheral.identifier.uuidString.prefix(8))"
+                detail: "systemConnected serviceMatch id=\(peripheral.identifier.uuidString.prefix(8)) reason=\(reason)"
             )
-            onLog?("BLE", "prefer system-connected service peripheral id=\(peripheral.identifier.uuidString.prefix(8)) name=\(peripheral.name ?? "--") count=\(connected.count)")
+            onLog?("BLE", "prefer system-connected service peripheral id=\(peripheral.identifier.uuidString.prefix(8)) name=\(peripheral.name ?? "--") count=\(connected.count) reason=\(reason)")
             return true
         }
         return false
+    }
+
+    // MARK: - Soft last-vehicle (no user binding UI; only speed up reconnect + display)
+
+    /// 上次鉴权成功的车：UUID 用于软直连，name/mac 用于无感页展示
+    struct SoftLastVehicle: Codable, Equatable {
+        var peripheralIdentifier: String
+        var peripheralName: String
+        var keyId: String
+        var bleMac: String
+        var lastAuthAt: Date
+
+        var shortIdentifier: String { String(peripheralIdentifier.prefix(8)) }
+
+        var displaySummary: String {
+            let name = peripheralName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let mac = bleMac.trimmingCharacters(in: .whitespacesAndNewlines)
+            let namePart = name.isEmpty || name == "--" ? "钥匙模块" : name
+            let macPart = mac.isEmpty ? "--" : mac
+            return "\(namePart) · \(macPart) · id=\(shortIdentifier)"
+        }
+    }
+
+    private static let lastVehicleKeyPrefix = "BLE.SoftLastVehicle.v1."
+
+    private static func softLastCacheKey(bleMac: String, keyId: String) -> String? {
+        let mac = bleMac.uppercased().filter { $0.isLetter || $0.isNumber }
+        let kid = keyId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !mac.isEmpty || !kid.isEmpty else { return nil }
+        let macKey = mac.isEmpty ? "nomac" : String(mac.suffix(12))
+        return lastVehicleKeyPrefix + macKey + "." + (kid.isEmpty ? "nokey" : kid)
+    }
+
+    /// 无感页展示：上次连接的 BLE（不是可取消的绑定）
+    static func loadSoftLastVehicle(bleMac: String, keyId: String) -> SoftLastVehicle? {
+        guard let key = softLastCacheKey(bleMac: bleMac, keyId: keyId),
+              let data = UserDefaults.standard.data(forKey: key),
+              let value = try? JSONDecoder().decode(SoftLastVehicle.self, from: data) else { return nil }
+        // 30 天未再用则失效
+        if Date().timeIntervalSince(value.lastAuthAt) > 30 * 24 * 60 * 60 {
+            UserDefaults.standard.removeObject(forKey: key)
+            return nil
+        }
+        return value
+    }
+
+    static func clearSoftLastVehicle(bleMac: String, keyId: String) {
+        guard let key = softLastCacheKey(bleMac: bleMac, keyId: keyId) else { return }
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
+    private func lastVehicleCacheKey() -> String? {
+        guard let config else { return nil }
+        return Self.softLastCacheKey(bleMac: config.bleMac, keyId: config.keyId)
+    }
+
+    private func loadLastSuccessfulPeripheralUUID() -> UUID? {
+        guard let key = lastVehicleCacheKey(),
+              let data = UserDefaults.standard.data(forKey: key) else {
+            // 兼容旧版只存 UUID 字符串
+            if let key = lastVehicleCacheKey(),
+               let raw = UserDefaults.standard.string(forKey: key),
+               let uuid = UUID(uuidString: raw) {
+                return uuid
+            }
+            return nil
+        }
+        if let value = try? JSONDecoder().decode(SoftLastVehicle.self, from: data),
+           let uuid = UUID(uuidString: value.peripheralIdentifier) {
+            return uuid
+        }
+        return nil
+    }
+
+    private func saveLastSuccessfulPeripheralUUID(_ uuid: UUID) {
+        guard let config, let key = lastVehicleCacheKey() else { return }
+        let previous = (UserDefaults.standard.data(forKey: key)).flatMap { try? JSONDecoder().decode(SoftLastVehicle.self, from: $0) }
+        let name = discoveredPeripheral?.name
+            ?? previous?.peripheralName
+            ?? "--"
+        let macDisplay: String = {
+            if let hex = normalizedBleMacHex(config.bleMac), hex.count == 12 {
+                var parts: [String] = []
+                var idx = hex.startIndex
+                for _ in 0..<6 {
+                    let next = hex.index(idx, offsetBy: 2)
+                    parts.append(String(hex[idx..<next]))
+                    idx = next
+                }
+                return parts.joined(separator: ":")
+            }
+            return config.bleMac
+        }()
+        let value = SoftLastVehicle(
+            peripheralIdentifier: uuid.uuidString,
+            peripheralName: name,
+            keyId: config.keyId,
+            bleMac: macDisplay,
+            lastAuthAt: Date()
+        )
+        if let data = try? JSONEncoder().encode(value) {
+            UserDefaults.standard.set(data, forKey: key)
+            onLog?("BLE", "soft last-vehicle saved \(value.displaySummary)")
+        }
+    }
+
+    /// 软直连上次鉴权成功的车：无 UI 绑定；短超时失败立刻宽扫，不卡「连接中」。
+    private func connectLastSuccessfulPeripheralIfAvailable() -> Bool {
+        guard let config else { return false }
+        guard let uuid = loadLastSuccessfulPeripheralUUID() else {
+            onLog?("BLE", "no soft last-vehicle uuid")
+            return false
+        }
+        let peripherals = central.retrievePeripherals(withIdentifiers: [uuid])
+        guard let peripheral = peripherals.first else {
+            onLog?("BLE", "soft last-vehicle uuid not in system cache id=\(uuid.uuidString.prefix(8)), wide scan")
+            return false
+        }
+        // 已连接则走接管
+        if peripheral.state == .connected {
+            isSystemConnectedSession = true
+            connectScannedPeripheral(
+                peripheral,
+                localName: peripheral.name ?? "last-vehicle",
+                rssi: -50,
+                source: .manufacturer,
+                detail: "softLast alreadyConnected id=\(uuid.uuidString.prefix(8))"
+            )
+            onLog?("BLE", "soft last-vehicle already connected id=\(uuid.uuidString.prefix(8))")
+            return true
+        }
+        discoveredPeripheral = peripheral
+        currentConnectionSource = .manufacturer
+        peripheral.delegate = self
+        central.stopScan()
+        candidateSelectionWorkItem?.cancel()
+        candidateSelectionWorkItem = nil
+        scanWatchdogWorkItem?.cancel()
+        scanWatchdogWorkItem = nil
+        scanTotalTimeoutWorkItem?.cancel()
+        scanTotalTimeoutWorkItem = nil
+        isSystemConnectedSession = false
+        state = .connecting
+        onLog?("BLE", "soft last-vehicle direct connect id=\(uuid.uuidString.prefix(8)) keyId=\(config.keyId) mac=\(config.bleMac)")
+        // 短超时：4s 失败立刻宽扫（比旧绑定 10s 更不卡）
+        scheduleConnectionTimeout(uuid: peripheral.identifier, source: "soft-last", seconds: 4)
+        central.connect(peripheral, options: nil)
+        return true
     }
 
     private var allowsDebugScoreFallback: Bool {
@@ -552,22 +743,26 @@ final class VehicleBLEManager: NSObject {
         }
     }
 
-    private func scheduleConnectionTimeout(uuid: UUID, source: String) {
+    private func scheduleConnectionTimeout(uuid: UUID, source: String, seconds: TimeInterval = 10) {
         connectionTimeoutWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, let peripheral = self.discoveredPeripheral,
                   peripheral.identifier == uuid else { return }
             guard case .connecting = self.state else { return }
-            self.onLog?("BLE", "connection timeout (10s) source=\(source), disconnecting")
+            self.onLog?("BLE", "connection timeout (\(Int(seconds))s) source=\(source), disconnecting")
             self.central.cancelPeripheralConnection(peripheral)
             self.discoveredPeripheral = nil
             self.currentConnectionSource = nil
-            // 连接超时：回 idle 并安排扫描重试（不再区分绑定）
+            // 超时后必须回到可重试路径；软直连/普通连接都回宽扫
             self.state = .idle
             self.scheduleScanRetryIfNeeded()
+            // 若当前是 idle 且允许扫，立即扫更快
+            if self.config != nil, self.allowsAutomaticScanRetry {
+                self.startScanning()
+            }
         }
         connectionTimeoutWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
     }
 
     private func finishIfReady() {
@@ -928,7 +1123,10 @@ final class VehicleBLEManager: NSObject {
             state = .authenticated
             onLog?("BLE", "E300 auth success random1=\(remoteRandom1Hex) random2=\(localRandom2Hex) source=\(connectionSourceText)")
             onLog?("BLE", "runtimeControlAes128Key ready len=\(runtimeControlAes128KeyHex?.count ?? 0)")
-            // 不再持久化 UUID 绑定；每次靠钥匙 MAC 宽扫 / 系统已连接接管
+            // 软记录上次成功 UUID，供下次快速直连（无 UI 绑定）
+            if let id = discoveredPeripheral?.identifier {
+                saveLastSuccessfulPeripheralUUID(id)
+            }
             startRSSILoop()
             return
         }

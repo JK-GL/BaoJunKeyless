@@ -247,8 +247,16 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         configureParkingFallbackIfNeeded(settings: settings, reason: "enter-background")
         reevaluate(reason: "enter-background")
         if settings.keylessEnabled {
-            // 未鉴权时 forceRestart，避免卡在半连接/空闲却不扫
-            let force = connectionStatusStore.bleStatus != .authenticated
+            // 进后台优先接管系统已连接；不要默认 forceRestart 拆掉会话再扫
+            // 仅在 error/空闲时 force；已扫描中也用 soft ensure 以便 adopt
+            let st = connectionStatusStore.bleStatus
+            let force: Bool
+            switch st {
+            case .authenticated, .authenticating, .connected, .connecting, .scanning:
+                force = false
+            default:
+                force = true
+            }
             requestBLESession(forceRestart: force, detail: "进入后台")
         }
     }

@@ -100,6 +100,8 @@ private struct KeylessRealtimeStatusHost: View {
     @State private var decisionSnapshot = KeylessDecisionSnapshot.placeholder
     @State private var phoneNearbySince: Date?
     @State private var phoneFarAwaySince: Date?
+    /// 上次鉴权成功的 BLE（软缓存展示，不是可取消绑定）
+    @State private var lastVehicleSummary: String = "尚未连接过"
 
     private var decisionContext: KeylessDecisionEngine.Context {
         KeylessDecisionEngine.Context(
@@ -256,6 +258,13 @@ private struct KeylessRealtimeStatusHost: View {
                         "上锁倒计时",
                         showLockCountdown ? lockDelayRemainingText : "--",
                         color: AppTheme.orange
+                    ),
+                    PopupInfoRowItem(
+                        "antenna.radiowaves.left.and.right",
+                        "上次连接",
+                        lastVehicleSummary,
+                        mono: lastVehicleSummary != "尚未连接过",
+                        color: lastVehicleSummary == "尚未连接过" ? .secondary : AppTheme.green
                     )
                 ],
                 labelWidth: 68,
@@ -295,6 +304,20 @@ private struct KeylessRealtimeStatusHost: View {
         decisionSnapshot = KeylessDecisionSnapshot(from: mqtt)
         phoneNearbySince = mqtt.phoneNearbySince
         phoneFarAwaySince = mqtt.phoneFarAwaySince
+        refreshLastVehicleSummary(from: mqtt)
+    }
+
+    private func refreshLastVehicleSummary(from mqtt: MQTTVehicleStateStore) {
+        let info = mqtt.latestBleKeyInfo
+        let mac = info["bleMac"] ?? info["macAddress"] ?? ""
+        let keyId = info["keyId"] ?? ""
+        if let last = VehicleBLEManager.loadSoftLastVehicle(bleMac: mac, keyId: keyId) {
+            lastVehicleSummary = last.displaySummary
+        } else if !mac.isEmpty {
+            lastVehicleSummary = "钥匙 \(mac) · 尚未缓存连接"
+        } else {
+            lastVehicleSummary = "尚未连接过"
+        }
     }
 
     private func resolvedPhoneNearby(smoothed: Int, previous: Bool, unlock: Double, lock: Double) -> Bool {

@@ -340,15 +340,46 @@ extension MQTTVehicleStateStore {
 
     /// - Parameter userInitiated: 用户手动开始扫描/附近设备/绑定等，绕过「仅围栏内扫描」
     func ensureBLESession(forceRestart: Bool, optimisticScanning: Bool, userInitiated: Bool = false) {
-        // 废弃 UUID 绑定：启动会话时清掉历史记录，避免任何残留路径
+        // 废弃用户「蓝牙绑定」：只清旧 BindingStore，不动 SoftLastVehicle（上次连接加速缓存）
         VehicleBLEBindingStore.clear()
-        if forceRestart {
-            userManuallyStoppedBLE = false
-            ignoreNextBLEIdleCallback = true
-            bleManager.stop()
-        }
         if latestBleKeyInfo.isEmpty {
             reloadCachedBLEKeyInfo(preferScoped: true)
+        }
+
+        // 先尝试接管系统已连接的钥匙 BLE：切后台时 iOS 常已连着，但 UI 还显示扫描中。
+        // 成功则不要 force stop / 不要刷「扫描中」。
+        if hasUsableBLEKeyInfo,
+           !userManuallyStoppedBLE,
+           (keylessSettingsStore.settings.keylessEnabled || AppDiagnosticsSettings.vehicleControlRouteMode == .forceBLE) {
+            // 先确保 manager 有 config
+            refreshBLESessionIfNeeded()
+            if bleManager.adoptSystemConnectedIfAvailable(reason: forceRestart ? "ensure-force" : "ensure") {
+                if bleStatus == .scanning || bleStatus == .disconnected || bleStatus == .pausedOutsideFence {
+                    bleStatus = .connecting
+                    setBLEDiagnosticPhase("连接中", detail: "接管系统已连接 BLE")
+                    vehicleEventLogStore.addCoalesced(
+                        .action,
+                        "BLE 接管系统连接",
+                        detail: "系统已连接 181A/182A · 跳过扫描",
+                        identity: "ble-adopt-system",
+                        mergeWindow: 10
+                    )
+                }
+                return
+            }
+        }
+
+        if forceRestart {
+            // 系统未接管到时才真正重启；避免把已连会话拆掉再扫
+            userManuallyStoppedBLE = false
+            ignoreNextBLEIdleCallback = true
+            // 仅在非已连路径 stop
+            switch bleManager.state {
+            case .connecting, .connected, .authenticating, .authenticated:
+                break
+            default:
+                bleManager.stop()
+            }
         }
 
         // 仅围栏内扫描：圈外立即停止自动找车（含正在扫的一轮）；已连接会话保留
@@ -358,6 +389,12 @@ extension MQTTVehicleStateStore {
                 // 已连上：只保持，不新开扫描
                 refreshBLESessionIfNeeded()
             } else {
+                // 圈外也再试一次系统已连接接管（车可能系统层仍连着）
+                if hasUsableBLEKeyInfo, bleManager.adoptSystemConnectedIfAvailable(reason: "outside-fence-adopt") {
+                    bleStatus = .connecting
+                    setBLEDiagnosticPhase("连接中", detail: "圈外接管系统已连接 BLE")
+                    return
+                }
                 pauseAutomaticBLEScanOutsideFence(reason: forceRestart ? "重启抑制" : "自动抑制")
             }
             if !hasUsableBLEKeyInfo {
@@ -376,14 +413,27 @@ extension MQTTVehicleStateStore {
             let timeout = Int(keylessSettingsStore.settings.bleScanDuration)
             let interval = Int(effectiveScanRetryInterval(baseInterval: keylessSettingsStore.settings.bleScanInterval))
             let intervalText = interval <= 0 ? "无间隙" : "间隔 \(interval)s"
-            if bleStatus != .scanning {
-                vehicleEventLogStore.addCoalesced(.action, "BLE 扫描中", detail: "\(deviceDisplayName) · 最长 \(timeout)s · \(intervalText)", identity: "scan-start|\(deviceDisplayName)")
+            // 若底层已在连/已鉴权，不要盖成扫描中
+            switch bleManager.state {
+            case .connecting, .connected, .authenticating, .authenticated:
+                break
+            default:
+                if bleStatus != .scanning {
+                    vehicleEventLogStore.addCoalesced(.action, "BLE 扫描中", detail: "\(deviceDisplayName) · 最长 \(timeout)s · \(intervalText)", identity: "scan-start|\(deviceDisplayName)")
+                }
+                resetNearbyBLEDevices()
+                setBLEDiagnosticPhase("扫描中", detail: "\(deviceDisplayName) · 最长 \(timeout)s · \(intervalText)")
+                bleStatus = .scanning
             }
-            resetNearbyBLEDevices()
-            setBLEDiagnosticPhase("扫描中", detail: "\(deviceDisplayName) · 最长 \(timeout)s · \(intervalText)")
-            bleStatus = .scanning
         }
         refreshBLESessionIfNeeded()
+        // 再试一次系统接管（config 刚 start 后 central 可能才 poweredOn）
+        if hasUsableBLEKeyInfo, bleManager.adoptSystemConnectedIfAvailable(reason: "ensure-after-refresh") {
+            if bleStatus == .scanning {
+                bleStatus = .connecting
+                setBLEDiagnosticPhase("连接中", detail: "扫描中接管系统已连接 BLE")
+            }
+        }
         // S1：只有本地钥匙真正不可用才拉网；forceRestart 只重启 BLE，不刷钥匙
         if !hasUsableBLEKeyInfo {
             fetchBleKeyInfo(force: false)

@@ -94,7 +94,7 @@ struct NearbyBLEDevicesPopupView: View {
             }
         }
         .onAppear {
-            // 打开列表时清掉历史 UUID 绑定，避免旧逻辑残留
+            // 只清旧「用户绑定」记录；保留 SoftLastVehicle 加速缓存
             VehicleBLEBindingStore.clear()
             nearbyStore.flush()
             snapshotDevices = nearbyStore.devices
