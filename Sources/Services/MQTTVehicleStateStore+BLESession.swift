@@ -340,6 +340,8 @@ extension MQTTVehicleStateStore {
 
     /// - Parameter userInitiated: 用户手动开始扫描/附近设备/绑定等，绕过「仅围栏内扫描」
     func ensureBLESession(forceRestart: Bool, optimisticScanning: Bool, userInitiated: Bool = false) {
+        // 废弃 UUID 绑定：启动会话时清掉历史记录，避免任何残留路径
+        VehicleBLEBindingStore.clear()
         if forceRestart {
             userManuallyStoppedBLE = false
             ignoreNextBLEIdleCallback = true

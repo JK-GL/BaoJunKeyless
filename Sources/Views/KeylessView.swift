@@ -100,7 +100,6 @@ private struct KeylessRealtimeStatusHost: View {
     @State private var decisionSnapshot = KeylessDecisionSnapshot.placeholder
     @State private var phoneNearbySince: Date?
     @State private var phoneFarAwaySince: Date?
-    @State private var binding = VehicleBLEBindingStore.load()
 
     private var decisionContext: KeylessDecisionEngine.Context {
         KeylessDecisionEngine.Context(
@@ -257,13 +256,6 @@ private struct KeylessRealtimeStatusHost: View {
                         "上锁倒计时",
                         showLockCountdown ? lockDelayRemainingText : "--",
                         color: AppTheme.orange
-                    ),
-                    PopupInfoRowItem(
-                        "link",
-                        "蓝牙绑定",
-                        binding?.displaySummary ?? "尚未绑定",
-                        mono: binding != nil,
-                        color: binding == nil ? .secondary : AppTheme.green
                     )
                 ],
                 labelWidth: 68,
@@ -278,22 +270,9 @@ private struct KeylessRealtimeStatusHost: View {
                 iconSize: 12
             )
 
-            if binding != nil {
-                HStack(spacing: 10) {
-                    SettingsActionButton(icon: "link.badge.minus", label: "取消绑定", color: AppTheme.red) {
-                        VehicleBLEBindingStore.clear()
-                        binding = nil
-                        if let mqtt = VehicleStateStoreBridge.current as? MQTTVehicleStateStore {
-                            mqtt.ensureBLESession(forceRestart: true, optimisticScanning: true, userInitiated: true)
-                        }
-                        VehicleEventLogStore.shared.add(.action, "清除蓝牙绑定", detail: "用户在无感页手动清除")
-                    }
-                }
             }
-        }
         .onAppear {
             refreshDecisionInputs()
-            binding = VehicleBLEBindingStore.load()
         }
         .onChange(of: diagnostics.debugLastSeenText) { _ in
             refreshDecisionInputs()
@@ -303,7 +282,6 @@ private struct KeylessRealtimeStatusHost: View {
         }
         .onChange(of: connectionStatusStore.bleStatus) { _ in
             refreshDecisionInputs()
-            binding = VehicleBLEBindingStore.load()
         }
         .onReceive(Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()) { _ in
             if phoneNearbySince != nil || phoneFarAwaySince != nil {
@@ -317,7 +295,6 @@ private struct KeylessRealtimeStatusHost: View {
         decisionSnapshot = KeylessDecisionSnapshot(from: mqtt)
         phoneNearbySince = mqtt.phoneNearbySince
         phoneFarAwaySince = mqtt.phoneFarAwaySince
-        binding = VehicleBLEBindingStore.load()
     }
 
     private func resolvedPhoneNearby(smoothed: Int, previous: Bool, unlock: Double, lock: Double) -> Bool {

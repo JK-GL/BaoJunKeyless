@@ -211,14 +211,14 @@ struct StatusView: View {
                 initialBinding: VehicleBLEBindingStore.load(),
                 onBind: { device in
                     mqttStore.bindNearbyBLEDevice(device)
-                    // 绑定后保持附近设备弹窗打开，便于继续看连接/鉴权结果
+                    // 连接后保持附近设备弹窗打开，便于继续看连接/鉴权结果
                     withAnimation {
-                        statusToastText = "已绑定 \(device.displayName)，正在优先连接"
+                        statusToastText = "正在连接 \(device.displayName)"
                     }
                 },
                 onClearBinding: {
                     mqttStore.clearBLEBindingAndRefresh()
-                    withAnimation { statusToastText = "已取消蓝牙绑定" }
+                    withAnimation { statusToastText = "已清除旧绑定记录" }
                 },
                 onClose: {
                     withAnimation(PopupMotion.dismissEase) { isNearbyBLEDevicesFloatingPresented = false }

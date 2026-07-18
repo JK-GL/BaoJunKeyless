@@ -177,12 +177,6 @@ extension MQTTVehicleStateStore {
 
     func seedPreviewBLERSSIFromNearbyIfPossible() {
         // bound 直连时可能没有刚扫到的 candidate RSSI，回退附近列表同 UUID
-        if let boundId = VehicleBLEBindingStore.load()?.peripheralIdentifier,
-           let device = nearbyBLEDevicesStore.devices.first(where: { $0.peripheralIdentifier == boundId }) {
-            noteBLEDeviceSeen(name: device.displayName, rssi: device.rssi)
-            seedPreviewBLERSSI(device.rssi, reason: "nearby-bound")
-            return
-        }
         if let best = nearbyBLEDevicesStore.devices.first(where: { $0.exactMatched })
             ?? nearbyBLEDevicesStore.devices.max(by: { $0.rssi < $1.rssi }),
            best.exactMatched {
@@ -238,35 +232,26 @@ extension MQTTVehicleStateStore {
         nearbyBLEDevicesStore.flush()
     }
 
+    /// 从附近列表点选连接：只触发宽扫/会话，不写 UUID 绑定。
     func bindNearbyBLEDevice(_ device: VehicleBLEManager.NearbyDevice) {
-        let keyId = latestBleKeyInfo["keyId"] ?? ""
-        let mac = latestBleKeyInfo["bleMac"] ?? latestBleKeyInfo["macAddress"] ?? device.manufacturerMac ?? ""
-        let binding = VehicleBLEBinding(
-            peripheralIdentifier: device.peripheralIdentifier,
-            peripheralName: device.displayName,
-            keyId: keyId,
-            bleMacSuffix: mac,
-            boundAt: Date(),
-            lastAuthAt: Date()
-        )
-        VehicleBLEBindingStore.save(binding)
-
+        // 清掉历史绑定记录，避免旧逻辑路径残留
+        VehicleBLEBindingStore.clear()
         // 先预填广播 RSSI，再重启会话，避免 stop/idle 把预填冲掉
         userManuallyStoppedBLE = false
         noteBLEDeviceSeen(name: device.displayName, rssi: device.rssi)
-        seedPreviewBLERSSI(device.rssi, reason: "bind-ad")
-        setBLEDiagnosticPhase("连接中", detail: "绑定优先 · \(device.displayName) · \(device.rssi) dBm")
+        seedPreviewBLERSSI(device.rssi, reason: "manual-connect-ad")
+        setBLEDiagnosticPhase("连接中", detail: "连接 · \(device.displayName) · \(device.rssi) dBm")
         bleStatus = .connecting
         vehicleEventLogStore.add(
             .action,
-            "手动绑定蓝牙设备",
-            detail: "\(binding.displaySummary) · 正在优先连接 · adRSSI=\(device.rssi)"
+            "连接附近蓝牙设备",
+            detail: "\(device.displayName) · 正在连接 · adRSSI=\(device.rssi)"
         )
 
         ignoreNextBLEIdleCallback = true
         bleManager.stop()
         // stop 后再次保住预填，防止 idle 清空
-        seedPreviewBLERSSI(device.rssi, reason: "bind-ad-keep")
+        seedPreviewBLERSSI(device.rssi, reason: "manual-connect-ad-keep")
         bleStatus = .connecting
         refreshBLESessionIfNeeded()
         if !hasUsableBLEKeyInfo {
@@ -277,7 +262,7 @@ extension MQTTVehicleStateStore {
     func clearBLEBindingAndRefresh() {
         VehicleBLEBindingStore.clear()
         ensureBLESession(forceRestart: true, optimisticScanning: true, userInitiated: true)
-        vehicleEventLogStore.add(.action, "清除蓝牙绑定", detail: "用户手动取消绑定")
+        vehicleEventLogStore.add(.action, "清除旧蓝牙绑定记录", detail: "已清除历史 UUID 绑定，改按钥匙 MAC 扫描")
     }
 
     func setBLEDiagnosticPhase(_ phase: String, detail: String) {

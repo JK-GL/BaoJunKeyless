@@ -252,7 +252,6 @@ final class VehicleBLEManager: NSObject {
     private var connectionTimeoutWorkItem: DispatchWorkItem?
     private var foregroundObserver: NSObjectProtocol?
     private var currentConnectionSource: ConnectionSource?
-    private var hasTriedBoundPeripheral = false
     private let candidateMinimumScore = 8
     private(set) var state: State = .idle {
         didSet {
@@ -307,7 +306,6 @@ final class VehicleBLEManager: NSObject {
                 central.cancelPeripheralConnection(discoveredPeripheral)
             }
             completePendingControl(.failure(.sessionStopped))
-            hasTriedBoundPeripheral = false
         }
 
         // 从 stop() 后重启：config 从 nil 变成非 nil，必须清运行时
@@ -315,11 +313,6 @@ final class VehicleBLEManager: NSObject {
         self.config = config
         lastControlError = nil
         clearSessionRuntime(cancelPendingControl: configChanged || restartingFromStopped)
-
-        // 重启时允许重新尝试 bound peripheral
-        if restartingFromStopped {
-            hasTriedBoundPeripheral = false
-        }
 
         if foregroundObserver == nil {
             foregroundObserver = NotificationCenter.default.addObserver(
@@ -359,7 +352,6 @@ final class VehicleBLEManager: NSObject {
         }
         currentConnectionSource = nil
         isSystemConnectedSession = false
-        hasTriedBoundPeripheral = false
         if let discoveredPeripheral {
             central.cancelPeripheralConnection(discoveredPeripheral)
         }
@@ -425,15 +417,11 @@ final class VehicleBLEManager: NSObject {
             return
         }
         guard discoveredPeripheral == nil else { return }
-        // 0) 系统已连接的目标车（iOS 已连上车机 BLE 时，优先接管，避免还在“扫描中”）
+        // 0) 系统已连接且带 181A/182A 的外设：接管（不依赖绑定 UUID）
         if connectSystemConnectedPeripheralIfAvailable() {
             return
         }
-        // 1) 绑定 UUID 优先直连
-        if !hasTriedBoundPeripheral, connectBoundPeripheralIfAvailable() {
-            return
-        }
-        // 2) 再宽扫
+        // 1) 始终宽扫匹配钥匙 MAC（不再绑定 UUID 直连，避免假「连接中」/后台卡死）
         startScanning()
     }
 
@@ -449,22 +437,7 @@ final class VehicleBLEManager: NSObject {
             return false
         }
 
-        let bindingId = VehicleBLEBindingStore.loadMatching(keyId: config?.keyId ?? "", bleMac: config?.bleMac ?? "")?.peripheralIdentifier
-        // 优先：已绑定 UUID
-        if let bindingId,
-           let peripheral = connected.first(where: { $0.identifier.uuidString.caseInsensitiveCompare(bindingId) == .orderedSame }) {
-            isSystemConnectedSession = true
-            connectScannedPeripheral(
-                peripheral,
-                localName: peripheral.name ?? "system-connected",
-                rssi: -50,
-                source: .bound,
-                detail: "systemConnected bound id=\(peripheral.identifier.uuidString.prefix(8))"
-            )
-            onLog?("BLE", "prefer system-connected bound peripheral id=\(peripheral.identifier.uuidString.prefix(8)) name=\(peripheral.name ?? "--")")
-            return true
-        }
-        // 其次：任一带 181A/182A 的已连接外设（一车一账号场景）
+        // 一车一账号：任一带 181A/182A 的已连接外设即可（不再读绑定 UUID）
         if let peripheral = connected.first {
             isSystemConnectedSession = true
             connectScannedPeripheral(
@@ -494,52 +467,6 @@ final class VehicleBLEManager: NSObject {
         case .debugScore: return "debugScore"
         case nil: return "none"
         }
-    }
-
-    private func connectBoundPeripheralIfAvailable() -> Bool {
-        hasTriedBoundPeripheral = true
-        guard let config else {
-            onLog?("BLE", "bound peripheral miss, fallback wide scan")
-            return false
-        }
-        guard let binding = VehicleBLEBindingStore.loadMatching(keyId: config.keyId, bleMac: config.bleMac),
-              let uuid = UUID(uuidString: binding.peripheralIdentifier) else {
-            onLog?("BLE", "bound peripheral miss/mismatch, fallback wide scan")
-            return false
-        }
-
-        // 软绑定：优先直连上次成功鉴权的 peripheral UUID（系统已连则接管；未连则主动 connect）。
-        // 失败/超时仍回退宽扫，不强迫用户手动解绑。
-        let systemConnected = central.retrieveConnectedPeripherals(withServices: [authService, controlService])
-            .contains { $0.identifier == uuid && $0.state == .connected }
-        let peripherals = central.retrievePeripherals(withIdentifiers: [uuid])
-        guard let peripheral = peripherals.first else {
-            onLog?("BLE", "last vehicle uuid not in system cache id=\(binding.shortIdentifier), fallback wide scan")
-            return false
-        }
-
-        discoveredPeripheral = peripheral
-        currentConnectionSource = .bound
-        peripheral.delegate = self
-        central.stopScan()
-        scanWatchdogWorkItem?.cancel()
-        scanWatchdogWorkItem = nil
-        scanTotalTimeoutWorkItem?.cancel()
-        scanTotalTimeoutWorkItem = nil
-        state = .connecting
-
-        if peripheral.state == .connected || systemConnected {
-            isSystemConnectedSession = true
-            onLog?("BLE", "take over last vehicle peripheral name=\(binding.peripheralName) id=\(binding.shortIdentifier) keyId=\(binding.keyId) macSuffix=\(binding.bleMacSuffix)")
-            peripheral.discoverServices(nil)
-            return true
-        }
-
-        isSystemConnectedSession = false
-        onLog?("BLE", "direct-connect last vehicle peripheral name=\(binding.peripheralName) id=\(binding.shortIdentifier) keyId=\(binding.keyId) macSuffix=\(binding.bleMacSuffix)")
-        scheduleConnectionTimeout(uuid: peripheral.identifier, source: "bound")
-        central.connect(peripheral, options: nil)
-        return true
     }
 
     private func startScanning() {
@@ -615,8 +542,6 @@ final class VehicleBLEManager: NSObject {
             guard self.config != nil else { return }
             guard self.allowsAutomaticScanRetry else { return }
             guard case .idle = self.state else { return }
-            // 不再每轮都重置 bound：坏 UUID 会死磕 10s 超时，用户只能「取消绑定」。
-            // 本会话已试过上次车辆 → 直接宽扫；forceRestart/鉴权成功会再打开一次软直连机会。
             self.startConnectionFlow()
         }
         scanRetryWorkItem = work
@@ -637,14 +562,9 @@ final class VehicleBLEManager: NSObject {
             self.central.cancelPeripheralConnection(peripheral)
             self.discoveredPeripheral = nil
             self.currentConnectionSource = nil
-            if source == "bound" {
-                self.onLog?("BLE", "bound connect timeout, fallback wide scan")
-                self.fallbackToWideScanAfterBoundFailure()
-            } else {
-                // 非绑定连接超时后必须回到可重试路径；后台仅靠 idle 不会自动再扫
-                self.state = .idle
-                self.scheduleScanRetryIfNeeded()
-            }
+            // 连接超时：回 idle 并安排扫描重试（不再区分绑定）
+            self.state = .idle
+            self.scheduleScanRetryIfNeeded()
         }
         connectionTimeoutWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: work)
@@ -955,11 +875,8 @@ final class VehicleBLEManager: NSObject {
             state = .authFailed(reason)
             authStage = .idle
             onLog?("BLE", detail)
-            if currentConnectionSource == .bound {
-                VehicleBLEBindingStore.clear()
-                onLog?("BLE", "bound auth failed, clear binding, fallback wide scan | \(reason)")
-                fallbackToWideScanAfterBoundFailure()
-            }
+            // 鉴权失败：断开后回宽扫（不再区分绑定）
+            fallbackToWideScanAfterBoundFailure()
         }
 
         guard let config else {
@@ -1011,8 +928,7 @@ final class VehicleBLEManager: NSObject {
             state = .authenticated
             onLog?("BLE", "E300 auth success random1=\(remoteRandom1Hex) random2=\(localRandom2Hex) source=\(connectionSourceText)")
             onLog?("BLE", "runtimeControlAes128Key ready len=\(runtimeControlAes128KeyHex?.count ?? 0)")
-            // 任意路径鉴权成功都刷新绑定：识别到目标车后自动自愈 UUID
-            persistBindingAfterAuthSuccess(config: config)
+            // 不再持久化 UUID 绑定；每次靠钥匙 MAC 宽扫 / 系统已连接接管
             startRSSILoop()
             return
         }
@@ -1042,34 +958,6 @@ final class VehicleBLEManager: NSObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             self?.startScanning()
         }
-    }
-
-    private func persistBindingAfterAuthSuccess(config: SessionConfig) {
-        guard let peripheral = discoveredPeripheral else { return }
-        let old = VehicleBLEBindingStore.load()
-        // keyId 保持与会话配置同一原始格式，避免保存成 %08X 后 loadMatching 对不上
-        let binding = VehicleBLEBinding(
-            peripheralIdentifier: peripheral.identifier.uuidString,
-            peripheralName: peripheral.name ?? old?.peripheralName ?? "--",
-            keyId: config.keyId,
-            bleMacSuffix: normalizedMacSuffixText(config.bleMac),
-            boundAt: old?.boundAt ?? Date(),
-            lastAuthAt: Date()
-        )
-        VehicleBLEBindingStore.save(binding)
-        if let old, old.peripheralIdentifier != binding.peripheralIdentifier {
-            onLog?("BLE", "bound peripheral refreshed old=\(old.shortIdentifier) new=\(binding.shortIdentifier) source=\(connectionSourceText) \(binding.displaySummary)")
-        } else if old == nil {
-            onLog?("BLE", "bound peripheral saved \(binding.displaySummary) source=\(connectionSourceText)")
-        } else {
-            onLog?("BLE", "bound peripheral updated \(binding.displaySummary) source=\(connectionSourceText)")
-        }
-    }
-
-    private func normalizedMacSuffixText(_ mac: String) -> String {
-        let normalized = mac.uppercased().filter { $0.isLetter || $0.isNumber }
-        guard !normalized.isEmpty else { return "--" }
-        return String(normalized.suffix(6))
     }
 
     private func normalizedBleMacHex(_ mac: String) -> String? {
@@ -1516,7 +1404,7 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
         if let peripheral = peripherals.first {
             discoveredPeripheral = peripheral
             peripheral.delegate = self
-            currentConnectionSource = .bound
+            currentConnectionSource = .manufacturer
             switch peripheral.state {
             case .connected:
                 state = .connecting
@@ -1607,7 +1495,6 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         let sourceText = connectionSourceText
-        let wasBound = currentConnectionSource == .bound
         guard discoveredPeripheral?.identifier == peripheral.identifier else {
             onLog?("BLE", "stale connect failed ignored id=\(peripheral.identifier.uuidString.prefix(8)) | \(error?.localizedDescription ?? "unknown")")
             return
@@ -1618,14 +1505,9 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
             state = .error(error?.localizedDescription ?? "connect failed")
             return
         }
-        if wasBound {
-            // 绑定直连失败：保留绑定记录，本轮回退宽扫；下一轮重试仍会优先绑定
-            onLog?("BLE", "bound connect failed, fallback wide scan")
-            fallbackToWideScanAfterBoundFailure()
-        } else {
-            state = .error(error?.localizedDescription ?? "connect failed")
-            startScanning()
-        }
+        // 连接失败：统一回宽扫（按钥匙 MAC 再找）
+        state = .idle
+        startScanning()
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
@@ -1638,9 +1520,7 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
         clearSessionRuntime(cancelPendingControl: true)
         onLog?("BLE", "disconnected source=\(sourceText) | \(error?.localizedDescription ?? "no error")")
         if config != nil, central.state == .poweredOn {
-            // 断连后：先宽扫（广播更可靠）；forceRestart/鉴权成功仍会刷新 last-vehicle 软直连。
-            // 若每次都先 bound 直连，坏 UUID 会让后台整段卡死，用户只能取消绑定。
-            hasTriedBoundPeripheral = true
+            // 断连后直接宽扫匹配钥匙 MAC（无绑定路径）
             startConnectionFlow()
         } else {
             state = .idle

@@ -34,6 +34,7 @@ private struct NearbyBLEDevicesLaunchButtonContent: View, Equatable {
 
 struct NearbyBLEDevicesPopupView: View {
     let nearbyStore: NearbyBLEDevicesStore
+    /// 兼容旧调用方参数名；不再表示 UUID 绑定，仅触发连接。
     let initialBinding: VehicleBLEBinding?
     let onBind: (VehicleBLEManager.NearbyDevice) -> Void
     let onClearBinding: () -> Void
@@ -41,7 +42,6 @@ struct NearbyBLEDevicesPopupView: View {
 
     /// 打开后用快照展示，不直接订阅 @Published devices，避免扫描广播牵动整窗重绘
     @State private var snapshotDevices: [VehicleBLEManager.NearbyDevice] = []
-    @State private var currentBinding: VehicleBLEBinding?
     @State private var autoRefreshTask: Task<Void, Never>?
 
     var body: some View {
@@ -70,11 +70,8 @@ struct NearbyBLEDevicesPopupView: View {
                                 scoreText: device.score.map(String.init) ?? "--",
                                 mac: device.manufacturerMac ?? "--",
                                 exactMatched: device.exactMatched,
-                                isBound: currentBinding?.peripheralIdentifier == device.peripheralIdentifier,
-                                onBind: {
+                                onConnect: {
                                     onBind(device)
-                                    // 绑定后不关窗：本地立刻刷新“已绑定”标记与置顶
-                                    currentBinding = VehicleBLEBindingStore.load()
                                     nearbyStore.flush()
                                     snapshotDevices = nearbyStore.devices
                                 }
@@ -90,15 +87,6 @@ struct NearbyBLEDevicesPopupView: View {
                 FloatingPopupPrimaryButton(title: "刷新列表", color: AppTheme.orange) {
                     nearbyStore.flush()
                     snapshotDevices = nearbyStore.devices
-                    currentBinding = VehicleBLEBindingStore.load()
-                }
-                if currentBinding != nil {
-                    FloatingPopupPrimaryButton(title: "取消绑定", color: AppTheme.red) {
-                        onClearBinding()
-                        currentBinding = nil
-                        nearbyStore.flush()
-                        snapshotDevices = nearbyStore.devices
-                    }
                 }
                 FloatingPopupSecondaryButton(title: "关闭", textColor: .white) {
                     onClose()
@@ -106,7 +94,8 @@ struct NearbyBLEDevicesPopupView: View {
             }
         }
         .onAppear {
-            currentBinding = initialBinding ?? VehicleBLEBindingStore.load()
+            // 打开列表时清掉历史 UUID 绑定，避免旧逻辑残留
+            VehicleBLEBindingStore.clear()
             nearbyStore.flush()
             snapshotDevices = nearbyStore.devices
             startAutoRefresh()
@@ -123,15 +112,11 @@ struct NearbyBLEDevicesPopupView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard !Task.isCancelled else { return }
-                // 定时从 buffer 拉快照；不直接绑定 @Published devices，避免高频 invalidation
+                // 定时从 buffer 拉快照；不直接订阅 @Published devices，避免高频 invalidation
                 nearbyStore.flush()
                 let next = nearbyStore.devices
-                let nextBinding = VehicleBLEBindingStore.load()
                 if next != snapshotDevices {
                     snapshotDevices = next
-                }
-                if nextBinding != currentBinding {
-                    currentBinding = nextBinding
                 }
             }
         }
@@ -146,8 +131,7 @@ private struct NearbyBLEDeviceRowView: View, Equatable {
     let scoreText: String
     let mac: String
     let exactMatched: Bool
-    let isBound: Bool
-    let onBind: () -> Void
+    let onConnect: () -> Void
 
     static func == (lhs: NearbyBLEDeviceRowView, rhs: NearbyBLEDeviceRowView) -> Bool {
         lhs.id == rhs.id
@@ -156,7 +140,6 @@ private struct NearbyBLEDeviceRowView: View, Equatable {
             && lhs.scoreText == rhs.scoreText
             && lhs.mac == rhs.mac
             && lhs.exactMatched == rhs.exactMatched
-            && lhs.isBound == rhs.isBound
     }
 
     var body: some View {
@@ -175,14 +158,6 @@ private struct NearbyBLEDeviceRowView: View, Equatable {
                             .padding(.vertical, 2)
                             .background(Capsule().fill(AppTheme.green))
                     }
-                    if isBound {
-                        Text("已绑定")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.black)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Capsule().fill(AppTheme.accent))
-                    }
                 }
                 Text("信号 \(rssi) dBm · 地址 \(mac)")
                     .font(.system(size: 11, design: .monospaced))
@@ -190,8 +165,8 @@ private struct NearbyBLEDeviceRowView: View, Equatable {
                     .lineLimit(2)
             }
             Spacer(minLength: 8)
-            Button(isBound ? "改绑" : "绑定") {
-                onBind()
+            Button("连接") {
+                onConnect()
             }
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(.black)
@@ -207,7 +182,7 @@ private struct NearbyBLEDeviceRowView: View, Equatable {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(isBound ? AppTheme.accent.opacity(0.45) : Color.white.opacity(0.06), lineWidth: 1)
+                .stroke(exactMatched ? AppTheme.green.opacity(0.45) : Color.white.opacity(0.06), lineWidth: 1)
         )
     }
 }
