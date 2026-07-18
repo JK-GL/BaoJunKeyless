@@ -29,12 +29,18 @@ struct VehicleCommandExecutionResult: Equatable {
 
 protocol VehicleCommandRefreshing: AnyObject {
     func refreshNow()
+    /// HTTP 请求发出前登记期望车况，避免 status MQTT 比 HTTP 回调更早到达时漏确认。
+    func beginControlStateConfirmation(_ command: VehicleCommand)
+    /// HTTP 请求失败时撤销尚未被真实车况确认的期望态。
+    func cancelControlStateConfirmation(_ command: VehicleCommand)
     /// HTTP 车控接口返回成功（指令已受理）后，立刻回写可预期的本地状态，避免只等轮询/MQTT。
     /// 默认空实现；MQTTVehicleStateStore 覆盖。
     func applyAcceptedHTTPControlIfPossible(_ command: VehicleCommand)
 }
 
 extension VehicleCommandRefreshing {
+    func beginControlStateConfirmation(_ command: VehicleCommand) {}
+    func cancelControlStateConfirmation(_ command: VehicleCommand) {}
     func applyAcceptedHTTPControlIfPossible(_ command: VehicleCommand) {}
 }
 
@@ -184,6 +190,9 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
             let buildMillis = Int(Date().timeIntervalSince(buildStart) * 1000)
             let requestSummary = draft.redactedRequestSummary
             let httpStart = Date()
+            // executeAsync 由前台主线程发起；status MQTT 可能比 HTTP completion 更早抵达，
+            // 所以必须在请求真正发出前同步挂起期望态。
+            refresher?.beginControlStateConfirmation(command)
             apiClient.sendVehicleControlRequestDraft(draft) { result in
                 switch result {
                 case .success:
@@ -223,6 +232,9 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
                         }
                     }
                 case .failure(let error):
+                    DispatchQueue.main.async {
+                        refresher?.cancelControlStateConfirmation(command)
+                    }
                     let state: VehicleCommandExecutionState
                     if case .network(let underlying) = error,
                        let urlError = underlying as? URLError,

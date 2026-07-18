@@ -208,8 +208,31 @@ extension MQTTVehicleStateStore {
         dash.doorStatusText = VehicleStatusMapper.recomputeDoorStatusText(from: dash)
         dash.windowStatusText = VehicleStatusMapper.recomputeWindowStatusText(from: dash)
 
-        // 空调开关：MQTT 更新时不被更旧 HTTP 冲回；温度始终允许 HTTP 更新。
+        // MQTT 已先到且车端 collectTime 更晚时，HTTP 只能补电量/位置等缺项，
+        // 不得用旧锁/门/窗/尾门快照把 MQTT 已写的 UI 闪回。
+        let mqttBodyFresher = lastMQTTBodyCollectAt.map { $0 > collectAt.addingTimeInterval(0.5) } ?? false
         var mergedState = newState
+        if mqttBodyFresher {
+            mergedState.locked = state.locked
+            mergedState.doorsClosed = state.doorsClosed
+            mergedState.driverDoorOpen = state.driverDoorOpen
+            mergedState.trunkOpen = state.trunkOpen
+            mergedState.windowsClosed = state.windowsClosed
+            dash.lockStatusText = dashboard.lockStatusText
+            dash.doorStatusText = dashboard.doorStatusText
+            dash.windowStatusText = dashboard.windowStatusText
+            dash.tailgateStatusText = dashboard.tailgateStatusText
+            dash.driverDoorStatusText = dashboard.driverDoorStatusText
+            dash.passengerDoorStatusText = dashboard.passengerDoorStatusText
+            dash.leftRearDoorStatusText = dashboard.leftRearDoorStatusText
+            dash.rightRearDoorStatusText = dashboard.rightRearDoorStatusText
+            dash.leftFrontWindowStatusText = dashboard.leftFrontWindowStatusText
+            dash.rightFrontWindowStatusText = dashboard.rightFrontWindowStatusText
+            dash.leftRearWindowStatusText = dashboard.leftRearWindowStatusText
+            dash.rightRearWindowStatusText = dashboard.rightRearWindowStatusText
+        }
+
+        // 空调开关：MQTT 更新时不被更旧 HTTP 冲回；温度始终允许 HTTP 更新。
         let mqttClimateFresher = lastMQTTClimateAt.map { $0 > collectAt } ?? false
         if mqttClimateFresher {
             mergedState.acOn = state.acOn
@@ -245,7 +268,8 @@ extension MQTTVehicleStateStore {
 
         dash.updatedAt = collectAt
         dash.updatedAtText = formatTime(collectAt)
-        bodyCollectTime = collectAt
+        // HTTP 只推进自己的 collectTime；不能把已更晚的 MQTT 车身时间倒退。
+        bodyCollectTime = max(bodyCollectTime ?? collectAt, collectAt)
         lastHTTPBodyCollectAt = collectAt
 
         // 全量落地后，清理字段保护痕迹（不再用字段戳卡 HTTP）
@@ -257,6 +281,14 @@ extension MQTTVehicleStateStore {
         let changed = applyVehicleSnapshot(state: merged, dashboard: dash, bumpIfChanged: true)
         if changed {
             evaluateKeylessAutomation(for: merged)
+        }
+        // HTTP 仅在其 collectTime 不落后 MQTT status 时参与控制确认，避免旧快照误确认/闪回。
+        if !mqttBodyFresher {
+            confirmPendingControlStateIfMatched(
+                fields: sourceFields,
+                source: .httpStatus,
+                observedAt: max(collectAt, now)
+            )
         }
 
         if mode == .full {

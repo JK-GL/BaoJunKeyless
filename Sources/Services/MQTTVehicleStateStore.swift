@@ -24,6 +24,14 @@ struct VehicleControlMQTTResult: Equatable, Identifiable {
     }
 }
 
+/// 一次 HTTP 车控的期望车况；由 MQTT status 或 HTTP 全量原始字段命中确认。
+struct PendingVehicleControlStateConfirmation: Equatable {
+    let id: UUID
+    let command: VehicleCommand
+    let startedAt: Date
+    let deadline: Date
+}
+
 // MARK: - MQTT + HTTP 车辆状态 Store
 // 状态通道：
 // - HTTP：完整车况快照，前台约 3s 补齐/收敛；关闭 MQTT 时作为唯一车况源
@@ -112,6 +120,14 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         get { controlFeedbackStore.latestControlResult }
         set { controlFeedbackStore.latestControlResult = newValue }
     }
+    var latestControlStateConfirmation: VehicleControlStateConfirmation? {
+        get { controlFeedbackStore.latestStateConfirmation }
+        set { controlFeedbackStore.latestStateConfirmation = newValue }
+    }
+    /// HTTP 控制已受理、等待真实车况命中的唯一挂起期望；新命令会替换旧命令。
+    var pendingControlStateConfirmation: PendingVehicleControlStateConfirmation?
+    var pendingControlStateTimeoutWorkItem: DispatchWorkItem?
+    static let controlStateConfirmationTimeout: TimeInterval = 10
 
     var displayLatitudeGcj: Double { locationDisplayStore.displayLatitudeGcj }
     var displayLongitudeGcj: Double { locationDisplayStore.displayLongitudeGcj }

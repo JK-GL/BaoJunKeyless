@@ -55,6 +55,12 @@ extension MQTTVehicleStateStore {
                 collectAt: collectAt,
                 changedKeys: changedSet
             )
+            // MQTT app/status 已即时写 UI；同一包若命中本次 HTTP 控制期望态，立刻确认。
+            self.confirmPendingControlStateIfMatched(
+                fields: fields,
+                source: .mqttStatus,
+                observedAt: collectAt
+            )
             if fields.keys.contains(where: { ["engineStatus", "powerStatus", "vehPowerMode", "vehiclePowerStatus", "sysPowerMode", "ignitionStatus"].contains($0) }),
                let power = parsePowerState(fields), power != .unknown {
                 self.lastExplicitPowerStateAt = collectAt
@@ -413,14 +419,38 @@ extension MQTTVehicleStateStore {
         return parts.joined(separator: " · ")
     }
 
-    func handleVehicleControlResult(_ data: Data) {
-        guard let result = decodeControlResult(data) else { return }
+    /// `/vehicle/control` 是官方订阅的可选附加回执通道；普通锁/窗主确认仍是 status MQTT / HTTP。
+    func handleVehicleControlResult(_ data: Data, topic: String) {
+        let result = decodeControlResult(data)
+        let diagnostic = formatControlPayloadDiagnostic(data)
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.mqttStatus = .connected
-            self.latestControlResult = result
-            // 控制回执走业务层/事件日志，不进错误日志
+            if let result {
+                self.latestControlResult = result
+                self.vehicleEventLogStore.add(
+                    result.isSuccess ? .action : .warning,
+                    "MQTT Control 附加回执",
+                    detail: "topic=\(topic) · \(result.displayDetail) · \(diagnostic)"
+                )
+            } else {
+                self.vehicleEventLogStore.add(
+                    .warning,
+                    "MQTT Control 未识别包",
+                    detail: "topic=\(topic) · \(diagnostic)"
+                )
+            }
         }
+    }
+
+    private func formatControlPayloadDiagnostic(_ data: Data) -> String {
+        let decoded = ProtobufDecoder.decode(data)
+        let fields = decoded.map { "#\($0.fieldNumber):\(protobufFieldPreview($0))" }.joined(separator: " ")
+        let raw = formatMQTTPayloadHex(data)
+        if fields.isEmpty, let text = String(data: data, encoding: .utf8), !text.isEmpty {
+            return "payload=\(data.count)B · text=\(String(text.prefix(800))) · rawHex=\(raw)"
+        }
+        return "payload=\(data.count)B · PB[\(fields.isEmpty ? "empty" : fields)] · rawHex=\(raw)"
     }
 
     private func decodeControlResult(_ data: Data) -> VehicleControlMQTTResult? {
@@ -809,7 +839,7 @@ extension MQTTVehicleStateStore {
             // 水管2：MQTT 状态进水（语义同 handleVehicleStatus）
             ingestMQTTStatusPayload(payload)
         } else if message.topic.hasSuffix("/vehicle/control") {
-            handleVehicleControlResult(payload)
+            handleVehicleControlResult(payload, topic: message.topic)
         }
     }
 

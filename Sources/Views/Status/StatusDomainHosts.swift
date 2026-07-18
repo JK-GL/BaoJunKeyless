@@ -152,10 +152,11 @@ struct StatusLocationSyncBridge: View {
     }
 }
 
-/// 控制回执桥：只在回执域变化时通知父视图。
+/// 控制反馈桥：Control PB 仅附加诊断；主确认来自 MQTT status / HTTP 车况。
 struct StatusControlFeedbackBridge: View {
     @ObservedObject private var controlFeedbackStore = VehicleControlFeedbackStore.shared
     let onMQTTControlResult: (VehicleControlMQTTResult?) -> Void
+    let onStateConfirmation: (VehicleControlStateConfirmation?) -> Void
 
     var body: some View {
         Color.clear
@@ -163,6 +164,9 @@ struct StatusControlFeedbackBridge: View {
             .accessibilityHidden(true)
             .onChange(of: controlFeedbackStore.latestControlResult) { result in
                 onMQTTControlResult(result)
+            }
+            .onChange(of: controlFeedbackStore.latestStateConfirmation) { confirmation in
+                onStateConfirmation(confirmation)
             }
     }
 }

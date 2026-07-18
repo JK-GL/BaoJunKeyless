@@ -15,10 +15,6 @@ struct StatusView: View {
     @State private var statusToastText: String?
     @State private var activeCommand: CommandAction? = nil
     @State private var isExecutingDirectLockUnlock = false
-    @State private var pendingControlServiceCode: String? = nil
-    @State private var pendingControlTitle: String? = nil
-    @State private var pendingControlSentAt: Date? = nil
-    @State private var pendingControlWaitID: UUID? = nil
 
     private var vehicleStore: VehicleStateStore? {
         VehicleStateStoreBridge.current
@@ -179,9 +175,14 @@ struct StatusView: View {
         .background(
             Group {
                 StatusLocationSyncBridge()
-                StatusControlFeedbackBridge { result in
-                    handleMQTTControlResult(result)
-                }
+                StatusControlFeedbackBridge(
+                    onMQTTControlResult: { result in
+                        handleMQTTControlResult(result)
+                    },
+                    onStateConfirmation: { confirmation in
+                        handleControlStateConfirmation(confirmation)
+                    }
+                )
             }
         )
     }
@@ -264,62 +265,23 @@ struct StatusView: View {
         }
     }
 
+    /// `/vehicle/control` 若下发，仅作为官方协议的附加诊断，不影响普通控制成功判定。
     private func handleMQTTControlResult(_ result: VehicleControlMQTTResult?) {
         guard let result else { return }
-        let matched = result.serviceCode == pendingControlServiceCode
-        let elapsedText: String
-        if matched, let sentAt = pendingControlSentAt {
-            elapsedText = ", sent→mqtt=\(Int(Date().timeIntervalSince(sentAt) * 1000))ms"
-        } else {
-            elapsedText = ""
+        withAnimation {
+            statusToastText = result.isSuccess ? "收到附加 Control 回执" : "收到 Control 回执异常"
         }
-        let title = matched ? "MQTT 控制回执（匹配当前命令）" : "MQTT 控制回执"
-        let commandText = matched ? "command=\(pendingControlTitle ?? "--"), " : ""
-        VehicleEventLogStore.shared.add(result.isSuccess ? .action : .error, title, detail: "\(commandText)\(result.displayDetail)\(elapsedText)")
-        if matched {
-            withAnimation {
-                statusToastText = result.isSuccess
-                    ? "\(pendingControlTitle ?? "命令") 回执成功"
-                    : "\(pendingControlTitle ?? "命令") 回执失败"
+    }
+
+    /// 普通锁/窗/空调的主确认：MQTT app/status 或 HTTP 全量车况命中期望态。
+    private func handleControlStateConfirmation(_ confirmation: VehicleControlStateConfirmation?) {
+        guard let confirmation else { return }
+        withAnimation {
+            if confirmation.isConfirmed {
+                statusToastText = "\(confirmation.commandTitle) 已由\(confirmation.source.title)确认"
+            } else {
+                statusToastText = "\(confirmation.commandTitle) 状态暂未确认"
             }
-            pendingControlServiceCode = nil
-            pendingControlTitle = nil
-            pendingControlSentAt = nil
-            pendingControlWaitID = nil
-        }
-    }
-
-    private func beginControlReceiptWaitIfNeeded() {
-        guard let serviceCode = pendingControlServiceCode,
-              let commandTitle = pendingControlTitle else { return }
-        let waitID = UUID()
-        pendingControlWaitID = waitID
-        VehicleEventLogStore.shared.add(.action, "等待 MQTT 控制回执", detail: "command=\(commandTitle), serviceCode=\(serviceCode), timeout=8s")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
-            guard pendingControlWaitID == waitID,
-                  pendingControlServiceCode == serviceCode else { return }
-            VehicleEventLogStore.shared.add(.warning, "MQTT 控制回执缺失", detail: "command=\(commandTitle), serviceCode=\(serviceCode), waited=8000ms")
-            pendingControlServiceCode = nil
-            pendingControlTitle = nil
-            pendingControlSentAt = nil
-            pendingControlWaitID = nil
-        }
-    }
-
-    private func controlServiceCode(for kind: VehicleCommandKind) -> String? {
-        switch kind {
-        case .lock, .unlock:
-            return "doorLockStatus"
-        case .findCar:
-            return "CarSearch"
-        case .acOn, .acOff, .setTemperature, .quickCool:
-            return "acStatus"
-        case .openWindows, .closeWindows:
-            return "windowStatus"
-        case .remoteStart:
-            return "RemotePowerUp"
-        case .remoteStop:
-            return nil
         }
     }
 
@@ -374,10 +336,6 @@ struct StatusView: View {
         VehicleEventLogStore.shared.add(.action, "快捷路由选择", detail: "\(command.title) | mode=\(routeModeText) | route=\(actualRouteText)")
 
         let willUseBLE = selectedRoute == .ble
-        let mqttReceiptEnabled = keylessSettings.settings.mqttEnabled
-        pendingControlServiceCode = (willUseBLE || !mqttReceiptEnabled) ? nil : controlServiceCode(for: command.kind)
-        pendingControlTitle = command.title
-        pendingControlSentAt = nil
 
         let transport: VehicleCommandAsyncTransport
         if willUseBLE, let mqttStore {
@@ -388,7 +346,6 @@ struct StatusView: View {
 
         VehicleCommandExecutor.executeAsync(command, transport: transport, refresher: mqttStore) { result in
             DispatchQueue.main.async {
-                let routePrefix = ""
                 let patchedResult = VehicleCommandExecutionResult(
                     command: result.command,
                     state: result.state,
@@ -403,33 +360,17 @@ struct StatusView: View {
                     if !willUseBLE, (command.kind == .lock || command.kind == .unlock) {
                         mqttStore?.noteAppDoorLockCommand(command.kind == .lock)
                     }
-                    // HTTP 路径：锁/空调等已在 HTTPControlTransport 受理成功时即时回写；此处仍可等 MQTT 回执与后续权威收敛。
-                    if !willUseBLE, mqttReceiptEnabled {
-                        pendingControlSentAt = Date()
-                        beginControlReceiptWaitIfNeeded()
-                    }
+                    // 官方普通锁/窗确认来自 MQTT status 或 HTTP 车况；Control PB 不再作为必经等待项。
                     withAnimation {
-                        if willUseBLE {
-                            statusToastText = "\(command.title) 已通过 BLE 发送"
-                        } else if mqttReceiptEnabled {
-                            statusToastText = "\(command.title) 已发送，等待回执"
-                        } else {
-                            statusToastText = "\(command.title) 已发送，正在刷新车况"
-                        }
+                        statusToastText = willUseBLE
+                            ? "\(command.title) 已通过 BLE 发送"
+                            : "\(command.title) 已发送，等待车况确认"
                     }
                 case .failed(let reason):
-                    pendingControlServiceCode = nil
-                    pendingControlTitle = nil
-                    pendingControlSentAt = nil
-                    pendingControlWaitID = nil
                     withAnimation {
                         statusToastText = "\(command.title) 失败：\(reason)"
                     }
                 case .timedOut(let reason):
-                    pendingControlServiceCode = nil
-                    pendingControlTitle = nil
-                    pendingControlSentAt = nil
-                    pendingControlWaitID = nil
                     withAnimation {
                         statusToastText = "\(command.title) 超时：\(reason)"
                     }

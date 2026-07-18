@@ -89,6 +89,7 @@ extension MQTTVehicleStateStore {
     /// HTTP 车控接口「已受理」成功后的即时回写（不替代最终 HTTP 权威）。
     /// 由 `HTTPControlTransport` 在 send 成功时调用。
     func applyAcceptedHTTPControlIfPossible(_ command: VehicleCommand) {
+        // 期望态已在 HTTP 请求发出前登记；这里仅做受理后的即时 UI 回写。
         switch command.kind {
         case .lock:
             ingestBLEDoorLockLocal(
