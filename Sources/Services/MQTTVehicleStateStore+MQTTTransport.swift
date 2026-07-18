@@ -25,32 +25,39 @@ extension MQTTVehicleStateStore {
     func handleVehicleStatus(_ data: Data) {
         guard keylessSettingsStore.settings.mqttEnabled else { return }
         let decoded = decodeMQTTPayload(data)
-        // 业务合并用「非空字段」；日志用「全字段（含空串）」对齐官方完整 JSON
-        let fields = decoded.nonEmptyFields
+        // 原始包：日志诊断用（含假开门窗原值 + hex）
+        let rawFields = decoded.nonEmptyFields
         let logFields = decoded.allFields
-        guard !logFields.isEmpty || !fields.isEmpty else { return }
+        guard !logFields.isEmpty || !rawFields.isEmpty else { return }
 
         DispatchQueue.main.async { [weak self] in
             guard let self, self.keylessSettingsStore.settings.mqttEnabled else { return }
 
+            // 业务路径：先消毒假开门窗，再做变化检测 / 缓存 / 拉 HTTP。
+            // UI 仍不直写门窗锁；消毒避免「解锁瞬间假开」刷提示、误伤后续判断。
+            let sanitized = self.sanitizeMQTTBodyFields(rawFields)
+            let droppedOpenKeys = rawFields.keys.filter { key in
+                Self.mqttDoorWindowOpenKeys.contains(key) && sanitized[key] == nil && rawFields[key] != nil
+            }.sorted()
+            let falseOpenStripped = !droppedOpenKeys.isEmpty
+
             var changedKeys: [String] = []
             var rawChanges: [String] = []
-            for (key, value) in fields where key != "collectTime" && self.lastMqttFields[key] != value {
+            // 变化检测用消毒后字段，避免假开进入业务增量
+            for (key, value) in sanitized where key != "collectTime" && self.lastMqttFields[key] != value {
                 changedKeys.append(key)
                 rawChanges.append("\(key):\(self.lastMqttFields[key] ?? "?")→\(value)")
             }
+            // 仅当消毒后仍带门窗开合变化时，才记门窗增量（假开已被剥掉）
             let previousFields = self.lastMqttFields
-            self.lastMqttFields.merge(fields) { _, new in new }
-            self.lastMQTTBodyCollectAt = parseTimestamp(fields["collectTime"] ?? logFields["collectTime"]) ?? Date()
+            self.lastMqttFields.merge(sanitized) { _, new in new }
+            self.lastMQTTBodyCollectAt = parseTimestamp(sanitized["collectTime"] ?? logFields["collectTime"]) ?? Date()
             self.lastMQTTUpdate = Date()
             self.mqttStatus = .connected
 
-            // 对齐官方 receiveMQTTCarStatus 日志风格：
-            // 1) 车况通知数据 == 完整字段
-            // 2) 车况时间
-            // 3) 有变化时注明「更新所有状态」语义（本 App 仍不直写门窗锁 UI）
-            let officialStyle = self.formatMQTTOfficialStyleLog(
-                allFields: logFields.isEmpty ? fields : logFields,
+            // 对齐官方 receiveMQTTCarStatus 日志风格；raw 全量仍打印，并标注是否过滤假开
+            var officialStyle = self.formatMQTTOfficialStyleLog(
+                allFields: logFields.isEmpty ? rawFields : logFields,
                 previous: previousFields,
                 changedKeys: Set(changedKeys),
                 format: decoded.format,
@@ -60,7 +67,10 @@ extension MQTTVehicleStateStore {
                 pbWireDump: decoded.pbWireDump,
                 unmappedFieldNumbers: decoded.unmappedFieldNumbers
             )
-            if changedKeys.isEmpty {
+            if falseOpenStripped {
+                officialStyle += " || 假开过滤：已丢弃门窗开合字段[\(droppedOpenKeys.joined(separator: ","))]（锁边沿/多门同开噪声，不进业务缓存）"
+            }
+            if changedKeys.isEmpty && !falseOpenStripped {
                 self.vehicleEventLogStore.addCoalesced(
                     .action,
                     "MQTT 车况通知",
@@ -69,7 +79,7 @@ extension MQTTVehicleStateStore {
                     mergeWindow: 90
                 )
             } else {
-                // 有变化：每条单独打，方便对照官方时间线（不合并吞掉）
+                // 有业务变化或发生假开过滤：单独一条，便于对照
                 self.vehicleEventLogStore.add(
                     .action,
                     "MQTT 车况通知",
@@ -78,20 +88,20 @@ extension MQTTVehicleStateStore {
             }
 
             // 唯一允许 MQTT 直接更新的车辆状态：明确的 engineStatus/电源字段。
-            if fields["engineStatus"] != nil
-                || fields["powerStatus"] != nil
-                || fields["vehPowerMode"] != nil
-                || fields["vehiclePowerStatus"] != nil
-                || fields["sysPowerMode"] != nil
-                || fields["ignitionStatus"] != nil,
-               let power = parsePowerState(fields) {
+            if sanitized["engineStatus"] != nil
+                || sanitized["powerStatus"] != nil
+                || sanitized["vehPowerMode"] != nil
+                || sanitized["vehiclePowerStatus"] != nil
+                || sanitized["sysPowerMode"] != nil
+                || sanitized["ignitionStatus"] != nil,
+               let power = parsePowerState(sanitized) {
                 self.ingestExplicitPowerLocal(power, source: "MQTT电源字段")
             }
 
             // 空调开关/设定温度：MQTT 真实字段即时回写。
-            let climateAc = parseACStatus(fields["acStatus"])
-            let climateTemp = parseDouble(fields["accCntTemp"])
-            let climateObservedAt = parseTimestamp(fields["collectTime"]) ?? Date()
+            let climateAc = parseACStatus(sanitized["acStatus"])
+            let climateTemp = parseDouble(sanitized["accCntTemp"])
+            let climateObservedAt = parseTimestamp(sanitized["collectTime"]) ?? Date()
             var climateChanged = false
             if climateAc != nil || climateTemp != nil {
                 climateChanged = self.applyAuthoritativeClimateState(
@@ -103,16 +113,34 @@ extension MQTTVehicleStateStore {
                 )
             }
 
-            // 门锁/门窗：v757 稳策略仍不直写 UI，只提示 + 拉 HTTP。
+            // 门锁/门窗：仍不直写 UI。
+            // - 假开已剥离：不因假开门窗单独刷「状态提示」
+            // - 真实锁变化等：提示 + 拉 HTTP 确认
             let nonClimateChanges = rawChanges.filter {
                 !$0.hasPrefix("acStatus:") && !$0.hasPrefix("accCntTemp:")
             }
-            guard !nonClimateChanges.isEmpty else { return }
+            if falseOpenStripped {
+                self.vehicleEventLogStore.addCoalesced(
+                    .action,
+                    "MQTT 假开已过滤",
+                    detail: "丢弃 \(droppedOpenKeys.joined(separator: ", ")) · 保留锁/空调等 · 门窗尾以 HTTP 为准",
+                    identity: "mqtt-false-open|\(droppedOpenKeys.joined(separator: ","))",
+                    mergeWindow: 30
+                )
+            }
+            guard !nonClimateChanges.isEmpty else {
+                // 仅假开被剥掉、无其它业务变化：仍可轻量拉一次 HTTP 收敛（锁边沿）
+                if falseOpenStripped {
+                    self.scheduleHTTPRefreshFromRealtime(reason: "mqtt-false-open-stripped")
+                }
+                return
+            }
             let summary = Array(nonClimateChanges.prefix(8)).joined(separator: ", ")
             self.vehicleEventLogStore.addCoalesced(
                 .action,
                 "MQTT 状态提示",
-                detail: "检测到增量 · \(summary) · 触发 HTTP 确认 · 门窗锁未直写 UI（稳策略）",
+                detail: "检测到增量 · \(summary) · 触发 HTTP 确认 · 门窗锁未直写 UI"
+                    + (falseOpenStripped ? " · 本包已过滤假开门窗" : ""),
                 identity: "mqtt-hint|\(summary)",
                 mergeWindow: 60
             )
@@ -121,6 +149,18 @@ extension MQTTVehicleStateStore {
             }
         }
     }
+
+    /// 门窗开合相关键（sanitize 剥离目标）
+    private static let mqttDoorWindowOpenKeys: Set<String> = [
+        "doorOpenStatus",
+        "door1OpenStatus", "door2OpenStatus", "door3OpenStatus", "door4OpenStatus",
+        "tailDoorOpenStatus",
+        "windowStatus",
+        "window1Status", "window2Status", "window3Status", "window4Status",
+        "window1OpenDegree", "window2OpenDegree", "window3OpenDegree", "window4OpenDegree",
+        "window1HalfOpenStatus", "window2HalfOpenStatus", "window3HalfOpenStatus", "window4HalfOpenStatus",
+        "windowHalfOpenStatus"
+    ]
 
     /// 官方风格完整字段日志（中文注解 + 全键列表 / raw hex / PB 字段号）
     private func formatMQTTOfficialStyleLog(
