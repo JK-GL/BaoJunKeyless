@@ -183,9 +183,9 @@ extension MQTTVehicleStateStore {
         parts.append("格式=\(format) · payload=\(payloadBytes)B · 字段数=\(fieldCount)（非空\(nonEmptyCount)）")
         if !unmappedFieldNumbers.isEmpty {
             let nums = unmappedFieldNumbers.map(String.init).joined(separator: ",")
-            parts.append("未映射PB字段号=[\(nums)]（nameMap 仅 1…21，用于扩表）")
+            parts.append("未映射PB字段号=[\(nums)]（官方 map 1…82 以外）")
         } else if format.contains("protobuf") {
-            parts.append("未映射PB字段号=[]（本包无 >21 或未识别号）")
+            parts.append("未映射PB字段号=[]（均在官方 1…82 内）")
         }
         parts.append("车况时间-mqtt：\(collect)")
         if changedKeys.isEmpty {
@@ -563,13 +563,92 @@ extension MQTTVehicleStateStore {
         let unmappedFieldNumbers: [Int]
     }
 
-    /// SgmwAppCarStatus 已确认字段（BLE_SPEC §5.8.6 / §15.53）
+    /// SgmwAppCarStatus 完整字段（官方 LingLingBang 二进制 GPB descriptor，1…82）
+    /// 来源：安装包 `+[SgmwAppCarStatus descriptor]` → fields 表 0x1021b8b68
+    /// 注意：旧 nameMap 1…21 错误（把分锁号当成门开），会导致解锁「假开门」。
     private static let mqttProtobufNameMap: [Int: String] = [
-        1: "collectTime", 2: "acStatus", 3: "doorLockStatus",
-        4: "door1LockStatus", 5: "door2LockStatus", 6: "door3LockStatus", 7: "door4LockStatus", 8: "tailDoorLockStatus",
-        9: "door1OpenStatus", 10: "door2OpenStatus", 11: "door3OpenStatus", 12: "door4OpenStatus", 13: "tailDoorOpenStatus",
-        14: "window1Status", 15: "window2Status", 16: "window3Status", 17: "window4Status",
-        18: "window1OpenDegree", 19: "window2OpenDegree", 20: "window3OpenDegree", 21: "window4OpenDegree"
+        1: "collectTime",
+        2: "acStatus",
+        3: "doorLockStatus",
+        4: "windowStatus",
+        5: "engineStatus",
+        6: "tailDoorLockStatus",
+        7: "lowBeamLight",
+        8: "dipHeadLight",
+        9: "sentinelModeStatus",
+        10: "tailDoorOpenStatus",
+        11: "door1LockStatus",
+        12: "door2LockStatus",
+        13: "door3LockStatus",
+        14: "door4LockStatus",
+        15: "doorOpenStatus",
+        16: "door1OpenStatus",
+        17: "door2OpenStatus",
+        18: "door3OpenStatus",
+        19: "door4OpenStatus",
+        20: "window1Status",
+        21: "window2Status",
+        22: "window3Status",
+        23: "window4Status",
+        24: "topWindowStatus",
+        25: "autoGearStatus",
+        26: "manualGearStatus",
+        27: "keyStatus",
+        28: "acTemperatureGear",
+        29: "acWindGear",
+        30: "leftBatteryPower",
+        31: "leftFuel",
+        32: "mileage",
+        33: "leftMileage",
+        34: "batterySoc",
+        35: "current",
+        36: "voltage",
+        37: "batAvgTemp",
+        38: "batMaxTemp",
+        39: "batMinTemp",
+        40: "tmActTemp",
+        41: "invActTemp",
+        42: "accActPos",
+        43: "brakPedalPos",
+        44: "strWhAng",
+        45: "vehSpdAvgDrvn",
+        46: "obcOtpCur",
+        47: "vecChrgingSts",
+        48: "vecChrgStsIndOn",
+        49: "obcTemp",
+        50: "batSoh",
+        51: "lowBatVol",
+        52: "leftTurnLight",
+        53: "rightTurnLight",
+        54: "positionLight",
+        55: "frontFogLight",
+        56: "rearFogLight",
+        57: "latitude",
+        58: "longitude",
+        59: "position",
+        60: "charging",
+        61: "wireConnect",
+        62: "rechargeStatus",
+        63: "window1OpenDegree",
+        64: "window2OpenDegree",
+        65: "window3OpenDegree",
+        66: "window4OpenDegree",
+        67: "seat1WindStatus",
+        68: "seat2WindStatus",
+        69: "seat3WindStatus",
+        70: "seat4WindStatus",
+        71: "seat1HotStatus",
+        72: "seat2HotStatus",
+        73: "seat3HotStatus",
+        74: "seat4HotStatus",
+        75: "accCntTemp",
+        76: "leftSlidingDoorStatus",
+        77: "rightSlidingDoorStatus",
+        78: "windowHalfOpenStatus",
+        79: "window1HalfOpenStatus",
+        80: "window2HalfOpenStatus",
+        81: "window3HalfOpenStatus",
+        82: "window4HalfOpenStatus"
     ]
 
     private func decodeMQTTPayload(_ data: Data) -> MQTTDecodedPayload {
