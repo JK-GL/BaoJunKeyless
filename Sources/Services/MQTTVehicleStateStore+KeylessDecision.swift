@@ -231,10 +231,36 @@ extension MQTTVehicleStateStore {
                 keylessUnlockDepartureObserved = false
                 vehicleEventLogStore.add(.keyless, "重新靠近边沿", detail: "真实离开后首次进入近场 · rssi=\(smoothedRSSI)")
             }
+            // 从远处/冷启动/断线后来到车旁：本地没有「先离开」记录时，首次进入近场也武装一次解锁边沿。
+            // 否则 edge=0 会要求「离开再靠近」，无感失去意义。
+            if !keylessUnlockApproachEdgeArmed && !hasEnteredVehicleZone {
+                keylessUnlockApproachEdgeArmed = true
+                keylessUnlockDepartureObserved = false
+                vehicleEventLogStore.add(
+                    .keyless,
+                    "首次近场边沿",
+                    detail: "冷启动/远处来车首次进入近场 · rssi=\(smoothedRSSI) · 允许一次无感解锁"
+                )
+            }
             if externalLockRequiresExit && externalLockExitObserved {
                 externalLockRequiresExit = false
                 externalLockExitObserved = false
                 vehicleEventLogStore.add(.keyless, "外部锁车保护解除", detail: "已确认离开后重新靠近，恢复自动解锁")
+            }
+            // 本 App 刚解锁期望窗内：外部锁保护不应挡住无感（云延迟假外部锁）
+            if externalLockRequiresExit {
+                let now = Date()
+                let expectUnlock = expectedAppLockState == false
+                    && (expectedAppLockStateUntil.map { now <= $0 } ?? false)
+                if expectUnlock || (state.locked == false && (localDoorLockHoldUntil.map { now < $0 } ?? false)) {
+                    externalLockRequiresExit = false
+                    externalLockExitObserved = false
+                    vehicleEventLogStore.add(
+                        .keyless,
+                        "外部锁车保护跳过",
+                        detail: "本 App 近期解锁/本地未锁保护中 · 不要求离开再靠近"
+                    )
+                }
             }
             if !hasEnteredVehicleZone {
                 hasEnteredVehicleZone = true
@@ -820,7 +846,7 @@ extension MQTTVehicleStateStore {
     }
 
     /// 解锁 BLE ACK 后本地即时显示；最终仍以新的 HTTP 原始 doorLockStatus 确认。
-    /// 多轮复核（2.1s / 5s / 10s）：任一轮确认未锁即成功；全失败则回滚本地未锁态并只推一次。
+    /// 多轮复核（0.5s / 2s / 5s / 10s）：任一轮确认未锁即成功；全失败则回滚本地未锁态并只推一次。
     func confirmKeylessUnlockViaHTTP(after result: VehicleCommandExecutionResult) {
         switch result.state {
         case .sent, .completed:
@@ -830,13 +856,13 @@ extension MQTTVehicleStateStore {
             vehicleEventLogStore.add(
                 .keyless,
                 "无感解锁等待 HTTP 确认",
-                detail: "BLE ACK 已完成 · 将于 2.1s/5s/10s 多轮核验 HTTP 原始锁态"
+                detail: "BLE ACK 已完成 · 将于 0.5s/2s/5s/10s 多轮核验 HTTP 原始锁态"
             )
             scheduleKeylessUnlockHTTPConfirmRound(
                 token: token,
                 generationBefore: generationBefore,
                 attempt: 0,
-                delays: [2.1, 5.0, 10.0]
+                delays: [0.5, 2.0, 5.0, 10.0]
             )
         case .failed(_), .timedOut(_):
             postKeylessNotificationIfNeeded(for: .unlock, result: result)
@@ -847,9 +873,10 @@ extension MQTTVehicleStateStore {
 
     /// 锁车 BLE 回包只说明指令被接收；最终结果必须等新的 HTTP 原始完整快照确认。
     /// 策略（尽量既不误报也不假成功）：
-    /// 1) 2.1s / 5s / 10s 多轮 HTTP 复核
-    /// 2) 三轮仍未锁且 BLE 可用 → 自动补锁 **一次**，再 2.5s / 6s 复核
+    /// 1) 0.5s / 2s / 5s / 10s 多轮 HTTP 复核（首轮尽早，避免「走很远才变已锁」）
+    /// 2) 仍未锁且 BLE 可用 → 自动补锁 **一次**，再 1.5s / 4s 复核
     /// 3) 仍失败 → 回滚本地「假已锁」，只推一次「未上锁」
+    /// 注意：BLE 成功时本地锁已即时更新；这里只影响「确认/通知」，不是才开始改 UI。
     func confirmKeylessLockViaHTTP(after result: VehicleCommandExecutionResult) {
         switch result.state {
         case .sent, .completed:
@@ -859,13 +886,15 @@ extension MQTTVehicleStateStore {
             vehicleEventLogStore.add(
                 .keyless,
                 "无感上锁等待 HTTP 确认",
-                detail: "BLE 指令已发送 · 将于 2.1s/5s/10s 多轮请求 HTTP 原始完整车况；失败可自动补锁一次"
+                detail: "BLE 指令已发送 · 将于 0.5s/2s/5s/10s 多轮请求 HTTP 原始完整车况；失败可自动补锁一次"
             )
+            // BLE 刚成功时本地已是已锁；立即再 poll 一次争取更快收敛云状态（不等 0.5s）
+            pollHTTPOnce(userInitiated: false, completion: nil)
             scheduleKeylessLockHTTPConfirmRound(
                 token: token,
                 generationBefore: generationBefore,
                 attempt: 0,
-                delays: [2.1, 5.0, 10.0],
+                delays: [0.5, 2.0, 5.0, 10.0],
                 allowRelock: true
             )
         case .failed(_), .timedOut(_):
@@ -1094,13 +1123,13 @@ extension MQTTVehicleStateStore {
                     self.vehicleEventLogStore.add(
                         .keyless,
                         "无感补锁已发送",
-                        detail: "BLE 成功 · 再于 2.5s/6s 核验 HTTP"
+                        detail: "BLE 成功 · 再于 1.5s/4s 核验 HTTP"
                     )
                     self.scheduleKeylessLockHTTPConfirmRound(
                         token: token,
                         generationBefore: generationBefore,
                         attempt: 0,
-                        delays: [2.5, 6.0],
+                        delays: [1.5, 4.0],
                         allowRelock: false
                     )
                 case .failure(let error):

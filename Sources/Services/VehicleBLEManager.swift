@@ -508,35 +508,38 @@ final class VehicleBLEManager: NSObject {
             return false
         }
 
-        // 关键：绑定 UUID 只有在“系统已连接”时才直连接管。
-        // 系统未连接时不要 central.connect + UI 连接中（用户会误解成已连蓝牙）。
-        // 先扫到目标广播/系统稍后连上，再连接。
+        // 软绑定：优先直连上次成功鉴权的 peripheral UUID（系统已连则接管；未连则主动 connect）。
+        // 失败/超时仍回退宽扫，不强迫用户手动解绑。
         let systemConnected = central.retrieveConnectedPeripherals(withServices: [authService, controlService])
             .contains { $0.identifier == uuid && $0.state == .connected }
         let peripherals = central.retrievePeripherals(withIdentifiers: [uuid])
         guard let peripheral = peripherals.first else {
-            onLog?("BLE", "bound peripheral not found id=\(binding.shortIdentifier), keep binding, fallback wide scan")
+            onLog?("BLE", "last vehicle uuid not in system cache id=\(binding.shortIdentifier), fallback wide scan")
             return false
         }
 
+        discoveredPeripheral = peripheral
+        currentConnectionSource = .bound
+        peripheral.delegate = self
+        central.stopScan()
+        scanWatchdogWorkItem?.cancel()
+        scanWatchdogWorkItem = nil
+        scanTotalTimeoutWorkItem?.cancel()
+        scanTotalTimeoutWorkItem = nil
+        state = .connecting
+
         if peripheral.state == .connected || systemConnected {
-            discoveredPeripheral = peripheral
-            currentConnectionSource = .bound
             isSystemConnectedSession = true
-            peripheral.delegate = self
-            central.stopScan()
-            scanWatchdogWorkItem?.cancel()
-            scanWatchdogWorkItem = nil
-            scanTotalTimeoutWorkItem?.cancel()
-            scanTotalTimeoutWorkItem = nil
-            state = .connecting
-            onLog?("BLE", "take over system-connected bound peripheral name=\(binding.peripheralName) id=\(binding.shortIdentifier) keyId=\(binding.keyId) macSuffix=\(binding.bleMacSuffix)")
+            onLog?("BLE", "take over last vehicle peripheral name=\(binding.peripheralName) id=\(binding.shortIdentifier) keyId=\(binding.keyId) macSuffix=\(binding.bleMacSuffix)")
             peripheral.discoverServices(nil)
             return true
         }
 
-        onLog?("BLE", "bound peripheral remembered but system not connected id=\(binding.shortIdentifier), fallback wide scan (avoid fake connecting UI)")
-        return false
+        isSystemConnectedSession = false
+        onLog?("BLE", "direct-connect last vehicle peripheral name=\(binding.peripheralName) id=\(binding.shortIdentifier) keyId=\(binding.keyId) macSuffix=\(binding.bleMacSuffix)")
+        scheduleConnectionTimeout(uuid: peripheral.identifier, source: "bound")
+        central.connect(peripheral, options: nil)
+        return true
     }
 
     private func startScanning() {

@@ -373,7 +373,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     /// 记录 App 已下发锁/解锁请求，供随后 HTTP/MQTT 状态回报做来源判定。
     func noteAppDoorLockCommand(_ locked: Bool) {
         expectedAppLockState = locked
-        expectedAppLockStateUntil = Date().addingTimeInterval(25)
+        // 云端锁态常慢于 BLE；解锁后 HTTP 仍可能报已锁十余秒，窗要盖住多轮确认
+        expectedAppLockStateUntil = Date().addingTimeInterval(45)
     }
 
     func sendCommandViaBLE(command: VehicleCommand, completion: @escaping (Result<Void, VehicleBLEManager.BLEControlError>) -> Void) {
@@ -399,6 +400,9 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             bleManager.sendDoorLockCommand(lock: false) { [weak self] result in
                 if case .success = result {
                     let isKeyless = command.source == .keyless
+                    // 本 App 解锁成功：清掉误开的外部锁保护，恢复无感意义
+                    self?.externalLockRequiresExit = false
+                    self?.externalLockExitObserved = false
                     self?.ingestBLEDoorLockLocal(
                         locked: false,
                         source: isKeyless ? "无感解锁回包" : "BLE解锁回包",
@@ -543,13 +547,33 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
 
     /// 网络权威车况确认“未锁→已锁”时，区分 App 自己的命令与外部/物理锁车。
+    ///
+    /// 重要：本 App 刚解锁后，云端 HTTP 常仍短暂回报「已锁」。
+    /// 旧逻辑用「本地未锁 + HTTP 已锁」会误判成外部锁车，导致无感要求「离开再靠近」。
     func observeAuthoritativeLockState(_ locked: Bool?) {
-        guard locked == true, state.locked == false else { return }
+        guard locked == true else { return }
         let now = Date()
-        let expectedByApp = expectedAppLockState == true && (expectedAppLockStateUntil.map { now <= $0 } ?? false)
-        expectedAppLockState = nil
-        expectedAppLockStateUntil = nil
-        guard !expectedByApp else { return }
+        let expectWindowActive = expectedAppLockStateUntil.map { now <= $0 } ?? false
+
+        // 本 App 刚上锁：网络回已锁属预期
+        if expectWindowActive, expectedAppLockState == true {
+            return
+        }
+        // 本 App 刚解锁：HTTP 仍显示已锁 = 云延迟，绝不是外部锁车
+        if expectWindowActive, expectedAppLockState == false {
+            return
+        }
+        // BLE/本机刚写过未锁且保护窗内：同样视为本机操作后的云延迟
+        if let holdUntil = localDoorLockHoldUntil, now < holdUntil, state.locked == false {
+            let src = fieldSource["doorLockStatus"] ?? ""
+            if src.contains("解锁") || src.contains("BLE") || src.hasPrefix("无感") {
+                return
+            }
+        }
+        // 仅当本地也认为未锁时，才可能是「外部把车锁上了」
+        guard state.locked == false else { return }
+        // 已在保护中不重复刷日志
+        if externalLockRequiresExit { return }
 
         externalLockRequiresExit = true
         externalLockExitObserved = false
