@@ -476,6 +476,8 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         // 同步地址（与雷达同一套车坐标/地址，不含新鲜度）
         geofenceCenterAddress = locationDisplayStore.displayAddress
         refreshGeofenceSummary()
+        // 挂载后主动问一次系统圈内外；同时 refresh 已用距离校正兜底
+        locationManager.requestState(for: region)
 
         let distText: String
         if let d = distanceToFenceCenterMeters {
@@ -483,9 +485,10 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
         } else {
             distText = "距圆心--"
         }
+        let zoneText = isInGeofence ? "圈内" : "圈外"
         logInfo(
             "电子围栏已更新",
-            detail: "半径 \(Int(radius)) 米 · \(distText)" + (geofenceCenterAddress.isEmpty ? "" : " · \(geofenceCenterAddress)"),
+            detail: "半径 \(Int(radius)) 米 · \(distText) · \(zoneText)" + (geofenceCenterAddress.isEmpty ? "" : " · \(geofenceCenterAddress)"),
             identity: "geofence-update|\(Int(radius))"
         )
         // 围栏更新已写事件日志，不重复进错误日志
@@ -613,6 +616,41 @@ final class BackgroundExecutionManager: NSObject, ObservableObject, CLLocationMa
             let auth = locationManager.authorizationStatus
             if auth == .authorizedAlways || auth == .authorizedWhenInUse {
                 locationManager.requestLocation()
+            }
+        }
+
+        // 核心修复：CLRegion 回调常滞后/漏报。距圆心已明确在半径内却仍标「圈外」→ 误开「仅围栏内扫描」休眠。
+        // 用直线距离校正 isInGeofence（进出带一点滞回，避免边界抖）。
+        if let d = distanceToFenceCenterMeters {
+            let radius = lastFenceRadius > 0
+                ? lastFenceRadius
+                : KeylessSettings.clampedGeofenceRadius(settings.geofenceRadiusMeters)
+            let enterR = radius
+            let exitR = radius * 1.08 + 8 // 略放宽离开，减少边界来回
+            let wasIn = isInGeofence
+            if !wasIn, d <= enterR {
+                isInGeofence = true
+                logInfo(
+                    "围栏状态",
+                    detail: "距离校正为圈内 · 距圆心约 \(Int(d)) 米 / 半径 \(Int(radius)) 米",
+                    identity: "geofence-distance-inside",
+                    mergeWindow: 30
+                )
+                reevaluate(reason: "distance-inside")
+                reapplyBLEScanPolicy(reason: "distance-inside")
+                if settings.keylessEnabled {
+                    requestBLESession(forceRestart: false, detail: "距离校正进圈")
+                }
+            } else if wasIn, d > exitR {
+                isInGeofence = false
+                logInfo(
+                    "围栏状态",
+                    detail: "距离校正为圈外 · 距圆心约 \(Int(d)) 米 / 半径 \(Int(radius)) 米",
+                    identity: "geofence-distance-outside",
+                    mergeWindow: 30
+                )
+                reevaluate(reason: "distance-outside")
+                reapplyBLEScanPolicy(reason: "distance-outside")
             }
         }
 

@@ -615,8 +615,8 @@ final class VehicleBLEManager: NSObject {
             guard self.config != nil else { return }
             guard self.allowsAutomaticScanRetry else { return }
             guard case .idle = self.state else { return }
-            // 每一轮重试都重新优先绑定车，失败后再宽扫
-            self.hasTriedBoundPeripheral = false
+            // 不再每轮都重置 bound：坏 UUID 会死磕 10s 超时，用户只能「取消绑定」。
+            // 本会话已试过上次车辆 → 直接宽扫；forceRestart/鉴权成功会再打开一次软直连机会。
             self.startConnectionFlow()
         }
         scanRetryWorkItem = work
@@ -1638,8 +1638,9 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
         clearSessionRuntime(cancelPendingControl: true)
         onLog?("BLE", "disconnected source=\(sourceText) | \(error?.localizedDescription ?? "no error")")
         if config != nil, central.state == .poweredOn {
-            // 断开后重新走：有绑定先连绑定设备，再鉴权；失败再宽扫
-            hasTriedBoundPeripheral = false
+            // 断连后：先宽扫（广播更可靠）；forceRestart/鉴权成功仍会刷新 last-vehicle 软直连。
+            // 若每次都先 bound 直连，坏 UUID 会让后台整段卡死，用户只能取消绑定。
+            hasTriedBoundPeripheral = true
             startConnectionFlow()
         } else {
             state = .idle
