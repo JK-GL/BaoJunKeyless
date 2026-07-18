@@ -68,6 +68,17 @@ extension MQTTVehicleStateStore {
             guard let self else { return }
             // 信号丢失 ≠ 离开。无论是否鉴权，都不因空洞直接上锁。
             // 真正离开只能靠连续真实弱 RSSI。
+            // 但若系统层其实已断、本层仍卡在 authenticated：强制 idle，去掉假「已连接」。
+            if self.bleManager.revalidateConnectionOrForceIdle(reason: "rssi-loss-timeout") {
+                self.logVehicleEvent(
+                    .warning,
+                    "BLE信号中断",
+                    detail: "连续 \(Int(timeout))s 无 RSSI · 系统已断开 · 清除假已连接",
+                    identity: "signal-loss-stale",
+                    minimumInterval: 8
+                )
+                return
+            }
             let keepZone = self.hasCompletedBLEAuth || self.hasEnteredVehicleZone || self.bleStatus == .authenticated || self.state.phoneNearby
             self.liveBLERawRSSI = nil
             self.liveBLERSSI = nil

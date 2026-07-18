@@ -24,32 +24,23 @@ extension MQTTVehicleStateStore {
 
     func handleVehicleStatus(_ data: Data) {
         guard keylessSettingsStore.settings.mqttEnabled else { return }
-        let rawFields = decodeMQTTFields(data)
-        guard !rawFields.isEmpty else { return }
+        let fields = decodeMQTTFields(data)
+        guard !fields.isEmpty else { return }
 
         DispatchQueue.main.async { [weak self] in
             guard let self, self.keylessSettingsStore.settings.mqttEnabled else { return }
 
-            // 对齐官方 receiveMQTTCarStatus：先滤噪声半包，再即时更新 UI。
-            // 官方日志：车况通知 →「更新所有状态」；HTTP 轮询只作补齐/收敛。
-            let fields = self.sanitizeMQTTBodyFields(rawFields)
-            guard !fields.isEmpty else { return }
-
             var changes: [String] = []
-            var changedKeys = Set<String>()
             for (key, value) in fields where key != "collectTime" && self.lastMqttFields[key] != value {
                 changes.append("\(key):\(self.lastMqttFields[key] ?? "?")→\(value)")
-                changedKeys.insert(key)
             }
-            // 无变化的心跳包：只刷新在线时间，不刷 UI / 不打 HTTP
-            let collectAt = parseTimestamp(fields["collectTime"]) ?? Date()
             self.lastMqttFields.merge(fields) { _, new in new }
-            self.lastMQTTBodyCollectAt = collectAt
+            self.lastMQTTBodyCollectAt = parseTimestamp(fields["collectTime"]) ?? Date()
             self.lastMQTTUpdate = Date()
             self.mqttStatus = .connected
-            guard !changes.isEmpty else { return }
 
-            // 1) 电源：明确字段即时写（本车型 engineStatus 常空，有则用）
+            // 唯一允许 MQTT 直接更新的车辆状态：明确的 engineStatus/电源字段。
+            // 它是完整单值而非门窗半包；HTTP 本车型不返回时用于真实区分熄火/上电。
             if fields["engineStatus"] != nil
                 || fields["powerStatus"] != nil
                 || fields["vehPowerMode"] != nil
@@ -60,94 +51,39 @@ extension MQTTVehicleStateStore {
                 self.ingestExplicitPowerLocal(power, source: "MQTT电源字段")
             }
 
-            // 2) 空调：即时
+            // 空调开关/设定温度：MQTT 真实字段即时回写。
+            // 同值重复推送不会写 UI；仅真实变化才补 HTTP。
             let climateAc = parseACStatus(fields["acStatus"])
             let climateTemp = parseDouble(fields["accCntTemp"])
+            let climateObservedAt = parseTimestamp(fields["collectTime"]) ?? Date()
             var climateChanged = false
             if climateAc != nil || climateTemp != nil {
                 climateChanged = self.applyAuthoritativeClimateState(
                     acOn: climateAc,
                     temperature: climateTemp,
                     source: "MQTT空调推送",
-                    observedAt: collectAt,
-                    scheduleHTTPConfirm: false
+                    observedAt: climateObservedAt,
+                    scheduleHTTPConfirm: true
                 )
             }
 
-            // 3) 门锁/门/窗/尾门/灯光等车身：官方同路径即时写 UI
-            //    本机 BLE/HTTP 锁保护窗外：MQTT 锁变化也即时（旁观不加 15s hold）
-            let bodyKeys: Set<String> = [
-                "doorLockStatus",
-                "doorOpenStatus", "door1OpenStatus", "door2OpenStatus", "door3OpenStatus", "door4OpenStatus",
-                "door1LockStatus", "door2LockStatus", "door3LockStatus", "door4LockStatus",
-                "tailDoorOpenStatus", "tailDoorLockStatus",
-                "windowStatus", "window1Status", "window2Status", "window3Status", "window4Status",
-                "window1OpenDegree", "window2OpenDegree", "window3OpenDegree", "window4OpenDegree",
-                "window1HalfOpenStatus", "window2HalfOpenStatus", "window3HalfOpenStatus", "window4HalfOpenStatus",
-                "windowHalfOpenStatus",
-                "keyStatus", "autoGearStatus",
-                "lowBeamLight", "dipHeadLight", "leftTurnLight", "rightTurnLight", "positionLight", "frontFogLight",
-                "batterySoc", "leftMileage", "oilLeftMileage", "mileage",
-                "charging", "chargePower", "vecChrgingSts", "vecChrgStsIndOn", "wireConnect",
-                "leftFuel", "voltage", "lowBatVol", "batAvgTemp", "tmActTemp", "invActTemp",
-                "interiorTemperature", "accCntTemp"
-            ]
-            let bodyChanged = !changedKeys.isDisjoint(with: bodyKeys)
-            if bodyChanged {
-                // 门锁：若本包带明确 doorLockStatus，走旁观即时写（不挡后续网络）
-                if let locked = parseLocked(fields["doorLockStatus"]),
-                   changedKeys.contains("doorLockStatus") {
-                    let holdActive = self.localDoorLockHoldUntil.map { Date() < $0 } ?? false
-                    if !holdActive {
-                        self.ingestBLEDoorLockLocal(
-                            locked: locked,
-                            source: "MQTT门锁推送",
-                            suppressOppositeKeyless: false,
-                            protectAgainstNetworkOverride: false
-                        )
-                    }
-                }
-
-                let mappedState = self.mapMQTTToVehicleState(fields)
-                let mappedDash = self.mapMQTTToDashboard(fields)
-                self.mergeRealtimeState(
-                    newState: mappedState,
-                    dashboard: mappedDash,
-                    sourceFields: fields,
-                    collectAt: collectAt,
-                    changedKeys: changedKeys
-                )
-
-                let summary = Array(changes.prefix(8)).joined(separator: ", ")
-                self.vehicleEventLogStore.addCoalesced(
-                    .action,
-                    "MQTT 即时更新",
-                    detail: "对齐官方更新所有状态 · \(summary)",
-                    identity: "mqtt-live|\(summary)",
-                    mergeWindow: 8
-                )
-            } else if climateChanged {
-                let summary = Array(changes.prefix(6)).joined(separator: ", ")
-                self.vehicleEventLogStore.addCoalesced(
-                    .action,
-                    "MQTT 即时更新",
-                    detail: "空调 · \(summary)",
-                    identity: "mqtt-climate|\(summary)",
-                    mergeWindow: 8
-                )
-            } else {
-                let summary = Array(changes.prefix(6)).joined(separator: ", ")
-                self.vehicleEventLogStore.addCoalesced(
-                    .action,
-                    "MQTT 状态提示",
-                    detail: summary,
-                    identity: "mqtt-hint|\(summary)",
-                    mergeWindow: 30
-                )
+            // 门锁/门窗等半包：不直接写 UI（v743 稳策略，避免官方操作半包连闪）。
+            // 只提示变化并唤醒 HTTP 完整快照作权威收敛。
+            let nonClimateChanges = changes.filter {
+                !$0.hasPrefix("acStatus:") && !$0.hasPrefix("accCntTemp:")
             }
-
-            // 4) 仍触发 HTTP 补齐（电量/位置等）与最终权威收敛；不替代上面的即时 UI
-            self.scheduleHTTPRefreshFromRealtime(reason: "mqtt-status")
+            guard !nonClimateChanges.isEmpty else { return }
+            let summary = Array(nonClimateChanges.prefix(8)).joined(separator: ", ")
+            self.vehicleEventLogStore.addCoalesced(
+                .action,
+                "MQTT 状态提示",
+                detail: "检测到增量变化 · \(summary) · 正在触发 HTTP 确认",
+                identity: "mqtt-hint|\(summary)",
+                mergeWindow: 60
+            )
+            if !climateChanged || !nonClimateChanges.isEmpty {
+                self.scheduleHTTPRefreshFromRealtime(reason: "mqtt-status")
+            }
         }
     }
 
@@ -294,18 +230,8 @@ extension MQTTVehicleStateStore {
     }
 
     private func decodeMQTTFields(_ data: Data) -> [String: String] {
-        // 官方 App 日志里 receiveMQTTCarStatus 是完整 JSON（约 80+ 字段）并「更新所有状态」。
-        // 线上可能是 Protobuf 或 JSON：两边都解，取字段更全的一份，避免 PB 半图挡住完整 JSON。
-        let protobufFields = decodeProtobufMQTTFields(data)
-        let jsonFields = decodeJSONMQTTFields(data)
-        if jsonFields.count > protobufFields.count { return jsonFields }
-        if !protobufFields.isEmpty { return protobufFields }
-        return jsonFields
-    }
-
-    private func decodeProtobufMQTTFields(_ data: Data) -> [String: String] {
+        // 1) Protobuf（主格式）
         let decoded = ProtobufDecoder.decode(data)
-        // 与历史逆向一致的车身核心字段；其余字段走 JSON 路径或 HTTP 补齐
         let nameMap: [Int: String] = [
             1: "collectTime", 2: "acStatus", 3: "doorLockStatus",
             4: "door1LockStatus", 5: "door2LockStatus", 6: "door3LockStatus", 7: "door4LockStatus", 8: "tailDoorLockStatus",
@@ -322,28 +248,28 @@ extension MQTTVehicleStateStore {
             case .lengthDelimited:
                 if let val = ProtobufDecoder.string(field) { result[name] = val }
             case .fixed64, .fixed32:
+                // 当前已验证的车辆状态字段均为 varint 或 string；固定宽度字段仅跳过。
                 continue
             }
         }
-        return result
-    }
+        if !result.isEmpty { return result }
 
-    private func decodeJSONMQTTFields(_ data: Data) -> [String: String] {
-        var result: [String: String] = [:]
-        guard let json = try? JSONSerialization.jsonObject(with: data) else { return result }
-        guard let dict = json as? [String: Any] else { return result }
-        let source = (dict["data"] as? [String: Any]) ?? (dict["carStatus"] as? [String: Any]) ?? dict
-        for (k, v) in source {
-            switch v {
-            case let s as String:
-                // 官方空串表示“本字段无值”，保留空串不利于半包判断；仅非空入库
-                if !s.isEmpty { result[k] = s }
-            case let n as NSNumber:
-                result[k] = n.stringValue
-            case let b as Bool:
-                result[k] = b ? "1" : "0"
-            default:
-                continue
+        // 2) JSON 兜底（部分网关/日志链路会推 JSON）
+        if let json = try? JSONSerialization.jsonObject(with: data) {
+            if let dict = json as? [String: Any] {
+                let source = (dict["data"] as? [String: Any]) ?? (dict["carStatus"] as? [String: Any]) ?? dict
+                for (k, v) in source {
+                    switch v {
+                    case let s as String:
+                        if !s.isEmpty { result[k] = s }
+                    case let n as NSNumber:
+                        result[k] = n.stringValue
+                    case let b as Bool:
+                        result[k] = b ? "1" : "0"
+                    default:
+                        continue
+                    }
+                }
             }
         }
         return result

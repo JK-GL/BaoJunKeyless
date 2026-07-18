@@ -416,6 +416,34 @@ final class VehicleBLEManager: NSObject {
         }
     }
 
+    /// 会话假活检测：UI/无感以为已鉴权，但系统 peripheral 已断或丢失时强制 idle。
+    /// 由 RSSI 丢失超时等上层调用，避免「无 dBm 仍显示已连接」。
+    func revalidateConnectionOrForceIdle(reason: String) -> Bool {
+        switch state {
+        case .connected, .authenticating, .authenticated:
+            break
+        default:
+            return false
+        }
+        let peripheral = discoveredPeripheral
+        let systemAlive: Bool = {
+            guard let peripheral else { return false }
+            if peripheral.state == .connected { return true }
+            // 再问系统：上次 UUID 是否仍 connected
+            let still = central.retrievePeripherals(withIdentifiers: [peripheral.identifier]).first
+            return still?.state == .connected
+        }()
+        if systemAlive { return false }
+        onLog?("BLE", "force idle stale session reason=\(reason) state=\(state) peripheral=\(peripheral?.identifier.uuidString.prefix(8) ?? "nil")")
+        completePendingControl(.failure(.sessionStopped))
+        clearSessionRuntime(cancelPendingControl: true)
+        state = .idle
+        if config != nil, central.state == .poweredOn {
+            startConnectionFlow()
+        }
+        return true
+    }
+
     private func handleCentralState() {
         switch central.state {
         case .poweredOn:
@@ -1716,12 +1744,14 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
         }
         completePendingControl(.failure(.sessionStopped))
         clearSessionRuntime(cancelPendingControl: true)
+        // 关键：先落 idle，清掉 authenticated。
+        // 旧逻辑断连后不改 state 就 startConnectionFlow，authenticated 守卫直接 return，
+        // UI 永久「已连接/已鉴权」且 RSSI 循环已停 → 无阈值、假已连接。
+        state = .idle
         onLog?("BLE", "disconnected source=\(sourceText) | \(error?.localizedDescription ?? "no error")")
         if config != nil, central.state == .poweredOn {
-            // 断连后直接宽扫匹配钥匙 MAC（无绑定路径）
+            // 断连后重新走：系统已连接管 / 软直连 / 宽扫
             startConnectionFlow()
-        } else {
-            state = .idle
         }
     }
 }
