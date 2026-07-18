@@ -27,7 +27,7 @@ struct VehicleControlMQTTResult: Equatable, Identifiable {
 // MARK: - MQTT + HTTP 车辆状态 Store
 // 状态通道：
 // - HTTP：完整车况权威快照（电量/续航/位置/档位/温度/门窗等），前台轮询收敛
-// - MQTT：实时增量提示，并触发 HTTP 补齐；半包不覆盖 HTTP 权威门窗
+// - MQTT：对齐官方即时更新门/窗/锁/空调/电源；半包噪声过滤后写 UI，并触发 HTTP 补齐收敛
 // - BLE：锁/解/上电等近场控制与本地短回写，最终仍由新一代 HTTP 确认
 // - 无感：RSSI 边沿 + KeylessDecisionEngine 评估后走 BLE/HTTP 执行链路
 // - 控制路由：VehicleCommandExecutor（BLE 优先可用时走 BLE，否则/其余命令走 HTTP）

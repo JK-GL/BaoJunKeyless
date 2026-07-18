@@ -33,7 +33,8 @@ extension MQTTVehicleStateStore {
     }
 
     /// 水管2：MQTT `/vehicle/app/status` 原始 payload。
-    /// - 语义同 `handleVehicleStatus`（半包不盖门窗；电源/空调可即时；其余 schedule HTTP）。
+    /// - 对齐官方 receiveMQTTCarStatus「更新所有状态」：
+    ///   门锁/门窗/尾门/空调/电源等即时写 UI；半包噪声仍 sanitize；HTTP 仅补齐收敛。
     func ingestMQTTStatusPayload(_ data: Data) {
         handleVehicleStatus(data)
     }
