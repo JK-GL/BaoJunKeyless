@@ -25,11 +25,18 @@ extension MQTTVehicleStateStore {
         externalLockExitObserved = false
         expectedAppLockState = nil
         expectedAppLockStateUntil = nil
+        // 关闭/重置无感后，所有在途 MQTT timeout、HTTP 多轮确认和补锁回调必须失效。
+        // 不回滚已收到的真实 BLE 本地车锁回写；只停止后续无感确认、通知与自动补锁。
+        keylessHTTPConfirmToken &+= 1
+        pendingKeylessConfirmation = nil
+        keylessSuccessNotifiedToken = 0
+        keylessFailureNotifiedToken = 0
         resetBLEDiagnosticCycle()
         resetNearbyBLEDevices()
         bleSignalLossWorkItem?.cancel()
         bleSignalLossWorkItem = nil
         isExecutingKeylessCommand = false
+        refreshKeylessDecisionDisplaySnapshot()
     }
 
     func applyLiveBLEOverlay(to baseState: VehicleState) -> VehicleState {
@@ -386,6 +393,9 @@ extension MQTTVehicleStateStore {
             phoneFarAwaySince = nil
         }
 
+        // 延迟起点属于无感状态机而非 VehicleState；单独同步轻量展示域，保证卡片倒计时即时。
+        refreshKeylessDecisionDisplaySnapshot()
+
         let decisionContext = KeylessDecisionEngine.Context(
             bleAuthenticated: hasCompletedBLEAuth,
             freshnessMaxAge: 90
@@ -614,6 +624,11 @@ extension MQTTVehicleStateStore {
         VehicleCommandExecutor.executeAsync(command, transport: transport, refresher: self) { [weak self] result in
             guard let self else { return }
             DispatchQueue.main.async {
+                // 用户已关闭无感时，丢弃在途 BLE completion；不能重新建立确认、通知或补锁链。
+                guard self.keylessSettingsStore.settings.keylessEnabled else {
+                    self.isExecutingKeylessCommand = false
+                    return
+                }
                 self.isExecutingKeylessCommand = false
                 let category: VehicleEventLogCategory
                 switch result.state {

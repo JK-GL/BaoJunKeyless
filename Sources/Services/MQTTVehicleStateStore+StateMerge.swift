@@ -309,13 +309,13 @@ extension MQTTVehicleStateStore {
         sourceFields: [String: String] = [:],
         collectAt: Date? = nil,
         changedKeys: Set<String> = []
-    ) {
+    ) -> Bool {
         let at = collectAt ?? parseTimestamp(sourceFields["collectTime"]) ?? Date()
         let now = Date()
 
         // 若 MQTT collectTime 明显旧于当前模型，丢弃（防止旧半包回放）
         if let current = bodyCollectTime, at + 0.5 < current {
-            return
+            return false
         }
 
         if sourceFields["doorLockStatus"] != nil {
@@ -343,10 +343,10 @@ extension MQTTVehicleStateStore {
             fieldSource[key] = "MQTT"
         }
 
-        bumpStatusRevision()
-        apply(merged)
-        applyDashboard(dash)
+        // MQTT state + dashboard 同一包合并为一次 UI 发布，避免实时包导致双重重绘。
+        _ = applyVehicleSnapshot(state: merged, dashboard: dash, bumpIfChanged: true)
         evaluateKeylessAutomation(for: merged)
+        return true
     }
 
     private func syncBooleans(from dash: VehicleDashboardState, into merged: inout VehicleState) {

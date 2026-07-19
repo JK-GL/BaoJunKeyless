@@ -187,6 +187,12 @@ extension MQTTVehicleStateStore {
                 self.logVehicleEvent(.action, "BLE 鉴权成功", detail: "可发送控车命令", identity: "authenticated", minimumInterval: 3)
                 self.connectionStatusStore.isSystemBLEConnected = true
                 self.bleStatus = .authenticated
+                self.keylessDecisionDisplayStore.ingest(
+                    state: self.state,
+                    hasCompletedBLEAuth: true,
+                    phoneNearbySince: self.phoneNearbySince,
+                    phoneFarAwaySince: self.phoneFarAwaySince
+                )
                 // C-lite：鉴权成功立刻拉一次 HTTP 权威（近车快照）；schedule 再防抖补一刀
                 self.pollHTTPOnce(userInitiated: false, completion: nil)
                 self.scheduleHTTPRefreshFromRealtime(reason: "ble-authenticated")
@@ -208,6 +214,8 @@ extension MQTTVehicleStateStore {
                 self.bleStatus = .error
                 self.applyLiveBLERSSI(nil)
             }
+            // BLE phase/auth 可能变化而车况不变；轻量域仅字段变化时发布。
+            self.refreshKeylessDecisionDisplaySnapshot()
         }
         bleManager.onLog = { [weak self] component, message in
             guard let self else { return }

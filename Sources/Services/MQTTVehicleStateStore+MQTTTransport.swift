@@ -41,20 +41,22 @@ extension MQTTVehicleStateStore {
             }
             let changedSet = Set(changedKeys)
 
-            self.lastMqttFields.merge(fields) { _, new in new }
-            self.lastMQTTBodyCollectAt = collectAt
+            // 收包时间只反映 MQTT 链路活性；车身字段基线、车身时间和控制确认必须等 merge 接受后再推进。
             self.lastMQTTUpdate = Date()
             self.mqttStatus = .connected
 
             let mqttState = VehicleStatusMapper.mqttState(from: fields, base: self.state)
             let mqttDashboard = VehicleStatusMapper.mqttDashboard(from: fields, base: self.dashboard)
-            self.mergeRealtimeState(
+            let accepted = self.mergeRealtimeState(
                 newState: mqttState,
                 dashboard: mqttDashboard,
                 sourceFields: fields,
                 collectAt: collectAt,
                 changedKeys: changedSet
             )
+            // 旧 collectTime 包不得污染差异基线、确认当前命令或唤醒 HTTP。
+            guard accepted else { return }
+            self.lastMqttFields.merge(fields) { _, new in new }
             // MQTT app/status 已即时写 UI；同一包若命中本次 HTTP 控制期望态，立刻确认。
             self.confirmPendingControlStateIfMatched(
                 fields: fields,

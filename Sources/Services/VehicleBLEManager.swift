@@ -431,6 +431,35 @@ final class VehicleBLEManager: NSObject {
         }
     }
 
+    /// 当前 BLE 会话只允许 tracked peripheral 改写共享特征、鉴权和 RSSI 状态。
+    /// stop/reconnect 后 CoreBluetooth 仍可能投递旧外设的迟到 delegate 回调；必须在入口统一丢弃。
+    private func isCurrentSessionPeripheral(_ peripheral: CBPeripheral, callback: String) -> Bool {
+        guard discoveredPeripheral?.identifier == peripheral.identifier else {
+            onLog?("BLE", "stale \(callback) ignored id=\(peripheral.identifier.uuidString.prefix(8)) current=\(discoveredPeripheral?.identifier.uuidString.prefix(8) ?? "nil")")
+            return false
+        }
+        return true
+    }
+
+    /// 当前会话的 GATT/notify/write 失败必须回到可扫描状态。
+    /// 只恢复当前 tracked peripheral；旧会话回调不能清掉或重启新会话。
+    private func recoverCurrentSessionAfterGATTFailure(
+        _ peripheral: CBPeripheral,
+        callback: String,
+        detail: String,
+        controlFailure: BLEControlError = .sessionStopped
+    ) {
+        guard isCurrentSessionPeripheral(peripheral, callback: callback) else { return }
+        onLog?("BLE", "\(callback) failed current session | \(detail) | disconnect and resume strict scan")
+        completePendingControl(.failure(controlFailure))
+        central.cancelPeripheralConnection(peripheral)
+        clearSessionRuntime(cancelPendingControl: true)
+        state = .idle
+        guard config != nil, central.state == .poweredOn else { return }
+        // 不重新走 SoftLast 直连，避免服务/GATT 异常时反复连接同一坏会话；直接回精确 MAC 扫描。
+        startScanning()
+    }
+
     /// 会话假活检测：UI/无感以为已鉴权，但系统 peripheral 已断或丢失时强制 idle。
     /// 由 RSSI 丢失超时等上层调用，避免「无 dBm 仍显示已连接」。
     func revalidateConnectionOrForceIdle(reason: String) -> Bool {
@@ -1815,6 +1844,7 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        guard isCurrentSessionPeripheral(peripheral, callback: "didConnect") else { return }
         // 链路已建立（无论是否原先系统已连）
         isSystemConnectedSession = true
         connectionTimeoutWorkItem?.cancel()
@@ -1862,9 +1892,13 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
 
 extension VehicleBLEManager: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        guard isCurrentSessionPeripheral(peripheral, callback: "didDiscoverServices") else { return }
         if let error {
-            state = .error(error.localizedDescription)
-            onLog?("BLE", "discover services failed | \(error.localizedDescription)")
+            recoverCurrentSessionAfterGATTFailure(
+                peripheral,
+                callback: "didDiscoverServices",
+                detail: error.localizedDescription
+            )
             return
         }
         var hasAuthService = false
@@ -1881,15 +1915,22 @@ extension VehicleBLEManager: CBPeripheralDelegate {
             }
         }
         if !hasAuthService || !hasControlService {
-            onLog?("BLE", "target services incomplete on \(peripheral.name ?? "--") auth=\(hasAuthService ? 1 : 0) control=\(hasControlService ? 1 : 0), disconnect and continue scanning")
-            central.cancelPeripheralConnection(peripheral)
+            recoverCurrentSessionAfterGATTFailure(
+                peripheral,
+                callback: "didDiscoverServices-incomplete",
+                detail: "auth=\(hasAuthService ? 1 : 0) control=\(hasControlService ? 1 : 0)"
+            )
         }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        guard isCurrentSessionPeripheral(peripheral, callback: "didDiscoverCharacteristics") else { return }
         if let error {
-            state = .error(error.localizedDescription)
-            onLog?("BLE", "discover characteristics failed | \(error.localizedDescription)")
+            recoverCurrentSessionAfterGATTFailure(
+                peripheral,
+                callback: "didDiscoverCharacteristics",
+                detail: "service=\(service.uuid.uuidString) | \(error.localizedDescription)"
+            )
             return
         }
         service.characteristics?.forEach { characteristic in
@@ -1914,9 +1955,13 @@ extension VehicleBLEManager: CBPeripheralDelegate {
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+        guard isCurrentSessionPeripheral(peripheral, callback: "didUpdateNotificationState") else { return }
         if let error {
-            state = .error(error.localizedDescription)
-            onLog?("BLE", "set notify failed | \(error.localizedDescription)")
+            recoverCurrentSessionAfterGATTFailure(
+                peripheral,
+                callback: "didUpdateNotificationState",
+                detail: "characteristic=\(characteristic.uuid.uuidString) | \(error.localizedDescription)"
+            )
             return
         }
         if characteristic.uuid == authNotify, characteristic.isNotifying {
@@ -1929,6 +1974,7 @@ extension VehicleBLEManager: CBPeripheralDelegate {
     }
 
     func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
+        guard isCurrentSessionPeripheral(peripheral, callback: "didReadRSSI") else { return }
         if let error {
             onLog?("BLE", "read RSSI failed | \(error.localizedDescription)")
             scheduleRSSIRead(after: 1.0)
@@ -1945,14 +1991,15 @@ extension VehicleBLEManager: CBPeripheralDelegate {
     }
 
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+        guard isCurrentSessionPeripheral(peripheral, callback: "didWriteValue") else { return }
         if let error {
             let controlError = BLEControlError.writeFailed(error.localizedDescription)
-            lastControlError = controlError
-            state = .error(error.localizedDescription)
-            onLog?("BLE", "write value failed uuid=\(characteristic.uuid.uuidString) | \(error.localizedDescription)")
-            if characteristic.uuid == controlWrite {
-                completePendingControl(.failure(controlError))
-            }
+            recoverCurrentSessionAfterGATTFailure(
+                peripheral,
+                callback: "didWriteValue",
+                detail: "characteristic=\(characteristic.uuid.uuidString) | \(error.localizedDescription)",
+                controlFailure: controlError
+            )
             return
         }
         if characteristic.uuid == controlWrite {
@@ -1963,9 +2010,13 @@ extension VehicleBLEManager: CBPeripheralDelegate {
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        guard isCurrentSessionPeripheral(peripheral, callback: "didUpdateValue") else { return }
         if let error {
-            state = .error(error.localizedDescription)
-            onLog?("BLE", "notify update failed | \(error.localizedDescription)")
+            recoverCurrentSessionAfterGATTFailure(
+                peripheral,
+                callback: "didUpdateValue",
+                detail: "characteristic=\(characteristic.uuid.uuidString) | \(error.localizedDescription)"
+            )
             return
         }
         let data = characteristic.value ?? Data()

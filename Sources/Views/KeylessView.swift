@@ -96,10 +96,18 @@ private struct KeylessRealtimeStatusHost: View {
     @ObservedObject private var diagnostics = BLEDiagnosticsStore.shared
     @ObservedObject private var connectionStatusStore = VehicleConnectionStatusStore.shared
     @ObservedObject private var backgroundExecution = BackgroundExecutionManager.shared
+    @ObservedObject private var decisionDisplayStore = KeylessDecisionDisplayStore.shared
 
-    @State private var decisionSnapshot = KeylessDecisionSnapshot.placeholder
-    @State private var phoneNearbySince: Date?
-    @State private var phoneFarAwaySince: Date?
+    private var decisionSnapshot: KeylessDecisionDisplaySnapshot {
+        decisionDisplayStore.snapshot
+    }
+    private var phoneNearbySince: Date? {
+        decisionSnapshot.phoneNearbySince
+    }
+    private var phoneFarAwaySince: Date? {
+        decisionSnapshot.phoneFarAwaySince
+    }
+    @State private var displayClock = Date()
     /// 上次鉴权成功的 BLE（软缓存展示，不是可取消绑定）
     @State private var lastVehicleSummary: String = "尚未连接过"
 
@@ -155,7 +163,7 @@ private struct KeylessRealtimeStatusHost: View {
         guard let farSince = phoneFarAwaySince else { return "--" }
         let delay = max(settingsStore.settings.lockDelay, 0)
         guard delay > 0 else { return "0s" }
-        let elapsed = Date().timeIntervalSince(farSince)
+        let elapsed = displayClock.timeIntervalSince(farSince)
         let remaining = max(0, Int(ceil(delay - elapsed)))
         return "\(remaining)s"
     }
@@ -281,33 +289,27 @@ private struct KeylessRealtimeStatusHost: View {
 
             }
         .onAppear {
-            refreshDecisionInputs()
+            refreshLastVehicleSummary()
         }
         .onChange(of: diagnostics.debugLastSeenText) { _ in
-            refreshDecisionInputs()
+            refreshLastVehicleSummary()
         }
         .onChange(of: diagnostics.debugLastTransitionText) { _ in
-            refreshDecisionInputs()
+            refreshLastVehicleSummary()
         }
         .onChange(of: connectionStatusStore.bleStatus) { _ in
-            refreshDecisionInputs()
+            refreshLastVehicleSummary()
         }
-        .onReceive(Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()) { _ in
+        .onReceive(Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()) { now in
+            // 仅展示倒计时活跃时刷新本卡；不读取/不发布主车辆状态。
             if phoneNearbySince != nil || phoneFarAwaySince != nil {
-                refreshDecisionInputs()
+                displayClock = now
             }
         }
     }
 
-    private func refreshDecisionInputs() {
+    private func refreshLastVehicleSummary() {
         guard let mqtt = VehicleStateStoreBridge.current as? MQTTVehicleStateStore else { return }
-        decisionSnapshot = KeylessDecisionSnapshot(from: mqtt)
-        phoneNearbySince = mqtt.phoneNearbySince
-        phoneFarAwaySince = mqtt.phoneFarAwaySince
-        refreshLastVehicleSummary(from: mqtt)
-    }
-
-    private func refreshLastVehicleSummary(from mqtt: MQTTVehicleStateStore) {
         let info = mqtt.latestBleKeyInfo
         let mac = info["bleMac"] ?? info["macAddress"] ?? ""
         let keyId = info["keyId"] ?? ""
@@ -336,121 +338,6 @@ private struct KeylessRealtimeStatusHost: View {
         case .wait:
             return AppTheme.orange
         }
-    }
-}
-
-/// 无感判定所需的最小车况快照，避免实时状态卡绑定整块 VehicleStateStore
-private struct KeylessDecisionSnapshot: Equatable {
-    var timestamp: Date
-    var online: Bool
-    var locked: Bool?
-    var doorsClosed: Bool?
-    var driverDoorOpen: Bool?
-    var trunkOpen: Bool?
-    var windowsClosed: Bool?
-    var acOn: Bool?
-    var acTemperature: Double?
-    var gear: VehicleGear
-    var power: VehiclePowerState
-    var speed: Double?
-    var physicalKeyPosition: PhysicalKeyPosition
-    var bleRssi: Int?
-    var phoneNearby: Bool
-    var hasCompletedBLEAuth: Bool
-
-    static let placeholder = KeylessDecisionSnapshot(
-        timestamp: .distantPast,
-        online: false,
-        locked: nil,
-        doorsClosed: nil,
-        driverDoorOpen: nil,
-        trunkOpen: nil,
-        windowsClosed: nil,
-        acOn: nil,
-        acTemperature: nil,
-        gear: .unknown,
-        power: .unknown,
-        speed: nil,
-        physicalKeyPosition: .unknown,
-        bleRssi: nil,
-        phoneNearby: false,
-        hasCompletedBLEAuth: false
-    )
-
-    init(
-        timestamp: Date,
-        online: Bool,
-        locked: Bool?,
-        doorsClosed: Bool?,
-        driverDoorOpen: Bool?,
-        trunkOpen: Bool?,
-        windowsClosed: Bool?,
-        acOn: Bool?,
-        acTemperature: Double?,
-        gear: VehicleGear,
-        power: VehiclePowerState,
-        speed: Double?,
-        physicalKeyPosition: PhysicalKeyPosition,
-        bleRssi: Int?,
-        phoneNearby: Bool,
-        hasCompletedBLEAuth: Bool
-    ) {
-        self.timestamp = timestamp
-        self.online = online
-        self.locked = locked
-        self.doorsClosed = doorsClosed
-        self.driverDoorOpen = driverDoorOpen
-        self.trunkOpen = trunkOpen
-        self.windowsClosed = windowsClosed
-        self.acOn = acOn
-        self.acTemperature = acTemperature
-        self.gear = gear
-        self.power = power
-        self.speed = speed
-        self.physicalKeyPosition = physicalKeyPosition
-        self.bleRssi = bleRssi
-        self.phoneNearby = phoneNearby
-        self.hasCompletedBLEAuth = hasCompletedBLEAuth
-    }
-
-    init(from store: MQTTVehicleStateStore) {
-        let state = store.state
-        self.timestamp = state.timestamp
-        self.online = state.online
-        self.locked = state.locked
-        self.doorsClosed = state.doorsClosed
-        self.driverDoorOpen = state.driverDoorOpen
-        self.trunkOpen = state.trunkOpen
-        self.windowsClosed = state.windowsClosed
-        self.acOn = state.acOn
-        self.acTemperature = state.acTemperature
-        self.gear = state.gear
-        self.power = state.power
-        self.speed = state.speed
-        self.physicalKeyPosition = state.physicalKeyPosition
-        self.bleRssi = state.bleRssi
-        self.phoneNearby = state.phoneNearby
-        self.hasCompletedBLEAuth = store.hasCompletedBLEAuth
-    }
-
-    var asVehicleState: VehicleState {
-        VehicleState(
-            timestamp: timestamp,
-            online: online,
-            locked: locked,
-            doorsClosed: doorsClosed,
-            driverDoorOpen: driverDoorOpen,
-            trunkOpen: trunkOpen,
-            windowsClosed: windowsClosed,
-            acOn: acOn,
-            acTemperature: acTemperature,
-            gear: gear,
-            power: power,
-            speed: speed,
-            physicalKeyPosition: physicalKeyPosition,
-            bleRssi: bleRssi,
-            phoneNearby: phoneNearby
-        )
     }
 }
 

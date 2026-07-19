@@ -357,6 +357,7 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     }
     var ignoreNextBLEIdleCallback = false
     let bleDiagnosticsStore = BLEDiagnosticsStore.shared
+    let keylessDecisionDisplayStore = KeylessDecisionDisplayStore.shared
     let nearbyBLEDevicesStore = NearbyBLEDevicesStore()
     var cancellables = Set<AnyCancellable>()
 
@@ -398,7 +399,18 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             NotificationCenter.default.removeObserver(backgroundObserver)
         }
     }
+    func refreshKeylessDecisionDisplaySnapshot() {
+        keylessDecisionDisplayStore.ingest(
+            state: state,
+            hasCompletedBLEAuth: hasCompletedBLEAuth,
+            phoneNearbySince: phoneNearbySince,
+            phoneFarAwaySince: phoneFarAwaySince
+        )
+    }
 
+    override func didApplyVehicleState(_ state: VehicleState) {
+        refreshKeylessDecisionDisplaySnapshot()
+    }
 
     var canUseBLEForVehicleControl: Bool {
         bleManager.canSendVehicleControl

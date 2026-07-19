@@ -80,6 +80,10 @@ class VehicleStateStore: ObservableObject, VehicleStateReader {
         }
     }
 
+    /// 子类可监听已落地的 VehicleState；用于拆分只消费少数字段的轻量展示域。
+    /// 回调发生在主状态写入后，不额外触发主 Store 的 objectWillChange。
+    func didApplyVehicleState(_ state: VehicleState) {}
+
     /// 全车状态统一入口：只有内容真变了才刷新 UI。
     @discardableResult
     func apply(_ newState: VehicleState) -> Bool {
@@ -102,6 +106,7 @@ class VehicleStateStore: ObservableObject, VehicleStateReader {
 
         publishIfNeeded()
         _state = incoming
+        didApplyVehicleState(incoming)
         if energyRelevantChanged {
             recomputeEnergyType(publish: false)
         }
