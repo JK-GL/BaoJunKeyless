@@ -24,24 +24,10 @@ struct KeylessDecisionDisplaySnapshot: Equatable {
     var hasCompletedBLEAuth: Bool
 
     static let placeholder = KeylessDecisionDisplaySnapshot(
-        timestamp: .distantPast,
-        online: false,
-        locked: nil,
-        doorsClosed: nil,
-        driverDoorOpen: nil,
-        trunkOpen: nil,
-        windowsClosed: nil,
-        acOn: nil,
-        acTemperature: nil,
-        gear: .unknown,
-        power: .unknown,
-        speed: nil,
-        physicalKeyPosition: .unknown,
-        bleRssi: nil,
-        phoneNearby: false,
+        state: .placeholder,
+        hasCompletedBLEAuth: false,
         phoneNearbySince: nil,
-        phoneFarAwaySince: nil,
-        hasCompletedBLEAuth: false
+        phoneFarAwaySince: nil
     )
 
     init(
