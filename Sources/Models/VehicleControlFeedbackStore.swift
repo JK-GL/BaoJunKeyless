@@ -4,6 +4,8 @@ import Combine
 enum VehicleControlStateConfirmationSource: String, Equatable {
     case mqttStatus = "MQTT车况"
     case httpStatus = "HTTP车况"
+    /// 已确认离线时，BLE 控制回包是唯一可用的现场确认。
+    case ble = "蓝牙"
     case timeout = "状态未确认"
 
     var title: String { rawValue }

@@ -334,6 +334,8 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         let action: KeylessAction
         let startedAt: Date
         let generationBefore: UInt64
+        /// BLE 发令前已经确认离线；ACK 可作为唯一现场确认。
+        let allowBLEOfflineConfirmation: Bool
         let preferMQTT: Bool
         var allowRelock: Bool
     }

@@ -592,10 +592,16 @@ extension MQTTVehicleStateStore {
             keylessUnlockApproachEdgeArmed = false
             vehicleEventLogStore.add(.keyless, "接近边沿已消费", detail: "\(action.title) · BLE 已就绪，仅本次重新靠近允许执行")
         }
+        // 必须在 BLE 本地秒变前记录：成功回包会把本地 state 置在线，不能再用那时判断网络。
+        let wasOfflineAtCommand = !state.online
         isExecutingKeylessCommand = true
         lastAutoCommandAt = Date()
         lastAutoCommandKind = command.kind
-        vehicleEventLogStore.add(.keyless, "无感命令发送", detail: "\(command.title) | \(reason)")
+        vehicleEventLogStore.add(
+            .keyless,
+            "无感命令发送",
+            detail: "\(command.title) | \(reason)\(wasOfflineAtCommand ? " · 发令前离线" : "")"
+        )
 
         let transport: VehicleCommandAsyncTransport
         switch action {
@@ -628,9 +634,9 @@ extension MQTTVehicleStateStore {
                 }
                 self.vehicleEventLogStore.add(category, "无感命令结果", detail: detail)
                 if action == .lock {
-                    self.confirmKeylessLockViaHTTP(after: result)
+                    self.confirmKeylessLockViaHTTP(after: result, wasOfflineAtCommand: wasOfflineAtCommand)
                 } else if action == .unlock {
-                    self.confirmKeylessUnlockViaHTTP(after: result)
+                    self.confirmKeylessUnlockViaHTTP(after: result, wasOfflineAtCommand: wasOfflineAtCommand)
                 } else {
                     self.postKeylessNotificationIfNeeded(for: action, result: result)
                 }
@@ -863,13 +869,13 @@ extension MQTTVehicleStateStore {
     }
 
     /// 无感解锁确认：BLE ACK 只秒变本地 UI；成功通知等 MQTT status 或 HTTP 目标态。
-    func confirmKeylessUnlockViaHTTP(after result: VehicleCommandExecutionResult) {
-        beginKeylessConfirmation(action: .unlock, result: result)
+    func confirmKeylessUnlockViaHTTP(after result: VehicleCommandExecutionResult, wasOfflineAtCommand: Bool) {
+        beginKeylessConfirmation(action: .unlock, result: result, wasOfflineAtCommand: wasOfflineAtCommand)
     }
 
     /// 无感上锁确认：BLE ACK 只秒变本地 UI；成功通知等 MQTT status 或 HTTP 目标态。
-    func confirmKeylessLockViaHTTP(after result: VehicleCommandExecutionResult) {
-        beginKeylessConfirmation(action: .lock, result: result)
+    func confirmKeylessLockViaHTTP(after result: VehicleCommandExecutionResult, wasOfflineAtCommand: Bool) {
+        beginKeylessConfirmation(action: .lock, result: result, wasOfflineAtCommand: wasOfflineAtCommand)
     }
 
     /// MQTT app/status 写 UI 后调用：开 MQTT 时命中目标态立刻成功通知。
@@ -902,7 +908,8 @@ extension MQTTVehicleStateStore {
     ) {
         guard let pending = pendingKeylessConfirmation,
               pending.token == keylessHTTPConfirmToken else { return }
-        guard !mqttBodyFresher else { return }
+        // 用户策略：MQTT 开只以 MQTT status 成功确认；关闭 MQTT 才允许 HTTP 成功确认。
+        guard !pending.preferMQTT, !mqttBodyFresher else { return }
         guard observedAt >= pending.startedAt.addingTimeInterval(-2) else { return }
         // 必须是发令后的新 HTTP 代际，避免旧缓存秒确认。
         guard lastHTTPRawGeneration > pending.generationBefore else { return }
@@ -924,7 +931,11 @@ extension MQTTVehicleStateStore {
         }
     }
 
-    private func beginKeylessConfirmation(action: KeylessAction, result: VehicleCommandExecutionResult) {
+    private func beginKeylessConfirmation(
+        action: KeylessAction,
+        result: VehicleCommandExecutionResult,
+        wasOfflineAtCommand: Bool
+    ) {
         switch result.state {
         case .sent, .completed:
             keylessHTTPConfirmToken &+= 1
@@ -937,10 +948,21 @@ extension MQTTVehicleStateStore {
                 action: action,
                 startedAt: Date(),
                 generationBefore: lastHTTPRawGeneration,
+                allowBLEOfflineConfirmation: wasOfflineAtCommand,
                 preferMQTT: preferMQTT,
                 allowRelock: action == .lock
             )
             pendingKeylessConfirmation = pending
+
+            if pending.allowBLEOfflineConfirmation {
+                vehicleEventLogStore.add(
+                    .keyless,
+                    action == .lock ? "无感上锁离线蓝牙确认" : "无感解锁离线蓝牙确认",
+                    detail: "BLE ACK 成功 · 发令前网络已离线 · 使用蓝牙作为唯一现场确认"
+                )
+                completeKeylessSuccess(token: token, action: action, source: .ble, fields: [:])
+                return
+            }
 
             vehicleEventLogStore.add(
                 .keyless,
@@ -956,7 +978,7 @@ extension MQTTVehicleStateStore {
                 // MQTT 开也并行拉一次 HTTP，仅用于门窗明细补齐/兜底，不挡 MQTT 成功。
                 pollHTTPOnce(userInitiated: false, completion: nil)
             } else {
-                pollHTTPOnce(userInitiated: false, completion: nil)
+                // 用户指定：关 MQTT 时从 0.5s 首轮开始，后续走绝对时间表，不额外即时轮询。
                 scheduleKeylessHTTPConfirmRound(
                     token: token,
                     attempt: 0,
@@ -977,19 +999,7 @@ extension MQTTVehicleStateStore {
                   let pending = self.pendingKeylessConfirmation,
                   pending.token == token,
                   self.keylessHTTPConfirmToken == token else { return }
-            // MQTT 超时后，若 HTTP 其实已有新目标态，仍可成功；否则状态未确认。
-            let raw = self.lastHTTPRawCarStatus
-            if self.lastHTTPRawGeneration > pending.generationBefore,
-               let locked = parseLocked(raw["doorLockStatus"]) {
-                if pending.action == .unlock, locked == false {
-                    self.completeKeylessSuccess(token: token, action: .unlock, source: .httpStatus, fields: raw)
-                    return
-                }
-                if pending.action == .lock, locked == true {
-                    self.completeKeylessSuccess(token: token, action: .lock, source: .httpStatus, fields: raw)
-                    return
-                }
-            }
+            // 用户策略：MQTT 开启时仅 status MQTT 能确认成功；HTTP 只补齐/诊断，不接管成功通知。
             self.finalizeKeylessUnconfirmed(token: token, action: pending.action, preferMQTT: true)
         }
     }
@@ -1131,6 +1141,7 @@ extension MQTTVehicleStateStore {
                             action: current.action,
                             startedAt: Date(),
                             generationBefore: self.lastHTTPRawGeneration,
+                            allowBLEOfflineConfirmation: current.allowBLEOfflineConfirmation,
                             preferMQTT: current.preferMQTT,
                             allowRelock: false
                         )
@@ -1170,7 +1181,13 @@ extension MQTTVehicleStateStore {
         keylessSuccessNotifiedToken = token
         pendingKeylessConfirmation = nil
 
-        let channel = source == .mqttStatus ? "MQTT" : "HTTP"
+        let channel: String
+        switch source {
+        case .mqttStatus: channel = "MQTT"
+        case .httpStatus: channel = "HTTP"
+        case .ble: channel = "蓝牙"
+        case .timeout: channel = "--"
+        }
         vehicleEventLogStore.add(
             .keyless,
             action == .lock ? "无感上锁已确认" : "无感解锁已确认",
@@ -1186,7 +1203,7 @@ extension MQTTVehicleStateStore {
             )
         case .lock:
             guard keylessSettingsStore.settings.lockPopup else { return }
-            let bodyStatus = keylessLockSuccessBodyStatus(from: fields)
+            let bodyStatus = source == .ble ? "门窗状态待确认" : keylessLockSuccessBodyStatus(from: fields)
             AppNotificationManager.shared.postKeylessNotification(
                 title: "车辆无感已上锁",
                 body: "车门已上锁，\(bodyStatus)。（\(channel)）"
