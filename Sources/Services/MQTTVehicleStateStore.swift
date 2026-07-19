@@ -315,8 +315,28 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var liveBLELastSeenAt: Date?
     var bleSignalLossWorkItem: DispatchWorkItem?
     var isExecutingKeylessCommand = false
-    /// 无感上锁/解锁 HTTP 多轮确认序号；新命令会作废旧确认，避免串台推送。
+    /// 无感上锁/解锁确认序号；新命令会作废旧确认，避免串台推送。
     var keylessHTTPConfirmToken: UInt64 = 0
+    /// 无感锁/解等待真实车况确认：MQTT 开看 status，MQTT 关看 HTTP 多轮。
+    var pendingKeylessConfirmation: PendingKeylessConfirmation?
+    /// 关 MQTT 时 HTTP 绝对时间表（秒，从 BLE 成功起算，不串行累加）。
+    static let keylessHTTPConfirmDelays: [TimeInterval] = [0.5, 2, 4, 6, 8, 10, 13, 16, 19]
+    /// 开 MQTT 时等待 status 命中的超时。
+    static let keylessMQTTConfirmTimeout: TimeInterval = 10
+    /// 补锁后再核 HTTP 的短表。
+    static let keylessRelockHTTPConfirmDelays: [TimeInterval] = [1.0, 3.0]
+    /// 无感成功通知去重：同 token 只推一次成功。
+    var keylessSuccessNotifiedToken: UInt64 = 0
+    /// 无感失败/未确认通知去重。
+    var keylessFailureNotifiedToken: UInt64 = 0
+    struct PendingKeylessConfirmation: Equatable {
+        let token: UInt64
+        let action: KeylessAction
+        let startedAt: Date
+        let generationBefore: UInt64
+        let preferMQTT: Bool
+        var allowRelock: Bool
+    }
     var isAppInForeground = true
     var didLogManualForegroundSkip = false
     var foregroundObserver: NSObjectProtocol?

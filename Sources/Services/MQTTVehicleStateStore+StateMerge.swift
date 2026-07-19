@@ -289,6 +289,11 @@ extension MQTTVehicleStateStore {
                 source: .httpStatus,
                 observedAt: max(collectAt, now)
             )
+            confirmPendingKeylessFromHTTPIfMatched(
+                fields: sourceFields,
+                observedAt: max(collectAt, now),
+                mqttBodyFresher: false
+            )
         }
 
         if mode == .full {

@@ -61,6 +61,11 @@ extension MQTTVehicleStateStore {
                 source: .mqttStatus,
                 observedAt: collectAt
             )
+            // 无感锁/解：开 MQTT 时 status 命中目标态立刻推成功通知。
+            self.confirmPendingKeylessFromMQTTIfMatched(
+                fields: fields,
+                observedAt: collectAt
+            )
             if fields.keys.contains(where: { ["engineStatus", "powerStatus", "vehPowerMode", "vehiclePowerStatus", "sysPowerMode", "ignitionStatus"].contains($0) }),
                let power = parsePowerState(fields), power != .unknown {
                 self.lastExplicitPowerStateAt = collectAt

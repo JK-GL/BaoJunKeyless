@@ -770,11 +770,14 @@ extension MQTTVehicleStateStore {
                     )
                 } else {
                     // BLE 暂不可发时，直接按 HTTP 已锁结果通知，避免静默。
+                    let short = named
+                        .map { $0.replacingOccurrences(of: "未关闭", with: "未关") }
+                        .joined(separator: "、")
                     AppNotificationManager.shared.postKeylessNotification(
                         title: "车辆无感已上锁",
                         body: openParts.isEmpty
-                            ? "HTTP 完整车况确认车辆已上锁。"
-                            : "HTTP 完整车况：\(bodyDetail)。请检查车辆。"
+                            ? "车门已上锁，门窗全关。（HTTP）"
+                            : "车门已上锁，\(short)。（HTTP）"
                     )
                 }
                 return
@@ -785,9 +788,12 @@ extension MQTTVehicleStateStore {
                 "车辆无感未上锁",
                 detail: ok ? bodyDetail : "\(bodyDetail) · HTTP失败:\(message)"
             )
+            let short = named
+                .map { $0.replacingOccurrences(of: "未关闭", with: "未关") }
+                .joined(separator: "、")
             AppNotificationManager.shared.postKeylessNotification(
                 title: "车辆无感未上锁",
-                body: "检测到 \(bodyDetail)，已取消本次上锁。"
+                body: "检测到\(short)，本次未上锁。"
             )
         }
     }
@@ -856,273 +862,247 @@ extension MQTTVehicleStateStore {
         return parts
     }
 
-    /// 解锁 BLE ACK：本地锁已秒变；通知也先秒报「已解锁」，HTTP 仅后台复核。
-    /// 复核用**绝对时间表**（从 BLE 成功起算 0.3/1/2.5/5s），不是 0.3+1+2.5+5 串行累加。
+    /// 无感解锁确认：BLE ACK 只秒变本地 UI；成功通知等 MQTT status 或 HTTP 目标态。
     func confirmKeylessUnlockViaHTTP(after result: VehicleCommandExecutionResult) {
-        switch result.state {
-        case .sent, .completed:
-            keylessHTTPConfirmToken &+= 1
-            let token = keylessHTTPConfirmToken
-            let generationBefore = lastHTTPRawGeneration
-            let startedAt = Date()
-            // 秒变：先通知，不等 HTTP（HTTP 云延迟可达十余秒）
-            if keylessSettingsStore.settings.unlockPopup {
-                AppNotificationManager.shared.postKeylessNotification(
-                    title: "车辆无感已解锁",
-                    body: "蓝牙已执行解锁。"
-                )
-            }
-            vehicleEventLogStore.add(
-                .keyless,
-                "无感解锁等待 HTTP 确认",
-                detail: "BLE 已秒变未锁 · HTTP 于 0.3/1/2.5/5s 后台复核（绝对时间，不累加）"
-            )
-            pollHTTPOnce(userInitiated: false, completion: nil)
-            scheduleKeylessUnlockHTTPConfirmRound(
-                token: token,
-                generationBefore: generationBefore,
-                attempt: 0,
-                absoluteDelays: [0.3, 1.0, 2.5, 5.0],
-                startedAt: startedAt
-            )
-        case .failed(_), .timedOut(_):
-            postKeylessNotificationIfNeeded(for: .unlock, result: result)
-        case .feedbackOnly, .planned:
-            break
-        }
+        beginKeylessConfirmation(action: .unlock, result: result)
     }
 
-    /// 锁车 BLE 回包：本地锁秒变 + 秒报通知；HTTP 用绝对时间表后台复核。
-    /// 1) 0.3 / 1 / 2.5 / 5s 多轮（从 BLE 成功起算，总跨度约 5s 而非 17s+）
-    /// 2) 仍未锁 → 自动补锁一次，再 1 / 3s 复核
-    /// 3) 仍失败 → 回滚本地「假已锁」，只推一次「未上锁」
+    /// 无感上锁确认：BLE ACK 只秒变本地 UI；成功通知等 MQTT status 或 HTTP 目标态。
     func confirmKeylessLockViaHTTP(after result: VehicleCommandExecutionResult) {
+        beginKeylessConfirmation(action: .lock, result: result)
+    }
+
+    /// MQTT app/status 写 UI 后调用：开 MQTT 时命中目标态立刻成功通知。
+    func confirmPendingKeylessFromMQTTIfMatched(fields: [String: String], observedAt: Date) {
+        guard let pending = pendingKeylessConfirmation,
+              pending.token == keylessHTTPConfirmToken,
+              pending.preferMQTT else { return }
+        guard observedAt >= pending.startedAt.addingTimeInterval(-2) else { return }
+        guard let locked = parseLocked(fields["doorLockStatus"]) else { return }
+
+        switch pending.action {
+        case .unlock:
+            // 中间包可能仍短暂显示已锁；只在命中未锁时成功，超时再未确认。
+            guard locked == false else { return }
+            completeKeylessSuccess(token: pending.token, action: .unlock, source: .mqttStatus, fields: fields)
+        case .lock:
+            // 中间包可能仍短暂显示未锁；只在命中已锁时成功，超时再未确认/补锁。
+            guard locked == true else { return }
+            completeKeylessSuccess(token: pending.token, action: .lock, source: .mqttStatus, fields: fields)
+        case .powerStart:
+            break
+        }
+    }
+
+    /// HTTP 全量车况落地后调用：仅不落后 MQTT 的快照可确认/失败。
+    func confirmPendingKeylessFromHTTPIfMatched(
+        fields: [String: String],
+        observedAt: Date,
+        mqttBodyFresher: Bool
+    ) {
+        guard let pending = pendingKeylessConfirmation,
+              pending.token == keylessHTTPConfirmToken else { return }
+        guard !mqttBodyFresher else { return }
+        guard observedAt >= pending.startedAt.addingTimeInterval(-2) else { return }
+        // 必须是发令后的新 HTTP 代际，避免旧缓存秒确认。
+        guard lastHTTPRawGeneration > pending.generationBefore else { return }
+        guard let locked = parseLocked(fields["doorLockStatus"]) else { return }
+
+        switch pending.action {
+        case .unlock:
+            if locked == false {
+                completeKeylessSuccess(token: pending.token, action: .unlock, source: .httpStatus, fields: fields)
+            } else if locked == true, !pending.preferMQTT {
+                // 关 MQTT 时，反向态继续多轮；最终超时/明确失败再通知。
+            }
+        case .lock:
+            if locked == true {
+                completeKeylessSuccess(token: pending.token, action: .lock, source: .httpStatus, fields: fields)
+            }
+        case .powerStart:
+            break
+        }
+    }
+
+    private func beginKeylessConfirmation(action: KeylessAction, result: VehicleCommandExecutionResult) {
         switch result.state {
         case .sent, .completed:
             keylessHTTPConfirmToken &+= 1
             let token = keylessHTTPConfirmToken
-            let generationBefore = lastHTTPRawGeneration
-            let startedAt = Date()
-            if keylessSettingsStore.settings.lockPopup {
-                AppNotificationManager.shared.postKeylessNotification(
-                    title: "车辆无感已上锁",
-                    body: "蓝牙已执行上锁。"
-                )
-            }
+            keylessSuccessNotifiedToken = 0
+            keylessFailureNotifiedToken = 0
+            let preferMQTT = keylessSettingsStore.settings.mqttEnabled
+            let pending = PendingKeylessConfirmation(
+                token: token,
+                action: action,
+                startedAt: Date(),
+                generationBefore: lastHTTPRawGeneration,
+                preferMQTT: preferMQTT,
+                allowRelock: action == .lock
+            )
+            pendingKeylessConfirmation = pending
+
             vehicleEventLogStore.add(
                 .keyless,
-                "无感上锁等待 HTTP 确认",
-                detail: "BLE 已秒变已锁 · HTTP 于 0.3/1/2.5/5s 后台复核；失败可自动补锁一次"
+                action == .lock ? "无感上锁等待车况确认" : "无感解锁等待车况确认",
+                detail: preferMQTT
+                    ? "BLE 已执行 · 优先 MQTT status 即时确认 · timeout=\(Int(Self.keylessMQTTConfirmTimeout))s"
+                    : "BLE 已执行 · 仅 HTTP 多轮确认 · \(Self.keylessHTTPConfirmDelays.map { "\($0)" }.joined(separator: "/"))s"
             )
-            pollHTTPOnce(userInitiated: false, completion: nil)
-            scheduleKeylessLockHTTPConfirmRound(
-                token: token,
-                generationBefore: generationBefore,
-                attempt: 0,
-                absoluteDelays: [0.3, 1.0, 2.5, 5.0],
-                startedAt: startedAt,
-                allowRelock: true
-            )
+
+            // 立刻看一眼当前缓存（通常不会命中新状态）；真正确认靠后续 MQTT/HTTP。
+            if preferMQTT {
+                scheduleKeylessMQTTTimeout(token: token)
+                // MQTT 开也并行拉一次 HTTP，仅用于门窗明细补齐/兜底，不挡 MQTT 成功。
+                pollHTTPOnce(userInitiated: false, completion: nil)
+            } else {
+                pollHTTPOnce(userInitiated: false, completion: nil)
+                scheduleKeylessHTTPConfirmRound(
+                    token: token,
+                    attempt: 0,
+                    absoluteDelays: Self.keylessHTTPConfirmDelays,
+                    allowRelock: action == .lock
+                )
+            }
         case .failed(_), .timedOut(_):
-            postKeylessNotificationIfNeeded(for: .lock, result: result)
+            postKeylessBLEFailureNotification(action: action)
         case .feedbackOnly, .planned:
             break
         }
     }
 
-    private func scheduleKeylessUnlockHTTPConfirmRound(
-        token: UInt64,
-        generationBefore: UInt64,
-        attempt: Int,
-        absoluteDelays: [TimeInterval],
-        startedAt: Date
-    ) {
-        guard attempt >= 0, attempt < absoluteDelays.count else {
-            finalizeKeylessUnlockHTTPUnconfirmed(
-                token: token,
-                detail: "多轮 HTTP 复核后仍无法确认已解锁"
-            )
-            return
-        }
-        let target = absoluteDelays[attempt]
-        let wait = max(0, target - Date().timeIntervalSince(startedAt))
-        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
-            guard let self, self.keylessHTTPConfirmToken == token else { return }
-            self.pollHTTPOnce(userInitiated: false) { [weak self] ok, message in
-                guard let self, self.keylessHTTPConfirmToken == token else { return }
-                let isNewHTTP = self.lastHTTPRawGeneration > generationBefore
-                let httpLocked = parseLocked(self.lastHTTPRawCarStatus["doorLockStatus"])
-                if ok, isNewHTTP, httpLocked == false {
-                    self.vehicleEventLogStore.add(
-                        .keyless,
-                        "无感解锁 HTTP 已确认",
-                        detail: "第\(attempt + 1)轮 · HTTP 原始 doorLockStatus=未锁"
-                    )
-                    // 秒变通知已发过；此处只记日志，避免连弹两次
+    private func scheduleKeylessMQTTTimeout(token: UInt64) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.keylessMQTTConfirmTimeout) { [weak self] in
+            guard let self,
+                  let pending = self.pendingKeylessConfirmation,
+                  pending.token == token,
+                  self.keylessHTTPConfirmToken == token else { return }
+            // MQTT 超时后，若 HTTP 其实已有新目标态，仍可成功；否则状态未确认。
+            let raw = self.lastHTTPRawCarStatus
+            if self.lastHTTPRawGeneration > pending.generationBefore,
+               let locked = parseLocked(raw["doorLockStatus"]) {
+                if pending.action == .unlock, locked == false {
+                    self.completeKeylessSuccess(token: token, action: .unlock, source: .httpStatus, fields: raw)
                     return
                 }
-                let detail: String
-                if !ok {
-                    detail = "HTTP 刷新失败：\(message)"
-                } else if !isNewHTTP {
-                    detail = "未取得解锁后的新 HTTP 快照"
-                } else if httpLocked == true {
-                    detail = "HTTP 原始状态仍为已锁"
-                } else {
-                    detail = "HTTP 原始锁态未知"
-                }
-                self.vehicleEventLogStore.add(
-                    .warning,
-                    "无感解锁 HTTP 未确认",
-                    detail: "第\(attempt + 1)/\(absoluteDelays.count)轮 · \(detail)"
-                )
-                if attempt + 1 < absoluteDelays.count {
-                    self.scheduleKeylessUnlockHTTPConfirmRound(
-                        token: token,
-                        generationBefore: generationBefore,
-                        attempt: attempt + 1,
-                        absoluteDelays: absoluteDelays,
-                        startedAt: startedAt
-                    )
-                } else {
-                    self.finalizeKeylessUnlockHTTPUnconfirmed(token: token, detail: detail)
+                if pending.action == .lock, locked == true {
+                    self.completeKeylessSuccess(token: token, action: .lock, source: .httpStatus, fields: raw)
+                    return
                 }
             }
+            self.finalizeKeylessUnconfirmed(token: token, action: pending.action, preferMQTT: true)
         }
     }
 
-    private func finalizeKeylessUnlockHTTPUnconfirmed(token: UInt64, detail: String) {
-        guard keylessHTTPConfirmToken == token else { return }
-        // 回滚：本地因 BLE 先写成未锁，但 HTTP 权威仍是已锁
-        if state.locked == false {
-            let src = fieldSource["doorLockStatus"] ?? ""
-            if src == "BLE" {
-                applyLocalDoorLockState(
-                    locked: true,
-                    source: "无感解锁HTTP未确认回滚",
-                    suppressOppositeKeyless: false,
-                    protectAgainstNetworkOverride: false
-                )
-                vehicleEventLogStore.add(
-                    .warning,
-                    "无感解锁本地回滚",
-                    detail: "HTTP 未确认解锁 · 本地从「未锁」回滚为「已锁」"
-                )
-            }
-        }
-        if keylessSettingsStore.settings.unlockPopup {
-            AppNotificationManager.shared.postKeylessNotification(
-                title: "车辆无感未解锁",
-                body: detail.contains("已锁")
-                    ? "HTTP 原始状态仍为已锁，请靠近重试。"
-                    : "\(detail)。"
-            )
-        }
-    }
-
-    private func scheduleKeylessLockHTTPConfirmRound(
+    private func scheduleKeylessHTTPConfirmRound(
         token: UInt64,
-        generationBefore: UInt64,
         attempt: Int,
         absoluteDelays: [TimeInterval],
-        startedAt: Date,
         allowRelock: Bool
     ) {
+        guard let pending = pendingKeylessConfirmation, pending.token == token else { return }
         guard attempt >= 0, attempt < absoluteDelays.count else {
-            if allowRelock {
+            if pending.action == .lock, allowRelock {
                 attemptKeylessLockRelockThenReconfirm(token: token)
             } else {
-                finalizeKeylessLockHTTPUnconfirmed(
-                    token: token,
-                    detail: "多轮 HTTP 复核后仍为未锁",
-                    bodyDetail: keylessOpenBodyParts(fromHTTP: lastHTTPRawCarStatus).isEmpty
-                        ? "门窗与尾门状态正常"
-                        : keylessOpenBodyParts(fromHTTP: lastHTTPRawCarStatus).joined(separator: "、")
-                )
+                finalizeKeylessUnconfirmed(token: token, action: pending.action, preferMQTT: false)
             }
             return
         }
+
         let target = absoluteDelays[attempt]
-        let wait = max(0, target - Date().timeIntervalSince(startedAt))
+        let wait = max(0, target - Date().timeIntervalSince(pending.startedAt))
         DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
-            guard let self, self.keylessHTTPConfirmToken == token else { return }
+            guard let self,
+                  let current = self.pendingKeylessConfirmation,
+                  current.token == token,
+                  self.keylessHTTPConfirmToken == token else { return }
+
             self.pollHTTPOnce(userInitiated: false) { [weak self] ok, message in
-                guard let self, self.keylessHTTPConfirmToken == token else { return }
+                guard let self,
+                      let current = self.pendingKeylessConfirmation,
+                      current.token == token,
+                      self.keylessHTTPConfirmToken == token else { return }
+
                 let raw = self.lastHTTPRawCarStatus
-                let isNewHTTP = self.lastHTTPRawGeneration > generationBefore
+                let isNewHTTP = self.lastHTTPRawGeneration > current.generationBefore
                 let httpLocked = parseLocked(raw["doorLockStatus"])
                 let openParts = self.keylessOpenBodyParts(fromHTTP: raw)
-                let bodyOpen = !openParts.isEmpty
-                let bodyDetail = bodyOpen ? openParts.joined(separator: "、") : "门窗与尾门状态正常"
+                let bodyDetail = openParts.isEmpty ? "门窗全关" : openParts.joined(separator: "、")
 
-                if ok, isNewHTTP, httpLocked == true {
-                    self.vehicleEventLogStore.add(
-                        .keyless,
-                        "无感上锁 HTTP 已确认",
-                        detail: "第\(attempt + 1)轮 · 锁=已锁 · \(bodyDetail)"
-                    )
-                    // 秒变通知已在 BLE 成功时发出；HTTP 仅复核日志。门窗未关再补一条提醒。
-                    if bodyOpen, self.keylessSettingsStore.settings.lockPopup {
-                        AppNotificationManager.shared.postKeylessNotification(
-                            title: "车辆无感已上锁",
-                            body: "HTTP 完整车况：\(bodyDetail)。请检查车辆。"
-                        )
+                if ok, isNewHTTP, let locked = httpLocked {
+                    switch current.action {
+                    case .unlock:
+                        if locked == false {
+                            self.completeKeylessSuccess(token: token, action: .unlock, source: .httpStatus, fields: raw)
+                            return
+                        }
+                        if locked == true, attempt + 1 >= absoluteDelays.count {
+                            self.finalizeKeylessExplicitFailure(token: token, action: .unlock, stillOpposite: true)
+                            return
+                        }
+                    case .lock:
+                        if locked == true {
+                            self.completeKeylessSuccess(token: token, action: .lock, source: .httpStatus, fields: raw)
+                            return
+                        }
+                        if locked == false, attempt + 1 >= absoluteDelays.count {
+                            if allowRelock {
+                                self.attemptKeylessLockRelockThenReconfirm(token: token)
+                            } else {
+                                self.finalizeKeylessExplicitFailure(token: token, action: .lock, stillOpposite: true, relockFailed: false)
+                            }
+                            return
+                        }
+                    case .powerStart:
+                        break
                     }
-                    return
                 }
 
                 let detail: String
                 if !ok {
                     detail = "HTTP 刷新失败：\(message)"
                 } else if !isNewHTTP {
-                    detail = "未取得锁车后的新 HTTP 快照"
-                } else if httpLocked == false {
+                    detail = "未取得新的 HTTP 快照"
+                } else if httpLocked == nil {
+                    detail = "HTTP 原始锁态未知"
+                } else if current.action == .unlock, httpLocked == true {
+                    detail = "HTTP 原始状态仍为已锁"
+                } else if current.action == .lock, httpLocked == false {
                     detail = "HTTP 原始状态仍为未锁"
                 } else {
-                    detail = "HTTP 原始回包未提供可确认的锁态"
+                    detail = "HTTP 尚未命中目标态"
                 }
                 self.vehicleEventLogStore.add(
                     .warning,
-                    "无感上锁 HTTP 未确认",
+                    current.action == .lock ? "无感上锁 HTTP 未确认" : "无感解锁 HTTP 未确认",
                     detail: "第\(attempt + 1)/\(absoluteDelays.count)轮 · \(detail) · \(bodyDetail)"
                 )
 
                 if attempt + 1 < absoluteDelays.count {
-                    self.scheduleKeylessLockHTTPConfirmRound(
+                    self.scheduleKeylessHTTPConfirmRound(
                         token: token,
-                        generationBefore: generationBefore,
                         attempt: attempt + 1,
                         absoluteDelays: absoluteDelays,
-                        startedAt: startedAt,
                         allowRelock: allowRelock
                     )
-                    return
-                }
-
-                if allowRelock {
+                } else if current.action == .lock, allowRelock {
                     self.attemptKeylessLockRelockThenReconfirm(token: token)
+                } else if current.action == .unlock, httpLocked == true {
+                    self.finalizeKeylessExplicitFailure(token: token, action: .unlock, stillOpposite: true)
+                } else if current.action == .lock, httpLocked == false {
+                    self.finalizeKeylessExplicitFailure(token: token, action: .lock, stillOpposite: true)
                 } else {
-                    self.finalizeKeylessLockHTTPUnconfirmed(
-                        token: token,
-                        detail: detail,
-                        bodyDetail: bodyDetail
-                    )
+                    self.finalizeKeylessUnconfirmed(token: token, action: current.action, preferMQTT: false)
                 }
             }
         }
     }
 
-    /// 多轮 HTTP 仍未锁：再发一次 BLE 锁（仅一次），再短复核；仍失败才最终未上锁。
     private func attemptKeylessLockRelockThenReconfirm(token: UInt64) {
-        guard keylessHTTPConfirmToken == token else { return }
+        guard let pending = pendingKeylessConfirmation, pending.token == token else { return }
         guard bleManager.canSendDoorLockControl, !isExecutingKeylessCommand else {
-            finalizeKeylessLockHTTPUnconfirmed(
-                token: token,
-                detail: "HTTP 原始状态仍为未锁，且当前无法自动补锁",
-                bodyDetail: keylessOpenBodyParts(fromHTTP: lastHTTPRawCarStatus).isEmpty
-                    ? "门窗与尾门状态正常"
-                    : keylessOpenBodyParts(fromHTTP: lastHTTPRawCarStatus).joined(separator: "、")
-            )
+            finalizeKeylessExplicitFailure(token: token, action: .lock, stillOpposite: true, relockFailed: true)
             return
         }
 
@@ -1144,19 +1124,27 @@ extension MQTTVehicleStateStore {
                         source: "无感补锁回包",
                         suppressOppositeKeyless: false
                     )
-                    let generationBefore = self.lastHTTPRawGeneration
-                    let startedAt = Date()
+                    // 补锁后刷新 generation 基线，继续只看新 HTTP。
+                    if var current = self.pendingKeylessConfirmation, current.token == token {
+                        current = PendingKeylessConfirmation(
+                            token: current.token,
+                            action: current.action,
+                            startedAt: Date(),
+                            generationBefore: self.lastHTTPRawGeneration,
+                            preferMQTT: current.preferMQTT,
+                            allowRelock: false
+                        )
+                        self.pendingKeylessConfirmation = current
+                    }
                     self.vehicleEventLogStore.add(
                         .keyless,
                         "无感补锁已发送",
                         detail: "BLE 成功 · 再于 1s/3s 核验 HTTP"
                     )
-                    self.scheduleKeylessLockHTTPConfirmRound(
+                    self.scheduleKeylessHTTPConfirmRound(
                         token: token,
-                        generationBefore: generationBefore,
                         attempt: 0,
-                        absoluteDelays: [1.0, 3.0],
-                        startedAt: startedAt,
+                        absoluteDelays: Self.keylessRelockHTTPConfirmDelays,
                         allowRelock: false
                     )
                 case .failure(let error):
@@ -1165,54 +1153,202 @@ extension MQTTVehicleStateStore {
                         "无感补锁失败",
                         detail: error.localizedDescription
                     )
-                    self.finalizeKeylessLockHTTPUnconfirmed(
-                        token: token,
-                        detail: "HTTP 仍为未锁，且自动补锁失败：\(error.localizedDescription)",
-                        bodyDetail: self.keylessOpenBodyParts(fromHTTP: self.lastHTTPRawCarStatus).isEmpty
-                            ? "门窗与尾门状态正常"
-                            : self.keylessOpenBodyParts(fromHTTP: self.lastHTTPRawCarStatus).joined(separator: "、")
-                    )
+                    self.finalizeKeylessExplicitFailure(token: token, action: .lock, stillOpposite: true, relockFailed: true)
                 }
             }
         }
     }
 
-    private func finalizeKeylessLockHTTPUnconfirmed(token: UInt64, detail: String, bodyDetail: String) {
+    private func completeKeylessSuccess(
+        token: UInt64,
+        action: KeylessAction,
+        source: VehicleControlStateConfirmationSource,
+        fields: [String: String]
+    ) {
         guard keylessHTTPConfirmToken == token else { return }
-        // 回滚本地假已锁，避免 UI 显示已锁、通知却说未上锁
-        if state.locked == true {
-            let src = fieldSource["doorLockStatus"] ?? ""
-            if src == "BLE" || src.contains("无感") {
-                applyLocalDoorLockState(
-                    locked: false,
-                    source: "无感上锁HTTP未确认回滚",
-                    suppressOppositeKeyless: false,
-                    protectAgainstNetworkOverride: false
-                )
-                vehicleEventLogStore.add(
-                    .warning,
-                    "无感上锁本地回滚",
-                    detail: "HTTP 未确认上锁 · 本地从「已锁」回滚为「未锁」"
-                )
-            }
-        }
+        guard keylessSuccessNotifiedToken != token else { return }
+        keylessSuccessNotifiedToken = token
+        pendingKeylessConfirmation = nil
+
+        let channel = source == .mqttStatus ? "MQTT" : "HTTP"
         vehicleEventLogStore.add(
-            .warning,
-            "无感上锁最终未确认",
-            detail: "\(detail) · \(bodyDetail)"
+            .keyless,
+            action == .lock ? "无感上锁已确认" : "无感解锁已确认",
+            detail: "source=\(channel) · doorLockStatus=\(fields["doorLockStatus"] ?? "--")"
         )
-        if keylessSettingsStore.settings.lockPopup {
-            let bodyOpen = bodyDetail != "门窗与尾门状态正常"
+
+        switch action {
+        case .unlock:
+            guard keylessSettingsStore.settings.unlockPopup else { return }
             AppNotificationManager.shared.postKeylessNotification(
-                title: "车辆无感未上锁",
-                body: bodyOpen
-                    ? "\(detail)。同时检测到 \(bodyDetail)。"
-                    : "\(detail)。"
+                title: "车辆无感已解锁",
+                body: "车门已解锁，请 30 秒内开车门。（\(channel)）"
             )
+        case .lock:
+            guard keylessSettingsStore.settings.lockPopup else { return }
+            let bodyStatus = keylessLockSuccessBodyStatus(from: fields)
+            AppNotificationManager.shared.postKeylessNotification(
+                title: "车辆无感已上锁",
+                body: "车门已上锁，\(bodyStatus)。（\(channel)）"
+            )
+        case .powerStart:
+            break
         }
     }
 
-    func playKeylessVibrationIfNeeded(for action: KeylessAction) {
+    private func keylessLockSuccessBodyStatus(from fields: [String: String]) -> String {
+        let openParts = keylessOpenBodyParts(fromHTTP: fields)
+        if openParts.isEmpty {
+            // 原始包若完全没带门窗字段，不要谎称全关。
+            let hasDoorOrWindow =
+                fields["door1OpenStatus"] != nil || fields["door2OpenStatus"] != nil ||
+                fields["door3OpenStatus"] != nil || fields["door4OpenStatus"] != nil ||
+                fields["doorOpenStatus"] != nil || fields["tailDoorOpenStatus"] != nil ||
+                fields["window1Status"] != nil || fields["window2Status"] != nil ||
+                fields["window3Status"] != nil || fields["window4Status"] != nil ||
+                fields["windowStatus"] != nil
+            return hasDoorOrWindow ? "门窗全关" : "门窗状态待确认"
+        }
+        // 通知正文更短：把“未关闭”收成“未关”
+        return openParts
+            .map { $0.replacingOccurrences(of: "未关闭", with: "未关") }
+            .joined(separator: "、")
+    }
+
+    private func finalizeKeylessUnconfirmed(token: UInt64, action: KeylessAction, preferMQTT: Bool) {
+        guard keylessHTTPConfirmToken == token else { return }
+        guard keylessFailureNotifiedToken != token else { return }
+        keylessFailureNotifiedToken = token
+        pendingKeylessConfirmation = nil
+        rollbackKeylessLocalLockIfNeeded(action: action)
+
+        let title = "车辆无感状态未确认"
+        let body: String
+        switch action {
+        case .unlock:
+            body = preferMQTT
+                ? "已尝试解锁，暂未收到 MQTT 目标车况，请看一下车锁或再靠近重试。"
+                : "已尝试解锁，20 秒内未收到 HTTP 目标车况，请看一下车锁或再靠近重试。"
+        case .lock:
+            body = preferMQTT
+                ? "已尝试上锁，暂未收到 MQTT 目标车况，请看一下车锁。"
+                : "已尝试上锁，20 秒内未收到 HTTP 目标车况，请看一下车锁。"
+        case .powerStart:
+            return
+        }
+
+        vehicleEventLogStore.add(.warning, title, detail: body)
+        let popupEnabled = action == .lock
+            ? keylessSettingsStore.settings.lockPopup
+            : keylessSettingsStore.settings.unlockPopup
+        guard popupEnabled else { return }
+        AppNotificationManager.shared.postKeylessNotification(title: title, body: body)
+    }
+
+    private func finalizeKeylessExplicitFailure(
+        token: UInt64,
+        action: KeylessAction,
+        stillOpposite: Bool,
+        relockFailed: Bool = false
+    ) {
+        guard keylessHTTPConfirmToken == token else { return }
+        guard keylessFailureNotifiedToken != token else { return }
+        keylessFailureNotifiedToken = token
+        pendingKeylessConfirmation = nil
+        rollbackKeylessLocalLockIfNeeded(action: action)
+
+        let title: String
+        let body: String
+        switch action {
+        case .unlock:
+            title = "车辆无感未解锁"
+            body = stillOpposite
+                ? "车辆仍是上锁状态，请再靠近一点重试。"
+                : "蓝牙未连上或超时，请检查车辆状态"
+        case .lock:
+            title = "车辆无感未上锁"
+            if relockFailed {
+                body = "车辆仍未上锁，自动补锁未成功，请手动确认。"
+            } else if stillOpposite {
+                body = "车辆仍未上锁，请检查车辆状态"
+            } else {
+                body = "蓝牙未连上或超时，请检查车辆状态"
+            }
+        case .powerStart:
+            return
+        }
+
+        vehicleEventLogStore.add(.warning, title, detail: body)
+        let popupEnabled = action == .lock
+            ? keylessSettingsStore.settings.lockPopup
+            : keylessSettingsStore.settings.unlockPopup
+        guard popupEnabled else { return }
+        AppNotificationManager.shared.postKeylessNotification(title: title, body: body)
+    }
+
+    private func rollbackKeylessLocalLockIfNeeded(action: KeylessAction) {
+        switch action {
+        case .unlock:
+            if state.locked == false {
+                let src = fieldSource["doorLockStatus"] ?? ""
+                if src == "BLE" || src.contains("无感") {
+                    applyLocalDoorLockState(
+                        locked: true,
+                        source: "无感解锁未确认回滚",
+                        suppressOppositeKeyless: false,
+                        protectAgainstNetworkOverride: false
+                    )
+                    vehicleEventLogStore.add(
+                        .warning,
+                        "无感解锁本地回滚",
+                        detail: "未确认解锁 · 本地从「未锁」回滚为「已锁」"
+                    )
+                }
+            }
+        case .lock:
+            if state.locked == true {
+                let src = fieldSource["doorLockStatus"] ?? ""
+                if src == "BLE" || src.contains("无感") {
+                    applyLocalDoorLockState(
+                        locked: false,
+                        source: "无感上锁未确认回滚",
+                        suppressOppositeKeyless: false,
+                        protectAgainstNetworkOverride: false
+                    )
+                    vehicleEventLogStore.add(
+                        .warning,
+                        "无感上锁本地回滚",
+                        detail: "未确认上锁 · 本地从「已锁」回滚为「未锁」"
+                    )
+                }
+            }
+        case .powerStart:
+            break
+        }
+    }
+
+    private func postKeylessBLEFailureNotification(action: KeylessAction) {
+        let popupEnabled = action == .lock
+            ? keylessSettingsStore.settings.lockPopup
+            : keylessSettingsStore.settings.unlockPopup
+        guard popupEnabled else { return }
+        switch action {
+        case .unlock:
+            AppNotificationManager.shared.postKeylessNotification(
+                title: "车辆无感未解锁",
+                body: "蓝牙未连上或超时，请检查车辆状态"
+            )
+        case .lock:
+            AppNotificationManager.shared.postKeylessNotification(
+                title: "车辆无感未上锁",
+                body: "蓝牙未连上或超时，请检查车辆状态"
+            )
+        case .powerStart:
+            break
+        }
+    }
+
+        func playKeylessVibrationIfNeeded(for action: KeylessAction) {
         let settings = keylessSettingsStore.settings
         switch action {
         case .unlock, .powerStart:
@@ -1225,37 +1361,35 @@ extension MQTTVehicleStateStore {
         }
     }
 
+    /// 仅电源启动与兜底失败通知；锁/解成功必须走车况确认链。
     func postKeylessNotificationIfNeeded(for action: KeylessAction, result: VehicleCommandExecutionResult) {
         let settings = keylessSettingsStore.settings
-        let popupEnabled: Bool
         switch action {
-        case .unlock, .powerStart:
-            popupEnabled = settings.unlockPopup
-        case .lock:
-            popupEnabled = settings.lockPopup
+        case .unlock, .lock:
+            // 锁/解成功已改由 MQTT/HTTP 确认后推送；这里只处理 BLE 失败兜底。
+            switch result.state {
+            case .failed(_), .timedOut(_):
+                postKeylessBLEFailureNotification(action: action)
+            default:
+                break
+            }
+        case .powerStart:
+            guard settings.unlockPopup else { return }
+            switch result.state {
+            case .sent, .completed:
+                AppNotificationManager.shared.postKeylessNotification(
+                    title: "车辆无感已启动电源",
+                    body: "蓝牙已执行启动电源。"
+                )
+            case .failed(_), .timedOut(_):
+                AppNotificationManager.shared.postKeylessNotification(
+                    title: "车辆无感未启动电源",
+                    body: "蓝牙未连上或超时，请检查车辆状态"
+                )
+            case .feedbackOnly, .planned:
+                break
+            }
         }
-        guard popupEnabled else { return }
-
-        let title: String
-        switch (action, result.state) {
-        case (.lock, .sent), (.lock, .completed):
-            // 成功路径通常走 HTTP 确认；这里仅兜底。
-            title = "车辆无感已上锁"
-        case (.lock, .failed(_)), (.lock, .timedOut(_)):
-            title = "车辆无感未上锁"
-        case (.unlock, .sent), (.unlock, .completed):
-            title = "车辆无感已解锁"
-        case (.unlock, .failed(_)), (.unlock, .timedOut(_)):
-            title = "车辆无感未解锁"
-        case (.powerStart, .sent), (.powerStart, .completed):
-            title = "车辆无感已启动电源"
-        case (.powerStart, .failed(_)), (.powerStart, .timedOut(_)):
-            title = "车辆无感未启动电源"
-        case (_, .feedbackOnly), (_, .planned):
-            return
-        }
-        let body = result.userMessage.isEmpty ? result.command.detail : result.userMessage
-        AppNotificationManager.shared.postKeylessNotification(title: title, body: body)
     }
 
     func playVibration(choice: VibrationChoice, intensity: Double) {
