@@ -360,72 +360,91 @@ private struct PushCollectionStripView: View {
             }
 
             if isExpanded {
-                if history.entries.isEmpty {
-                    Text("暂无推送记录。系统通知发出后会显示在这里（权限拒绝也会记录）。")
-                        .font(.system(size: 10.5, design: .monospaced))
-                        .foregroundStyle(Color.white.opacity(0.50))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(history.entries.prefix(20)) { item in
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 6) {
-                                    Text(item.timeText)
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .foregroundStyle(Color.white.opacity(0.42))
-                                    Text(item.sourceTitle)
-                                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                                        .foregroundStyle(AppTheme.orange)
-                                    if !item.delivered {
-                                        Text("未发出")
-                                            .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
-                                            .foregroundStyle(AppTheme.red.opacity(0.9))
+                VStack(spacing: 8) {
+                    Group {
+                        if history.entries.isEmpty {
+                            Text("暂无推送记录。系统通知发出后会显示在这里（权限拒绝也会记录）。")
+                                .font(.system(size: 10.5, design: .monospaced))
+                                .foregroundStyle(Color.white.opacity(0.50))
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                .padding(10)
+                        } else {
+                            ScrollView(.vertical, showsIndicators: true) {
+                                LazyVStack(alignment: .leading, spacing: 8) {
+                                    ForEach(history.entries.prefix(20)) { item in
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            HStack(spacing: 6) {
+                                                Text(item.timeText)
+                                                    .font(.system(size: 10, design: .monospaced))
+                                                    .foregroundStyle(Color.white.opacity(0.42))
+                                                Text(item.sourceTitle)
+                                                    .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                                                    .foregroundStyle(AppTheme.orange)
+                                                if !item.delivered {
+                                                    Text("未发出")
+                                                        .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                                                        .foregroundStyle(AppTheme.red.opacity(0.9))
+                                                }
+                                                Spacer(minLength: 0)
+                                            }
+                                            Text(item.title)
+                                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                                .foregroundStyle(.white)
+                                                .lineLimit(1)
+                                            if !item.body.isEmpty {
+                                                Text(item.body)
+                                                    .font(.system(size: 10.5, design: .monospaced))
+                                                    .foregroundStyle(Color.white.opacity(0.62))
+                                                    .fixedSize(horizontal: false, vertical: true)
+                                            }
+                                        }
+                                        .padding(.vertical, 2)
                                     }
-                                    Spacer(minLength: 0)
                                 }
-                                Text(item.title)
-                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                    .foregroundStyle(.white)
-                                    .lineLimit(1)
-                                if !item.body.isEmpty {
-                                    Text(item.body)
-                                        .font(.system(size: 10.5, design: .monospaced))
-                                        .foregroundStyle(Color.white.opacity(0.62))
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
                             }
-                            .padding(.vertical, 2)
                         }
                     }
-
-                    HStack(spacing: 10) {
-                        Button {
-                            UIPasteboard.general.string = history.exportText()
-                            localToast = "已复制推送记录"
-                        } label: {
-                            Text("复制")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(AppTheme.accent)
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            history.clear()
-                            localToast = "已清空推送记录"
-                        } label: {
-                            Text("清空")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(AppTheme.red.opacity(0.9))
-                        }
-                        .buttonStyle(.plain)
-
-                        Spacer()
-                        Text("最多保留 \(NotificationHistoryStore.maxEntries) 条")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(Color.white.opacity(0.40))
-                    }
-                    .padding(.top, 2)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 }
+                .frame(height: 160)
+                .background(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(Color.black.opacity(0.20))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .stroke(Color.white.opacity(0.07), lineWidth: 1)
+                )
+
+                HStack(spacing: 10) {
+                    Button {
+                        UIPasteboard.general.string = history.exportText()
+                        localToast = "已复制推送记录"
+                    } label: {
+                        Text("复制")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(AppTheme.accent)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        history.clear()
+                        localToast = "已清空推送记录"
+                    } label: {
+                        Text("清空")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(AppTheme.red.opacity(0.9))
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+                    Text("最多保留 \(NotificationHistoryStore.maxEntries) 条")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.40))
+                }
+                .padding(.top, 2)
             }
 
             if let localToast {
