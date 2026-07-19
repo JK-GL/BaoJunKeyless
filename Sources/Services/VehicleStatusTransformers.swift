@@ -29,7 +29,10 @@ enum VehicleStatusMapper {
         // accCntTemp 是空调设定温度；interiorTemperature 是车内温度，不能混用。
         next.acTemperature = parseDouble(s["accCntTemp"])
         next.gear = parseGear(s["autoGearStatus"]) ?? .unknown
-        next.power = parsePowerState(s) ?? .unknown
+        // 本车 HTTP 通常无 engineStatus；缺字段时保留当前粘性电源，不回落 unknown/未确认。
+        if let power = parsePowerState(s) {
+            next.power = power
+        }
         // vehSpdAvgDrvn 是平均车速，不能用于实时车速/无感安全门禁。
         next.speed = parseDouble(s["speed"] ?? s["vehSpd"])
         next.physicalKeyPosition = parsePhysicalKeyPosition(s["keyStatus"])

@@ -245,18 +245,16 @@ extension MQTTVehicleStateStore {
             }
         }
 
-        // HTTP 若带明确电源字段则直接确认；若本车型 HTTP 不带，则短时保留最近的
-        // MQTT engineStatus / BLE 成功回包，超时后回到未知，避免永久显示陈旧状态。
+        // Wuling 粘性二元：
+        // - HTTP 带明确电源字段：采纳并记确认
+        // - HTTP 不带（本车常态）：保留当前电源，绝不因空 engineStatus 回退
         if mergedState.power != .unknown {
             lastExplicitPowerStateAt = now
             lastExplicitPowerStateSource = "HTTP电源字段"
-        } else if let confirmedAt = lastExplicitPowerStateAt,
-                  now.timeIntervalSince(confirmedAt) <= Self.explicitPowerStateHoldSeconds,
-                  state.power != .unknown {
+        } else if state.power != .unknown {
             mergedState.power = state.power
         } else {
-            lastExplicitPowerStateAt = nil
-            lastExplicitPowerStateSource = nil
+            mergedState.power = .off
         }
 
         var merged = VehicleStateMerger.mergeHTTPBase(current: state, newState: mergedState)

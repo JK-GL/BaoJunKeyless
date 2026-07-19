@@ -326,9 +326,8 @@ extension MQTTVehicleStateStore {
             next.driverDoorOpen = nil
             next.trunkOpen = nil
             next.windowsClosed = nil
-            // gear/power/key 也别继续用过期硬门禁
+            // gear/key 过期不再当真；电源按 Wuling 粘性二元保留，不因离线回退。
             if next.gear != .unknown { next.gear = .unknown }
-            if next.power != .unknown { next.power = .unknown }
             // 离线陈旧 keyStatus=2 常把数字钥匙误显示成“物理钥匙车内”
             if next.physicalKeyPosition != .unknown {
                 next.physicalKeyPosition = .unknown

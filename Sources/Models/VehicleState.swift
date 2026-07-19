@@ -29,12 +29,12 @@ enum VehiclePowerState: String, Codable, CaseIterable {
 
     var title: String {
         switch self {
-        case .off:     return "熄火"
+        // 本车官方车况无稳定电源字段；展示层按 Wuling 粘性二元：已上电 / 未上电。
+        case .off:     return "未上电"
         case .acc:     return "ACC"
-        case .on:      return "上电"
+        case .on:      return "已上电"
         case .ready:   return "Ready"
-        // 本车型服务端不提供独立电源字段；状态未确认时按用户期望显示为“未上电”。
-        // 保留 .unknown 这个内部状态，不能影响无感/控制的安全判断。
+        // 兼容旧缓存；运行时默认与粘性策略都应落到 .off，不再把空字段显示成“未知”。
         case .unknown: return "未上电"
         }
     }
@@ -47,11 +47,11 @@ enum VehiclePowerState: String, Codable, CaseIterable {
     /// 远程启动弹窗「启动」列文案
     var remoteStartStatusTitle: String {
         switch self {
-        case .on:      return "上电"
+        case .on:      return "已上电"
         case .ready:   return "Ready"
         case .acc:     return "ACC"
         case .off, .unknown:
-            return "待授权"
+            return "未上电"
         }
     }
 }
@@ -102,7 +102,8 @@ struct VehicleState: Equatable {
             acOn: nil,
             acTemperature: nil,
             gear: .unknown,
-            power: .unknown,
+            // Wuling 风格：冷启动默认未上电，不用 unknown 占位。
+            power: .off,
             speed: nil,
             physicalKeyPosition: .unknown,
             bleRssi: nil,

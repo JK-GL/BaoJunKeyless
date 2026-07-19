@@ -209,10 +209,11 @@ final class MQTTVehicleStateStore: VehicleStateStore {
     var fieldCollectAt: [String: Date] = [:]
     /// 字段来源标记，便于日志排查
     var fieldSource: [String: String] = [:]
-    /// 最近一次由明确字段或 BLE 成功回包确认的电源状态；HTTP 缺字段时短时保留。
+    /// 最近一次由明确字段或 BLE/HTTP 控制成功确认的电源状态；缺字段时永久粘性保留。
     var lastExplicitPowerStateAt: Date?
     var lastExplicitPowerStateSource: String?
-    static let explicitPowerStateHoldSeconds: TimeInterval = 180
+    /// 兼容旧常量；粘性二元电源不再按超时回退。
+    static let explicitPowerStateHoldSeconds: TimeInterval = .infinity
     /// 兼容旧字段；本机锁保护已关闭，保持 nil。
     var localDoorLockHoldUntil: Date?
     /// 最近一次 MQTT 真实空调字段时间；用于防止更旧的 HTTP 快照把空调状态冲回。
@@ -482,14 +483,25 @@ final class MQTTVehicleStateStore: VehicleStateStore {
         }
     }
 
-    /// 明确来源（HTTP/MQTT engineStatus 或 BLE 成功回包）确认电源状态。
+    /// 明确来源确认电源状态（对齐 Wuling 本地 isPoweredOn）：
+    /// BLE 上电/熄火回包、HTTP 启动/熄火受理、以及真实非空电源字段。
+    /// 之后即使 HTTP/MQTT 缺字段，也保持该二元状态，不回落 unknown。
     func applyExplicitPowerState(_ power: VehiclePowerState, source: String) {
-        guard power != .unknown else { return }
+        // 只接受可展示的二元/分级电源；unknown 不写入。
+        let sticky: VehiclePowerState
+        switch power {
+        case .on, .ready, .acc:
+            sticky = power
+        case .off:
+            sticky = .off
+        case .unknown:
+            return
+        }
         let now = Date()
         lastExplicitPowerStateAt = now
         lastExplicitPowerStateSource = source
         var next = state
-        guard next.power != power else {
+        guard next.power != sticky else {
             // 同值重复确认：只记时间，不刷 UI。
             if next.timestamp != now {
                 next.timestamp = now
@@ -497,12 +509,12 @@ final class MQTTVehicleStateStore: VehicleStateStore {
             }
             return
         }
-        next.power = power
+        next.power = sticky
         next.timestamp = now
         if apply(next) {
             bumpStatusRevision()
             evaluateKeylessAutomation(for: next)
-            vehicleEventLogStore.add(.action, "车辆电源已确认", detail: "\(source) · \(power.title)")
+            vehicleEventLogStore.add(.action, "车辆电源已确认", detail: "\(source) · \(sticky.title)")
         }
     }
 
