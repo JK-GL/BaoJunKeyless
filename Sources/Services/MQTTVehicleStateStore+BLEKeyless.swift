@@ -166,13 +166,8 @@ extension MQTTVehicleStateStore {
         debugBLESmoothedRSSI = rssi
         bleDiagnosticsStore.isPreviewRSSI = true
         debugBLELastSeenText = formatTime(Date())
-        vehicleEventLogStore.addThrottled(
-            .ble,
-            "RSSI预填",
-            detail: "\(reason)=\(rssi) dBm（连接中广播值，鉴权后切 live）",
-            identity: "rssi-preview|\(reason)",
-            minimumInterval: 3
-        )
+        // 预填值只属于 BLE 诊断域：不进入通用事件日志，避免连接过程被 RSSI 样本刷屏。
+        // live RSSI、诊断显示与无感判定仍由后续鉴权后的 applyLiveBLERSSI 处理。
     }
 
     func seedPreviewBLERSSIFromNearbyIfPossible() {

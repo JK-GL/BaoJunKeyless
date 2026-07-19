@@ -415,14 +415,26 @@ struct CommandConfirmPopup: View {
                 resultMessage = executionResult.popupMessage
                 resultButtonTitle = executionResult.popupButtonTitle
                 VehicleEventLogStore.shared.add(executionResult.logCategory, executionResult.logTitle, detail: executionResult.logDetail)
-                let resultShownMs = Int(Date().timeIntervalSince(startTime) * 1000)
-                let timingDetail: String
-                if let timing = executionResult.timing {
-                    timingDetail = "confirm→result=\(resultShownMs)ms, \(timing.summary)"
-                } else {
-                    timingDetail = "confirm→result=\(resultShownMs)ms"
+                // 成功 HTTP 锁/解会由“控制状态已确认/未确认”收敛；不再追加一条耗时流水。
+                // BLE（timing=nil）、失败/超时及其他命令仍保留耗时，方便排障。
+                let isSuccessfulHTTPLockOrUnlock: Bool = {
+                    guard executionResult.timing != nil else { return false }
+                    guard executionResult.command.kind == .lock || executionResult.command.kind == .unlock else { return false }
+                    switch executionResult.state {
+                    case .failed(_), .timedOut(_): return false
+                    default: return true
+                    }
+                }()
+                if !isSuccessfulHTTPLockOrUnlock {
+                    let resultShownMs = Int(Date().timeIntervalSince(startTime) * 1000)
+                    let timingDetail: String
+                    if let timing = executionResult.timing {
+                        timingDetail = "confirm→result=\(resultShownMs)ms, \(timing.summary)"
+                    } else {
+                        timingDetail = "confirm→result=\(resultShownMs)ms"
+                    }
+                    VehicleEventLogStore.shared.add(.action, "快捷操作耗时", detail: "\(executionResult.command.title)：\(timingDetail)")
                 }
-                VehicleEventLogStore.shared.add(.action, "快捷操作耗时", detail: "\(executionResult.command.title)：\(timingDetail)")
 
                 switch executionResult.state {
                 case .feedbackOnly, .planned, .sent, .completed:

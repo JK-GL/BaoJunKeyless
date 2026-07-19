@@ -159,8 +159,6 @@ extension MQTTVehicleStateStore {
             case .connected:
                 self.ignoreNextBLEIdleCallback = false
                 self.consecutiveScanTimeouts = 0
-                let macSuffix = self.deviceDisplayName
-                self.logVehicleEvent(.action, "BLE 已连接", detail: "\(macSuffix) · 开始鉴权", identity: "connecting|\(macSuffix)", minimumInterval: 3)
                 self.setBLEDiagnosticPhase("鉴权中", detail: self.bleDiagnosticCurrentCandidateText)
                 if let adRSSI = self.bleCurrentCandidateRSSI {
                     self.seedPreviewBLERSSI(adRSSI, reason: "connected-ad")
@@ -168,7 +166,6 @@ extension MQTTVehicleStateStore {
                 self.bleStatus = .authenticating
             case .authenticating:
                 self.ignoreNextBLEIdleCallback = false
-                self.logVehicleEvent(.action, "BLE 鉴权中", detail: "38C7/A857 四步鉴权", identity: "authenticating", minimumInterval: 3)
                 self.setBLEDiagnosticPhase("鉴权中", detail: self.bleDiagnosticCurrentCandidateText)
                 if let adRSSI = self.bleCurrentCandidateRSSI {
                     self.seedPreviewBLERSSI(adRSSI, reason: "auth-ad")
@@ -178,13 +175,17 @@ extension MQTTVehicleStateStore {
                 self.ignoreNextBLEIdleCallback = false
                 self.consecutiveScanTimeouts = 0
                 self.hasCompletedBLEAuth = true
+                let sessionReadyDetail: String
                 if let started = self.bleScanStartedAt {
                     let elapsed = Int(Date().timeIntervalSince(started))
-                    self.vehicleEventLogStore.add(.keyless, "BLE 会话就绪", detail: "扫描/连接/鉴权耗时 \(elapsed)s · 已完成安全重鉴权")
+                    sessionReadyDetail = "扫描/连接/鉴权耗时 \(elapsed)s · 已完成安全重鉴权"
+                } else {
+                    // 系统已连接接管可能没有本轮扫描起点；仍保留唯一成功证据。
+                    sessionReadyDetail = "系统连接接管 · 已完成安全重鉴权"
                 }
+                self.vehicleEventLogStore.add(.keyless, "BLE 会话就绪", detail: sessionReadyDetail)
                 self.setBLEDiagnosticPhase("已鉴权", detail: self.bleDiagnosticCurrentCandidateText)
                 self.setBLEDiagnosticConclusion("鉴权成功", reason: "已完成 BLE 四步鉴权")
-                self.logVehicleEvent(.action, "BLE 鉴权成功", detail: "可发送控车命令", identity: "authenticated", minimumInterval: 3)
                 self.connectionStatusStore.isSystemBLEConnected = true
                 self.bleStatus = .authenticated
                 self.keylessDecisionDisplayStore.ingest(

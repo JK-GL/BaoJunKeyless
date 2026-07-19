@@ -103,6 +103,19 @@ extension MQTTVehicleStateStore {
                 payloadBytes: data.count,
                 unmappedFieldNumbers: decoded.unmappedFieldNumbers
             )
+            let keylessCriticalKeys: Set<String> = [
+                "doorLockStatus", "door1LockStatus", "door2LockStatus", "door3LockStatus", "door4LockStatus", "tailDoorLockStatus",
+                "doorOpenStatus", "door1OpenStatus", "door2OpenStatus", "door3OpenStatus", "door4OpenStatus", "tailDoorOpenStatus",
+                "leftSlidingDoorStatus", "rightSlidingDoorStatus", "topWindowStatus",
+                "windowStatus", "window1Status", "window2Status", "window3Status", "window4Status",
+                "window1OpenDegree", "window2OpenDegree", "window3OpenDegree", "window4OpenDegree",
+                "windowHalfOpenStatus", "window1HalfOpenStatus", "window2HalfOpenStatus", "window3HalfOpenStatus", "window4HalfOpenStatus",
+                "acStatus", "accCntTemp", "acWindGear",
+                "engineStatus", "powerStatus", "vehPowerMode", "vehiclePowerStatus", "sysPowerMode", "ignitionStatus",
+                "autoGearStatus", "manualGearStatus", "keyStatus",
+                "charging", "chargePower", "wireConnect", "vecChrgingSts"
+            ]
+            let hasKeylessCriticalChange = !changedSet.isDisjoint(with: keylessCriticalKeys)
             if changedKeys.isEmpty {
                 self.vehicleEventLogStore.addCoalesced(
                     .action,
@@ -111,6 +124,23 @@ extension MQTTVehicleStateStore {
                     identity: "mqtt-status-unchanged|\(decoded.format)",
                     mergeWindow: 120
                 )
+            } else if !hasKeylessCriticalChange {
+                let auxiliaryDetail = self.formatMQTTAuxiliaryStatusLog(
+                    fields: fields,
+                    previous: previousFields,
+                    changedKeys: changedSet,
+                    format: decoded.format,
+                    payloadBytes: data.count
+                )
+                self.vehicleEventLogStore.addCoalesced(
+                    .action,
+                    "MQTT 辅助状态更新",
+                    detail: auxiliaryDetail,
+                    identity: "mqtt-auxiliary|\(decoded.format)|\(changedSet.sorted().joined(separator: ","))",
+                    mergeWindow: 60
+                )
+                // 日志虽然合并，原有“任一 MQTT 变化后 HTTP 补齐”行为必须保留。
+                self.scheduleHTTPRefreshFromRealtime(reason: "mqtt-status")
             } else {
                 self.vehicleEventLogStore.add(
                     .action,
@@ -361,6 +391,29 @@ extension MQTTVehicleStateStore {
 
         parts.append("说明: MQTT 字段已回写 UI；HTTP 仅补齐/收敛")
         return parts.joined(separator: " | ")
+    }
+
+    /// 仅记录与无感/车控无关的 MQTT 变化，避免辅助遥测反复占用整车快照日志。
+    /// 业务状态合并、控制确认与 HTTP 补齐在调用处保持原样。
+    private func formatMQTTAuxiliaryStatusLog(
+        fields: [String: String],
+        previous: [String: String],
+        changedKeys: Set<String>,
+        format: String,
+        payloadBytes: Int
+    ) -> String {
+        let labels: [String: String] = [
+            "lowBeamLight": "近光", "dipHeadLight": "远光", "leftTurnLight": "左转向", "rightTurnLight": "右转向",
+            "positionLight": "位置灯", "frontFogLight": "前雾灯", "rearFogLight": "后雾灯",
+            "batterySoc": "电量", "leftMileage": "电续航", "oilLeftMileage": "油续航", "leftFuel": "燃油",
+            "mileage": "总里程", "vehSpdAvgDrvn": "平均车速", "interiorTemperature": "车内温度",
+            "strWhAng": "方向盘", "brakPedalPos": "刹车", "accActPos": "油门"
+        ]
+        let changes = changedKeys.sorted().prefix(10).map { key in
+            labels[key] ?? key
+        }.joined(separator: "、")
+        let extra = changedKeys.count > 10 ? " · 其余\(changedKeys.count - 10)项" : ""
+        return "格式=\(format) · payload=\(payloadBytes)B · 辅助变化=\(changes)\(extra) · HTTP补齐"
     }
 
     /// 默认短日志：日常只看摘要与变化；全字段/PB/rawHex 保留在解码函数，后续需要可再挂详细开关。

@@ -19,12 +19,8 @@ extension MQTTVehicleStateStore {
         pendingControlStateConfirmation = pending
         latestControlStateConfirmation = nil
 
-        vehicleEventLogStore.add(
-            .action,
-            "控制确认开始",
-            detail: "command=\(command.title) · expected=\(controlExpectedDescription(for: command) ?? "--") · MQTT status/HTTP 任一命中 · timeout=\(Int(Self.controlStateConfirmationTimeout))s"
-        )
-
+        // 这是确认窗口的内部起点；日常只记录最终“已确认/未确认”，避免一次控制拆成多条流水。
+        // pending 对象、10 秒超时和 MQTT/HTTP 命中逻辑不变。
         let work = DispatchWorkItem { [weak self] in
             guard let self,
                   let current = self.pendingControlStateConfirmation,

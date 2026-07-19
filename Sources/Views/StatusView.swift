@@ -333,7 +333,15 @@ struct StatusView: View {
 
         let routeModeText = vehicleControlRouteMode.title
         let actualRouteText = selectedRoute == .ble ? "BLE" : "HTTP"
-        VehicleEventLogStore.shared.add(.action, "快捷路由选择", detail: "\(command.title) | mode=\(routeModeText) | route=\(actualRouteText)")
+        // 自动模式回退 HTTP 是正常默认路径，最终“请求已下发/状态确认”已携带足够证据；
+        // 强制模式或自动选中 BLE 仍记录，便于核对实际传输通道。
+        if vehicleControlRouteMode != .auto || selectedRoute == .ble {
+            VehicleEventLogStore.shared.add(
+                .action,
+                "快捷路由选择",
+                detail: "\(command.title) | mode=\(routeModeText) | route=\(actualRouteText)"
+            )
+        }
 
         let willUseBLE = selectedRoute == .ble
 
