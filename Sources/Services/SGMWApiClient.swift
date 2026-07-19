@@ -160,21 +160,21 @@ final class SGMWApiClient {
             // 寻车：只传 vin，不传 status。
             return VehicleControlRequestPlan(command: .findCar, endpointCandidates: ["car/control/searchCar"], bodyKeys: ["vin"], note: "Android open-source：searchCar 仅 vin")
         case .acOn:
-            // 开空调：status/accOnOff=1，并带 temperature/blowerLvl/duration。
-            return VehicleControlRequestPlan(command: .acOn, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature", "blowerLvl", "duration"], note: "Android open-source：开空调 status=1 accOnOff=1")
+            // 官方云控：开空调 status=6（非 0/1 门锁语义）。
+            return VehicleControlRequestPlan(command: .acOn, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature", "blowerLvl", "duration"], note: "BLE_SPEC §5.7：开空调 status=6")
         case .acOff:
-            // 关空调：status/accOnOff=0。
-            return VehicleControlRequestPlan(command: .acOff, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status"], note: "Android open-source：关空调 status=0 accOnOff=0")
+            // 官方云控：关空调 status=7。
+            return VehicleControlRequestPlan(command: .acOff, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status"], note: "BLE_SPEC §5.7：关空调 status=7")
         case .setTemperature:
-            // 自定义温度：空调已开时仍走 status=1 + temperature（本车 status=1 已验证可用）。
-            return VehicleControlRequestPlan(command: .setTemperature, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature", "blowerLvl", "duration"], note: "Android open-source：设温度 status=1 + temperature")
+            // 官方云控：设温度 status=5 + temperature。
+            return VehicleControlRequestPlan(command: .setTemperature, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature", "blowerLvl", "duration"], note: "BLE_SPEC §5.7：设温度 status=5 + temperature")
         case .openWindows:
             return VehicleControlRequestPlan(command: .openWindows, endpointCandidates: ["car/control/window"], bodyKeys: ["vin", "status"], note: "Android open-source / BLE_SPEC：车窗 status=0 开窗")
         case .closeWindows:
             return VehicleControlRequestPlan(command: .closeWindows, endpointCandidates: ["car/control/window"], bodyKeys: ["vin", "status"], note: "Android open-source / BLE_SPEC：车窗 status=1 关窗")
         case .quickCool:
-            // 快冷：status=1 + 17°C + blowerLvl=7 + duration=20。
-            return VehicleControlRequestPlan(command: .quickCool, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature", "blowerLvl", "duration"], note: "Android open-source：快冷 status=1 temperature=17 blowerLvl=7 duration=20")
+            // 官方云控：快冷 status=4 + 温度/风量/时长。
+            return VehicleControlRequestPlan(command: .quickCool, endpointCandidates: ["car/control/acc"], bodyKeys: ["vin", "accOnOff", "status", "temperature", "blowerLvl", "duration"], note: "BLE_SPEC §5.7：快冷 status=4 temperature=17 blowerLvl=7")
         }
     }
 
@@ -196,16 +196,21 @@ final class SGMWApiClient {
                 body["status"] = 1
             case .unlock, .openWindows:
                 body["status"] = 0
-            case .acOn, .quickCool, .setTemperature:
-                // 开空调/快冷/设温度都用 status=1；本车 status=1 已验证可用。
-                body["status"] = 1
+            // 官方空调服务 status：3升温 4降温 5设温 6开 7关。
+            case .acOn:
+                body["status"] = 6
             case .acOff:
-                body["status"] = 0
+                body["status"] = 7
+            case .setTemperature:
+                body["status"] = 5
+            case .quickCool:
+                body["status"] = 4
             default:
                 break
             }
         }
         if plan.bodyKeys.contains("accOnOff") {
+            // 兼容旧网关：开/设温/快冷仍带 accOnOff=1，关空调带 0。
             switch command.kind {
             case .acOn, .quickCool, .setTemperature:
                 body["accOnOff"] = "1"
@@ -220,7 +225,7 @@ final class SGMWApiClient {
             switch command.kind {
             case .quickCool:
                 defaultTemperature = 17
-            case .setTemperature:
+            case .setTemperature, .acOn:
                 defaultTemperature = 24
             default:
                 defaultTemperature = 24
@@ -230,11 +235,13 @@ final class SGMWApiClient {
             body["temperature"] = String(max(17, min(33, rawTemperature)))
         }
         if plan.bodyKeys.contains("blowerLvl") {
-            let rawLevel = command.kind == .quickCool ? 7 : 3
+            // 官方快冷/设温样例多用 7 档；开空调也按可用默认 7。
+            let rawLevel = 7
             body["blowerLvl"] = String(rawLevel)
         }
         if plan.bodyKeys.contains("duration") {
-            let defaultDuration = command.kind == .quickCool ? 20 : 10
+            // 官方样例 duration=10；快冷也按 10，避免超范围。
+            let defaultDuration = 10
             let rawDuration = command.requestedDurationMinutes ?? defaultDuration
             body["duration"] = String(max(5, min(20, rawDuration)))
         }

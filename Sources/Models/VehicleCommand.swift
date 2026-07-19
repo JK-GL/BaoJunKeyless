@@ -87,10 +87,12 @@ extension CommandAction {
             return VehicleCommand(kind: .findCar, title: "寻车", detail: "快捷操作寻车", requestedTemperature: nil, source: source, transportHint: .httpControl)
         case .acToggle:
             if state.acOn == true {
-                // 空调已开：若用户改了设定温度，则发设定温度；未改温度才关闭。
+                // 空调已开：
+                // - 温度相对当前设定有变化 → 官方 status=5 设温
+                // - 温度未变化 → 官方 status=7 关空调
                 let requested = temperature.map { Int($0.rounded()) }
                 let current = state.acTemperature.map { Int($0.rounded()) }
-                if let requested, requested != current {
+                if let requested, current == nil || requested != current {
                     return VehicleCommand(
                         kind: .setTemperature,
                         title: "设定温度",

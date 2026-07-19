@@ -124,8 +124,9 @@ extension MQTTVehicleStateStore {
                 scheduleHTTPConfirm: false
             )
         case .setTemperature:
+            // 设温成功即认为空调处于开启态，便于按钮切到“关闭空调/设温”。
             _ = applyAuthoritativeClimateState(
-                acOn: nil,
+                acOn: true,
                 temperature: command.requestedTemperature,
                 source: "HTTP设温已受理",
                 observedAt: Date(),
