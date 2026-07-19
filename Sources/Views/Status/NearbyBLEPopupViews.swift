@@ -70,6 +70,8 @@ struct NearbyBLEDevicesPopupView: View {
                                 scoreText: device.score.map(String.init) ?? "--",
                                 mac: device.manufacturerMac ?? "--",
                                 exactMatched: device.exactMatched,
+                                isSystemConnected: device.isSystemConnected,
+                                hasLiveRSSI: device.hasLiveRSSI,
                                 onConnect: {
                                     onBind(device)
                                     nearbyStore.flush()
@@ -131,6 +133,8 @@ private struct NearbyBLEDeviceRowView: View, Equatable {
     let scoreText: String
     let mac: String
     let exactMatched: Bool
+    let isSystemConnected: Bool
+    let hasLiveRSSI: Bool
     let onConnect: () -> Void
 
     static func == (lhs: NearbyBLEDeviceRowView, rhs: NearbyBLEDeviceRowView) -> Bool {
@@ -140,6 +144,8 @@ private struct NearbyBLEDeviceRowView: View, Equatable {
             && lhs.scoreText == rhs.scoreText
             && lhs.mac == rhs.mac
             && lhs.exactMatched == rhs.exactMatched
+            && lhs.isSystemConnected == rhs.isSystemConnected
+            && lhs.hasLiveRSSI == rhs.hasLiveRSSI
     }
 
     var body: some View {
@@ -151,7 +157,7 @@ private struct NearbyBLEDeviceRowView: View, Equatable {
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     if exactMatched {
-                        Text("匹配")
+                        Text(isSystemConnected ? "已连接 · 已验证" : "匹配")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(.black)
                             .padding(.horizontal, 6)
@@ -159,7 +165,9 @@ private struct NearbyBLEDeviceRowView: View, Equatable {
                             .background(Capsule().fill(AppTheme.green))
                     }
                 }
-                Text("信号 \(rssi) dBm · 地址 \(mac)")
+                Text(hasLiveRSSI
+                    ? "信号 \(rssi) dBm · 地址 \(mac)"
+                    : "系统已连 · 信号待读取 · 地址 \(mac)")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Color.white.opacity(0.62))
                     .lineLimit(2)

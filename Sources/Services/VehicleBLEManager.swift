@@ -105,10 +105,14 @@ final class VehicleBLEManager: NSObject {
         let peripheralIdentifier: String
         let name: String
         let rssi: Int
+        /// true 表示 rssi 是广告或 readRSSI 返回的真实值；false 表示系统已连、尚未读到信号。
+        let hasLiveRSSI: Bool
         let manufacturerMac: String?
         let serviceText: String
         let score: Int?
         let exactMatched: Bool
+        /// 只对已验证属于当前车的 system-connected 外设为 true。
+        let isSystemConnected: Bool
         let lastSeenAt: Date
 
         var displayName: String {
@@ -244,9 +248,14 @@ final class VehicleBLEManager: NSObject {
     private var candidateName: String = "--"
     private var candidateRSSI: Int = -127
     private var candidateScore: Int = Int.min
+    /// 本轮广播已用 manufacturer MAC 精确证明属于当前车的 peripheral UUID。
+    /// 仅在内存中保存，扫描新周期会清空；旁车 UUID 不会跨周期变成当前车凭据。
+    private var currentVehicleBroadcastIDs: Set<UUID> = []
     private var nearbyDeviceLastReportAt: [String: Date] = [:]
     private var candidateSelectionWorkItem: DispatchWorkItem?
     private var scanWatchdogWorkItem: DispatchWorkItem?
+    private var scanSelfHealWorkItem: DispatchWorkItem?
+    private var didRunScanSelfHealThisCycle = false
     private var scanTotalTimeoutWorkItem: DispatchWorkItem?
     private var scanRetryWorkItem: DispatchWorkItem?
     private var connectionTimeoutWorkItem: DispatchWorkItem?
@@ -360,6 +369,8 @@ final class VehicleBLEManager: NSObject {
         candidateSelectionWorkItem = nil
         scanWatchdogWorkItem?.cancel()
         scanWatchdogWorkItem = nil
+        scanSelfHealWorkItem?.cancel()
+        scanSelfHealWorkItem = nil
         scanTotalTimeoutWorkItem?.cancel()
         scanTotalTimeoutWorkItem = nil
         scanRetryWorkItem?.cancel()
@@ -398,9 +409,13 @@ final class VehicleBLEManager: NSObject {
         candidateName = "--"
         candidateRSSI = -127
         candidateScore = Int.min
+        currentVehicleBroadcastIDs.removeAll()
+        didRunScanSelfHealThisCycle = false
         nearbyDeviceLastReportAt.removeAll()
         scanWatchdogWorkItem?.cancel()
         scanWatchdogWorkItem = nil
+        scanSelfHealWorkItem?.cancel()
+        scanSelfHealWorkItem = nil
         scanTotalTimeoutWorkItem?.cancel()
         scanTotalTimeoutWorkItem = nil
         scanRetryWorkItem?.cancel()
@@ -485,43 +500,74 @@ final class VehicleBLEManager: NSObject {
         startScanning()
     }
 
-    /// 优先接管系统已连接、且像本车钥匙模块的外设（181A/182A）
-    /// 只有系统层真的 connected 才算“已连接”；否则回落扫描，避免 UI 假“连接中”。
+    /// 当前配置下可自动接管/标为当前车的 UUID 集合；服务、名称或车型绝不参与身份判断。
+    private func verifiedCurrentVehicleIDs() -> Set<UUID> {
+        var ids = currentVehicleBroadcastIDs
+        if let lastID = loadLastSuccessfulPeripheralUUID() {
+            ids.insert(lastID)
+        }
+        return ids
+    }
+
+    private func isVerifiedCurrentVehicle(_ peripheral: CBPeripheral) -> Bool {
+        verifiedCurrentVehicleIDs().contains(peripheral.identifier)
+    }
+
+    /// 仅接管已证明属于当前车的系统连接：
+    /// 1) 当前 bleMac + keyId 作用域下、此前鉴权成功的 SoftLast UUID；或
+    /// 2) 本扫描周期通过 manufacturer MAC == 当前接口 bleMac 精确确认过的 UUID。
+    /// 名称、车型、181A/182A 服务本身均不是车辆身份，不能据此接管旁车。
     private func connectSystemConnectedPeripheralIfAvailable(reason: String = "retrieve") -> Bool {
         guard config != nil else { return false }
-        // 分别用 181A / 182A 查询再合并：部分机型对「多服务数组」返回不完整
-        var byId: [UUID: CBPeripheral] = [:]
-        for service in [authService, controlService] {
-            for p in central.retrieveConnectedPeripherals(withServices: [service]) where p.state == .connected {
-                byId[p.identifier] = p
-            }
+        // 本轮 MAC 精确广播证据优先于历史 SoftLast；Set 无序不能决定身份优先级。
+        var trustedIDs = currentVehicleBroadcastIDs
+        if let lastID = loadLastSuccessfulPeripheralUUID() {
+            trustedIDs.insert(lastID)
         }
-        // 再试：上次成功 UUID 若系统已连（服务 UUID 有时检索不到）
-        if let lastId = loadLastSuccessfulPeripheralUUID(),
-           let last = central.retrievePeripherals(withIdentifiers: [lastId]).first,
-           last.state == .connected {
-            byId[last.identifier] = last
-        }
-        let connected = Array(byId.values)
-        guard !connected.isEmpty else {
-            onLog?("BLE", "system has no connected 181A/182A peripheral reason=\(reason)")
+        guard !trustedIDs.isEmpty else {
+            onLog?("BLE", "system adopt skipped: no verified current-vehicle UUID reason=\(reason)")
             return false
         }
+        let orderedIDs = Array(currentVehicleBroadcastIDs) + Array(trustedIDs.subtracting(currentVehicleBroadcastIDs))
 
-        // 一车一账号：任一带 181A/182A 的已连接外设即可
-        if let peripheral = connected.first {
+        for identifier in orderedIDs {
+            guard let peripheral = central.retrievePeripherals(withIdentifiers: [identifier]).first,
+                  peripheral.state == .connected else { continue }
             isSystemConnectedSession = true
+            publishCurrentVehicleNearbyDevice(peripheral, rssi: nil)
             connectScannedPeripheral(
                 peripheral,
                 localName: peripheral.name ?? "system-connected",
-                rssi: -50,
+                rssi: 0,
                 source: .manufacturer,
-                detail: "systemConnected serviceMatch id=\(peripheral.identifier.uuidString.prefix(8)) reason=\(reason)"
+                detail: "systemConnected verifiedCurrentVehicle id=\(peripheral.identifier.uuidString.prefix(8)) reason=\(reason)"
             )
-            onLog?("BLE", "prefer system-connected service peripheral id=\(peripheral.identifier.uuidString.prefix(8)) name=\(peripheral.name ?? "--") count=\(connected.count) reason=\(reason)")
+            onLog?("BLE", "adopt verified current-vehicle system connection id=\(peripheral.identifier.uuidString.prefix(8)) name=\(peripheral.name ?? "--") reason=\(reason)")
             return true
         }
+        onLog?("BLE", "system adopt found no connected verified current-vehicle UUID reason=\(reason) candidates=\(trustedIDs.count)")
         return false
+    }
+
+    /// 将已验证属于当前车的连接发布到「附近设备」。没有 readRSSI 时显式标成系统已连，绝不伪造 dBm。
+    private func publishCurrentVehicleNearbyDevice(_ peripheral: CBPeripheral, rssi: Int?) {
+        guard let config else { return }
+        let targetMac = normalizedBleMacHex(config.bleMac)
+        onNearbyDeviceDiscovered?(
+            NearbyDevice(
+                id: peripheral.identifier.uuidString,
+                peripheralIdentifier: peripheral.identifier.uuidString,
+                name: peripheral.name ?? "system-connected",
+                rssi: rssi ?? 0,
+                hasLiveRSSI: rssi != nil,
+                manufacturerMac: targetMac,
+                serviceText: "181A,182A",
+                score: nil,
+                exactMatched: true,
+                isSystemConnected: true,
+                lastSeenAt: Date()
+            )
+        )
     }
 
     // MARK: - Soft last-vehicle (no user binding UI; only speed up reconnect + display)
@@ -640,13 +686,14 @@ final class VehicleBLEManager: NSObject {
             onLog?("BLE", "soft last-vehicle uuid not in system cache id=\(uuid.uuidString.prefix(8)), wide scan")
             return false
         }
-        // 已连接则走接管
+        // 已连接则走严格接管；系统没有广播 RSSI 时不伪造 dBm。
         if peripheral.state == .connected {
             isSystemConnectedSession = true
+            publishCurrentVehicleNearbyDevice(peripheral, rssi: nil)
             connectScannedPeripheral(
                 peripheral,
                 localName: peripheral.name ?? "last-vehicle",
-                rssi: -50,
+                rssi: 0,
                 source: .manufacturer,
                 detail: "softLast alreadyConnected id=\(uuid.uuidString.prefix(8))"
             )
@@ -661,6 +708,8 @@ final class VehicleBLEManager: NSObject {
         candidateSelectionWorkItem = nil
         scanWatchdogWorkItem?.cancel()
         scanWatchdogWorkItem = nil
+        scanSelfHealWorkItem?.cancel()
+        scanSelfHealWorkItem = nil
         scanTotalTimeoutWorkItem?.cancel()
         scanTotalTimeoutWorkItem = nil
         isSystemConnectedSession = false
@@ -688,13 +737,17 @@ final class VehicleBLEManager: NSObject {
         }
     }
 
-    private func startScanning() {
+    private func startScanning(forceRestartScanning: Bool = false, preservingCurrentVehicleEvidence: Bool = false) {
         guard config != nil else {
             state = .idle
             return
         }
-        if case .scanning = state { return }
+        if case .scanning = state, !forceRestartScanning { return }
         guard discoveredPeripheral == nil else { return }
+        if !preservingCurrentVehicleEvidence {
+            currentVehicleBroadcastIDs.removeAll()
+            didRunScanSelfHealThisCycle = false
+        }
         candidateSelectionWorkItem?.cancel()
         candidateSelectionWorkItem = nil
         scanRetryWorkItem?.cancel()
@@ -707,23 +760,54 @@ final class VehicleBLEManager: NSObject {
         central.stopScan()
         state = .scanning
         let targetMac = normalizedBleMacHex(config?.bleMac ?? "") ?? "--"
-        onLog?("BLE", "official scan manufacturerLast6 target=\(targetMac) debugFallback=\(allowsDebugScoreFallback ? 1 : 0) minScore=\(candidateMinimumScore)")
+        let scanMode = forceRestartScanning ? "self-heal restart" : "official scan"
+        onLog?("BLE", "\(scanMode) manufacturerLast6 target=\(targetMac) debugFallback=\(allowsDebugScoreFallback ? 1 : 0) minScore=\(candidateMinimumScore)")
         central.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
         scheduleScanWatchdog()
-        scheduleScanTotalTimeout()
+        scheduleScanSelfHealIfNeeded()
+        // 5 秒自愈仅重开发现广播，原扫描总超时仍按首轮绝对时间执行。
+        if !forceRestartScanning {
+            scheduleScanTotalTimeout()
+        }
     }
 
+    /// 扫描中的 2.5 秒复查：只接管 SoftLast / 本轮精确 MAC 广播已证明属于当前车的 UUID。
     private func scheduleScanWatchdog() {
         scanWatchdogWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             guard case .scanning = self.state else { return }
+            if self.connectSystemConnectedPeripheralIfAvailable(reason: "scan-watchdog-2.5s") {
+                return
+            }
             let targetMac = self.normalizedBleMacHex(self.config?.bleMac ?? "") ?? "--"
-            self.onLog?("BLE", "official manufacturer scan still running target=\(targetMac) debugFallback=\(self.allowsDebugScoreFallback ? 1 : 0) bestScore=\(self.candidateScore)")
+            self.onLog?("BLE", "scan watchdog 2.5s no verified system connection target=\(targetMac) evidenceUUIDs=\(self.currentVehicleBroadcastIDs.count) bestScore=\(self.candidateScore)")
             self.scheduleScanWatchdog()
         }
         scanWatchdogWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: work)
+    }
+
+    /// 同一逻辑扫描周期最多一次：5 秒未接管仅重启扫描器，不取消 peripheral connection，不清会话。
+    private func scheduleScanSelfHealIfNeeded() {
+        scanSelfHealWorkItem?.cancel()
+        guard !didRunScanSelfHealThisCycle else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            guard case .scanning = self.state, !self.didRunScanSelfHealThisCycle else { return }
+            if self.connectSystemConnectedPeripheralIfAvailable(reason: "scan-self-heal-5s-pre-stop") {
+                return
+            }
+            self.didRunScanSelfHealThisCycle = true
+            self.onLog?("BLE", "scan self-heal 5s: stopScan → verified-current-vehicle recheck → restart; no peripheral connection cancelled")
+            self.central.stopScan()
+            if self.connectSystemConnectedPeripheralIfAvailable(reason: "scan-self-heal-5s-after-stop") {
+                return
+            }
+            self.startScanning(forceRestartScanning: true, preservingCurrentVehicleEvidence: true)
+        }
+        scanSelfHealWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: work)
     }
 
     private func scheduleScanTotalTimeout() {
@@ -736,6 +820,8 @@ final class VehicleBLEManager: NSObject {
             self.central.stopScan()
             self.scanWatchdogWorkItem?.cancel()
             self.scanWatchdogWorkItem = nil
+            self.scanSelfHealWorkItem?.cancel()
+            self.scanSelfHealWorkItem = nil
             self.candidateSelectionWorkItem?.cancel()
             self.candidateSelectionWorkItem = nil
             if self.discoveredPeripheral == nil {
@@ -1435,6 +1521,8 @@ final class VehicleBLEManager: NSObject {
         candidateSelectionWorkItem = nil
         scanWatchdogWorkItem?.cancel()
         scanWatchdogWorkItem = nil
+        scanSelfHealWorkItem?.cancel()
+        scanSelfHealWorkItem = nil
         scanTotalTimeoutWorkItem?.cancel()
         scanTotalTimeoutWorkItem = nil
 
@@ -1627,24 +1715,34 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
         // 系统只恢复 peripheral 连接，不恢复可信鉴权会话。先清空随机数/控制密钥/特征/待处理命令，再重新发现服务并完整鉴权。
         clearSessionRuntime(cancelPendingControl: true)
         onLog?("BLE", "restore safety reset complete; full re-authentication required")
-        if let peripheral = peripherals.first {
-            discoveredPeripheral = peripheral
-            peripheral.delegate = self
-            currentConnectionSource = .manufacturer
-            switch peripheral.state {
-            case .connected:
-                state = .connecting
-                onLog?("BLE", "restore connected peripheral, discover services: \(peripheral.name ?? "--")")
-                peripheral.discoverServices(nil)
-            case .connecting:
-                state = .connecting
-                onLog?("BLE", "restore connecting peripheral: \(peripheral.name ?? "--")")
-            default:
-                onLog?("BLE", "restore peripheral idle, resume scan")
-                startScanning()
+        // 恢复列表也可能含旁车：只接受当前 bleMac + keyId 作用域的 SoftLast UUID。
+        let restoredCurrentVehicle = loadLastSuccessfulPeripheralUUID().flatMap { trustedID in
+            peripherals.first(where: { $0.identifier == trustedID })
+        }
+        guard let peripheral = restoredCurrentVehicle else {
+            onLog?("BLE", "restore has no verified current-vehicle UUID; resume strict MAC scan")
+            if central.state == .poweredOn {
+                startConnectionFlow()
             }
-        } else if central.state == .poweredOn {
-            handleCentralState()
+            return
+        }
+        discoveredPeripheral = peripheral
+        peripheral.delegate = self
+        currentConnectionSource = .manufacturer
+        switch peripheral.state {
+        case .connected:
+            isSystemConnectedSession = true
+            publishCurrentVehicleNearbyDevice(peripheral, rssi: nil)
+            state = .connecting
+            onLog?("BLE", "restore verified current vehicle, discover services: \(peripheral.name ?? "--")")
+            peripheral.discoverServices(nil)
+        case .connecting:
+            state = .connecting
+            onLog?("BLE", "restore verified current vehicle connecting: \(peripheral.name ?? "--")")
+        default:
+            onLog?("BLE", "restore verified UUID not connected, resume strict MAC scan")
+            discoveredPeripheral = nil
+            startScanning()
         }
     }
 
@@ -1656,6 +1754,10 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
         let targetMac = normalizedBleMacHex(config?.bleMac ?? "")
         let serviceText = ((advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]) ?? []).map { $0.uuidString }.joined(separator: ",")
         let manufacturerExactMatched = manufacturerMac.flatMap { mac in targetMac.map { mac == $0 } } ?? false
+        // 广播 manufacturer MAC 是本车身份的硬证据：仅本扫描周期记住 UUID，供稍后系统已连接管复查使用。
+        if manufacturerExactMatched {
+            currentVehicleBroadcastIDs.insert(peripheral.identifier)
+        }
 
         if let manufacturerMac {
             onLog?("BLE", "manufacturer candidate name=\(localName) rssi=\(rssi) deviceMac=\(manufacturerMac) target=\(targetMac ?? "--") match=\(manufacturerExactMatched ? 1 : 0) mfg=\(manufacturerHex.prefix(24))")
@@ -1675,10 +1777,12 @@ extension VehicleBLEManager: CBCentralManagerDelegate {
                         peripheralIdentifier: key,
                         name: localName,
                         rssi: rssi,
+                        hasLiveRSSI: true,
                         manufacturerMac: manufacturerMac,
                         serviceText: serviceText.isEmpty ? "--" : serviceText,
                         score: score > (Int.min / 4) ? score : nil,
                         exactMatched: manufacturerExactMatched,
+                        isSystemConnected: peripheral.state == .connected && manufacturerExactMatched,
                         lastSeenAt: now
                     )
                 )
@@ -1832,6 +1936,10 @@ extension VehicleBLEManager: CBPeripheralDelegate {
         }
         let value = RSSI.intValue
         onLog?("BLE", "rssi=\(value)")
+        // 鉴权后的 readRSSI 是当前车真实信号；只同步已验证当前车，避免旁车污染附近列表。
+        if isVerifiedCurrentVehicle(peripheral) {
+            publishCurrentVehicleNearbyDevice(peripheral, rssi: value)
+        }
         onRSSIUpdate?(value)
         scheduleRSSIRead(after: 1.0)
     }

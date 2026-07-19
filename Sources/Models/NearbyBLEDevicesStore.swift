@@ -81,6 +81,10 @@ final class NearbyBLEDevicesStore: ObservableObject {
             if lhs.id != rhs.id { return true }
             if lhs.exactMatched != rhs.exactMatched { return true }
             if lhs.manufacturerMac != rhs.manufacturerMac { return true }
+            if lhs.isSystemConnected != rhs.isSystemConnected { return true }
+            if lhs.hasLiveRSSI != rhs.hasLiveRSSI { return true }
+            // readRSSI 只在用户打开弹窗时由 1 秒快照拉取；实值变化需更新显示，但 RSSI 抖动不触发其他整页重绘。
+            if lhs.hasLiveRSSI && abs(lhs.rssi - rhs.rssi) >= 2 { return true }
             // score 小幅波动不刷；只有跨档才算结构变化
             let oldScore = lhs.score ?? Int.min
             let newScore = rhs.score ?? Int.min
