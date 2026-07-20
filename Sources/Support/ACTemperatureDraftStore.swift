@@ -1,9 +1,9 @@
 import Foundation
 
-/// 空调设定温度草稿（官方风格）：
+/// 空调 / 快冷共用温度草稿（官方风格）：
 /// - 关着时滑动只记本地，不发网络
 /// - 车况 `accCntTemp` 仍是权威回落
-/// - 按 VIN 跨会话保留用户刚调过的目标温度
+/// - 按 VIN 跨会话保留；空调与快冷滑条读写同一份草稿
 enum ACTemperatureDraftStore {
     private static let defaults = UserDefaults.standard
     private static let validRange: ClosedRange<Int> = 17...33

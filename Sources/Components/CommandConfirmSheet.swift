@@ -148,7 +148,7 @@ enum CommandAction: String, Identifiable, Equatable {
         case .windowToggle:
             return state.windowsClosed == false ? "确认后将关闭全部车窗。" : "确认后将打开全部车窗。"
         case .quickCool:
-            return "确认后将按设定温度快速降温，可调节温度与时长。"
+            return "确认后将按设定温度快速降温；温度与「空调」共用，可调节温度与时长。"
         }
     }
 
@@ -190,16 +190,15 @@ struct CommandConfirmPopup: View {
         self._isPresented = isPresented
         self.onConfirm = onConfirm
         let initialTemperature: Double
-        if action == .quickCool {
-            initialTemperature = 17
-        } else if action == .acToggle {
-            // 官方风格：草稿(按VIN) > 车况 accCntTemp > 默认。
-            // 关着时车况仍常带上次设定温度；草稿保留用户刚滑过的目标。
+        if action == .acToggle || action == .quickCool {
+            // 空调 / 快冷共用同一温度草稿：一边滑动，另一边打开同步。
+            // 优先级：本地草稿(按VIN) > 车况 accCntTemp > 动作默认（空调22 / 快冷17）。
             let vin = VehicleCredentialsStore.shared.vin
+            let defaultTemperature: Double = (action == .quickCool) ? 17 : 22
             initialTemperature = ACTemperatureDraftStore.resolvedTemperature(
                 vin: vin,
                 vehicleTemperature: vehicleState.acTemperature,
-                defaultTemperature: 22
+                defaultTemperature: defaultTemperature
             )
         } else {
             initialTemperature = vehicleState.acTemperature ?? 22
@@ -415,20 +414,29 @@ struct CommandConfirmPopup: View {
         }
     }
 
-    /// 空调弹窗温度提交（官方风格）：
-    /// - 关着：只记本地草稿（按 VIN），不发网络；下次开启用该温度
-    /// - 开着：相对基线变化则自动设温，无需点确定
+    /// 温度滑条提交：空调与快冷共用同一草稿。
+    /// - 任意一侧滑动：写入按 VIN 草稿，另一侧打开同步
+    /// - 空调已开：相对基线变化则自动设温
+    /// - 空调已关 / 快冷：只记草稿，不因滑动直接发令
     private func handleTemperatureCommitted(_ value: Double) {
-        guard action == .acToggle else { return }
+        guard action == .acToggle || action == .quickCool else { return }
         guard !isExecuting, commandResult == nil else { return }
 
         let requested = max(17, min(33, Int(value.rounded())))
         temperature = Double(requested)
         let vin = VehicleCredentialsStore.shared.vin
-        // 无论开关，用户明确调温都写入草稿，保证关着也能“记住”。
+        // 空调 / 快冷共用草稿，保证两边温度一致。
         ACTemperatureDraftStore.save(vin: vin, temperature: Double(requested))
 
-        // 关着：只本地记住，不发令（与官方关着可调温模块一致）。
+        // 快冷：滑动只同步草稿，确认键才发快冷。
+        if action == .quickCool {
+            let impact = UIImpactFeedbackGenerator(style: .light)
+            impact.impactOccurred()
+            resultMessage = "温度已同步 \(requested)°C（与空调共用）"
+            return
+        }
+
+        // 空调关着：只本地记住，不发令。
         if vehicleState.acOn != true {
             let impact = UIImpactFeedbackGenerator(style: .light)
             impact.impactOccurred()
@@ -533,8 +541,8 @@ struct CommandConfirmPopup: View {
                         resultMessage = executionResult.popupMessage
                         return
                     }
-                    // 开/关/设温成功也同步草稿：关空调不丢温度，开/设温用最新值。
-                    if action == .acToggle {
+                    // 空调 / 快冷成功都同步共用草稿，保证两边温度一致。
+                    if action == .acToggle || action == .quickCool {
                         ACTemperatureDraftStore.save(
                             vin: VehicleCredentialsStore.shared.vin,
                             temperature: temperatureToUse
