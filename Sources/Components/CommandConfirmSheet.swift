@@ -144,7 +144,7 @@ enum CommandAction: String, Identifiable, Equatable {
         case .acToggle:
             return state.acOn == true
                 ? "空调已开：滑动或点 +/- 到目标温度会自动设定；保持当前温度点确认=关闭空调。"
-                : "确认后将开启空调，可先调节设定温度。"
+                : "空调已关：可先滑动记住温度（不发令），点确认后按该温度开启。"
         case .windowToggle:
             return state.windowsClosed == false ? "确认后将关闭全部车窗。" : "确认后将打开全部车窗。"
         case .quickCool:
@@ -189,13 +189,22 @@ struct CommandConfirmPopup: View {
         self.vehicleState = vehicleState
         self._isPresented = isPresented
         self.onConfirm = onConfirm
-        let initialTemperature: Int
+        let initialTemperature: Double
         if action == .quickCool {
             initialTemperature = 17
+        } else if action == .acToggle {
+            // 官方风格：草稿(按VIN) > 车况 accCntTemp > 默认。
+            // 关着时车况仍常带上次设定温度；草稿保留用户刚滑过的目标。
+            let vin = VehicleCredentialsStore.shared.vin
+            initialTemperature = ACTemperatureDraftStore.resolvedTemperature(
+                vin: vin,
+                vehicleTemperature: vehicleState.acTemperature,
+                defaultTemperature: 22
+            )
         } else {
-            initialTemperature = Int(vehicleState.acTemperature ?? 22)
+            initialTemperature = vehicleState.acTemperature ?? 22
         }
-        let clamped = Double(max(17, min(33, initialTemperature)))
+        let clamped = max(17, min(33, initialTemperature))
         self._temperature = State(initialValue: clamped)
         self._baselineTemperature = State(initialValue: clamped)
         self._durationMinutes = State(initialValue: 10)
@@ -406,20 +415,33 @@ struct CommandConfirmPopup: View {
         }
     }
 
-    /// 空调弹窗：已开时滑到目标温度后自动发设温，无需点确定。
+    /// 空调弹窗温度提交（官方风格）：
+    /// - 关着：只记本地草稿（按 VIN），不发网络；下次开启用该温度
+    /// - 开着：相对基线变化则自动设温，无需点确定
     private func handleTemperatureCommitted(_ value: Double) {
         guard action == .acToggle else { return }
-        guard vehicleState.acOn == true else { return }
         guard !isExecuting, commandResult == nil else { return }
 
-        let requested = Int(value.rounded())
+        let requested = max(17, min(33, Int(value.rounded())))
+        temperature = Double(requested)
+        let vin = VehicleCredentialsStore.shared.vin
+        // 无论开关，用户明确调温都写入草稿，保证关着也能“记住”。
+        ACTemperatureDraftStore.save(vin: vin, temperature: Double(requested))
+
+        // 关着：只本地记住，不发令（与官方关着可调温模块一致）。
+        if vehicleState.acOn != true {
+            let impact = UIImpactFeedbackGenerator(style: .light)
+            impact.impactOccurred()
+            resultMessage = "已记住 \(requested)°C，开启时使用"
+            return
+        }
+
         let baseline = Int(baselineTemperature.rounded())
         // 与基线相同：不自动发令，留给「关闭空调」确认键。
         guard requested != baseline else { return }
 
         let impact = UIImpactFeedbackGenerator(style: .light)
         impact.impactOccurred()
-        temperature = Double(requested)
         executeCommand(autoDismissOnSuccess: false, preferTemperatureOnly: true)
     }
 
@@ -504,8 +526,19 @@ struct CommandConfirmPopup: View {
                     // 自动设温成功：不关弹窗，更新基线，便于继续调温或点关闭。
                     if !autoDismissOnSuccess, action == .acToggle {
                         baselineTemperature = temperatureToUse
+                        ACTemperatureDraftStore.save(
+                            vin: VehicleCredentialsStore.shared.vin,
+                            temperature: temperatureToUse
+                        )
                         resultMessage = executionResult.popupMessage
                         return
+                    }
+                    // 开/关/设温成功也同步草稿：关空调不丢温度，开/设温用最新值。
+                    if action == .acToggle {
+                        ACTemperatureDraftStore.save(
+                            vin: VehicleCredentialsStore.shared.vin,
+                            temperature: temperatureToUse
+                        )
                     }
                     commandResult = executionResult.popupResult
                     resultMessage = executionResult.popupMessage

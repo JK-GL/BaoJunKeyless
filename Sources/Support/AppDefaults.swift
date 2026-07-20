@@ -43,4 +43,9 @@ enum AppDefaultsKey {
     enum CustomVibration {
         static let patterns = "CustomVibrationPatterns"
     }
+
+    /// 空调设定温度草稿（按 VIN）。官方关着时面板可调温并记住，优先本地草稿，再回落车况 accCntTemp。
+    enum ClimateDraft {
+        static let temperatureByVINPrefix = "ClimateDraft.temperature."
+    }
 }
