@@ -291,7 +291,7 @@ func parsePowerState(_ s: [String: String]) -> VehiclePowerState? {
         case "3", "acc", "ACC":
             return .acc
         case "1", "on", "ON", "true", "TRUE":
-            // engineStatus=1 更接近已上电/运行；UI 显示“已上电”
+            // engineStatus=1 更接近已启动；Ready 需独立字段/值（ready/2）再显示 Ready
             return key == "engineStatus" ? .on : .ready
         case "2", "ready", "READY":
             return .ready

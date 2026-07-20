@@ -29,31 +29,64 @@ enum VehiclePowerState: String, Codable, CaseIterable {
 
     var title: String {
         switch self {
-        // 本车官方车况无稳定电源字段；展示层按 Wuling 粘性二元：已上电 / 未上电。
-        case .off:     return "未上电"
+        // 已启动 ≠ Ready，必须分开显示：
+        // - on：远程启动/通电成功（已启动）
+        // - ready：仪表 Ready（上电完成/可走车）
+        case .off:     return "未启动"
         case .acc:     return "ACC"
-        case .on:      return "已上电"
+        case .on:      return "已启动"
         case .ready:   return "Ready"
         // 兼容旧缓存；运行时默认与粘性策略都应落到 .off，不再把空字段显示成“未知”。
-        case .unknown: return "未上电"
+        case .unknown: return "未启动"
         }
     }
 
-    /// 是否已处于上电/可驾驶相关态（用于远程启动按钮切换）
+    /// 是否已处于启动相关态（用于远程启动按钮切换：可熄火）
     var isPoweredOn: Bool {
-        self == .on || self == .ready
+        self == .on || self == .ready || self == .acc
     }
 
-    /// 远程启动弹窗「启动」列文案
-    var remoteStartStatusTitle: String {
+    /// 是否已到 Ready（与「已启动」不同，需单独展示）
+    var isReady: Bool {
+        self == .ready
+    }
+
+    /// 弹窗「启动」列：只表达是否已启动，不把 Ready 混进来。
+    var startStatusTitle: String {
         switch self {
-        case .on:      return "已上电"
-        case .ready:   return "Ready"
-        case .acc:     return "ACC"
+        case .on, .ready, .acc:
+            return "已启动"
         case .off, .unknown:
-            return "未上电"
+            return "未启动"
         }
     }
+
+    /// 弹窗「Ready」列：只有 ready 才显示 Ready。
+    var readyStatusTitle: String {
+        switch self {
+        case .ready:
+            return "Ready"
+        case .on, .acc:
+            return "未Ready"
+        case .off, .unknown:
+            return "--"
+        }
+    }
+
+    /// 快捷区文案：未启动显示动作名；已启动/Ready 分开显示。
+    var quickActionLabel: String {
+        switch self {
+        case .ready:
+            return "Ready"
+        case .on, .acc:
+            return "已启动"
+        case .off, .unknown:
+            return "远程启动"
+        }
+    }
+
+    /// 兼容旧调用点
+    var remoteStartStatusTitle: String { startStatusTitle }
 }
 
 enum PhysicalKeyPosition: String, Codable, CaseIterable {

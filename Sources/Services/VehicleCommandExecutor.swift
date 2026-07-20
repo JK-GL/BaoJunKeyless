@@ -204,7 +204,7 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
                         let message: String
                         switch command.kind {
                         case .remoteStart:
-                            message = "车辆已上电。请在约 30 秒内解锁上车，踩下刹车仪表亮Ready。"
+                            message = "已启动。请在约 30 秒内解锁上车，踩下刹车后仪表亮 Ready（已启动≠Ready）。"
                         case .remoteStop:
                             message = "车辆已熄火"
                         case .acOn:

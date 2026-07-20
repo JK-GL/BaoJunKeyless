@@ -295,9 +295,9 @@ extension MQTTVehicleStateStore {
         func powerText(_ s: [String: String]) -> String {
             if let p = parsePowerState(s) {
                 switch p {
-                case .off: return "熄火/下电"
+                case .off: return "未启动/熄火"
                 case .acc: return "ACC"
-                case .on: return "已上电"
+                case .on: return "已启动"
                 case .ready: return "Ready"
                 case .unknown: return "未知"
                 }

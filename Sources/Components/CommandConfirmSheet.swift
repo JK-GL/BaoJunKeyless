@@ -74,7 +74,8 @@ enum CommandAction: String, Identifiable, Equatable {
         case .lockUnlock:
             return state.locked == false ? "已开锁" : "锁车"
         case .remoteStart:
-            return state.power.isPoweredOn ? state.power.title : "未上电"
+            // 未启动显示动作名；已启动/Ready 分开显示，不混成一个词。
+            return state.power.quickActionLabel
         case .findCar:
             return "寻车"
         case .acToggle:
@@ -137,8 +138,8 @@ enum CommandAction: String, Identifiable, Equatable {
             return state.locked == false ? "确认后将锁止车门，请确保车内无人滞留。" : "确认后将解锁车门，便于您上车。"
         case .remoteStart:
             return state.power.isPoweredOn
-                ? "确认后将关闭车辆电源。优先使用近场蓝牙，不可用时自动改用网络。"
-                : "确认后将下发启动授权。请在约 30 秒内解锁上车，踩下刹车仪表亮Ready。"
+                ? "确认后将远程熄火。优先使用近场蓝牙，不可用时自动改用网络。"
+                : "确认后将远程启动：先到「已启动」，上车踩刹车后仪表亮 Ready（两者不同）。"
         case .findCar:
             return "确认后车辆将闪灯并鸣笛，便于您快速定位。"
         case .acToggle:
@@ -364,20 +365,16 @@ struct CommandConfirmPopup: View {
                                 color: state.doorsClosed == false ? AppTheme.orange : AppTheme.green)
             ]
         case .remoteStart:
-            let startStatusText: String
-            let startStatusColor: Color
-            startStatusText = state.power.remoteStartStatusTitle
-            switch state.power {
-            case .on, .ready:
-                startStatusColor = AppTheme.green
-            case .acc, .off, .unknown:
-                startStatusColor = AppTheme.orange
-            }
+            // 已启动 ≠ Ready：两列分开显示。
+            let startText = state.power.startStatusTitle
+            let readyText = state.power.readyStatusTitle
+            let startColor: Color = (state.power.isPoweredOn) ? AppTheme.green : AppTheme.orange
+            let readyColor: Color = state.power.isReady ? AppTheme.green : Color(red: 0.55, green: 0.58, blue: 0.62)
             return [
-                PopupStatusItem(icon: "key.fill", label: "电源",
-                                value: state.power.title, color: AppTheme.orange),
-                PopupStatusItem(icon: "dot.radiowaves.left.and.right", label: "状态",
-                                value: startStatusText, color: startStatusColor),
+                PopupStatusItem(icon: "key.fill", label: "启动",
+                                value: startText, color: startColor),
+                PopupStatusItem(icon: "gauge.with.dots.needle.67percent", label: "Ready",
+                                value: readyText, color: readyColor),
                 PopupStatusItem(icon: "gearshape.fill", label: "档位",
                                 value: state.gear.title, color: AppTheme.accent)
             ]
@@ -644,7 +641,7 @@ private extension VehicleCommandExecutionResult {
         case .unlock: return "已解锁"
         case .openWindows: return "已打开"
         case .closeWindows: return "已关闭"
-        case .remoteStart: return "已上电"
+        case .remoteStart: return "已启动"
         case .remoteStop: return "已熄火"
         case .findCar: return "已发送"
         }
@@ -664,7 +661,7 @@ private extension VehicleCommandExecutionResult {
         case .unlock: return "车门已解锁"
         case .openWindows: return "车窗已打开"
         case .closeWindows: return "车窗已关闭"
-        case .remoteStart: return "车辆已上电"
+        case .remoteStart: return "已启动（待Ready）"
         case .remoteStop: return "车辆已熄火"
         case .findCar: return "寻车指令已发送"
         }
