@@ -78,8 +78,8 @@ enum CommandAction: String, Identifiable, Equatable {
         case .findCar:
             return "寻车"
         case .acToggle:
-            // 已开时明确显示“关闭空调”，避免用户以为只能再次开启。
-            return state.acOn == true ? "关闭空调" : "开启空调"
+            // 快捷操作区固定显示「空调」；开/关/设温只在弹窗里区分。
+            return "空调"
         case .windowToggle:
             return state.windowsClosed == false ? "已开窗" : "车窗"
         case .quickCool:
@@ -122,7 +122,8 @@ enum CommandAction: String, Identifiable, Equatable {
         case .remoteStart:   return (state.power.isPoweredOn) ? "远程熄火" : "远程启动"
         case .findCar:       return "寻车"
         case .acToggle:
-            return state.acOn == true ? "关闭或设温" : "开启空调"
+            // 默认文案；弹窗主按钮会按滑条是否改温动态覆盖为「设定温度/关闭空调」。
+            return state.acOn == true ? "关闭空调" : "开启空调"
         case .windowToggle:
             return state.windowsClosed == false ? "关闭车窗" : "打开车窗"
         case .quickCool:     return "快速降温"
@@ -170,6 +171,8 @@ struct CommandConfirmPopup: View {
     let onConfirm: (CommandAction, Double?, Int?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
 
     @State private var temperature: Double
+    /// 弹窗打开时的温度基准；已开空调时用「是否相对此值改动」决定设温还是关闭。
+    @State private var baselineTemperature: Double
     @State private var durationMinutes: Double
     @State private var isExecuting = false
     @State private var commandResult: CommandResult? = nil
@@ -192,7 +195,9 @@ struct CommandConfirmPopup: View {
         } else {
             initialTemperature = Int(vehicleState.acTemperature ?? 22)
         }
-        self._temperature = State(initialValue: Double(max(17, min(33, initialTemperature))))
+        let clamped = Double(max(17, min(33, initialTemperature)))
+        self._temperature = State(initialValue: clamped)
+        self._baselineTemperature = State(initialValue: clamped)
         self._durationMinutes = State(initialValue: 10)
     }
 
@@ -231,12 +236,25 @@ struct CommandConfirmPopup: View {
     }
 
     private var commandTitle: String {
+        resolvedVehicleCommand.title
+    }
+
+    /// 按当前滑条温度解析真实将要发送的命令（开/关/设温）。
+    private var resolvedVehicleCommand: VehicleCommand {
         action.asVehicleCommand(
             state: vehicleState,
             temperature: action.needsTemperatureSlider ? temperature : nil,
             durationMinutes: action.needsDurationSlider ? Int(durationMinutes) : nil,
+            baselineTemperature: action == .acToggle ? baselineTemperature : nil,
             source: .quickAction
-        ).title
+        )
+    }
+
+    private var confirmButtonTitle: String {
+        if action == .acToggle {
+            return resolvedVehicleCommand.title
+        }
+        return action.confirmTitle(state: vehicleState)
     }
 
     var body: some View {
@@ -295,7 +313,7 @@ struct CommandConfirmPopup: View {
                 // 执行前：确认 + 取消
                 VStack(spacing: 8) {
                     FloatingPopupPrimaryButton(
-                        title: action.confirmTitle(state: vehicleState),
+                        title: confirmButtonTitle,
                         color: accentColor,
                         isLoading: false,
                         isDisabled: false,

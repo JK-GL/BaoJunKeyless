@@ -294,23 +294,53 @@ struct PopupTemperatureSlider: View {
     let tint: Color
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             HStack {
                 Text(title)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(Color.white.opacity(0.55))
                 Spacer()
-                Text("\(Int(temperature))°C")
+                Text("\(Int(temperature.rounded()))°C")
                     .font(.system(size: 20, weight: .bold, design: .monospaced))
                     .foregroundColor(tint)
             }
-            Slider(value: $temperature, in: range, step: 1)
-                .tint(tint)
+
+            // 加减按钮 + 滑条双通道，避免仅滑条在部分弹层场景里手势被吃掉。
+            HStack(spacing: 12) {
+                Button {
+                    adjust(by: -1)
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundColor(tint.opacity(temperature <= range.lowerBound ? 0.35 : 1))
+                }
+                .buttonStyle(.plain)
+                .disabled(temperature <= range.lowerBound)
+
+                Slider(value: $temperature, in: range, step: 1)
+                    .tint(tint)
+
+                Button {
+                    adjust(by: 1)
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundColor(tint.opacity(temperature >= range.upperBound ? 0.35 : 1))
+                }
+                .buttonStyle(.plain)
+                .disabled(temperature >= range.upperBound)
+            }
         }
         .padding(14)
+        .contentShape(Rectangle())
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color.white.opacity(0.04))
         )
+    }
+
+    private func adjust(by delta: Double) {
+        let next = min(range.upperBound, max(range.lowerBound, (temperature + delta).rounded()))
+        temperature = next
     }
 }

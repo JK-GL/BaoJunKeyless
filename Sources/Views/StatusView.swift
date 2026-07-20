@@ -291,7 +291,15 @@ struct StatusView: View {
         durationMinutes: Int?,
         completion: @escaping (VehicleCommandExecutionResult) -> Void
     ) {
-        let command = action.asVehicleCommand(state: vehicleStore?.state ?? .placeholder, temperature: temperature, durationMinutes: durationMinutes, source: .quickAction)
+        // 空调设温：用「发令前本地状态温度」作基线；弹窗若已改温，temperature 会不同并走 setTemperature。
+        let state = vehicleStore?.state ?? .placeholder
+        let command = action.asVehicleCommand(
+            state: state,
+            temperature: temperature,
+            durationMinutes: durationMinutes,
+            baselineTemperature: action == .acToggle ? state.acTemperature : nil,
+            source: .quickAction
+        )
         let supportsBLE = command.kind.supportsBLEControl
         let bleReady = mqttStore?.canUseBLEForVehicleControl == true
 

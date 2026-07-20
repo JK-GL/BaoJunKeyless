@@ -70,6 +70,7 @@ extension CommandAction {
         state: VehicleState,
         temperature: Double?,
         durationMinutes: Int? = nil,
+        baselineTemperature: Double? = nil,
         source: VehicleCommandSource = .quickAction
     ) -> VehicleCommand {
         switch self {
@@ -88,11 +89,12 @@ extension CommandAction {
         case .acToggle:
             if state.acOn == true {
                 // 空调已开：
-                // - 温度相对当前设定有变化 → 官方 status=5 设温
+                // - 相对弹窗打开时的温度有变化 → 官方 status=5 设温
                 // - 温度未变化 → 官方 status=7 关空调
+                // 用弹窗初值而不是仅 state.acTemperature，避免车况温度缺失/滞后导致滑条改温仍发“关闭”。
                 let requested = temperature.map { Int($0.rounded()) }
-                let current = state.acTemperature.map { Int($0.rounded()) }
-                if let requested, current == nil || requested != current {
+                let baseline = (baselineTemperature ?? state.acTemperature).map { Int($0.rounded()) }
+                if let requested, baseline == nil || requested != baseline {
                     return VehicleCommand(
                         kind: .setTemperature,
                         title: "设定温度",
