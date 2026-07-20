@@ -273,21 +273,17 @@ struct StatusView: View {
 
     /// `/vehicle/control` 若下发，仅作为官方协议的附加诊断，不影响普通控制成功判定。
     private func handleMQTTControlResult(_ result: VehicleControlMQTTResult?) {
-        guard let result else { return }
-        withAnimation {
-            statusToastText = result.isSuccess ? "收到附加 Control 回执" : "收到 Control 回执异常"
-        }
+        // Control 附加回执只写事件日志，不再 Toast 打扰用户。
+        guard result != nil else { return }
     }
 
     /// 普通锁/窗/空调的主确认：MQTT app/status 或 HTTP 全量车况命中期望态。
     private func handleControlStateConfirmation(_ confirmation: VehicleControlStateConfirmation?) {
         guard let confirmation else { return }
+        // 成功不 Toast，避免二次打扰；细节仍写事件日志。仅失败/未确认时提示。
+        guard !confirmation.isConfirmed else { return }
         withAnimation {
-            if confirmation.isConfirmed {
-                statusToastText = "\(confirmation.commandTitle) 已由\(confirmation.source.title)确认"
-            } else {
-                statusToastText = "\(confirmation.commandTitle) 状态暂未确认"
-            }
+            statusToastText = "\(confirmation.commandTitle) 状态暂未确认"
         }
     }
 

@@ -78,8 +78,8 @@ enum CommandAction: String, Identifiable, Equatable {
         case .findCar:
             return "寻车"
         case .acToggle:
-            // 开着显示「开空调」，关着显示「空调」。
-            return state.acOn == true ? "开空调" : "空调"
+            // 开着显示「已开空调」，关着显示「空调」。
+            return state.acOn == true ? "已开空调" : "空调"
         case .windowToggle:
             return state.windowsClosed == false ? "已开窗" : "车窗"
         case .quickCool:
@@ -565,27 +565,67 @@ private extension VehicleCommandExecutionResult {
 
     var popupButtonTitle: String {
         switch state {
-        case .feedbackOnly: return "已反馈 ✓"
-        case .sent: return "已发送"
-        case .completed: return "已完成"
-        case .planned: return "已准备"
-        case .failed(_): return "执行失败"
-        case .timedOut(_): return "连接超时"
+        case .feedbackOnly, .sent, .completed, .planned:
+            return humanSuccessTitle
+        case .failed(_):
+            return "执行失败"
+        case .timedOut(_):
+            return "连接超时"
         }
     }
 
     var popupMessage: String {
         switch state {
-        case .feedbackOnly:
-            return userMessage.isEmpty ? "操作已完成" : userMessage
-        case .sent:
-            return userMessage.isEmpty ? "指令已发送，等待车辆状态更新" : userMessage
-        case .completed:
-            return userMessage.isEmpty ? "操作已完成" : userMessage
-        case .planned:
-            return userMessage.isEmpty ? "控制请求已准备就绪" : userMessage
+        case .feedbackOnly, .sent, .completed, .planned:
+            // 优先用人话 userMessage；为空时按命令 kind 回落。
+            let trimmed = userMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? humanSuccessMessage : trimmed
         case .failed(_), .timedOut(_):
-            return userMessage.isEmpty ? "指令未成功，请稍后重试" : userMessage
+            let trimmed = userMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty,
+               !trimmed.contains("POST "),
+               !trimmed.contains("MQTT"),
+               !trimmed.contains("HTTP"),
+               !trimmed.contains("Control") {
+                return trimmed
+            }
+            return "\(command.title)失败，请重试"
+        }
+    }
+
+    private var humanSuccessTitle: String {
+        switch command.kind {
+        case .acOn: return "已开启"
+        case .acOff: return "已关闭"
+        case .setTemperature: return "已设温"
+        case .quickCool: return "已开启"
+        case .lock: return "已上锁"
+        case .unlock: return "已解锁"
+        case .openWindows: return "已打开"
+        case .closeWindows: return "已关闭"
+        case .remoteStart: return "已上电"
+        case .remoteStop: return "已熄火"
+        case .findCar: return "已发送"
+        }
+    }
+
+    private var humanSuccessMessage: String {
+        switch command.kind {
+        case .acOn: return "空调已开启"
+        case .acOff: return "空调已关闭"
+        case .setTemperature:
+            if let temp = command.requestedTemperature.map({ Int($0.rounded()) }) {
+                return "温度已设为 \(temp)°C"
+            }
+            return "温度已设定"
+        case .quickCool: return "快速降温已开启"
+        case .lock: return "车门已上锁"
+        case .unlock: return "车门已解锁"
+        case .openWindows: return "车窗已打开"
+        case .closeWindows: return "车窗已关闭"
+        case .remoteStart: return "车辆已上电"
+        case .remoteStop: return "车辆已熄火"
+        case .findCar: return "寻车指令已发送"
         }
     }
 

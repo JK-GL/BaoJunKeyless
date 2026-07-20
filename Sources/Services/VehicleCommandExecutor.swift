@@ -200,13 +200,35 @@ struct HTTPControlTransport: VehicleCommandAsyncTransport {
                         // HTTP 受理成功：先本地即时回写可预期状态（锁/电源/空调/车窗），再弹结果与补刷。
                         refresher?.applyAcceptedHTTPControlIfPossible(command)
 
+                        // 用户可见结果文案：只说做了什么，不暴露 MQTT/HTTP/确认链路。
                         let message: String
-                        if command.kind == .remoteStart {
-                            message = "启动授权已发送。请在约 30 秒内解锁上车，踩下刹车仪表亮Ready。"
-                        } else if command.kind == .remoteStop {
-                            message = "熄火指令已发送，等待车辆状态更新。"
-                        } else {
-                            message = "\(command.title) 指令已发送，状态已即时更新，正在与车辆确认。"
+                        switch command.kind {
+                        case .remoteStart:
+                            message = "车辆已上电。请在约 30 秒内解锁上车，踩下刹车仪表亮Ready。"
+                        case .remoteStop:
+                            message = "车辆已熄火"
+                        case .acOn:
+                            message = "空调已开启"
+                        case .acOff:
+                            message = "空调已关闭"
+                        case .setTemperature:
+                            if let temp = command.requestedTemperature.map({ Int($0.rounded()) }) {
+                                message = "温度已设为 \(temp)°C"
+                            } else {
+                                message = "温度已设定"
+                            }
+                        case .quickCool:
+                            message = "快速降温已开启"
+                        case .lock:
+                            message = "车门已上锁"
+                        case .unlock:
+                            message = "车门已解锁"
+                        case .openWindows:
+                            message = "车窗已打开"
+                        case .closeWindows:
+                            message = "车窗已关闭"
+                        case .findCar:
+                            message = "寻车指令已发送"
                         }
                         let timing = VehicleCommandTiming(requestBuildMillis: buildMillis, httpRoundTripMillis: Int(Date().timeIntervalSince(httpStart) * 1000))
                         completion(VehicleCommandExecutionResult(command: command, state: .sent, userMessage: message, shouldRefresh: true, refreshDelay: 0, timing: timing))
