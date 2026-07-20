@@ -324,7 +324,7 @@ struct CommandConfirmPopup: View {
                         color: accentColor,
                         isLoading: false,
                         isDisabled: false,
-                        action: executeCommand
+                        action: { executeCommand() }
                     )
 
                     FloatingPopupSecondaryButton(
