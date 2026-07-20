@@ -148,8 +148,14 @@ struct StatusView: View {
                             }
                         }
                     ),
-                    onConfirm: { cmd, temp, duration, completion in
-                        handleQuickActionConfirm(action: cmd, temperature: temp, durationMinutes: duration, completion: completion)
+                    onConfirm: { cmd, temp, duration, baselineTemp, completion in
+                        handleQuickActionConfirm(
+                            action: cmd,
+                            temperature: temp,
+                            durationMinutes: duration,
+                            baselineTemperature: baselineTemp,
+                            completion: completion
+                        )
                     }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -289,15 +295,16 @@ struct StatusView: View {
         action: CommandAction,
         temperature: Double?,
         durationMinutes: Int?,
+        baselineTemperature: Double? = nil,
         completion: @escaping (VehicleCommandExecutionResult) -> Void
     ) {
-        // 空调设温：用「发令前本地状态温度」作基线；弹窗若已改温，temperature 会不同并走 setTemperature。
+        // 空调设温：优先用弹窗打开/自动设温后的基线，避免车况滞后把“关闭”误判成再设温。
         let state = vehicleStore?.state ?? .placeholder
         let command = action.asVehicleCommand(
             state: state,
             temperature: temperature,
             durationMinutes: durationMinutes,
-            baselineTemperature: action == .acToggle ? state.acTemperature : nil,
+            baselineTemperature: action == .acToggle ? (baselineTemperature ?? state.acTemperature) : nil,
             source: .quickAction
         )
         let supportsBLE = command.kind.supportsBLEControl

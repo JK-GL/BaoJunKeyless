@@ -292,6 +292,8 @@ struct PopupTemperatureSlider: View {
     @Binding var temperature: Double
     let range: ClosedRange<Double>
     let tint: Color
+    /// 温度被用户明确提交时回调（滑条松手 / 点 +/-）。
+    var onTemperatureCommitted: ((Double) -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 10) {
@@ -317,8 +319,13 @@ struct PopupTemperatureSlider: View {
                 .buttonStyle(.plain)
                 .disabled(temperature <= range.lowerBound)
 
-                Slider(value: $temperature, in: range, step: 1)
-                    .tint(tint)
+                Slider(value: $temperature, in: range, step: 1) { editing in
+                    // 松手后提交，避免拖动过程中连续发令。
+                    if !editing {
+                        onTemperatureCommitted?(temperature)
+                    }
+                }
+                .tint(tint)
 
                 Button {
                     adjust(by: 1)
@@ -342,5 +349,6 @@ struct PopupTemperatureSlider: View {
     private func adjust(by delta: Double) {
         let next = min(range.upperBound, max(range.lowerBound, (temperature + delta).rounded()))
         temperature = next
+        onTemperatureCommitted?(next)
     }
 }

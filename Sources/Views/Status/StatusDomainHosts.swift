@@ -460,7 +460,7 @@ struct StatusCommandConfirmHost: View {
     @EnvironmentObject var vehicleStore: VehicleStateStore
     let action: CommandAction
     @Binding var isPresented: Bool
-    let onConfirm: (CommandAction, Double?, Int?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
+    let onConfirm: (CommandAction, Double?, Int?, Double?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
     @State private var snapshotState: VehicleState?
 
     var body: some View {

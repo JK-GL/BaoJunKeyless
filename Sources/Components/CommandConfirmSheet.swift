@@ -78,8 +78,8 @@ enum CommandAction: String, Identifiable, Equatable {
         case .findCar:
             return "寻车"
         case .acToggle:
-            // 快捷操作区固定显示「空调」；开/关/设温只在弹窗里区分。
-            return "空调"
+            // 开着显示「开空调」，关着显示「空调」。
+            return state.acOn == true ? "开空调" : "空调"
         case .windowToggle:
             return state.windowsClosed == false ? "已开窗" : "车窗"
         case .quickCool:
@@ -143,7 +143,7 @@ enum CommandAction: String, Identifiable, Equatable {
             return "确认后车辆将闪灯并鸣笛，便于您快速定位。"
         case .acToggle:
             return state.acOn == true
-                ? "空调已开：滑动温度后点确认=设定温度；保持当前温度点确认=关闭空调。"
+                ? "空调已开：滑动或点 +/- 到目标温度会自动设定；保持当前温度点确认=关闭空调。"
                 : "确认后将开启空调，可先调节设定温度。"
         case .windowToggle:
             return state.windowsClosed == false ? "确认后将关闭全部车窗。" : "确认后将打开全部车窗。"
@@ -168,7 +168,7 @@ struct CommandConfirmPopup: View {
     let action: CommandAction
     let vehicleState: VehicleState
     @Binding var isPresented: Bool
-    let onConfirm: (CommandAction, Double?, Int?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
+    let onConfirm: (CommandAction, Double?, Int?, Double?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
 
     @State private var temperature: Double
     /// 弹窗打开时的温度基准；已开空调时用「是否相对此值改动」决定设温还是关闭。
@@ -183,7 +183,7 @@ struct CommandConfirmPopup: View {
         action: CommandAction,
         vehicleState: VehicleState,
         isPresented: Binding<Bool>,
-        onConfirm: @escaping (CommandAction, Double?, Int?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
+        onConfirm: @escaping (CommandAction, Double?, Int?, Double?, @escaping (VehicleCommandExecutionResult) -> Void) -> Void
     ) {
         self.action = action
         self.vehicleState = vehicleState
@@ -213,6 +213,10 @@ struct CommandConfirmPopup: View {
     private var resultSubtitle: String {
         if let result = commandResult {
             return resultMessage ?? result.message
+        }
+        // 自动设温成功时保留提示，不切换到结果态按钮。
+        if let resultMessage, !resultMessage.isEmpty {
+            return resultMessage
         }
         return action.confirmMessage(state: vehicleState)
     }
@@ -274,7 +278,10 @@ struct CommandConfirmPopup: View {
                         title: "设定温度",
                         temperature: $temperature,
                         range: 17...33,
-                        tint: accentColor
+                        tint: accentColor,
+                        onTemperatureCommitted: { value in
+                            handleTemperatureCommitted(value)
+                        }
                     )
                 }
 
@@ -399,7 +406,27 @@ struct CommandConfirmPopup: View {
         }
     }
 
-    private func executeCommand() {
+    /// 空调弹窗：已开时滑到目标温度后自动发设温，无需点确定。
+    private func handleTemperatureCommitted(_ value: Double) {
+        guard action == .acToggle else { return }
+        guard vehicleState.acOn == true else { return }
+        guard !isExecuting, commandResult == nil else { return }
+
+        let requested = Int(value.rounded())
+        let baseline = Int(baselineTemperature.rounded())
+        // 与基线相同：不自动发令，留给「关闭空调」确认键。
+        guard requested != baseline else { return }
+
+        let impact = UIImpactFeedbackGenerator(style: .light)
+        impact.impactOccurred()
+        temperature = Double(requested)
+        executeCommand(autoDismissOnSuccess: false, preferTemperatureOnly: true)
+    }
+
+    private func executeCommand(
+        autoDismissOnSuccess: Bool = true,
+        preferTemperatureOnly: Bool = false
+    ) {
         guard !isExecuting else { return }
 
         let impact = UIImpactFeedbackGenerator(style: .medium)
@@ -412,6 +439,25 @@ struct CommandConfirmPopup: View {
 
         let temperatureToUse = temperature
         let durationToUse = Int(durationMinutes)
+
+        // 自动设温路径：若当前解析结果不是设温/开空调，则不发（避免误关）。
+        if preferTemperatureOnly {
+            let preview = action.asVehicleCommand(
+                state: vehicleState,
+                temperature: temperatureToUse,
+                durationMinutes: action.needsDurationSlider ? durationToUse : nil,
+                baselineTemperature: action == .acToggle ? baselineTemperature : nil,
+                source: .quickAction
+            )
+            switch preview.kind {
+            case .setTemperature, .acOn:
+                break
+            default:
+                isExecuting = false
+                return
+            }
+        }
+
         let label = commandTitle
         let temperatureDetail = action.needsTemperatureSlider ? " \(Int(temperatureToUse))°C" : ""
         let durationDetail = action.needsDurationSlider ? " \(durationToUse)分钟" : ""
@@ -423,15 +469,13 @@ struct CommandConfirmPopup: View {
         onConfirm(
             action,
             action.needsTemperatureSlider ? temperatureToUse : nil,
-            action.needsDurationSlider ? durationToUse : nil
+            action.needsDurationSlider ? durationToUse : nil,
+            action == .acToggle ? baselineTemperature : nil
         ) { executionResult in
             let elapsed = Date().timeIntervalSince(startTime)
             let delay = max(0, minimumLoadingDuration - elapsed)
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 isExecuting = false
-                commandResult = executionResult.popupResult
-                resultMessage = executionResult.popupMessage
-                resultButtonTitle = executionResult.popupButtonTitle
                 VehicleEventLogStore.shared.add(executionResult.logCategory, executionResult.logTitle, detail: executionResult.logDetail)
                 // 成功 HTTP 锁/解会由“控制状态已确认/未确认”收敛；不再追加一条耗时流水。
                 // BLE（timing=nil）、失败/超时及其他命令仍保留耗时，方便排障。
@@ -457,8 +501,20 @@ struct CommandConfirmPopup: View {
                 switch executionResult.state {
                 case .feedbackOnly, .planned, .sent, .completed:
                     VibrationPattern.shortSingle.play(intensity: 0.55)
+                    // 自动设温成功：不关弹窗，更新基线，便于继续调温或点关闭。
+                    if !autoDismissOnSuccess, action == .acToggle {
+                        baselineTemperature = temperatureToUse
+                        resultMessage = executionResult.popupMessage
+                        return
+                    }
+                    commandResult = executionResult.popupResult
+                    resultMessage = executionResult.popupMessage
+                    resultButtonTitle = executionResult.popupButtonTitle
                 case .failed(_), .timedOut(_):
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    commandResult = executionResult.popupResult
+                    resultMessage = executionResult.popupMessage
+                    resultButtonTitle = executionResult.popupButtonTitle
                 }
 
                 DispatchQueue.main.asyncAfter(deadline: .now() + executionResult.autoDismissDelay) {
